@@ -1,0 +1,104 @@
+name: vector
+
+# Local stack for Vector (Outreach360). Settings come from .env (copy .env.example).
+# Expects the frontend checked out next to this repo (C:\Projects\Vector\Frontend) (override with FRONTEND_DIR in .env).
+#
+#   docker compose up -d --build    app on http://localhost:8190/vector/
+#                                   (or http://localhost/vector/ behind the shared hub nginx)
+#   docker compose logs -f api      follow backend logs
+#   docker compose down             stop (add -v to also wipe the MySQL data and uploads)
+#
+# Start-up order: mysql (healthy) → api (creates/patches tables on start) → web
+#
+# Host ports: web 8190, api 8191 (Swagger at /docs), mysql 3316.
+
+x-api-env: &api-env
+  # Fixed for the local stack. Compose also reads this repo's .env for ${...} substitution, so the
+  # database settings use LOCAL_* names that cannot pick up prod values (e.g. MYSQL_USER=root) from it.
+  APP_PROFILE: local
+  ENVIRONMENT: development
+  DEBUG: ${DEBUG:-false}
+  MYSQL_HOST: mysql
+  MYSQL_PORT: "3306"
+  MYSQL_USER: ${LOCAL_MYSQL_USER:-vector}
+  MYSQL_PASSWORD: ${LOCAL_MYSQL_PASSWORD:-vector}
+  MYSQL_DATABASE: ${LOCAL_MYSQL_DATABASE:-outreach_ai}
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-dev-only-change-me-0123456789abcdef}
+  # The browser reaches the app through the hub (or the web port); the API is same-origin under /vector/api/.
+  FRONTEND_URL: http://localhost/vector,http://localhost:${WEB_PORT:-8190},http://localhost:5173
+  # Tracking / unsubscribe links are built as {BASE_URL}/api/tracking/...
+  BASE_URL: http://localhost/vector
+  ATTACHMENTS_DIR: /app/uploads/attachments
+  # Integrations: optional, taken from .env when set (features that need them log errors and skip otherwise)
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+  AWS_REGION: ${AWS_REGION:-us-east-1}
+  AWS_SES_CONFIGURATION_SET: ${AWS_SES_CONFIGURATION_SET:-}
+  SENDER_EMAIL: ${SENDER_EMAIL:-}
+  SENDER_NAME: ${SENDER_NAME:-Outreach AI}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${LOCAL_MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${LOCAL_MYSQL_DATABASE:-outreach_ai}
+      MYSQL_USER: ${LOCAL_MYSQL_USER:-vector}
+      MYSQL_PASSWORD: ${LOCAL_MYSQL_PASSWORD:-vector}
+    volumes:
+      - mysqldata:/var/lib/mysql
+    ports:
+      - "${LOCAL_MYSQL_PORT:-3316}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 3s
+      start_period: 20s
+      retries: 30
+    restart: unless-stopped
+
+  api:
+    build: {context: .}
+    environment: *api-env
+    volumes:
+      - uploads:/app/uploads
+    ports:
+      - "${API_PORT:-8191}:8001"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ${FRONTEND_DIR:-../Frontend}
+      args:
+        BASE_PATH: /vector/   # path under the shared hub nginx (http://localhost/vector/)
+    volumes:
+      - ${FRONTEND_DIR:-../Frontend}/docker/nginx.local.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "${WEB_PORT:-8190}:80"
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  mysqldata:
+  uploads:
