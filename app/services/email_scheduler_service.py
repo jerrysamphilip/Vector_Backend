@@ -7,6 +7,7 @@ Processes scheduled emails from the queue and sends via AWS SES.
 import asyncio
 import logging
 import math
+import time as _time
 from collections import defaultdict
 from datetime import datetime, timedelta, time
 from typing import List, Optional
@@ -64,6 +65,9 @@ class EmailSchedulerService:
     def __init__(self):
         self.batch_size = 500  # Due messages considered per cycle (all inboxes)
         self.is_running = False
+        # Exact time of each inbox's last send in this process; the DB column only
+        # keeps whole seconds, which would let sends drift up to 1s too close.
+        self._last_send = {}
 
     def _resolve_sender_for_message(
         self,
@@ -610,8 +614,13 @@ class EmailSchedulerService:
                     if inbox.delay_between_emails and inbox.delay_between_emails > 0:
                         spread = min(settings.SENDING_JITTER_MAX_SECONDS, inbox.delay_between_emails * 0.25)
                         gap = inbox.delay_between_emails + random.uniform(-spread, spread)
+                        since = []
                         if inbox.last_sent_at:
-                            wait = gap - (datetime.utcnow() - inbox.last_sent_at).total_seconds()
+                            since.append((datetime.utcnow() - inbox.last_sent_at).total_seconds())
+                        if inbox.inbox_id in self._last_send:
+                            since.append(_time.monotonic() - self._last_send[inbox.inbox_id])
+                        if since:
+                            wait = gap - min(since)
                             if wait > 0:
                                 await asyncio.sleep(wait)
                         paced = True
@@ -652,6 +661,8 @@ class EmailSchedulerService:
                 email_msg.provider_message_id = (
                     result.get("internet_message_id") or result.get("ses_message_id")
                 )
+                if email_msg.inbox_id:
+                    self._last_send[email_msg.inbox_id] = _time.monotonic()
                 # SES's id, so delivery events without our tag still match (BR-DF-04)
                 email_msg.ses_message_id = result.get("ses_message_id")
 
