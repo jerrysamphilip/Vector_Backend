@@ -540,6 +540,9 @@ try:
     from app.db.contact_schema import ensure_contact_schema
     ensure_contact_schema(engine)
 
+    from app.db.security_schema import encrypt_mailbox_passwords
+    encrypt_mailbox_passwords(engine)
+
     with SessionLocal() as db:
         total = seed_blueprints(db)
         print(f"Persona blueprints synchronized ({total} total)")
@@ -552,6 +555,14 @@ if settings.DEBUG:
     for dev_origin in ("http://localhost:5173", "http://127.0.0.1:5173"):
         if dev_origin not in allowed_origins:
             allowed_origins.append(dev_origin)
+
+# Refuse to start (when deployed) without the key that encrypts mailbox passwords
+from app.core.encrypted_type import check_credentials_key
+check_credentials_key()
+
+# Per-IP request ceiling; sign-in/reset endpoints have stricter limits (app/core/rate_limit.py)
+from app.core.rate_limit import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

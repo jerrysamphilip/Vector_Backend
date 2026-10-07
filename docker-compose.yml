@@ -24,6 +24,8 @@ x-api-env: &api-env
   MYSQL_PASSWORD: ${LOCAL_MYSQL_PASSWORD:-vector}
   MYSQL_DATABASE: ${LOCAL_MYSQL_DATABASE:-outreach_ai}
   JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-dev-only-change-me-0123456789abcdef}
+  CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-local-dev-only-credentials-key}
+  SES_WEBHOOK_TOKEN: ${SES_WEBHOOK_TOKEN:-local-dev-webhook-token}
   # The browser reaches the app through the hub (or the web port); the API is same-origin under /vector/api/.
   FRONTEND_URL: http://localhost/vector,http://localhost:${WEB_PORT:-8190},http://localhost:5173
   # Tracking / unsubscribe links are built as {BASE_URL}/api/tracking/...

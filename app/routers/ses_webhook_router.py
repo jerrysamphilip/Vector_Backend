@@ -22,6 +22,8 @@ from app.models.automation_rule import TriggerType
 from app.services.metrics_service import MetricsService
 from app.services.deliverability_service import deliverability_service
 from app.utils.campaign_prospect_status import set_prospect_status
+from app.core.secrets_guard import is_deployed
+from app.utils.sns_verify import is_sns_url, token_matches, verify_sns_signature
 
 logger = logging.getLogger(__name__)
 
@@ -91,10 +93,31 @@ async def handle_ses_notification(
     """
     try:
         body = await request.json()
-        
+
+        # ── Authenticity (BR-DF-09) ──
+        # Wrapped SNS messages must carry a valid AWS signature. Raw-delivery messages have
+        # none, so they must present the shared SES_WEBHOOK_TOKEN instead.
+        if isinstance(body, dict) and body.get("Type"):
+            if not await verify_sns_signature(body, settings.AWS_SNS_TOPIC_ARN):
+                raise HTTPException(status_code=403, detail="Invalid SNS signature")
+            x_amz_sns_message_type = body.get("Type")
+        else:
+            presented = request.query_params.get("token") or request.headers.get("x-webhook-token")
+            if settings.SES_WEBHOOK_TOKEN:
+                if not token_matches(presented, settings.SES_WEBHOOK_TOKEN):
+                    raise HTTPException(status_code=403, detail="Invalid webhook token")
+            elif is_deployed():
+                logger.error("[SES-WEBHOOK] Rejected raw SES event: SES_WEBHOOK_TOKEN is not configured. "
+                             "Set it and add ?token=<value> to the SNS subscription URL.")
+                raise HTTPException(status_code=403, detail="Webhook token not configured")
+            else:
+                logger.warning("[SES-WEBHOOK] Accepting unauthenticated raw event (local run, no SES_WEBHOOK_TOKEN)")
+
         # Handle SNS subscription confirmation
         if x_amz_sns_message_type == "SubscriptionConfirmation":
             subscribe_url = body.get("SubscribeURL")
+            if not is_sns_url(subscribe_url):
+                raise HTTPException(status_code=400, detail="SubscribeURL is not an SNS URL")
             logger.info(f"[SES-WEBHOOK] SNS Subscription confirmation required: {subscribe_url}")
             
             # AUTO-CONFIRM: Visit the URL to confirm the subscription
@@ -181,6 +204,9 @@ async def handle_ses_notification(
     except json.JSONDecodeError as e:
         logger.error(f"[SES-WEBHOOK] Invalid JSON: {e}")
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    except HTTPException:
+        raise
     
     except Exception as e:
         logger.error(f"[SES-WEBHOOK] Error processing notification: {e}")

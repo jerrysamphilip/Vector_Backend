@@ -79,11 +79,18 @@ class Settings(BaseSettings):
     # Auto-suppress hard bounces (add to GlobalUnsubscribe on permanent failure)
     AUTO_SUPPRESS_HARD_BOUNCES: bool = True
     
-    # JWT Authentication
+    # JWT Authentication (validated at start-up, see app/core/secrets_guard.py)
     JWT_SECRET_KEY: str = "change-this-in-production-use-a-long-random-string"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # Encrypts mailbox (SMTP/IMAP) passwords at rest. Required when deployed; keep it stable.
+    CREDENTIALS_ENCRYPTION_KEY: str = ""
+
+    # Shared secret for the SES/SNS webhook when SNS uses raw message delivery (raw messages carry
+    # no AWS signature). Append ?token=<value> to the subscription URL.
+    SES_WEBHOOK_TOKEN: str = ""
 
     # Google OAuth
     GOOGLE_CLIENT_ID: str = ""
@@ -268,3 +275,7 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+# Refuse the public default JWT secret when deployed (BR-DF-09)
+from app.core.secrets_guard import resolve_jwt_secret  # noqa: E402
+settings.JWT_SECRET_KEY = resolve_jwt_secret(settings.JWT_SECRET_KEY)

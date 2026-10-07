@@ -107,6 +107,29 @@ spec:
                 secretKeyRef:
                   name: sales360-secret
                   key: AWS_SNS_ENABLED
+
+            # Security (BR-DF-09). These keys must exist in sales360-secret before deploying:
+            # the API refuses to start without the first two. Generate each with
+            #   python -c "import secrets; print(secrets.token_urlsafe(48))"
+            # Keep CREDENTIALS_ENCRYPTION_KEY stable: changing it makes saved mailbox passwords
+            # unreadable. Add ?token=<SES_WEBHOOK_TOKEN> to the SNS subscription URL.
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: JWT_SECRET_KEY
+
+            - name: CREDENTIALS_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: CREDENTIALS_ENCRYPTION_KEY
+
+            - name: SES_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: SES_WEBHOOK_TOKEN
             
 
           resources:

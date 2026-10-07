@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
+from app.core import rate_limit
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -265,11 +266,12 @@ def _send_password_reset_email(to_email: str, reset_link: str):
 # ── Endpoints ─────────────────────────────────────────────
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def register(body: RegisterRequest, db: Session = Depends(get_db)):
+def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     """
     Register the first SUPER_ADMIN user and create a new tenant workspace.
     Subsequent users should be invited via /api/users/invite.
     """
+    rate_limit.check(request, "register", rate_limit.REGISTER_PER_IP)
     # Check for existing user with same email
     existing = db.query(User).filter(User.email == body.email).first()
     if existing:
@@ -302,15 +304,15 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(body: LoginRequest, db: Session = Depends(get_db)):
+def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     """Authenticate with email + password and receive JWT tokens."""
+    rate_limit.check_login_allowed(request, body.email)
     user = db.query(User).filter(User.email == body.email).first()
 
-    if not user or not user.password_hash:
+    if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
+        rate_limit.record_login_failure(body.email)
         raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    if not verify_password(body.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+    rate_limit.record_login_success(body.email)
 
     if user.status not in ("ACTIVE", "INVITED"):
         raise HTTPException(status_code=403, detail="Account is suspended or inactive")
@@ -370,6 +372,7 @@ def forgot_password(body: ForgotPasswordRequest, request: Request, db: Session =
     Request a password reset link.
     Always returns a generic success message to prevent account enumeration.
     """
+    rate_limit.check(request, "reset", rate_limit.EMAIL_REQUESTS_PER_IP, body.email, rate_limit.EMAIL_REQUESTS_PER_EMAIL)
     generic_response = {
         "message": "If an account exists for that email, a password reset link has been sent."
     }
@@ -440,8 +443,9 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/magic-login", response_model=TokenResponse)
-def magic_login(body: MagicLoginRequest, db: Session = Depends(get_db)):
+def magic_login(body: MagicLoginRequest, request: Request, db: Session = Depends(get_db)):
     """Exchange a one-time magic login token for normal auth tokens."""
+    rate_limit.check(request, "magic", rate_limit.LOGIN_ATTEMPTS_PER_IP)
     token_hash = hash_token(body.token)
     magic_record = db.query(MagicLoginToken).filter(
         MagicLoginToken.token_hash == token_hash,

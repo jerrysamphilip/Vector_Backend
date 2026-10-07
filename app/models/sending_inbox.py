@@ -4,6 +4,7 @@ Sending Inbox model for SMTP email accounts.
 """
 
 from sqlalchemy import Column, String, Boolean, Integer, TIMESTAMP, ForeignKey, Float, Text
+from app.core.encrypted_type import EncryptedString
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -27,14 +28,14 @@ class SendingInbox(Base):
     smtp_host = Column(String(255), nullable=True)
     smtp_port = Column(Integer, default=587)
     smtp_username = Column(String(255), nullable=True)
-    smtp_password = Column(String(255), nullable=True)
+    smtp_password = Column(EncryptedString, nullable=True)  # encrypted at rest
     smtp_use_ssl = Column(Boolean, default=False)   # False=STARTTLS(587), True=SSL(465)
 
     # IMAP Configuration
     imap_host = Column(String(255), nullable=True)
     imap_port = Column(Integer, default=993)
     imap_username = Column(String(255), nullable=True)
-    imap_password = Column(String(255), nullable=True)
+    imap_password = Column(EncryptedString, nullable=True)  # encrypted at rest
     last_sync_at = Column(TIMESTAMP, nullable=True)
     
     # Rate Limiting
