@@ -4,6 +4,7 @@ Sending Inbox model for SMTP email accounts.
 """
 
 from sqlalchemy import Column, String, Boolean, Integer, TIMESTAMP, ForeignKey, Float, Text
+from app.core.encrypted_type import EncryptedString, EncryptedText
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -27,14 +28,23 @@ class SendingInbox(Base):
     smtp_host = Column(String(255), nullable=True)
     smtp_port = Column(Integer, default=587)
     smtp_username = Column(String(255), nullable=True)
-    smtp_password = Column(String(255), nullable=True)
+    smtp_password = Column(EncryptedString, nullable=True)  # encrypted at rest
     smtp_use_ssl = Column(Boolean, default=False)   # False=STARTTLS(587), True=SSL(465)
+
+    # Mailbox sign-in (BR-DF-05): PASSWORD, or OAUTH_MS365 for Microsoft 365 mailboxes
+    # where basic auth is blocked; IMAP/SMTP then authenticate with XOAUTH2.
+    auth_type = Column(String(30), default="PASSWORD")
+    oauth_refresh_token = Column(EncryptedText, nullable=True)
+    oauth_access_token = Column(EncryptedText, nullable=True)
+    oauth_expires_at = Column(TIMESTAMP, nullable=True)
+    oauth_error = Column(Text, nullable=True)
+    imap_last_error = Column(Text, nullable=True)   # last reply-sync failure, shown on the inbox
 
     # IMAP Configuration
     imap_host = Column(String(255), nullable=True)
     imap_port = Column(Integer, default=993)
     imap_username = Column(String(255), nullable=True)
-    imap_password = Column(String(255), nullable=True)
+    imap_password = Column(EncryptedString, nullable=True)  # encrypted at rest
     last_sync_at = Column(TIMESTAMP, nullable=True)
     
     # Rate Limiting

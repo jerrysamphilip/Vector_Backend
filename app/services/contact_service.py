@@ -15,6 +15,7 @@ from app.core.auth import _DEFAULT_PERMS
 from app.models.account import Account
 from app.models.campaign import CampaignProspect
 from app.models.contact_activity import ContactActivity
+from app.models.crm import CrmTask, PropertyChange
 from app.models.conversation import Conversation
 from app.models.email_message import EmailEvent, EmailMessage
 from app.models.prospect import Prospect
@@ -124,8 +125,10 @@ def delete_contacts(db: Session, prospect_ids: list) -> None:
     if message_ids:
         db.query(EmailEvent).filter(EmailEvent.message_id.in_(message_ids)).delete(synchronize_session=False)
     for model in (EmailMessage, Conversation, ProspectPersona, CampaignProspect,
-                  ProspectListMember, ContactActivity):
+                  ProspectListMember, ContactActivity, CrmTask):
         db.query(model).filter(model.prospect_id.in_(prospect_ids)).delete(synchronize_session=False)
+    db.query(PropertyChange).filter(PropertyChange.object_type == "CONTACT",
+                                    PropertyChange.object_id.in_(prospect_ids)).delete(synchronize_session=False)
     db.query(Prospect).filter(Prospect.prospect_id.in_(prospect_ids)).delete(synchronize_session=False)
 
 
@@ -135,16 +138,24 @@ def delete_contacts(db: Session, prospect_ids: list) -> None:
 _FILL_FIELDS = (
     "first_name", "last_name", "phone", "mobile_phone", "designation", "company_name",
     "account_id", "owner_id", "industry", "emp_band", "linkedin_url", "poc_city",
-    "poc_state", "poc_country", "timezone",
+    "poc_state", "poc_country", "timezone", "lifecycle_stage", "lead_status", "lead_source",
+    "legal_basis",
 )
+# Properties the user may pick per record when merging (BR-CM-33)
+MERGE_CHOOSABLE = _FILL_FIELDS + ("email",)
 
 
-def merge_contacts(db: Session, primary: Prospect, duplicates: list, merged_by: Optional[str]) -> dict:
+def merge_contacts(db: Session, primary: Prospect, duplicates: list, merged_by: Optional[str],
+                   choices: Optional[dict] = None) -> dict:
     """
-    Fold duplicates into primary: move lists, campaigns, emails, conversations and
-    activities across, fill the primary's blank fields, union tags, then delete the
-    duplicates. Caller commits.
+    Fold duplicates into primary: move lists, campaigns, emails, conversations, activities,
+    tasks and history across; take the value chosen per property in `choices`
+    ({field: prospect_id}) and otherwise fill the primary's blanks; union tags; then delete
+    the duplicates. Caller commits.
     """
+    choices = {f: pid for f, pid in (choices or {}).items() if f in MERGE_CHOOSABLE}
+    by_id = {d.prospect_id: d for d in duplicates}
+    chosen_values = {f: getattr(by_id[pid], f) for f, pid in choices.items() if pid in by_id}
     moved = {"lists": 0, "campaigns": 0, "emails": 0, "activities": 0}
     primary_lists = {m.list_id: m for m in db.query(ProspectListMember).filter(
         ProspectListMember.prospect_id == primary.prospect_id)}
@@ -183,6 +194,11 @@ def merge_contacts(db: Session, primary: Prospect, duplicates: list, merged_by: 
             {Conversation.prospect_id: primary.prospect_id}, synchronize_session=False)
         moved["activities"] += db.query(ContactActivity).filter(ContactActivity.prospect_id == dup.prospect_id).update(
             {ContactActivity.prospect_id: primary.prospect_id}, synchronize_session=False)
+        db.query(CrmTask).filter(CrmTask.prospect_id == dup.prospect_id).update(
+            {CrmTask.prospect_id: primary.prospect_id}, synchronize_session=False)
+        db.query(PropertyChange).filter(PropertyChange.object_type == "CONTACT",
+                                        PropertyChange.object_id == dup.prospect_id).update(
+            {PropertyChange.object_id: primary.prospect_id}, synchronize_session=False)
 
         persona = db.query(ProspectPersona).filter(ProspectPersona.prospect_id == dup.prospect_id).first()
         if persona:
@@ -207,9 +223,16 @@ def merge_contacts(db: Session, primary: Prospect, duplicates: list, merged_by: 
     primary.tags = normalize_tags(tags) or None
     primary.custom_fields = custom or None
 
+    for field, value in chosen_values.items():
+        if field != "email":
+            setattr(primary, field, value)
+
     db.flush()
     db.query(Prospect).filter(Prospect.prospect_id.in_([d.prospect_id for d in duplicates])).delete(
         synchronize_session=False)
+    if "email" in chosen_values and chosen_values["email"]:
+        db.flush()  # the duplicate holding this address is gone, so the unique key is free
+        primary.email = chosen_values["email"]
 
     db.add(ContactActivity(
         tenant_id=primary.tenant_id,

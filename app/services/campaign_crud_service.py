@@ -353,6 +353,9 @@ class CampaignCRUDService:
 
         old_status = campaign.status
         campaign.status = CampaignStatus.PAUSED.value
+        campaign.paused_reason = reason
+        campaign.paused_at = datetime.utcnow()
+        campaign.auto_paused = False
 
         # Freeze all queued emails so the scheduler doesn't pick them up
         self.db.query(EmailMessage).filter(
@@ -384,6 +387,12 @@ class CampaignCRUDService:
 
         old_status = campaign.status
         campaign.status = CampaignStatus.ACTIVE.value
+        if campaign.auto_paused:
+            # The user has reviewed the auto-pause: judge health on sends from now on (BR-DF-07)
+            campaign.health_baseline_at = datetime.utcnow()
+        campaign.auto_paused = False
+        campaign.paused_reason = None
+        campaign.paused_at = None
 
         # Restore frozen emails
         self.db.query(EmailMessage).filter(
@@ -771,6 +780,9 @@ class CampaignCRUDService:
             sender_title=campaign.sender_title,
             cta_link=campaign.cta_link,
             status=CampaignStatus(campaign.status),
+            paused_reason=campaign.paused_reason,
+            paused_at=campaign.paused_at,
+            auto_paused=bool(campaign.auto_paused),
             created_by=campaign.created_by,
             creator_name=self._get_creator_name(campaign.created_by),
             send_window_start=campaign.send_window_start,

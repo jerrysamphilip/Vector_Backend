@@ -4,7 +4,7 @@ Account (company) records. Contacts link to an account instead of only
 carrying company_name as free text.
 """
 
-from sqlalchemy import Column, String, Text, TIMESTAMP, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Text, TIMESTAMP, ForeignKey, UniqueConstraint, Numeric
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -28,6 +28,14 @@ class Account(Base):
     state = Column(String(100), nullable=True)
     country = Column(String(100), nullable=True)
     description = Column(Text, nullable=True)
+    street = Column(String(255), nullable=True)
+    postal_code = Column(String(20), nullable=True)
+    annual_revenue = Column(Numeric(18, 2), nullable=True)
+    lifecycle_stage = Column(String(30), nullable=True)
+
+    # Soft delete with 90-day restore (BR-CM-35)
+    deleted_at = Column(TIMESTAMP, nullable=True)
+    deleted_by = Column(String(36), nullable=True)
 
     owner_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
 
@@ -39,6 +47,7 @@ class Account(Base):
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "name", name="uq_account_tenant_name"),
+        UniqueConstraint("tenant_id", "domain", name="uq_account_tenant_domain"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

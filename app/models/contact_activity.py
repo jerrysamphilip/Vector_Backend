@@ -11,7 +11,7 @@ import uuid
 
 from app.models.base import Base
 
-ACTIVITY_TYPES = ("NOTE", "CALL", "MEETING")
+ACTIVITY_TYPES = ("NOTE", "CALL", "MEETING", "EMAIL")
 
 
 class ContactActivity(Base):
@@ -21,7 +21,7 @@ class ContactActivity(Base):
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     prospect_id = Column(String(36), ForeignKey("prospects.prospect_id"), nullable=False, index=True)
 
-    activity_type = Column(String(20), nullable=False, default="NOTE")  # NOTE / CALL / MEETING
+    activity_type = Column(String(20), nullable=False, default="NOTE")  # NOTE / CALL / MEETING / EMAIL (logged by hand)
     subject = Column(String(255), nullable=True)
     body = Column(Text, nullable=True)
     outcome = Column(String(100), nullable=True)  # e.g. Connected, Left voicemail, No answer

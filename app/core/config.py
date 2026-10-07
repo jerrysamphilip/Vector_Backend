@@ -78,12 +78,37 @@ class Settings(BaseSettings):
 
     # Auto-suppress hard bounces (add to GlobalUnsubscribe on permanent failure)
     AUTO_SUPPRESS_HARD_BOUNCES: bool = True
+
+    # Auto-pause guard (BR-DF-07). A campaign, or every campaign sending from a
+    # domain, pauses within a minute when its hard-bounce or complaint rate
+    # crosses these limits (SES itself reviews accounts at 5% / 0.1%).
+    AUTO_PAUSE_BOUNCE_RATE: float = 0.05
+    AUTO_PAUSE_COMPLAINT_RATE: float = 0.003
+    AUTO_PAUSE_MIN_SENDS: int = 50          # rates apply from this many sends
+    AUTO_PAUSE_MIN_BOUNCES: int = 5          # below MIN_SENDS: pause at this many hard bounces
+    AUTO_PAUSE_MIN_COMPLAINTS: int = 2       # below MIN_SENDS: pause at this many complaints
+    # BR-DF-04: a sent email with no delivery event after this long is marked UNCONFIRMED
+    DELIVERY_CONFIRM_MINUTES: int = 15
+
+    # Microsoft 365 mailboxes sign in with OAuth (BR-DF-05); see app/services/ms365_oauth.py
+    MS365_CLIENT_ID: str = ""
+    MS365_CLIENT_SECRET: str = ""
+    MS365_TENANT_ID: str = "common"
+    MS365_REDIRECT_URI: str = ""          # https://<host>/vector/api/inboxes/oauth/microsoft/callback
+    MS365_POST_CONNECT_URL: str = "/vector/app/inboxes"  # where the browser lands afterwards
     
-    # JWT Authentication
+    # JWT Authentication (validated at start-up, see app/core/secrets_guard.py)
     JWT_SECRET_KEY: str = "change-this-in-production-use-a-long-random-string"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # Encrypts mailbox (SMTP/IMAP) passwords at rest. Required when deployed; keep it stable.
+    CREDENTIALS_ENCRYPTION_KEY: str = ""
+
+    # Shared secret for the SES/SNS webhook when SNS uses raw message delivery (raw messages carry
+    # no AWS signature). Append ?token=<value> to the subscription URL.
+    SES_WEBHOOK_TOKEN: str = ""
 
     # Google OAuth
     GOOGLE_CLIENT_ID: str = ""
@@ -268,3 +293,7 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+# Refuse the public default JWT secret when deployed (BR-DF-09)
+from app.core.secrets_guard import resolve_jwt_secret  # noqa: E402
+settings.JWT_SECRET_KEY = resolve_jwt_secret(settings.JWT_SECRET_KEY)

@@ -48,7 +48,7 @@ def _build_mime_message(
     return msg, message_id
 
 
-def _smtp_send_blocking(inbox: SendingInbox, to_email: str, msg: MIMEMultipart) -> None:
+def _smtp_send_blocking(inbox: SendingInbox, to_email: str, msg: MIMEMultipart, secret: Optional[str] = None) -> None:
     """
     Blocking SMTP send using per-inbox credentials.
     Call via asyncio.to_thread().
@@ -57,7 +57,7 @@ def _smtp_send_blocking(inbox: SendingInbox, to_email: str, msg: MIMEMultipart) 
     host = inbox.smtp_host
     port = inbox.smtp_port or 587
     username = inbox.smtp_username or inbox.email_address
-    password = inbox.smtp_password
+    password = secret if secret is not None else inbox.smtp_password
     use_ssl = inbox.smtp_use_ssl or False
 
     if use_ssl:
@@ -69,7 +69,8 @@ def _smtp_send_blocking(inbox: SendingInbox, to_email: str, msg: MIMEMultipart) 
         smtp.ehlo()
 
     try:
-        smtp.login(username, password)
+        from app.services.ms365_oauth import smtp_login
+        smtp_login(smtp, username, password)  # XOAUTH2 when password is an OAuthToken
         smtp.sendmail(inbox.email_address, [to_email], msg.as_bytes())
     finally:
         try:
@@ -101,9 +102,15 @@ async def send_via_inbox(
     )
 
     # --- Attempt per-inbox SMTP ---
-    if inbox.smtp_host and inbox.smtp_password:
+    oauth = (inbox.auth_type or "PASSWORD") == "OAUTH_MS365"
+    if inbox.smtp_host and (inbox.smtp_password or oauth):
         try:
-            await asyncio.to_thread(_smtp_send_blocking, inbox, to_email, msg)
+            secret = None
+            if oauth:
+                from sqlalchemy.orm import object_session
+                from app.services.ms365_oauth import smtp_secret
+                secret = smtp_secret(object_session(inbox), inbox)
+            await asyncio.to_thread(_smtp_send_blocking, inbox, to_email, msg, secret)
             logger.debug(
                 "[WarmupSMTP] Sent via per-inbox SMTP %s → %s", inbox.email_address, to_email
             )

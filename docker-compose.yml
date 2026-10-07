@@ -24,6 +24,8 @@ x-api-env: &api-env
   MYSQL_PASSWORD: ${LOCAL_MYSQL_PASSWORD:-vector}
   MYSQL_DATABASE: ${LOCAL_MYSQL_DATABASE:-outreach_ai}
   JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-dev-only-change-me-0123456789abcdef}
+  CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-local-dev-only-credentials-key}
+  SES_WEBHOOK_TOKEN: ${SES_WEBHOOK_TOKEN:-local-dev-webhook-token}
   # The browser reaches the app through the hub (or the web port); the API is same-origin under /vector/api/.
   FRONTEND_URL: http://localhost/vector,http://localhost:${WEB_PORT:-8190},http://localhost:5173
   # Tracking / unsubscribe links are built as {BASE_URL}/api/tracking/...
@@ -36,6 +38,12 @@ x-api-env: &api-env
   AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
   AWS_REGION: ${AWS_REGION:-us-east-1}
   AWS_SES_CONFIGURATION_SET: ${AWS_SES_CONFIGURATION_SET:-}
+  # Microsoft 365 mailboxes (OAuth). Register the redirect URI below in the Azure app.
+  MS365_CLIENT_ID: ${MS365_CLIENT_ID:-}
+  MS365_CLIENT_SECRET: ${MS365_CLIENT_SECRET:-}
+  MS365_TENANT_ID: ${MS365_TENANT_ID:-common}
+  MS365_REDIRECT_URI: ${MS365_REDIRECT_URI:-http://localhost/vector/api/inboxes/oauth/microsoft/callback}
+  MS365_POST_CONNECT_URL: ${MS365_POST_CONNECT_URL:-/vector/app/inboxes}
   SENDER_EMAIL: ${SENDER_EMAIL:-}
   SENDER_NAME: ${SENDER_NAME:-Outreach AI}
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}

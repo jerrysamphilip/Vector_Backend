@@ -37,8 +37,8 @@ class IMAPSyncService:
         try:
             inboxes = db.query(SendingInbox).filter(SendingInbox.imap_host != None).all()
             for inbox in inboxes:
-                # Only sync if last sync was more than 5 mins ago
-                if inbox.last_sync_at and (_utcnow() - inbox.last_sync_at).total_seconds() < 300:
+                # Sync each inbox about every 4 minutes, so replies show within 10 (BR-DF-05)
+                if inbox.last_sync_at and (_utcnow() - inbox.last_sync_at).total_seconds() < 240:
                     continue
 
                 # Use a wider window if inbox was never synced or last sync > 3 days ago,
@@ -65,15 +65,17 @@ class IMAPSyncService:
         else:
             inbox = inbox_id_or_obj
 
-        if not inbox or not inbox.imap_host or not inbox.imap_password:
+        oauth = inbox is not None and (inbox.auth_type or "PASSWORD") == "OAUTH_MS365"
+        if not inbox or not inbox.imap_host or not (inbox.imap_password or oauth):
             logger.warning(f"[IMAP] Inbox {inbox.email_address if inbox else 'Unknown'} not configured for IMAP sync.")
             return False
 
         inbox_email_for_log = inbox.email_address if inbox else "Unknown"
         try:
-            # Connect to IMAP
+            # Connect to IMAP: password, or XOAUTH2 for Microsoft 365 (BR-DF-05)
+            from app.services.ms365_oauth import imap_login, imap_secret
             mail = imaplib.IMAP4_SSL(inbox.imap_host, inbox.imap_port or 993)
-            mail.login(inbox.imap_username or inbox.email_address, inbox.imap_password)
+            imap_login(mail, inbox.imap_username or inbox.email_address, imap_secret(self.db, inbox))
             
             # 1. Sync INBOX (Received emails)
             self._sync_folder(mail, inbox, "INBOX", days_back, direction="INBOUND")
@@ -88,6 +90,7 @@ class IMAPSyncService:
                     continue
 
             inbox.last_sync_at = datetime.utcnow()
+            inbox.imap_last_error = None
             self.db.commit()
             
             mail.logout()
@@ -95,6 +98,12 @@ class IMAPSyncService:
         except Exception as e:
             logger.error(f"[IMAP] Sync failed for {inbox_email_for_log}: {e}")
             self.db.rollback()
+            # Keep the failure visible on the inbox instead of only in the logs
+            try:
+                inbox.imap_last_error = f"{datetime.utcnow():%Y-%m-%d %H:%M} UTC: {e}"[:2000]
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
             return False
 
     def _sync_folder(self, mail, inbox_model, folder_name, days_back, direction):
@@ -358,44 +367,41 @@ class IMAPSyncService:
                     sent_at=sent_at
                 )
                 
+                # An out-of-office auto-reply is shown in the inbox but does not count as a reply
+                is_ooo = direction == "INBOUND" and is_out_of_office(subject, body, msg.get("Auto-Submitted"))
+
                 # Update prospect status only for the attributed campaign.
                 if direction == "INBOUND" and attributed_campaign_id:
                     campaign_enrollment = self.db.query(CampaignProspect).filter(
                         CampaignProspect.campaign_id == attributed_campaign_id,
                         CampaignProspect.prospect_id == prospect.prospect_id
                     ).first()
-                    if campaign_enrollment:
+                    if campaign_enrollment and not is_ooo:
                         try:
                             set_prospect_status(campaign_enrollment, "REPLIED")
-                        except Exception:
-                            pass
+                            # Stop on reply (BR-DF-05): follow-ups are scheduled at launch,
+                            # so cancel this contact's remaining steps in the campaign now.
+                            self.db.query(EmailMessage).filter(
+                                EmailMessage.campaign_id == attributed_campaign_id,
+                                EmailMessage.prospect_id == prospect.prospect_id,
+                                EmailMessage.direction == "OUTBOUND",
+                                EmailMessage.status.in_(["QUEUED", "SCHEDULED", "PAUSED_BY_CAMPAIGN"]),
+                            ).update({EmailMessage.status: "CANCELLED",
+                                      EmailMessage.failure_reason: "Stopped: the contact replied"},
+                                     synchronize_session=False)
+                        except Exception as exc:
+                            logger.warning(f"[IMAP] Could not stop sequence after reply: {exc}")
 
                     # --- Reply-based unsubscribe detection ---
                     # Check if the reply body is essentially just "unsubscribe"
                     reply_text = extract_latest_message_text(body).strip().lower()
                     if reply_text in ("unsubscribe", "unsubscribe.", "please unsubscribe", "please unsubscribe me"):
                         try:
-                            prospect.consent_status = "UNSUBSCRIBED"
-                            prospect.consent_source = f"reply_unsubscribe:{new_msg.message_id}"
-                            prospect.consent_timestamp = datetime.utcnow()
-
-                            if campaign_enrollment:
-                                set_prospect_status(
-                                    campaign_enrollment,
-                                    "UNSUBSCRIBED",
-                                    stopped_reason="Prospect replied with unsubscribe"
-                                )
-
-                            existing_unsub = self.db.query(GlobalUnsubscribe).filter(
-                                GlobalUnsubscribe.tenant_id == prospect.tenant_id,
-                                GlobalUnsubscribe.email == prospect.email
-                            ).first()
-                            if not existing_unsub:
-                                self.db.add(GlobalUnsubscribe(
-                                    tenant_id=prospect.tenant_id,
-                                    email=prospect.email,
-                                    reason="Prospect replied with unsubscribe"
-                                ))
+                            # Every campaign in the workspace, not just this one (BR-DF-08)
+                            from app.services.suppression import suppress
+                            suppress(self.db, prospect.tenant_id, prospect.email,
+                                     "Prospect replied with unsubscribe", kind="UNSUBSCRIBE",
+                                     source=f"reply_unsubscribe:{new_msg.message_id}")
 
                             if replied_to_msg:
                                 self.db.add(EmailEvent(
@@ -428,7 +434,7 @@ class IMAPSyncService:
                         # Both are additive to EVENT_REPLY, not a replacement —
                         # the analytics layer derives "clean replies" as
                         # replied_count - ooo_count.
-                        if is_out_of_office(subject, body, msg.get("Auto-Submitted")):
+                        if is_ooo:
                             self.db.add(EmailEvent(
                                 message_id=replied_to_msg.message_id,
                                 event_type=EmailEvent.EVENT_REPLY_OOO,

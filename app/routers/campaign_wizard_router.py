@@ -14,6 +14,7 @@ import logging
 
 from app.core.database import get_db
 from app.models import ProspectList, Campaign, EmailTemplate, EmailSequence
+from app.services.enrollment_rules import MAX_REJECTIONS_RETURNED, summarize
 from app.services.campaign_wizard_service import (
     SegmentationRules,
     step_1_create_campaign,
@@ -421,10 +422,12 @@ def preview_segmentation(
         min_confidence=request.min_confidence,
     )
     
-    segmented = step_3_apply_segmentation(db, all_prospects, rules)
+    segment_rejections = []
+    segmented = step_3_apply_segmentation(db, all_prospects, rules, segment_rejections)
     
     # Run safety checks
     safety = step_4_run_safety_checks(db, current_user.tenant_id, segmented)
+    rejections = segment_rejections + safety["rejections"]
     
     return {
         "list_total": len(all_prospects),
@@ -436,6 +439,9 @@ def preview_segmentation(
             "cool_off_excluded": safety["cool_off_count"],
         },
         "ready_to_enroll": safety["safe_count"],
+        "rejected_count": len(rejections),
+        "rejected_summary": summarize(rejections),
+        "rejected": rejections[:MAX_REJECTIONS_RETURNED],
     }
 
 
@@ -476,8 +482,6 @@ def enroll_prospects(
     # Get prospects from list
     all_prospects = step_2_get_prospects_from_list(db, request.list_id, request.excluded_prospect_ids)
     logger.warning(f"[ENROLL] Step 2 - Prospects from list '{request.list_id}': {len(all_prospects)}")
-    for p in all_prospects:
-        logger.warning(f"[ENROLL]   -> {p.email} | email_type={p.email_type} | consent={p.consent_status}")
     
     # Segmentation
     rules = SegmentationRules(
@@ -486,13 +490,15 @@ def enroll_prospects(
     )
     logger.warning(f"[ENROLL] Step 3 - Segmentation rules: exclude_personal={rules.exclude_personal_emails}, persona_types={rules.persona_types}")
     
-    segmented = step_3_apply_segmentation(db, all_prospects, rules)
+    segment_rejections = []
+    segmented = step_3_apply_segmentation(db, all_prospects, rules, segment_rejections)
     logger.warning(f"[ENROLL] Step 3 - After segmentation: {len(segmented)} (dropped {len(all_prospects) - len(segmented)})")
     
     # Safety checks
     safety = step_4_run_safety_checks(
-        db, current_user.tenant_id, segmented, request.cool_off_days
+        db, current_user.tenant_id, segmented, request.cool_off_days, campaign_id=campaign_id
     )
+    rejections = segment_rejections + safety["rejections"]
     logger.warning(f"[ENROLL] Step 4 - Safety: safe={safety['safe_count']}, unsub={safety['unsubscribed_count']}, invalid={safety['invalid_count']}, cool_off={safety['cool_off_count']}")
     
     # Enroll
@@ -504,6 +510,9 @@ def enroll_prospects(
         "enrolled_count": enrolled,
         "sequences_created": 0,
         "status": "READY_TO_ACTIVATE",
+        "rejected_count": len(rejections),
+        "rejected_summary": summarize(rejections),
+        "rejected": rejections[:MAX_REJECTIONS_RETURNED],
         "_debug": {
             "prospects_in_list": len(all_prospects),
             "after_segmentation": len(segmented),

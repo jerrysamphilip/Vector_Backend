@@ -189,7 +189,15 @@ class DeliverabilityService:
             
             # Extract Metrics
             reputation = response.get("Reputation", {})
-            account_status = reputation.get("ReputationStatus", "HEALTHY")
+            # SESv2 reports HEALTHY / PROBATION / SHUTDOWN as EnforcementStatus
+            account_status = response.get("EnforcementStatus") or reputation.get("ReputationStatus", "HEALTHY")
+            if response.get("SendingEnabled") is False or account_status == "SHUTDOWN":
+                # Nothing can be sent: pause active campaigns with the reason instead of
+                # letting every send fail (BR-DF-07)
+                from app.services.send_safety import auto_pause
+                reason = f"Amazon SES sending is disabled for this account (status {account_status})"
+                for campaign in db.query(Campaign).filter(Campaign.status == "ACTIVE").all():
+                    auto_pause(db, campaign, reason)
             account_score = reputation.get("AccountReputationScore", 1.0)
             
             # Check if SESv2 is optimized (enabled for this account)
@@ -215,6 +223,14 @@ class DeliverabilityService:
             return False
 
     def update_domain_stats(self, domain_name: str, event_type: str, db: Session):
+        """Kept for callers outside the webhook; health is now rate-based (send_safety)."""
+        from app.services.send_safety import check_domain_health
+        if event_type in ("BOUNCE", "COMPLAINT"):
+            check_domain_health(db, domain_name, event_type.lower())
+            return
+        return self._legacy_update_domain_stats(domain_name, event_type, db)
+
+    def _legacy_update_domain_stats(self, domain_name: str, event_type: str, db: Session):
         """
         Update reputation score based on real-time events (Bounce, Complaint).
         Triggers safety switch if score drops below threshold.

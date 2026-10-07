@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
     # Run in a thread-pool executor so blocking imaplib calls don't freeze the event loop.
     async def run_imap_sync():
         loop = asyncio.get_event_loop()
-        print("Starting IMAP sync service (300s interval)...")
+        print("Starting IMAP sync service (120s interval)...")
         while True:
             try:
                 with SessionLocal() as db:
@@ -65,7 +65,8 @@ async def lifespan(app: FastAPI):
                 break
             except Exception as e:
                 print(f"IMAP Sync Error: {e}")
-            await asyncio.sleep(300)
+            # Each inbox syncs about every 4 minutes (replies visible within 10, BR-DF-05)
+            await asyncio.sleep(120)
 
     imap_task = asyncio.create_task(run_imap_sync())
 
@@ -109,6 +110,54 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(interval)
 
     warmup_task = asyncio.create_task(run_warmup_sync())
+
+    # Contacts and companies deleted more than 90 days ago are purged (BR-CM-35)
+    async def run_crm_purge():
+        from app.services.crm import purge_expired
+        loop = asyncio.get_event_loop()
+        while True:
+            try:
+                def _purge():
+                    with SessionLocal() as db:
+                        return purge_expired(db)
+                purged = await loop.run_in_executor(None, _purge)
+                if purged:
+                    print(f"CRM purge: permanently deleted {purged} record(s) past the 90-day restore window")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"CRM purge error: {e}")
+            await asyncio.sleep(6 * 3600)
+
+    purge_task = asyncio.create_task(run_crm_purge())
+
+    # Every sent email gets a final status within 15 minutes (BR-DF-04), and domain /
+    # campaign health is recomputed hourly with auto-pause on risk (BR-DF-07).
+    async def run_send_safety():
+        from app.services.send_safety import reconcile_delivery_status, run_health_cycle
+        loop = asyncio.get_event_loop()
+        last_health = 0.0
+        while True:
+            try:
+                def _reconcile():
+                    with SessionLocal() as db:
+                        return reconcile_delivery_status(db)
+                await loop.run_in_executor(None, _reconcile)
+                if loop.time() - last_health >= 3600:
+                    def _health():
+                        with SessionLocal() as db:
+                            return run_health_cycle(db)
+                    result = await loop.run_in_executor(None, _health)
+                    last_health = loop.time()
+                    if result.get("paused"):
+                        print(f"Health check paused {result['paused']} campaign(s)")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"Send safety loop error: {e}")
+            await asyncio.sleep(60)
+
+    send_safety_task = asyncio.create_task(run_send_safety())
     try:
         yield
     except (asyncio.CancelledError, KeyboardInterrupt):
@@ -123,12 +172,16 @@ async def lifespan(app: FastAPI):
         imap_task.cancel()
         deliverability_task.cancel()
         warmup_task.cancel()
+        purge_task.cancel()
+        send_safety_task.cancel()
 
         await asyncio.gather(
             scheduler_task,
             imap_task,
             deliverability_task,
             warmup_task,
+            purge_task,
+            send_safety_task,
             return_exceptions=True,
         )
 
@@ -540,6 +593,12 @@ try:
     from app.db.contact_schema import ensure_contact_schema
     ensure_contact_schema(engine)
 
+    from app.db.sending_schema import ensure_sending_schema
+    ensure_sending_schema(engine)
+
+    from app.db.security_schema import encrypt_mailbox_passwords
+    encrypt_mailbox_passwords(engine)
+
     with SessionLocal() as db:
         total = seed_blueprints(db)
         print(f"Persona blueprints synchronized ({total} total)")
@@ -552,6 +611,14 @@ if settings.DEBUG:
     for dev_origin in ("http://localhost:5173", "http://127.0.0.1:5173"):
         if dev_origin not in allowed_origins:
             allowed_origins.append(dev_origin)
+
+# Refuse to start (when deployed) without the key that encrypts mailbox passwords
+from app.core.encrypted_type import check_credentials_key
+check_credentials_key()
+
+# Per-IP request ceiling; sign-in/reset endpoints have stricter limits (app/core/rate_limit.py)
+from app.core.rate_limit import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -613,6 +680,14 @@ from app.routers.contacts_router import router as contacts_router
 from app.routers.accounts_router import router as accounts_router
 app.include_router(contacts_router)
 app.include_router(accounts_router)
+from app.routers.tasks_router import router as tasks_router
+from app.routers.lists_router import router as lists_router
+from app.routers.crm_router import router as crm_router
+from app.routers.import_router import router as import_router
+app.include_router(tasks_router)
+app.include_router(lists_router)
+app.include_router(crm_router)
+app.include_router(import_router)
  
  
 # =============================

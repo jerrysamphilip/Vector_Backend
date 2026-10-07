@@ -365,7 +365,11 @@ class WarmupService:
             inbox = db.query(SendingInbox).filter(SendingInbox.inbox_id == inbox_id).first()
             peer = db.query(SendingInbox).filter(SendingInbox.inbox_id == peer_inbox_id).first()
 
-            if not peer or not peer.imap_host or not peer.imap_username or not peer.imap_password:
+            if not peer or not peer.imap_host or not peer.imap_username:
+                return
+            from app.services.ms365_oauth import imap_secret
+            secret = imap_secret(db, peer)
+            if not secret:
                 return
 
             result = await asyncio.to_thread(
@@ -373,7 +377,7 @@ class WarmupService:
                 peer.imap_host,
                 peer.imap_port or 993,
                 peer.imap_username,
-                peer.imap_password,
+                secret,
                 subject,
                 sender_email,
             )

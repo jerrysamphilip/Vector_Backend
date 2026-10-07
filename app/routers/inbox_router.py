@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.auth import require_role, require_permission
 from app.models.user import User
 from app.models.sending_inbox import SendingInbox
@@ -32,6 +33,78 @@ from datetime import datetime
 import uuid
 
 router = APIRouter(prefix="/inboxes", tags=["Inboxes"])
+
+
+# ── Microsoft 365 OAuth (BR-DF-05) ─────────────────────────────
+
+@router.get("/oauth/microsoft/status")
+def ms365_status(current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN"))):
+    from app.services import ms365_oauth
+    return {"configured": ms365_oauth.is_configured()}
+
+
+@router.post("/{inbox_id}/oauth/microsoft/start", dependencies=[Depends(require_permission("manage_inboxes"))])
+def ms365_start(
+    inbox_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
+):
+    """Begin connecting a Microsoft 365 mailbox; the browser is sent to the returned URL."""
+    from app.services import ms365_oauth
+    if not ms365_oauth.is_configured():
+        raise HTTPException(status_code=400, detail=(
+            "Microsoft 365 sign-in is not set up on the server. Set MS365_CLIENT_ID, "
+            "MS365_CLIENT_SECRET and MS365_REDIRECT_URI from your Azure app registration."))
+    inbox = db.query(SendingInbox).filter(
+        SendingInbox.inbox_id == inbox_id, SendingInbox.tenant_id == current_user.tenant_id).first()
+    if not inbox:
+        raise HTTPException(status_code=404, detail="Inbox not found")
+    state = ms365_oauth.make_state(inbox.inbox_id, current_user.tenant_id, current_user.user_id)
+    return {"authorize_url": ms365_oauth.authorize_url(inbox, state)}
+
+
+@router.get("/oauth/microsoft/callback", include_in_schema=False)
+def ms365_callback(
+    state: str = "",
+    code: str = "",
+    error: str = "",
+    error_description: str = "",
+    db: Session = Depends(get_db),
+):
+    """Microsoft redirects the browser here after sign-in; we store the tokens and go back to the app."""
+    from urllib.parse import urlencode
+    from fastapi.responses import RedirectResponse
+    from app.services import ms365_oauth
+
+    def back(**params):
+        url = settings.MS365_POST_CONNECT_URL or "/"
+        return RedirectResponse(f"{url}{'&' if '?' in url else '?'}{urlencode(params)}", status_code=302)
+
+    try:
+        data = ms365_oauth.read_state(state)
+    except ms365_oauth.OAuthError as exc:
+        return back(ms365="error", message=str(exc))
+    if error:
+        return back(ms365="error", message=error_description or error)
+    inbox = db.query(SendingInbox).filter(
+        SendingInbox.inbox_id == data["inbox_id"], SendingInbox.tenant_id == data["tenant_id"]).first()
+    if not inbox:
+        return back(ms365="error", message="Inbox not found")
+    try:
+        ms365_oauth.complete_connection(db, inbox, code)
+    except ms365_oauth.OAuthError as exc:
+        return back(ms365="error", message=str(exc), inbox=inbox.inbox_id)
+    # Check the mailbox actually accepts the token over IMAP before reporting success
+    import imaplib
+    try:
+        mail = imaplib.IMAP4_SSL(inbox.imap_host, inbox.imap_port or 993)
+        ms365_oauth.imap_login(mail, inbox.imap_username or inbox.email_address, ms365_oauth.imap_secret(db, inbox))
+        mail.logout()
+    except Exception as exc:
+        inbox.oauth_error = f"Signed in, but IMAP rejected the token: {exc}. Check IMAP is enabled for the mailbox."[:2000]
+        db.commit()
+        return back(ms365="error", message=inbox.oauth_error, inbox=inbox.inbox_id)
+    return back(ms365="connected", inbox=inbox.inbox_id)
 
 @router.post("", response_model=SendingInboxCreatedResponse, status_code=201, dependencies=[Depends(require_permission("manage_inboxes"))])
 def create_inbox(
@@ -292,7 +365,8 @@ def test_imap_connection(
             "inbox": inbox.email_address,
             "error": "imap_host is not set. Set it to imap.zoho.in (Zoho India) or imap.zoho.com",
         }
-    if not inbox.imap_password:
+    oauth = (inbox.auth_type or "PASSWORD") == "OAUTH_MS365"
+    if not inbox.imap_password and not oauth:
         return {
             "status": "not_configured",
             "inbox": inbox.email_address,
@@ -311,8 +385,9 @@ def test_imap_connection(
     }
 
     try:
+        from app.services.ms365_oauth import imap_login, imap_secret
         mail = imaplib.IMAP4_SSL(inbox.imap_host, inbox.imap_port or 993)
-        mail.login(inbox.imap_username or inbox.email_address, inbox.imap_password)
+        imap_login(mail, inbox.imap_username or inbox.email_address, imap_secret(db, inbox))
         result["status"] = "connected"
 
         # Check INBOX folder

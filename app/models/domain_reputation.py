@@ -36,6 +36,12 @@ class SendingDomain(Base):
     ses_reputation_status = Column(String(50), default="UNKNOWN") # HEALTHY, UNHEALTHY, PENDING, UNKNOWN
     sesv2_enabled = Column(Boolean, default=False) # Virtual Deliverability Manager status
     account_reputation_score = Column(Float, default=1.0) # 0.0 to 1.0 (AWS Reputation)
+
+    # Rolling 24h health, recomputed hourly and on every bounce/complaint (BR-DF-07)
+    sends_24h = Column(Integer, default=0)
+    bounce_rate_24h = Column(Float, default=0.0)
+    complaint_rate_24h = Column(Float, default=0.0)
+    health_checked_at = Column(TIMESTAMP, nullable=True)
     
     # Metadata
     created_at = Column(TIMESTAMP, server_default=func.now())

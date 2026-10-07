@@ -37,6 +37,19 @@ curl -X POST http://localhost:8190/vector/api/api/auth/register -H 'Content-Type
 
 Then sign in at http://localhost:8190/vector/.
 
+## Demo data
+
+To try the contact management features with realistic data (reps, accounts, ~90 contacts, a finished
+campaign with email history, logged calls/meetings/notes, custom fields and a few duplicates to merge):
+
+```bash
+docker compose exec api python -m app.db.seed_contacts_demo            # into the first Super Admin's workspace
+docker compose exec api python -m app.db.seed_contacts_demo --reset    # remove it again
+```
+
+Re-running replaces the previous demo data. Demo emails use the reserved `.example` domain and the campaign is
+completed, so nothing is ever sent. Demo reps sign in as e.g. `marcus.bell@vector-demo.example` / `demo-pass-123`.
+
 ## Hub nginx
 
 Add the block in `docker/hub-nginx-vector.conf` to the hub's `server { ... }` block (next to PatientTrack)
@@ -72,3 +85,11 @@ API_PROXY_TARGET=http://localhost:8191 npm run dev     # http://localhost:5173
   and `APP_PROFILE` are fixed or use `LOCAL_*` names, so prod values in an existing `.env` don't leak in.
   `OPENAI_API_KEY`, `AWS_*` and `SENDER_EMAIL` are taken from it when set.
 - Without AWS/OpenAI keys the background jobs (scheduler, SES/deliverability sync, warmup) log errors and carry on.
+- Microsoft 365 mailboxes connect with OAuth (Email Accounts → key icon on the inbox). Set `MS365_CLIENT_ID`,
+  `MS365_CLIENT_SECRET` (and `MS365_TENANT_ID` if single-tenant) in `.env` from an Azure app registration with
+  the redirect URI `http://localhost/vector/api/inboxes/oauth/microsoft/callback` and the delegated permissions
+  `IMAP.AccessAsUser.All`, `SMTP.Send` and `offline_access`. SMTP AUTH must be enabled for the mailbox.
+- Sending safety: campaigns pause automatically when the hard-bounce rate reaches 5% or the complaint rate 0.3%
+  (from 50 sends; before that at 5 hard bounces or 2 complaints). Tune with `AUTO_PAUSE_*` settings. Every sent
+  email shows a final status (delivered, bounced, complained, rejected, failed, or unconfirmed when SES sent no
+  event within `DELIVERY_CONFIRM_MINUTES`, default 15).

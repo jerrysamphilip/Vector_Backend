@@ -164,6 +164,10 @@ class CampaignResponse(BaseModel):
     sender_title: Optional[str] = None
     cta_link: Optional[str] = None
     status: CampaignStatus
+    # Why it is paused; auto_paused = paused by the deliverability guard (BR-DF-07)
+    paused_reason: Optional[str] = None
+    paused_at: Optional[datetime] = None
+    auto_paused: Optional[bool] = False
     
     created_by: str
     creator_name: Optional[str] = None

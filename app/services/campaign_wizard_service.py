@@ -168,17 +168,16 @@ def step_2_get_prospects_from_list(
     result — lets a user deselect specific contacts in the wizard rather
     than always enrolling the whole list.
     """
-    members = db.query(ProspectListMember).filter(
-        ProspectListMember.list_id == list_id
-    ).all()
-
-    prospect_ids = [m.prospect_id for m in members]
+    from app.models.prospect_list import ProspectList
+    from app.services.enrollment_rules import list_member_ids
+    plist = db.query(ProspectList).filter(ProspectList.list_id == list_id).first()
+    prospect_ids = list_member_ids(db, plist.tenant_id, [list_id]) if plist else []
     if excluded_prospect_ids:
         excluded = set(excluded_prospect_ids)
         prospect_ids = [pid for pid in prospect_ids if pid not in excluded]
 
     prospects = db.query(Prospect).filter(
-        Prospect.prospect_id.in_(prospect_ids)
+        Prospect.prospect_id.in_(prospect_ids), Prospect.deleted_at.is_(None)
     ).all()
 
     return prospects
@@ -188,25 +187,35 @@ def step_3_apply_segmentation(
     db: Session,
     prospects: List[Prospect],
     rules: SegmentationRules,
+    rejections: Optional[List[dict]] = None,
 ) -> List[Prospect]:
     """
-    Step 3: Filter prospects by segmentation rules.
+    Step 3: Filter prospects by segmentation rules. Pass a list as `rejections` to
+    collect a reason for each prospect filtered out.
     """
+    from app.services.enrollment_rules import rejection
     filtered = []
     
+    def _drop(prospect, code):
+        if rejections is not None:
+            rejections.append(rejection(prospect, code))
+
     for prospect in prospects:
         # Filter by email type
         if rules.exclude_personal_emails:
             if prospect.email_type == "PERSONAL":
+                _drop(prospect, "personal_email")
                 continue
         
         if rules.email_types and prospect.email_type:
             if prospect.email_type not in rules.email_types:
+                _drop(prospect, "segment_mismatch")
                 continue
         
         # Filter by industry
         if rules.industries and prospect.industry:
             if prospect.industry not in rules.industries:
+                _drop(prospect, "segment_mismatch")
                 continue
         
         # Filter by persona type (requires classification)
@@ -216,20 +225,16 @@ def step_3_apply_segmentation(
             ).first()
             
             if persona:
-                if persona.persona_type not in rules.persona_types:
-                    continue
-                if persona.confidence_score < rules.min_confidence:
-                    continue
+                persona_type, confidence = persona.persona_type, persona.confidence_score
             else:
                 # Classify on the fly
                 persona_type, confidence = classify_prospect(
                     designation=prospect.designation or "",
                     company_name=prospect.company_name
                 )
-                if persona_type not in rules.persona_types:
-                    continue
-                if confidence < rules.min_confidence:
-                    continue
+            if persona_type not in rules.persona_types or confidence < rules.min_confidence:
+                _drop(prospect, "segment_mismatch")
+                continue
         
         filtered.append(prospect)
     
@@ -241,39 +246,28 @@ def step_4_run_safety_checks(
     tenant_id: str,
     prospects: List[Prospect],
     cool_off_days: int = 7,
+    campaign_id: Optional[str] = None,
 ) -> Dict:
     """
-    Step 4: Run safety checks and return filtered list + stats.
+    Step 4: Run safety checks (app/services/enrollment_rules.py) and return the safe
+    prospects, counts per check, and a reason for each prospect excluded.
     """
-    prospect_ids = [p.prospect_id for p in prospects]
-    emails = [p.email for p in prospects]
-    
-    # Check unsubscribed
-    unsubscribed_emails = check_unsubscribed(db, tenant_id, emails)
-    
-    # Check invalid
-    invalid_ids = check_invalid_emails(db, prospect_ids)
-    
-    # Check cool-off
-    cool_off_ids = check_cool_off_period(db, prospect_ids, cool_off_days)
-    
-    # Filter out excluded prospects
-    excluded_set = set(invalid_ids) | set(cool_off_ids)
-    excluded_emails_set = set(unsubscribed_emails)
-    
-    safe_prospects = [
-        p for p in prospects
-        if p.prospect_id not in excluded_set
-        and p.email not in excluded_emails_set
-    ]
-    
+    from app.services import enrollment_rules
+    cool_off_ids = enrollment_rules.enrolled_elsewhere_within(
+        db, [p.prospect_id for p in prospects], cool_off_days) if prospects else set()
+    safe_prospects, rejections = enrollment_rules.screen(
+        db, tenant_id, campaign_id, prospects, recently_contacted=cool_off_ids)
+    counts = enrollment_rules.summarize(rejections)
+
     return {
         "total_before": len(prospects),
-        "unsubscribed_count": len(unsubscribed_emails),
-        "invalid_count": len(invalid_ids),
-        "cool_off_count": len(cool_off_ids),
+        "unsubscribed_count": counts.get("unsubscribed", 0) + counts.get("opted_out", 0),
+        "invalid_count": counts.get("invalid_email", 0),
+        "cool_off_count": counts.get("recently_contacted", 0),
+        "already_enrolled_count": counts.get("already_enrolled", 0),
         "safe_prospects": safe_prospects,
         "safe_count": len(safe_prospects),
+        "rejections": rejections,
     }
 
 
