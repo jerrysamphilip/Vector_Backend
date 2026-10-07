@@ -15,7 +15,7 @@ from app.models.crm import SavedView
 from app.models.prospect import Prospect
 from app.models.user import User
 from app.services import crm
-from app.services.contact_service import can_manage_contacts, clean_str, phone_digits
+from app.services.contact_service import can_manage_contacts, clean_str, phone_digits, scope, visible_user_ids
 
 router = APIRouter(tags=["CRM"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -113,13 +113,16 @@ def global_search(q: str = Query(..., min_length=2, max_length=100), limit: int 
     """Contacts by name, email, phone, company or domain, and companies by name or domain."""
     term = f"%{q.strip()}%"
     contacts = db.query(Prospect).filter(Prospect.tenant_id == current_user.tenant_id, Prospect.deleted_at.is_(None))
-    if not can_manage_contacts(current_user):
-        contacts = contacts.filter(Prospect.owner_id == current_user.user_id)
+    contacts = scope(contacts, db, current_user, Prospect.owner_id)
     from app.routers.contacts_router import search_condition
     contact_rows = contacts.filter(search_condition(q)).order_by(Prospect.updated_at.desc()).limit(limit).all()
 
     companies = db.query(Account).filter(Account.tenant_id == current_user.tenant_id, Account.deleted_at.is_(None),
                                          or_(Account.name.ilike(term), Account.domain.ilike(term)))
+    visible = visible_user_ids(db, current_user)
+    if visible is not None:  # companies of your team, or with a contact you can see (BR-SH-02)
+        seen = contacts.with_entities(Prospect.account_id).filter(Prospect.account_id.isnot(None))
+        companies = companies.filter(or_(Account.owner_id.in_(visible), Account.account_id.in_(seen)))
     company_rows = companies.order_by(Account.name).limit(max(3, limit // 2)).all()
     return {
         "contacts": [{"prospect_id": p.prospect_id, "full_name": p.full_name, "email": p.email, "phone": p.phone,

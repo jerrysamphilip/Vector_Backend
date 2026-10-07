@@ -25,7 +25,7 @@ from app.models.prospect import Prospect
 from app.models.user import User
 from app.routers.contacts_router import _history_items, _summaries, _user_name
 from app.services import crm
-from app.services.contact_service import can_manage_contacts, clean_str
+from app.services.contact_service import can_manage_contacts, can_see_owner, clean_str, scope, sees_everything, visible_user_ids
 
 router = APIRouter(prefix="/accounts", tags=["Companies"])
 
@@ -68,9 +68,7 @@ def _get_account(db: Session, user: User, account_id: str) -> Account:
 
 def _visible_contacts(db: Session, user: User):
     query = db.query(Prospect).filter(Prospect.tenant_id == user.tenant_id, Prospect.deleted_at.is_(None))
-    if not can_manage_contacts(user):
-        query = query.filter(Prospect.owner_id == user.user_id)
-    return query
+    return scope(query, db, user, Prospect.owner_id)
 
 
 def _account_dict(a: Account, owner: Optional[User] = None, contact_count: int = 0) -> dict:
@@ -133,9 +131,10 @@ def list_accounts(
         counts, counts.c.account_id == Account.account_id
     ).filter(Account.tenant_id == current_user.tenant_id, Account.deleted_at.is_(None))
 
-    if not can_manage_contacts(current_user):
-        # Companies you own, or that hold at least one of your contacts
-        query = query.filter((Account.owner_id == current_user.user_id) | (counts.c.n > 0))
+    visible = visible_user_ids(db, current_user)
+    if visible is not None:
+        # Companies owned by you or your team, or holding at least one contact you can see
+        query = query.filter(Account.owner_id.in_(visible) | (counts.c.n > 0))
     if owner == "me":
         query = query.filter(Account.owner_id == current_user.user_id)
     elif owner == "unassigned":
@@ -248,7 +247,8 @@ def get_account(account_id: str, db: Session = Depends(get_db), current_user: Us
     account = _get_account(db, current_user, account_id)
     contacts = _visible_contacts(db, current_user).filter(Prospect.account_id == account_id).order_by(
         Prospect.first_name, Prospect.last_name).limit(500).all()
-    if not can_manage_contacts(current_user) and not contacts and account.owner_id != current_user.user_id:
+    if not sees_everything(current_user) and not contacts and not (
+            account.owner_id and can_see_owner(db, current_user, account.owner_id)):
         raise HTTPException(status_code=404, detail="Company not found")
 
     contact_ids = [c.prospect_id for c in contacts]
@@ -266,7 +266,8 @@ def get_account(account_id: str, db: Session = Depends(get_db), current_user: Us
     result["stats"] = {"contacts": len(contacts), "emails_sent": emails_sent, "replies": replies,
                        "open_tasks": db.query(func.count(CrmTask.task_id)).filter(
                            CrmTask.account_id == account_id, CrmTask.status == "OPEN").scalar() or 0}
-    result["can_edit"] = can_manage_contacts(current_user) or account.owner_id == current_user.user_id
+    result["can_edit"] = can_manage_contacts(current_user) or (
+        account.owner_id is not None and can_see_owner(db, current_user, account.owner_id))
     result["can_delete"] = can_manage_contacts(current_user) and current_user.role != "AGENT"
     result["history"] = _history_items(db, current_user, db.query(PropertyChange).filter(
         PropertyChange.object_type == "COMPANY", PropertyChange.object_id == account_id
@@ -278,7 +279,8 @@ def get_account(account_id: str, db: Session = Depends(get_db), current_user: Us
 def update_account(account_id: str, payload: AccountWrite, db: Session = Depends(get_db),
                    current_user: User = Depends(tenant_user)):
     account = _get_account(db, current_user, account_id)
-    if not (can_manage_contacts(current_user) or account.owner_id == current_user.user_id):
+    if not (can_manage_contacts(current_user) or (
+            account.owner_id is not None and can_see_owner(db, current_user, account.owner_id))):
         raise HTTPException(status_code=403, detail="You can only edit companies you own")
     data = payload.model_dump(exclude_unset=True)
     if "owner_id" in data and not can_manage_contacts(current_user):

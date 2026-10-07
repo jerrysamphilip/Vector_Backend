@@ -68,6 +68,8 @@ class EmailSchedulerService:
         # Exact time of each inbox's last send in this process; the DB column only
         # keeps whole seconds, which would let sends drift up to 1s too close.
         self._last_send = {}
+        from app.services.daily_limit import DailyLimiter
+        self._daily = DailyLimiter()
 
     def _resolve_sender_for_message(
         self,
@@ -637,6 +639,24 @@ class EmailSchedulerService:
                 )
                 await asyncio.sleep(jitter_delay)
 
+            # ---------------------------------------------------------
+            # DAILY NEW-CONTACT LIMIT (BR-OV-01): first steps only; follow-ups always go
+            # ---------------------------------------------------------
+            limit_user = None
+            from app.services import daily_limit
+            if email_msg.direction != "INBOUND" and daily_limit.is_first_step(db, email_msg):
+                limit_user = prospect.owner_id or (campaign.created_by if campaign_data else None)
+                if limit_user and not self._daily.reserve(db, limit_user):
+                    email_msg.status = "QUEUED"
+                    email_msg.send_key = None
+                    email_msg.scheduled_at = daily_limit.next_day_start()
+                    email_msg.last_error_code = daily_limit.HELD_CODE
+                    email_msg.failure_reason = (f"Held for tomorrow: the daily limit of "
+                                                f"{settings.DAILY_NEW_CONTACT_LIMIT} new contacts was reached")
+                    logger.info(f"[Scheduler] Daily new-contact limit reached for user {limit_user}; "
+                                f"message {email_msg.message_id} moved to tomorrow")
+                    return "skipped"
+
             # Ensure Unified Inbox threading context exists once inbox is known.
             self._ensure_conversation(email_msg, prospect, db)
 
@@ -650,7 +670,11 @@ class EmailSchedulerService:
                 from_email_address=from_email_address
             )
             
+            if not result["success"] and limit_user:
+                self._daily.release(limit_user)
             if result["success"]:
+                if email_msg.last_error_code == daily_limit.HELD_CODE:
+                    email_msg.last_error_code, email_msg.failure_reason = None, None
                 # Update message — commit IMMEDIATELY so no subsequent code in
                 # this batch can overwrite status back to QUEUED via session state.
                 email_msg.status = "SENT"

@@ -3,7 +3,7 @@
 User model with role-based access control and authentication.
 """
 
-from sqlalchemy import Column, String, Boolean, TIMESTAMP, ForeignKey, UniqueConstraint, JSON
+from sqlalchemy import Integer, Column, String, Boolean, TIMESTAMP, ForeignKey, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -48,6 +48,13 @@ class User(Base):
 
     last_login_at = Column(TIMESTAMP, nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+    # Sales hierarchy (BR-SH-01/02): level 1 CEO / COO / Sales Head, 2 Business
+    # Development, 3 Business Executive, 4 Market Research. NULL = not in the
+    # hierarchy (visibility then follows the role, as before). manager_id is the
+    # user one level up; a user sees their own records and everyone's below them.
+    sales_level = Column(Integer, nullable=True)
+    manager_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="users")

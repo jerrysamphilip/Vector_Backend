@@ -124,6 +124,8 @@ def _user_dict(user: User) -> dict:
         "email_verified": user.email_verified or False,
         "avatar_url": user.avatar_url,
         "permissions": effective_permissions,
+        "sales_level": user.sales_level,
+        "manager_id": user.manager_id,
     }
 
 

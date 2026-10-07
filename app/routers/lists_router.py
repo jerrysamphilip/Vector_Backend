@@ -24,7 +24,7 @@ from app.models.prospect import Prospect
 from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.user import User
 from app.services import crm
-from app.services.contact_service import can_manage_contacts, clean_str
+from app.services.contact_service import can_manage_contacts, clean_str, scope
 
 router = APIRouter(prefix="/lists", tags=["Lists"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -65,9 +65,7 @@ def _count(db: Session, user: User, plist: ProspectList) -> int:
         return 0
     query = db.query(func.count(Prospect.prospect_id)).filter(
         Prospect.prospect_id.in_(member_ids), Prospect.deleted_at.is_(None))
-    if not can_manage_contacts(user):
-        query = query.filter(Prospect.owner_id == user.user_id)
-    return query.scalar() or 0
+    return scope(query, db, user, Prospect.owner_id).scalar() or 0
 
 
 def _list_dict(db: Session, user: User, plist: ProspectList, owners: dict = None) -> dict:
@@ -115,8 +113,7 @@ def preview_filters(payload: FilterPreview, db: Session = Depends(get_db), curre
     except crm.FilterError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     query = db.query(Prospect).filter(Prospect.tenant_id == current_user.tenant_id, Prospect.deleted_at.is_(None))
-    if not can_manage_contacts(current_user):
-        query = query.filter(Prospect.owner_id == current_user.user_id)
+    query = scope(query, db, current_user, Prospect.owner_id)
     if clause is not None:
         query = query.filter(clause)
     sample = query.order_by(Prospect.created_at.desc()).limit(5).all()

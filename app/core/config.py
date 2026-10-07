@@ -90,6 +90,11 @@ class Settings(BaseSettings):
     # BR-DF-04: a sent email with no delivery event after this long is marked UNCONFIRMED
     DELIVERY_CONFIRM_MINUTES: int = 15
 
+    # Phase 2 (BRD v2.0). Financial year start month for forecasts (4 = April, Indian FY;
+    # 1 = calendar year). New contacts emailed per user per day; follow-ups are not counted.
+    FISCAL_YEAR_START_MONTH: int = 4
+    DAILY_NEW_CONTACT_LIMIT: int = 500
+
     # Microsoft 365 mailboxes sign in with OAuth (BR-DF-05); see app/services/ms365_oauth.py
     MS365_CLIENT_ID: str = ""
     MS365_CLIENT_SECRET: str = ""

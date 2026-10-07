@@ -18,7 +18,7 @@ from app.models.account import Account
 from app.models.crm import CrmTask
 from app.models.prospect import Prospect
 from app.models.user import User
-from app.services.contact_service import can_access_contact, can_manage_contacts, clean_str
+from app.services.contact_service import can_access_contact, can_manage_contacts, can_see_owner, clean_str, visible_user_ids
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -86,22 +86,23 @@ def _validate(data: dict, user: User, db: Session):
     if "status" in data and data["status"] not in ("OPEN", "DONE"):
         raise HTTPException(status_code=400, detail="status must be OPEN or DONE")
     if data.get("owner_id"):
-        if data["owner_id"] != user.user_id and not can_manage_contacts(user):
-            raise HTTPException(status_code=403, detail="Only users who manage prospects can assign tasks to others")
+        if data["owner_id"] != user.user_id and not can_see_owner(db, user, data["owner_id"]):
+            raise HTTPException(status_code=403, detail="You can assign tasks only to yourself or your team")
         if not db.query(User.user_id).filter(User.user_id == data["owner_id"], User.tenant_id == user.tenant_id).first():
             raise HTTPException(status_code=400, detail="Owner must be a user in your workspace")
 
 
 def _get_task(db: Session, user: User, task_id: str) -> CrmTask:
     task = db.query(CrmTask).filter(CrmTask.task_id == task_id, CrmTask.tenant_id == user.tenant_id).first()
-    if not task or not (can_manage_contacts(user) or user.user_id in (task.owner_id, task.created_by)):
+    if not task or not (user.user_id in (task.owner_id, task.created_by)
+                        or (task.owner_id and can_see_owner(db, user, task.owner_id))):
         raise HTTPException(status_code=404, detail="Task not found")
     return task
 
 
 @router.get("")
 def list_tasks(
-    scope: str = Query("mine", pattern="^(mine|all|created)$"),
+    scope: str = Query("mine", pattern="^(mine|all|created|team)$"),
     status: Optional[str] = Query("OPEN", pattern="^(OPEN|DONE|ALL)$"),
     due: Optional[str] = Query(None, pattern="^(overdue|today|week|none)$"),
     prospect_id: Optional[str] = None,
@@ -119,8 +120,11 @@ def list_tasks(
             query = query.filter(CrmTask.prospect_id == prospect_id)
         if account_id:
             query = query.filter(CrmTask.account_id == account_id)
-    elif scope == "all" and can_manage_contacts(current_user):
-        pass
+    elif scope in ("all", "team"):
+        # Everyone's tasks you may see: the whole workspace, or you and your team (BR-SH-02)
+        visible = visible_user_ids(db, current_user)
+        if visible is not None:
+            query = query.filter(CrmTask.owner_id.in_(visible))
     elif scope == "created":
         query = query.filter(CrmTask.created_by == current_user.user_id)
     else:

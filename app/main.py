@@ -596,6 +596,9 @@ try:
     from app.db.sending_schema import ensure_sending_schema
     ensure_sending_schema(engine)
 
+    from app.db.phase2_schema import ensure_phase2_schema
+    ensure_phase2_schema(engine)
+
     from app.db.security_schema import encrypt_mailbox_passwords
     encrypt_mailbox_passwords(engine)
 
@@ -688,6 +691,12 @@ app.include_router(tasks_router)
 app.include_router(lists_router)
 app.include_router(crm_router)
 app.include_router(import_router)
+
+# Phase 2: sales hierarchy, leads, pipeline, reports (BRD v2.0 5.4 - 5.10)
+from app.routers.sales_router import router as sales_router
+from app.routers.sales_reports_router import router as sales_reports_router
+app.include_router(sales_router)
+app.include_router(sales_reports_router)
  
  
 # =============================
