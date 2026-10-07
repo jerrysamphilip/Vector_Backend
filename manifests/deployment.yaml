@@ -1,0 +1,135 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: sales360
+  labels:
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend-container
+          image: <ECR_IMAGE_URI>
+          ports:
+            - containerPort: 8001
+            
+          env:
+            # - name: NODE_ENV
+            #   value: "devlopment"
+            - name: MYSQL_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_HOST
+          
+            - name: MYSQL_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_PORT
+
+
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_USER
+
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_PASSWORD
+
+
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_DATABASE
+          
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: OPENAI_API_KEY
+
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_ACCESS_KEY_ID
+
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_SECRET_ACCESS_KEY
+
+
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_REGION
+
+            - name: AWS_SES_CONFIGURATION_SET
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_SES_CONFIGURATION_SET
+
+            - name: AWS_SNS_TOPIC_ARN
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_SNS_TOPIC_ARN
+
+
+            - name: SENDER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: SENDER_EMAIL
+
+            
+            - name: AWS_SNS_ENABLED
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_SNS_ENABLED
+            
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: sales360
+  labels:
+    app: backend
+spec:
+  type: ClusterIP       
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8001

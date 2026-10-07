@@ -1,0 +1,86 @@
+name: Deploy to ECR and EKS (Dev / Stage)
+
+on:
+  push:
+    branches:
+      - dev
+      - stage
+
+env:
+  EKS_CLUSTER_NAME: nts-innovation-ai
+  AWS_REGION: us-west-2
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+
+jobs:
+  build-and-deploy:
+    name: Build, Push Docker Image, and Deploy to EKS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set environment based on branch
+        run: |
+          BRANCH=${GITHUB_REF##*/}
+
+          if [ "$BRANCH" = "dev" ]; then
+            echo "ENV=dev" >> $GITHUB_ENV
+            echo "NAMESPACE=sales360" >> $GITHUB_ENV
+            echo "MANIFEST=manifests/deployment.yaml" >> $GITHUB_ENV
+
+          elif [ "$BRANCH" = "stage" ]; then
+            echo "ENV=stage" >> $GITHUB_ENV
+            echo "NAMESPACE=sales360-stage" >> $GITHUB_ENV
+            echo "MANIFEST=manifests/deployment-stage.yaml" >> $GITHUB_ENV
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set short git commit SHA
+        run: echo "IMAGE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t $ECR_REPOSITORY:$IMAGE_TAG \
+            .
+
+      - name: Push Docker image to ECR
+        run: |
+          docker push $ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name $EKS_CLUSTER_NAME \
+            --region $AWS_REGION
+
+      - name: Update image in manifest
+        run: |
+          sed -i "s|image:.*|image: $ECR_REPOSITORY:$IMAGE_TAG|g" $MANIFEST
+
+      - name: Deploy to EKS
+        run: |
+          kubectl apply -n $NAMESPACE -f $MANIFEST
+
+      - name: Verify rollout
+        run: |
+          kubectl rollout status deployment \
+            -n $NAMESPACE --timeout=600s
+
+      - name: Success
+        run: |
+          echo "✅ Deployment successful"
+          echo "Environment: $ENV"
+          echo "Namespace: $NAMESPACE"
+          echo "Manifest: $MANIFEST"
+          echo "Image: $ECR_REPOSITORY:$IMAGE_TAG"

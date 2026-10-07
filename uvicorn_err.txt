@@ -1,0 +1,12 @@
+INFO:     Started server process [13300]
+INFO:     Waiting for application startup.
+[IMAP] Inbox nikhil.chandratike@neutrinoautomation.ae not configured for IMAP sync.
+[IMAP] Inbox angle.ang@neutrinotechsystem.com not configured for IMAP sync.
+[Deliverability] SPF WARNING for gmail.com: neither mail.gmail.com nor root domain authorises amazonses.com. Add 'v=spf1 include:amazonses.com ~all' to mail.gmail.com TXT record.
+[Deliverability] DMARC exists for gmail.com but policy is 'none' (no enforcement). Consider p=quarantine or p=reject.
+[Deliverability] DMARC exists for neutrinoautomation.ae but policy is 'none' (no enforcement). Consider p=quarantine or p=reject.
+[Deliverability] DMARC exists for neutrinotechsystem.com but policy is 'none' (no enforcement). Consider p=quarantine or p=reject.
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('0.0.0.0', 8001): [winerror 10048] only one usage of each socket address (protocol/network address/port) is normally permitted
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
