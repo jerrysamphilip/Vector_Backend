@@ -12,6 +12,9 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.prospect import Prospect, GlobalUnsubscribe
 from app.models.prospect_list import ProspectList, ProspectListMember
+from app.models.account import Account
+from app.models.contact_activity import ContactActivity
+from app.models.contact_field import ContactFieldDefinition
 from app.models.campaign import Campaign, CampaignStateEvent, CampaignProspect
 from app.models.email_sequence import EmailSequence
 from app.models.email_template import AIPrompt, EmailTemplate, EmailTemplateVersion
@@ -55,6 +58,9 @@ __all__ = [
     "GlobalUnsubscribe",
     "ProspectList",
     "ProspectListMember",
+    "Account",
+    "ContactActivity",
+    "ContactFieldDefinition",
     "Campaign",
     "CampaignStateEvent",
     "CampaignProspect",
