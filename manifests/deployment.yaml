@@ -165,11 +165,11 @@ spec:
                   name: sales360-secret
                   key: GOOGLE_CLIENT_SECRET
                   optional: true
-            - name: GOOGLE_REDIRECT_URI
+            - name: GOOGLE_SYNC_REDIRECT_URI
               valueFrom:
                 secretKeyRef:
                   name: sales360-secret
-                  key: GOOGLE_REDIRECT_URI
+                  key: GOOGLE_SYNC_REDIRECT_URI
                   optional: true
             - name: GRAPH_REDIRECT_URI
               valueFrom:

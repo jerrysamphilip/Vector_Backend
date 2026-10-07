@@ -104,9 +104,8 @@ class Settings(BaseSettings):
     MS365_POST_CONNECT_URL: str = "/vector/app/inboxes"  # where the browser lands afterwards
 
     # Personal calendar and email sync (BR-SF-16). Microsoft reuses MS365_CLIENT_ID/SECRET with its own redirect.
-    GOOGLE_CLIENT_ID: str = ""
-    GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_REDIRECT_URI: str = ""         # https://<host>/vector/api/connections/google/callback
+    # Google reuses GOOGLE_CLIENT_ID/SECRET (below) with its own redirect, separate from Google sign-in's.
+    GOOGLE_SYNC_REDIRECT_URI: str = ""    # https://<host>/vector/api/connections/google/callback
     GRAPH_REDIRECT_URI: str = ""          # https://<host>/vector/api/connections/microsoft/callback
     CONNECTIONS_POST_CONNECT_URL: str = "/vector/app/connections"
     

@@ -2,7 +2,9 @@
 """
 Demo data for Phase 2 sales: a four-level team, leads at every stage, an SQL
 queue, opportunities across this financial year's quarters (some won, some lost)
-and proposals. Run the contact demo first; this works on the demo reps' contacts.
+and proposals, plus quarterly targets, forecast categories, stale deals, email
+templates and a small price list. Run the contact demo first; this works on the
+demo reps' contacts.
 
     docker compose exec api python -m app.db.seed_contacts_demo
     docker compose exec api python -m app.db.seed_sales_demo                # into the first Super Admin's workspace
@@ -20,6 +22,7 @@ from app.core.security import hash_password
 from app.models.crm import PropertyChange
 from app.models.prospect import Prospect
 from app.models.sales import Lead, Opportunity, Proposal
+from app.models.sales_extra import MessageTemplate, Product, ProposalLine, SalesTarget
 from app.models.user import User
 from app.services import sales as svc
 
@@ -37,6 +40,20 @@ TEAM = {
 }
 SOURCES = ["Webinar", "Campaign reply", "Referral", "Trade show", "Website", "Partner"]
 NEXT_STEPS = ["Discovery call", "Demo with the team", "Send pricing", "Security review", "Intro to CFO", "Pilot kickoff"]
+# Quarterly targets per demo rep for the current financial year
+TARGETS = {"arjun.mehta": 400000, "priya.nair": 250000, "marcus.bell": 120000, "sofia.alvarez": 120000, "leo.fischer": 60000}
+PRODUCTS = [("DEMO-PLAT", "Platform licence", "seat / year", 1200), ("DEMO-ONB", "Onboarding package", "one-off", 5000),
+            ("DEMO-SUP", "Premium support", "year", 8000), ("DEMO-INT", "Integration services", "day", 1500)]
+TEMPLATES = [
+    ("Follow-up", "Thanks for replying", "Re: next steps for {{company_name}}",
+     "Hi {{first_name}},\n\nThanks for getting back to me. Would a 20-minute call this week work to walk through how "
+     "{{company_name}} could use this?\n\nYou can grab a time here: {{calendar_link}}\n\nBest,\n{{your_name}}"),
+    ("Meeting", "Meeting recap", "Recap: our call today",
+     "Hi {{first_name}},\n\nThanks for your time today. As promised, here is a short recap and the next steps we agreed.\n\n"
+     "1. \n2. \n\nBest,\n{{your_name}}"),
+    ("Proposal", "Proposal sent", "Proposal for {{company_name}}",
+     "Hi {{first_name}},\n\nPlease find our proposal attached. Happy to go through it whenever suits you.\n\nBest,\n{{your_name}}"),
+]
 
 
 def _users(db, tenant_id):
@@ -78,6 +95,15 @@ def reset(db, tenant_id) -> int:
         db.query(PropertyChange).filter(PropertyChange.object_type == "LEAD",
                                         PropertyChange.object_id.in_(lead_ids)).delete(synchronize_session=False)
         db.query(Lead).filter(Lead.lead_id.in_(lead_ids)).delete(synchronize_session=False)
+    db.query(SalesTarget).filter(SalesTarget.tenant_id == tenant_id, SalesTarget.user_id.in_(demo_ids or ["-"])) \
+        .delete(synchronize_session=False)
+    db.query(MessageTemplate).filter(MessageTemplate.tenant_id == tenant_id, MessageTemplate.name.like(f"{DEMO_PREFIX}%")) \
+        .delete(synchronize_session=False)
+    demo_products = [p.product_id for p in db.query(Product).filter(Product.tenant_id == tenant_id, Product.sku.like("DEMO-%"))]
+    if demo_products:
+        db.query(ProposalLine).filter(ProposalLine.product_id.in_(demo_products)).update(
+            {ProposalLine.product_id: None}, synchronize_session=False)
+        db.query(Product).filter(Product.product_id.in_(demo_products)).delete(synchronize_session=False)
     db.commit()
     return len(opps) + len(leads)
 
@@ -154,9 +180,15 @@ def seed(db, admin: User, rng: random.Random):
                           next_step=rng.choice(NEXT_STEPS) if svc.stage_status(stage_row) == "OPEN" else None,
                           created_by=owner.user_id, created_at=lead.qualified_at + timedelta(days=rng.randint(1, 10)))
         opp.status = svc.stage_status(stage_row)
+        opp.forecast_category = svc.category_for(stage_row)
+        if opp.status == "OPEN" and rng.random() < 0.2:  # a rep's own call, kept when the stage moves
+            opp.forecast_category, opp.forecast_category_manual = rng.choice(["COMMIT", "BEST_CASE"]), True
+        if opp.status == "OPEN" and rng.random() < 0.25:  # no activity for weeks: shows as stale
+            opp.updated_at = now - timedelta(days=rng.randint(20, 45))
         if opp.status != "OPEN":
             opp.closed_at = datetime.combine(close, datetime.min.time()) + timedelta(hours=15)
-            opp.closed_reason = rng.choice(["Best fit for their workflow", "Price", "Timing", "Strong champion"])
+            opp.closed_reason = rng.choice(["Best product fit", "Price", "Strong champion"] if opp.status == "WON"
+                                           else ["Price", "Lost to competitor", "Timing", "No decision"])
         db.add(opp)
         db.flush()
         lead.opportunity_id, lead.converted_at = opp.opportunity_id, opp.created_at
@@ -175,8 +207,20 @@ def seed(db, admin: User, rng: random.Random):
                 p.decided_at = opp.closed_at
             db.add(p)
             proposals += 1
+    # Targets for this financial year, price list and templates (BR-SF-08, 10, 15)
+    fy = svc.fiscal_year_of(date.today())
+    for key, yearly in TARGETS.items():
+        for quarter in (1, 2, 3, 4):
+            db.add(SalesTarget(tenant_id=tenant_id, user_id=team[key].user_id, fy=fy, quarter=quarter,
+                               amount=round(yearly / 4 * rng.choice([0.9, 1.0, 1.1]), -3), set_by=admin.user_id))
+    for sku, name, unit, price in PRODUCTS:
+        db.add(Product(tenant_id=tenant_id, sku=sku, name=name, unit=unit, unit_price=price, active=True))
+    for category, name, subject, body in TEMPLATES:
+        db.add(MessageTemplate(tenant_id=tenant_id, name=f"{DEMO_PREFIX} {name}", category=category, subject=subject,
+                               body=body, shared=True, owner_id=admin.user_id, usage_count=rng.randint(0, 25)))
     db.commit()
-    return {"users": len(team), "leads": leads, "opportunities": opps, "proposals": proposals}
+    return {"users": len(team), "leads": leads, "opportunities": opps, "proposals": proposals,
+            "targets": len(TARGETS) * 4, "products": len(PRODUCTS), "templates": len(TEMPLATES)}
 
 
 def main():

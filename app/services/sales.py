@@ -198,7 +198,7 @@ def lead_dicts(db: Session, leads: List[Lead]) -> List[dict]:
             "qualification": l.qualification or {}, "missing_criteria": criteria_met(l.qualification),
             "next_step": l.next_step, "next_step_at": l.next_step_at,
             "next_step_overdue": bool(l.next_step_at and l.next_step_at < now and l.stage in OPEN_LEAD_STAGES),
-            "disqualified_reason": l.disqualified_reason, "opportunity_id": l.opportunity_id,
+            "disqualified_reason": l.disqualified_reason, "recycle_at": l.recycle_at, "opportunity_id": l.opportunity_id,
             "campaign_id": l.campaign_id, "created_at": l.created_at, "stage_changed_at": l.stage_changed_at,
             "qualified_at": l.qualified_at, "converted_at": l.converted_at,
             "age_days": (now - l.created_at).days if l.created_at else 0,

@@ -39,7 +39,7 @@ def start(provider: str, current_user: User = Depends(tenant_user)):
     if not p:
         raise HTTPException(status_code=404, detail="Unknown provider")
     if not account_sync.configured(p):
-        names = ("GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REDIRECT_URI" if p == "GOOGLE"
+        names = ("GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_SYNC_REDIRECT_URI" if p == "GOOGLE"
                  else "MS365_CLIENT_ID, MS365_CLIENT_SECRET and GRAPH_REDIRECT_URI")
         raise HTTPException(status_code=400, detail=f"{provider.title()} sync is not set up on the server. Set {names}.")
     return {"authorize_url": account_sync.authorize_url(p, current_user)}

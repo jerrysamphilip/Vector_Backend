@@ -227,7 +227,7 @@ def list_targets(fy: Optional[int] = None, db: Session = Depends(get_db), curren
     users = users.order_by(User.sales_level.is_(None), User.sales_level, User.first_name).all()
     rows = {(t.user_id, t.quarter): svc.as_float(t.amount) for t in db.query(SalesTarget).filter(
         SalesTarget.tenant_id == current_user.tenant_id, SalesTarget.fy == fy)}
-    result = {"fy": fy, "label": svc.fiscal_label(fy), "users": [{
+    result = {"fy": fy, "label": svc.fiscal_label(fy), "start_month": svc.settings.FISCAL_YEAR_START_MONTH, "users": [{
         "user_id": u.user_id, "name": f"{u.first_name} {u.last_name}".strip(), "sales_level": u.sales_level,
         "manager_id": u.manager_id, "can_edit": _can_set_target(db, current_user, u.user_id),
         "quarters": [rows.get((u.user_id, q)) for q in (1, 2, 3, 4)],

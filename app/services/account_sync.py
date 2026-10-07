@@ -9,7 +9,7 @@ provider's id). Meetings logged in Vector with "add to my calendar" are
 created in the user's calendar, with the contact invited.
 
 Needs, per provider, an OAuth app registration:
-  Google:    GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REDIRECT_URI
+  Google:    GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_SYNC_REDIRECT_URI
              (scopes gmail.readonly, calendar.events, openid email)
   Microsoft: MS365_CLIENT_ID / MS365_CLIENT_SECRET (the same app as mailbox OAuth)
              with GRAPH_REDIRECT_URI and Graph delegated permissions
@@ -61,7 +61,7 @@ def http_request(method: str, url: str, token: str, params: dict = None, json: d
 
 def configured(provider: str) -> bool:
     if provider == "GOOGLE":
-        return bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET and settings.GOOGLE_REDIRECT_URI)
+        return bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET and settings.GOOGLE_SYNC_REDIRECT_URI)
     return bool(settings.MS365_CLIENT_ID and settings.MS365_CLIENT_SECRET and settings.GRAPH_REDIRECT_URI)
 
 
@@ -89,7 +89,7 @@ def authorize_url(provider: str, user: User) -> str:
     state = make_state(user, provider)
     if provider == "GOOGLE":
         return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({
-            "client_id": settings.GOOGLE_CLIENT_ID, "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+            "client_id": settings.GOOGLE_CLIENT_ID, "redirect_uri": settings.GOOGLE_SYNC_REDIRECT_URI,
             "response_type": "code", "scope": GOOGLE_SCOPES, "access_type": "offline", "prompt": "consent",
             "include_granted_scopes": "true", "state": state, "login_hint": user.email})
     return _ms_endpoint("authorize") + "?" + urlencode({
@@ -114,7 +114,7 @@ def _token(provider: str, data: dict) -> dict:
 
 
 def complete(db: Session, user: User, provider: str, code: str) -> UserConnection:
-    redirect = settings.GOOGLE_REDIRECT_URI if provider == "GOOGLE" else settings.GRAPH_REDIRECT_URI
+    redirect = settings.GOOGLE_SYNC_REDIRECT_URI if provider == "GOOGLE" else settings.GRAPH_REDIRECT_URI
     tokens = _token(provider, {"grant_type": "authorization_code", "code": code, "redirect_uri": redirect})
     conn = db.query(UserConnection).filter(UserConnection.user_id == user.user_id,
                                            UserConnection.provider == provider).first()

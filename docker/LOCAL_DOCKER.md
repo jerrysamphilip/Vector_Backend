@@ -109,8 +109,9 @@ API_PROXY_TARGET=http://localhost:8191 npm run dev     # http://localhost:5173
   `DAILY_NEW_CONTACT_LIMIT` (default 500) caps first emails per user per day; follow-ups are never limited. Amounts
   display in USD; build the frontend with `VITE_CURRENCY=INR` (or another ISO code) to change that.
 - Calendar & email sync (each user under Sales → Connections): set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
-  from a Google Cloud OAuth client (scopes: Gmail read-only, Calendar events) with redirect
-  `http://localhost/vector/api/connections/google/callback`; for Microsoft, add the redirect
+  from a Google Cloud OAuth client (scopes: Gmail read-only, Calendar events) and add the redirect
+  `http://localhost/vector/api/connections/google/callback` (`GOOGLE_SYNC_REDIRECT_URI`; Google sign-in keeps its own
+  `GOOGLE_REDIRECT_URI`); for Microsoft, add the redirect
   `http://localhost/vector/api/connections/microsoft/callback` and the Graph delegated permissions `Mail.Read`,
   `Calendars.ReadWrite`, `User.Read` to the same Azure app used for Microsoft 365 mailboxes. Sync runs every
   10 minutes and logs emails / meetings with your contacts on their timelines.

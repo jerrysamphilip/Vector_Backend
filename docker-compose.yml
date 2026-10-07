@@ -45,9 +45,8 @@ x-api-env: &api-env
   MS365_REDIRECT_URI: ${MS365_REDIRECT_URI:-http://localhost/vector/api/inboxes/oauth/microsoft/callback}
   MS365_POST_CONNECT_URL: ${MS365_POST_CONNECT_URL:-/vector/app/inboxes}
   # Personal calendar & email sync (Google, and Microsoft Graph with the same Azure app)
-  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-  GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost/vector/api/connections/google/callback}
+  # (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are shared with Google sign-in, further down)
+  GOOGLE_SYNC_REDIRECT_URI: ${GOOGLE_SYNC_REDIRECT_URI:-http://localhost/vector/api/connections/google/callback}
   GRAPH_REDIRECT_URI: ${GRAPH_REDIRECT_URI:-http://localhost/vector/api/connections/microsoft/callback}
   # Sales settings
   FISCAL_YEAR_START_MONTH: ${FISCAL_YEAR_START_MONTH:-4}
