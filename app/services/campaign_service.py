@@ -45,6 +45,9 @@ class CampaignService(CampaignCRUDService):
     def enroll_prospects(self, campaign_id: str, user_id: str, request) -> int:
         return self._email_svc.enroll_prospects(campaign_id, user_id, request)
 
+    def enroll_prospects_with_report(self, campaign_id: str, user_id: str, request):
+        return self._email_svc.enroll_prospects_with_report(campaign_id, user_id, request)
+
     def remove_prospect(self, campaign_id: str, prospect_id: str, user_id: str) -> bool:
         return self._email_svc.remove_prospect(campaign_id, prospect_id, user_id)
 

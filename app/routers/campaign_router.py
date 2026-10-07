@@ -360,17 +360,23 @@ async def enroll_prospects(
     - Valid email
     - Consent status (must be OPT_IN)
 
-    Returns count of newly enrolled prospects.
+    Returns the count of newly enrolled prospects and a reason for each one not enrolled.
     """
+    from app.services.enrollment_rules import MAX_REJECTIONS_RETURNED, summarize
     try:
         _get_campaign_for_user(service, campaign_id, current_user)
-        count = service.enroll_prospects(
+        count, rejections = service.enroll_prospects_with_report(
             campaign_id=campaign_id,
             user_id=current_user.user_id,
             request=request
         )
         db.commit()
-        return {"enrolled_count": count}
+        return {
+            "enrolled_count": count,
+            "rejected_count": len(rejections),
+            "rejected_summary": summarize(rejections),
+            "rejected": rejections[:MAX_REJECTIONS_RETURNED],
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

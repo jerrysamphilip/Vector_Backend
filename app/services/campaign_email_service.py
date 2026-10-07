@@ -14,7 +14,7 @@ from app.core.config import settings
 
 from app.models.campaign import Campaign, CampaignProspect, CampaignStateEvent
 from app.models.prospect import Prospect, GlobalUnsubscribe
-from app.models.prospect_list import ProspectListMember
+from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.email_sequence import EmailSequence
 from app.models.email_message import EmailMessage
 from app.models.email_template import EmailTemplate
@@ -160,16 +160,22 @@ class CampaignEmailService:
         user_id: str,
         request: CampaignEnrollmentRequest
     ) -> int:
-        """
-        Enroll prospects into campaign (Stage 3 Gate).
+        return self.enroll_prospects_with_report(campaign_id, user_id, request)[0]
 
-        Strict Rules:
-        1. Not Global Unsubscribed
-        2. Consent is OPT_IN
-        3. Valid Email
-        4. Not already in this campaign
-        5. Cool-off: No email sent in last 24h
+    def enroll_prospects_with_report(
+        self,
+        campaign_id: str,
+        user_id: str,
+        request: CampaignEnrollmentRequest
+    ):
         """
+        Enroll prospects into campaign (Stage 3 Gate). Returns (enrolled_count, rejections),
+        with a reason for every contact not enrolled (app/services/enrollment_rules.py):
+        global unsubscribe, opted out, invalid email, already enrolled, or an email sent
+        in the last 24h (cool-off).
+        """
+        from app.services import enrollment_rules
+
         campaign = self.db.query(Campaign).filter(
             Campaign.campaign_id == campaign_id
         ).first()
@@ -179,47 +185,25 @@ class CampaignEmailService:
         if campaign.status not in [CampaignStatus.DRAFT.value, CampaignStatus.PAUSED.value, CampaignStatus.ACTIVE.value]:
             raise ValueError("Cannot enroll prospects in current campaign status")
 
-        # 1. Gather Candidate IDs
-        candidate_ids = set()
-        if request.prospect_ids:
-            candidate_ids.update(request.prospect_ids)
-
+        # 1. Gather candidates, scoped to the campaign's workspace
+        candidate_ids = list(request.prospect_ids or [])
         if request.list_ids:
-            members = self.db.query(ProspectListMember.prospect_id).filter(
-                ProspectListMember.list_id.in_(request.list_ids)
+            members = self.db.query(ProspectListMember.prospect_id).join(
+                ProspectList, ProspectList.list_id == ProspectListMember.list_id
+            ).filter(
+                ProspectListMember.list_id.in_(request.list_ids),
+                ProspectList.tenant_id == campaign.tenant_id,
             ).all()
-            candidate_ids.update([m[0] for m in members])
+            candidate_ids.extend(m[0] for m in members)
 
         if not candidate_ids:
-            return 0
+            return 0, []
 
-        prospects = self.db.query(Prospect).filter(Prospect.prospect_id.in_(candidate_ids)).all()
-        p_map = {p.prospect_id: p for p in prospects}
-        candidate_emails = {p.email for p in prospects}
-
-        # Rule 1: Active Global Unsubscribe
-        now = datetime.utcnow()
-        global_unsubs_emails = {r[0] for r in self.db.query(GlobalUnsubscribe.email).filter(
-            GlobalUnsubscribe.tenant_id == campaign.tenant_id,
-            GlobalUnsubscribe.email.in_(candidate_emails),
-            or_(
-                GlobalUnsubscribe.suppression_expires_at.is_(None),
-                GlobalUnsubscribe.suppression_expires_at > now
-            )
-        ).all()}
-
-        # Rule 4: Already enrolled
-        existing_enrolled_ids = {r[0] for r in self.db.query(CampaignProspect.prospect_id).filter(
-            CampaignProspect.campaign_id == campaign_id,
-            CampaignProspect.prospect_id.in_(candidate_ids)
-        ).all()}
-
-        # Rule 5: Cool-off (no email sent in last 24h)
-        cutoff_time = datetime.utcnow() - timedelta(hours=24)
-        cooloff_ids = {r[0] for r in self.db.query(EmailMessage.prospect_id).filter(
-            EmailMessage.prospect_id.in_(candidate_ids),
-            EmailMessage.sent_at > cutoff_time
-        ).all()}
+        prospects, rejections = enrollment_rules.load_tenant_prospects(self.db, campaign.tenant_id, candidate_ids)
+        cooloff_ids = enrollment_rules.sent_within(self.db, [p.prospect_id for p in prospects], hours=24)
+        eligible, screened_out = enrollment_rules.screen(
+            self.db, campaign.tenant_id, campaign_id, prospects, recently_contacted=cooloff_ids)
+        rejections.extend(screened_out)
 
         # Calculate Schedule Start
         step1 = self.db.query(EmailSequence).filter(
@@ -232,25 +216,11 @@ class CampaignEmailService:
         new_enrollments = []
         enrolled_count = 0
 
-        for pid in candidate_ids:
-            prospect = p_map.get(pid)
-            if not prospect:
-                continue
-            if prospect.email in global_unsubs_emails:
-                continue
-            if prospect.consent_status != "OPT_IN":
-                continue
-            if not prospect.is_valid_email:
-                continue
-            if pid in existing_enrolled_ids:
-                continue
-            if pid in cooloff_ids:
-                continue
-
+        for prospect in eligible:
             new_enrollments.append(CampaignProspect(
                 id=str(uuid.uuid4()),
                 campaign_id=campaign_id,
-                prospect_id=pid,
+                prospect_id=prospect.prospect_id,
                 current_step=1,
                 status="ACTIVE",
                 enrolled_at=datetime.utcnow(),
@@ -282,7 +252,7 @@ class CampaignEmailService:
             if campaign.status in (CampaignStatus.ACTIVE.value, CampaignStatus.PAUSED.value):
                 self._preschedule_all_emails(campaign_id)
 
-        return enrolled_count
+        return enrolled_count, rejections
 
     def remove_prospect(self, campaign_id: str, prospect_id: str, user_id: str) -> bool:
         """

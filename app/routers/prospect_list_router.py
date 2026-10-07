@@ -61,6 +61,7 @@ class EnrollmentResult(BaseModel):
     total_checked: int
     enrolled: int
     rejected: dict
+    rejections: List[dict] = []  # one entry per contact not enrolled, with the reason
 
 
 # =============================
@@ -219,15 +220,6 @@ async def enroll_prospects(
     - Already enrolled check
     - Email validity check
     """
-    rejected = {
-        "global_unsubscribe": 0,
-        "no_consent": 0,
-        "already_enrolled": 0,
-        "invalid_email": 0,
-    }
-    enrolled = 0
-    total_checked = 0
-
     campaign = db.query(Campaign).filter(
         Campaign.campaign_id == campaign_id,
         Campaign.tenant_id == current_user.tenant_id,
@@ -249,78 +241,30 @@ async def enroll_prospects(
             detail=f"Prospect list(s) not found in your workspace: {', '.join(invalid_lists)}",
         )
 
-    # Get all global unsubscribes for this tenant
-    tenant_id = current_user.tenant_id
+    from app.services import enrollment_rules
 
-    unsubscribed_emails = set(
-        email for (email,) in db.query(GlobalUnsubscribe.email).filter(
-            GlobalUnsubscribe.tenant_id == tenant_id
-        ).all()
-    )
+    member_ids = [pid for (pid,) in db.query(ProspectListMember.prospect_id).filter(
+        ProspectListMember.list_id.in_(valid_list_ids))]
+    prospects, rejections = enrollment_rules.load_tenant_prospects(db, current_user.tenant_id, member_ids)
+    eligible, screened_out = enrollment_rules.screen(db, current_user.tenant_id, campaign_id, prospects)
+    rejections.extend(screened_out)
 
-    # Get already enrolled prospect IDs for this campaign
-    already_enrolled_ids = set(
-        pid for (pid,) in db.query(CampaignProspect.prospect_id).filter(
-            CampaignProspect.campaign_id == campaign_id
-        ).all()
-    )
-
-    # Process each list
-    for list_id in valid_list_ids:
-        # Get prospects from this list
-        members = db.query(ProspectListMember).filter(
-            ProspectListMember.list_id == list_id
-        ).all()
-
-        for member in members:
-            prospect = db.query(Prospect).filter(
-                Prospect.prospect_id == member.prospect_id,
-                Prospect.tenant_id == current_user.tenant_id,
-            ).first()
-
-            if not prospect:
-                continue
-
-            total_checked += 1
-
-            # Check 1: Global unsubscribe
-            if prospect.email.lower() in unsubscribed_emails:
-                rejected["global_unsubscribe"] += 1
-                continue
-
-            # Check 2: Already enrolled in this campaign
-            if prospect.prospect_id in already_enrolled_ids:
-                rejected["already_enrolled"] += 1
-                continue
-
-            # Check 3: Consent status
-            if prospect.consent_status == "UNSUBSCRIBED":
-                rejected["no_consent"] += 1
-                continue
-
-            # Check 4: Email validity
-            if not prospect.is_valid_email:
-                rejected["invalid_email"] += 1
-                continue
-
-            # All checks passed - enroll prospect
-            import uuid
-            enrollment = CampaignProspect(
-                id=str(uuid.uuid4()),
-                campaign_id=campaign_id,
-                prospect_id=prospect.prospect_id,
-                enrollment_status="PENDING",
-            )
-            db.add(enrollment)
-            already_enrolled_ids.add(prospect.prospect_id)  # Prevent duplicates within batch
-            enrolled += 1
-
+    for prospect in eligible:
+        db.add(CampaignProspect(campaign_id=campaign_id, prospect_id=prospect.prospect_id,
+                                current_step=1, status="ACTIVE"))
     db.commit()
 
+    counts = enrollment_rules.summarize(rejections)
     return EnrollmentResult(
-        total_checked=total_checked,
-        enrolled=enrolled,
-        rejected=rejected,
+        total_checked=len(prospects) + counts.get("not_found", 0),
+        enrolled=len(eligible),
+        rejected={
+            "global_unsubscribe": counts.get("unsubscribed", 0),
+            "no_consent": counts.get("opted_out", 0),
+            "already_enrolled": counts.get("already_enrolled", 0),
+            "invalid_email": counts.get("invalid_email", 0),
+        },
+        rejections=rejections[:enrollment_rules.MAX_REJECTIONS_RETURNED],
     )
 
 
