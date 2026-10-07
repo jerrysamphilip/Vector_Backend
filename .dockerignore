@@ -1,0 +1,11 @@
+.git
+.github
+.env
+venv/
+venv_prod/
+__pycache__/
+*.pyc
+uploads/
+docker/
+*.txt
+!requirements.txt
