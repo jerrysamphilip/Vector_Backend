@@ -4,13 +4,13 @@ Tenant-defined custom fields for contacts. Values live in prospects.custom_field
 (a JSON object keyed by field_key).
 """
 
-from sqlalchemy import Column, String, Integer, TIMESTAMP, ForeignKey, JSON, UniqueConstraint
+from sqlalchemy import Column, String, Integer, TIMESTAMP, ForeignKey, JSON, UniqueConstraint, Boolean
 from sqlalchemy.sql import func
 import uuid
 
 from app.models.base import Base
 
-FIELD_TYPES = ("TEXT", "NUMBER", "DATE", "SELECT", "URL")
+FIELD_TYPES = ("TEXT", "NUMBER", "DATE", "SELECT", "RADIO", "MULTI_CHECKBOX", "PHONE", "URL")
 
 
 class ContactFieldDefinition(Base):
@@ -22,7 +22,9 @@ class ContactFieldDefinition(Base):
     field_key = Column(String(64), nullable=False)
     label = Column(String(100), nullable=False)
     field_type = Column(String(20), nullable=False, default="TEXT")
-    options = Column(JSON, nullable=True)  # choices for SELECT
+    options = Column(JSON, nullable=True)  # choices for SELECT / RADIO / MULTI_CHECKBOX
+    group_name = Column(String(100), nullable=True)  # property group (BR-CM-10)
+    required = Column(Boolean, nullable=False, default=False, server_default="0")  # required on create
     sort_order = Column(Integer, default=0)
 
     created_at = Column(TIMESTAMP, server_default=func.now())

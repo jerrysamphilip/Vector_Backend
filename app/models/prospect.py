@@ -35,6 +35,17 @@ class Prospect(Base):
     owner_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
     account_id = Column(String(36), ForeignKey("accounts.account_id"), nullable=True)
 
+    # CRM lifecycle (BR-CM-06/07), lead source (BR-CM-01) and legal basis (BR-CM-40)
+    lifecycle_stage = Column(String(30), nullable=True)
+    lead_status = Column(String(30), nullable=True)
+    lead_source = Column(String(100), nullable=True)
+    legal_basis = Column(String(40), nullable=True)
+
+    # Soft delete with 90-day restore (BR-CM-35); merged duplicates point at the kept record
+    deleted_at = Column(TIMESTAMP, nullable=True)
+    deleted_by = Column(String(36), nullable=True)
+    merged_into_id = Column(String(36), nullable=True)
+
     # Tags (JSON list of strings) and tenant-defined custom field values (JSON object)
     tags = Column(JSON, nullable=True)
     custom_fields = Column(JSON, nullable=True)
@@ -81,6 +92,8 @@ class Prospect(Base):
         UniqueConstraint("tenant_id", "email", name="uq_tenant_email"),
         Index("ix_prospects_owner_id", "owner_id"),
         Index("ix_prospects_account_id", "account_id"),
+        Index("ix_prospects_deleted_at", "deleted_at"),
+        Index("ix_prospects_lifecycle_stage", "lifecycle_stage"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

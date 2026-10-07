@@ -109,6 +109,26 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(interval)
 
     warmup_task = asyncio.create_task(run_warmup_sync())
+
+    # Contacts and companies deleted more than 90 days ago are purged (BR-CM-35)
+    async def run_crm_purge():
+        from app.services.crm import purge_expired
+        loop = asyncio.get_event_loop()
+        while True:
+            try:
+                def _purge():
+                    with SessionLocal() as db:
+                        return purge_expired(db)
+                purged = await loop.run_in_executor(None, _purge)
+                if purged:
+                    print(f"CRM purge: permanently deleted {purged} record(s) past the 90-day restore window")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"CRM purge error: {e}")
+            await asyncio.sleep(6 * 3600)
+
+    purge_task = asyncio.create_task(run_crm_purge())
     try:
         yield
     except (asyncio.CancelledError, KeyboardInterrupt):
@@ -123,12 +143,14 @@ async def lifespan(app: FastAPI):
         imap_task.cancel()
         deliverability_task.cancel()
         warmup_task.cancel()
+        purge_task.cancel()
 
         await asyncio.gather(
             scheduler_task,
             imap_task,
             deliverability_task,
             warmup_task,
+            purge_task,
             return_exceptions=True,
         )
 
@@ -624,6 +646,14 @@ from app.routers.contacts_router import router as contacts_router
 from app.routers.accounts_router import router as accounts_router
 app.include_router(contacts_router)
 app.include_router(accounts_router)
+from app.routers.tasks_router import router as tasks_router
+from app.routers.lists_router import router as lists_router
+from app.routers.crm_router import router as crm_router
+from app.routers.import_router import router as import_router
+app.include_router(tasks_router)
+app.include_router(lists_router)
+app.include_router(crm_router)
+app.include_router(import_router)
  
  
 # =============================

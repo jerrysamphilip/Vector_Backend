@@ -119,6 +119,24 @@ def load_tenant_prospects(db: Session, tenant_id: str, prospect_ids: Iterable[st
     """Fetch prospects by id, scoped to the workspace; ids from elsewhere become not_found rejections."""
     wanted = list(dict.fromkeys(prospect_ids))
     found = {p.prospect_id: p for p in db.query(Prospect).filter(
-        Prospect.tenant_id == tenant_id, Prospect.prospect_id.in_(wanted))} if wanted else {}
+        Prospect.tenant_id == tenant_id, Prospect.prospect_id.in_(wanted),
+        Prospect.deleted_at.is_(None))} if wanted else {}
     missing = [rejection(None, "not_found", pid) for pid in wanted if pid not in found]
     return [found[pid] for pid in wanted if pid in found], missing
+
+
+def list_member_ids(db: Session, tenant_id: str, list_ids: Iterable[str]) -> List[str]:
+    """
+    Contact ids in the given lists, so any list can be a campaign audience (BR-CM-24).
+    Active lists are evaluated now from their filters, as their creator would see them.
+    """
+    from app.models.prospect_list import ProspectList
+    from app.models.user import User
+    from app.services import crm
+
+    ids: List[str] = []
+    for plist in db.query(ProspectList).filter(ProspectList.tenant_id == tenant_id,
+                                               ProspectList.list_id.in_(list(list_ids))):
+        owner = db.query(User).filter(User.user_id == plist.uploaded_by).first()
+        ids.extend(r[0] for r in crm.list_member_ids(db, plist, owner))
+    return list(dict.fromkeys(ids))

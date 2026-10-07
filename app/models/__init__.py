@@ -15,6 +15,7 @@ from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.account import Account
 from app.models.contact_activity import ContactActivity
 from app.models.contact_field import ContactFieldDefinition
+from app.models.crm import PropertyChange, CrmTask, SavedView, ImportJob
 from app.models.campaign import Campaign, CampaignStateEvent, CampaignProspect
 from app.models.email_sequence import EmailSequence
 from app.models.email_template import AIPrompt, EmailTemplate, EmailTemplateVersion
@@ -61,6 +62,10 @@ __all__ = [
     "Account",
     "ContactActivity",
     "ContactFieldDefinition",
+    "PropertyChange",
+    "CrmTask",
+    "SavedView",
+    "ImportJob",
     "Campaign",
     "CampaignStateEvent",
     "CampaignProspect",

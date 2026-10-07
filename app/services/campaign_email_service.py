@@ -188,13 +188,7 @@ class CampaignEmailService:
         # 1. Gather candidates, scoped to the campaign's workspace
         candidate_ids = list(request.prospect_ids or [])
         if request.list_ids:
-            members = self.db.query(ProspectListMember.prospect_id).join(
-                ProspectList, ProspectList.list_id == ProspectListMember.list_id
-            ).filter(
-                ProspectListMember.list_id.in_(request.list_ids),
-                ProspectList.tenant_id == campaign.tenant_id,
-            ).all()
-            candidate_ids.extend(m[0] for m in members)
+            candidate_ids.extend(enrollment_rules.list_member_ids(self.db, campaign.tenant_id, request.list_ids))
 
         if not candidate_ids:
             return 0, []

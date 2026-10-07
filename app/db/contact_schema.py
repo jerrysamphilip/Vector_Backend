@@ -50,6 +50,93 @@ BACKFILL_OWNERS_SQL = """
 """
 
 
+# Columns added by Phase 1 Contact Management (BRD v2.0), per existing table
+_PHASE1_COLUMNS = {
+    "prospects": {
+        "lifecycle_stage": "VARCHAR(30) NULL",
+        "lead_status": "VARCHAR(30) NULL",
+        "lead_source": "VARCHAR(100) NULL",
+        "legal_basis": "VARCHAR(40) NULL",
+        "deleted_at": "TIMESTAMP NULL",
+        "deleted_by": "VARCHAR(36) NULL",
+        "merged_into_id": "VARCHAR(36) NULL",
+    },
+    "accounts": {
+        "street": "VARCHAR(255) NULL",
+        "postal_code": "VARCHAR(20) NULL",
+        "annual_revenue": "DECIMAL(18,2) NULL",
+        "lifecycle_stage": "VARCHAR(30) NULL",
+        "deleted_at": "TIMESTAMP NULL",
+        "deleted_by": "VARCHAR(36) NULL",
+    },
+    "prospect_lists": {
+        "list_type": "VARCHAR(10) NOT NULL DEFAULT 'STATIC'",
+        "filters": "JSON NULL",
+        "description": "TEXT NULL",
+    },
+    "contact_field_definitions": {
+        "group_name": "VARCHAR(100) NULL",
+        "required": "TINYINT(1) NOT NULL DEFAULT 0",
+    },
+}
+
+# Starting lifecycle values for contacts that predate the fields: everyone is a Lead;
+# lead status follows their email history.
+BACKFILL_LIFECYCLE_SQL = [
+    "UPDATE prospects SET lifecycle_stage = 'LEAD' WHERE lifecycle_stage IS NULL",
+    """UPDATE prospects p SET lead_status = CASE
+         WHEN EXISTS (SELECT 1 FROM email_messages m WHERE m.prospect_id = p.prospect_id AND m.direction = 'INBOUND') THEN 'CONNECTED'
+         WHEN EXISTS (SELECT 1 FROM email_messages m WHERE m.prospect_id = p.prospect_id AND m.sent_at IS NOT NULL) THEN 'ATTEMPTED_TO_CONTACT'
+         ELSE 'NEW' END
+       WHERE lead_status IS NULL""",
+    "UPDATE accounts SET lifecycle_stage = 'LEAD' WHERE lifecycle_stage IS NULL",
+]
+
+
+def _columns(conn, table):
+    return {row[0] for row in conn.execute(text(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t"
+    ), {"t": table})}
+
+
+def _index_exists(conn, table, name):
+    return bool(conn.execute(text(
+        "SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND INDEX_NAME = :n"
+    ), {"t": table, "n": name}).first())
+
+
+def ensure_phase1_schema(engine) -> None:
+    """Add the Phase 1 columns and indexes to an existing database (idempotent)."""
+    with engine.connect() as conn:
+        added = []
+        for table, columns in _PHASE1_COLUMNS.items():
+            existing = _columns(conn, table)
+            for column, ddl in columns.items():
+                if column not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN `{column}` {ddl}"))
+                    added.append(f"{table}.{column}")
+        for table, name, cols in (("prospects", "ix_prospects_deleted_at", "deleted_at"),
+                                  ("prospects", "ix_prospects_lifecycle_stage", "lifecycle_stage")):
+            if not _index_exists(conn, table, name):
+                conn.execute(text(f"CREATE INDEX {name} ON {table} ({cols})"))
+        if not _index_exists(conn, "accounts", "uq_account_tenant_domain"):
+            # Domains become unique per workspace (BR-CM-03): keep the oldest account's domain
+            conn.execute(text("""
+                UPDATE accounts a JOIN (
+                    SELECT tenant_id, domain, MIN(created_at) AS first_created FROM accounts
+                    WHERE domain IS NOT NULL GROUP BY tenant_id, domain HAVING COUNT(*) > 1
+                ) d ON d.tenant_id = a.tenant_id AND d.domain = a.domain AND a.created_at > d.first_created
+                SET a.domain = NULL
+            """))
+            conn.execute(text("CREATE UNIQUE INDEX uq_account_tenant_domain ON accounts (tenant_id, domain)"))
+        if "prospects.lifecycle_stage" in added:
+            for sql in BACKFILL_LIFECYCLE_SQL:
+                conn.execute(text(sql))
+        conn.commit()
+        if added:
+            print(f"Contact management (Phase 1): added columns {added}")
+
+
 def ensure_contact_schema(engine) -> None:
     with engine.connect() as conn:
         existing = {
@@ -85,3 +172,5 @@ def ensure_contact_schema(engine) -> None:
 
         if added:
             print(f"Contact management: added prospects columns {added}")
+
+    ensure_phase1_schema(engine)

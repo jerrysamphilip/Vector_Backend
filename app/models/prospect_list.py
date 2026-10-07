@@ -3,7 +3,7 @@
 Prospect List models for CSV uploads and list management.
 """
 
-from sqlalchemy import Column, String, Boolean, TIMESTAMP, ForeignKey, Text
+from sqlalchemy import Column, String, Boolean, TIMESTAMP, ForeignKey, Text, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -21,7 +21,12 @@ class ProspectList(Base):
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     
     list_name = Column(String(255), nullable=False)
-    source_type = Column(String(50), nullable=False, default="CSV")  # CSV / CRM / API
+    source_type = Column(String(50), nullable=False, default="CSV")  # CSV / CRM / API / MANUAL / IMPORT
+    # STATIC lists hold a fixed set of members; ACTIVE lists are defined by `filters`
+    # and their membership is evaluated live (BR-CM-22/23)
+    list_type = Column(String(10), nullable=False, default="STATIC", server_default="STATIC")
+    filters = Column(JSON, nullable=True)
+    description = Column(Text, nullable=True)
     
     uploaded_by = Column(String(36), ForeignKey("users.user_id"), nullable=False)
     uploaded_at = Column(TIMESTAMP, server_default=func.now())

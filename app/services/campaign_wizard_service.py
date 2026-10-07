@@ -168,17 +168,16 @@ def step_2_get_prospects_from_list(
     result — lets a user deselect specific contacts in the wizard rather
     than always enrolling the whole list.
     """
-    members = db.query(ProspectListMember).filter(
-        ProspectListMember.list_id == list_id
-    ).all()
-
-    prospect_ids = [m.prospect_id for m in members]
+    from app.models.prospect_list import ProspectList
+    from app.services.enrollment_rules import list_member_ids
+    plist = db.query(ProspectList).filter(ProspectList.list_id == list_id).first()
+    prospect_ids = list_member_ids(db, plist.tenant_id, [list_id]) if plist else []
     if excluded_prospect_ids:
         excluded = set(excluded_prospect_ids)
         prospect_ids = [pid for pid in prospect_ids if pid not in excluded]
 
     prospects = db.query(Prospect).filter(
-        Prospect.prospect_id.in_(prospect_ids)
+        Prospect.prospect_id.in_(prospect_ids), Prospect.deleted_at.is_(None)
     ).all()
 
     return prospects

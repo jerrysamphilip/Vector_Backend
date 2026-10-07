@@ -96,9 +96,18 @@ async def list_prospect_lists(
         lists = query.offset(offset).limit(page_size).all()
         items = []
         for lst in lists:
-            count = db.query(func.count(ProspectListMember.id)).filter(
-                ProspectListMember.list_id == lst.list_id
-            ).scalar() or 0
+            if lst.list_type == "ACTIVE":
+                from app.services import crm
+                try:
+                    count = crm.list_member_ids(db, lst, current_user).count()
+                except crm.FilterError:
+                    count = 0
+            else:
+                count = db.query(func.count(ProspectListMember.id)).join(
+                    Prospect, Prospect.prospect_id == ProspectListMember.prospect_id
+                ).filter(
+                    ProspectListMember.list_id == lst.list_id, Prospect.deleted_at.is_(None)
+                ).scalar() or 0
             items.append(ProspectListResponse(
                 list_id=lst.list_id,
                 list_name=lst.list_name,
@@ -162,12 +171,19 @@ async def get_list_prospects(
         ).first()
         if not prospect_list:
             raise HTTPException(status_code=404, detail="List not found")
-        query = db.query(Prospect, ProspectListMember.notes).join(
-            ProspectListMember, Prospect.prospect_id == ProspectListMember.prospect_id
-        ).filter(ProspectListMember.list_id == list_id).order_by(
-            ProspectListMember.added_at.asc(),
-            ProspectListMember.id.asc(),
-        )
+        if prospect_list.list_type == "ACTIVE":
+            from app.services import crm
+            from sqlalchemy import literal
+            query = db.query(Prospect, literal(None).label("notes")).filter(
+                Prospect.prospect_id.in_(crm.list_member_ids(db, prospect_list, current_user))
+            ).order_by(Prospect.created_at.asc(), Prospect.prospect_id.asc())
+        else:
+            query = db.query(Prospect, ProspectListMember.notes).join(
+                ProspectListMember, Prospect.prospect_id == ProspectListMember.prospect_id
+            ).filter(ProspectListMember.list_id == list_id, Prospect.deleted_at.is_(None)).order_by(
+                ProspectListMember.added_at.asc(),
+                ProspectListMember.id.asc(),
+            )
         if search:
             search_term = f"%{search}%"
             query = query.filter(
@@ -243,8 +259,7 @@ async def enroll_prospects(
 
     from app.services import enrollment_rules
 
-    member_ids = [pid for (pid,) in db.query(ProspectListMember.prospect_id).filter(
-        ProspectListMember.list_id.in_(valid_list_ids))]
+    member_ids = enrollment_rules.list_member_ids(db, current_user.tenant_id, valid_list_ids)
     prospects, rejections = enrollment_rules.load_tenant_prospects(db, current_user.tenant_id, member_ids)
     eligible, screened_out = enrollment_rules.screen(db, current_user.tenant_id, campaign_id, prospects)
     rejections.extend(screened_out)
@@ -796,17 +811,17 @@ def get_prospect_stats(
     tenant_id = current_user.tenant_id
 
     total = db.query(func.count(Prospect.prospect_id)).filter(
-        Prospect.tenant_id == tenant_id
+        Prospect.tenant_id == tenant_id, Prospect.deleted_at.is_(None)
     ).scalar() or 0
 
     opted_out = db.query(func.count(Prospect.prospect_id)).filter(
-        Prospect.tenant_id == tenant_id,
+        Prospect.tenant_id == tenant_id, Prospect.deleted_at.is_(None),
         Prospect.consent_status == "UNSUBSCRIBED"
     ).scalar() or 0
 
     tenant_prospect_ids = [
         r[0] for r in db.query(Prospect.prospect_id).filter(
-            Prospect.tenant_id == tenant_id
+            Prospect.tenant_id == tenant_id, Prospect.deleted_at.is_(None)
         ).all()
     ]
 
