@@ -106,6 +106,7 @@ def record_changes(db: Session, tenant_id: str, object_type: str, object_id: str
                    before: dict, after: dict, user_id: Optional[str], source: str = "UI") -> int:
     """Write one history row per changed field. custom_fields / tags are diffed per key."""
     rows = 0
+    changed = {}
     for field, old in before.items():
         new = after.get(field)
         if field == "custom_fields":
@@ -121,7 +122,12 @@ def record_changes(db: Session, tenant_id: str, object_type: str, object_id: str
             db.add(PropertyChange(tenant_id=tenant_id, object_type=object_type, object_id=object_id,
                                   field=field, old_value=_fmt(old), new_value=_fmt(new),
                                   source=source, changed_by=user_id))
+            changed[field] = (old, new)
             rows += 1
+    # Workflow rules react to the same changes (BR-SF-13); imports and merges are excluded
+    if changed and source not in ("IMPORT", "MERGE"):
+        from app.services import workflow
+        workflow.on_changes(db, tenant_id, object_type, object_id, changed, user_id)
     return rows
 
 

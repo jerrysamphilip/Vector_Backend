@@ -152,6 +152,31 @@ spec:
                   name: sales360-secret
                   key: MS365_REDIRECT_URI
                   optional: true
+            # Calendar & email sync (BR-SF-16), optional
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: GOOGLE_CLIENT_ID
+                  optional: true
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: GOOGLE_CLIENT_SECRET
+                  optional: true
+            - name: GOOGLE_SYNC_REDIRECT_URI
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: GOOGLE_SYNC_REDIRECT_URI
+                  optional: true
+            - name: GRAPH_REDIRECT_URI
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: GRAPH_REDIRECT_URI
+                  optional: true
             
 
           resources:

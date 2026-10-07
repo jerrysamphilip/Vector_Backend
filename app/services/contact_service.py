@@ -6,10 +6,11 @@ and duplicate merging. Used by contacts_router, accounts_router and the upload f
 
 import re
 import uuid
-from typing import Iterable, Optional
+from collections import defaultdict
+from typing import Iterable, Optional, Set
 
-from sqlalchemy import text
-from sqlalchemy.orm import Session
+from sqlalchemy import or_, text
+from sqlalchemy.orm import Session, object_session
 
 from app.core.auth import _DEFAULT_PERMS
 from app.models.account import Account
@@ -40,8 +41,76 @@ def can_manage_contacts(user: User) -> bool:
     return "manage_prospects" in perms
 
 
+# ── Sales hierarchy visibility (BR-SH-02) ──────────────────────────
+
+SALES_LEVELS = {
+    1: "CEO / COO / Sales Head",
+    2: "Business Development",
+    3: "Business Executive",
+    4: "Market Research",
+}
+
+
+def sees_everything(user: User) -> bool:
+    """Admins and level 1 see every record; users outside the hierarchy keep the role rule."""
+    if user.role in ("SUPER_ADMIN", "ADMIN"):
+        return True
+    if user.sales_level == 1:
+        return True
+    return user.sales_level is None and can_manage_contacts(user)
+
+
+def team_user_ids(db: Session, user: User) -> Set[str]:
+    """The user and everyone below them in the hierarchy (direct and indirect reports)."""
+    children = defaultdict(list)
+    for uid, manager_id in db.query(User.user_id, User.manager_id).filter(User.tenant_id == user.tenant_id):
+        if manager_id:
+            children[manager_id].append(uid)
+    seen, stack = {user.user_id}, [user.user_id]
+    while stack:
+        for child in children.get(stack.pop(), ()):
+            if child not in seen:
+                seen.add(child)
+                stack.append(child)
+    return seen
+
+
+def visible_user_ids(db: Session, user: User) -> Optional[Set[str]]:
+    """Owners whose records this user may see; None means everyone's. Cached per request."""
+    if sees_everything(user):
+        return None
+    cached = getattr(user, "_visible_user_ids", None)
+    if cached is None:
+        cached = team_user_ids(db, user) if user.sales_level else {user.user_id}
+        user._visible_user_ids = cached
+    return cached
+
+
+def owner_clause(db: Session, user: User, column):
+    """SQL condition limiting `column` (an owner id) to what the user may see; None = no limit."""
+    ids = visible_user_ids(db, user)
+    if ids is None:
+        return None
+    clause = column.in_(ids)
+    if can_manage_contacts(user):
+        clause = or_(clause, column.is_(None))  # unassigned records can be picked up
+    return clause
+
+
+def scope(query, db: Session, user: User, column):
+    clause = owner_clause(db, user, column)
+    return query if clause is None else query.filter(clause)
+
+
+def can_see_owner(db: Session, user: User, owner_id: Optional[str]) -> bool:
+    ids = visible_user_ids(db, user)
+    if ids is None:
+        return True
+    return owner_id in ids or (owner_id is None and can_manage_contacts(user))
+
+
 def can_access_contact(user: User, prospect: Prospect) -> bool:
-    return can_manage_contacts(user) or prospect.owner_id == user.user_id
+    return can_see_owner(object_session(prospect), user, prospect.owner_id)
 
 
 # ── Normalisation ──────────────────────────────────────────────────

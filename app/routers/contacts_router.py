@@ -40,6 +40,9 @@ from app.services.contact_service import (
     MERGE_CHOOSABLE,
     can_access_contact,
     can_manage_contacts,
+    can_see_owner,
+    scope,
+    visible_user_ids,
     clean_str,
     merge_contacts,
     normalize_tags,
@@ -196,9 +199,8 @@ def _require_manager(user: User):
 def _visible(db: Session, user: User):
     """Contacts this user may see (not deleted; own contacts only without manage_prospects)."""
     query = db.query(Prospect).filter(Prospect.tenant_id == user.tenant_id, Prospect.deleted_at.is_(None))
-    if not can_manage_contacts(user):
-        query = query.filter(Prospect.owner_id == user.user_id)
-    return query
+    # Own records plus those of everyone below in the sales hierarchy (BR-SH-02)
+    return scope(query, db, user, Prospect.owner_id)
 
 
 def _get_contact(db: Session, user: User, prospect_id: str) -> Prospect:
@@ -217,6 +219,8 @@ def _check_owner(db: Session, user: User, owner_id: Optional[str]):
         User.user_id == owner_id, User.tenant_id == user.tenant_id
     ).first():
         raise HTTPException(status_code=400, detail="Owner must be a user in your workspace")
+    if owner_id and not can_see_owner(db, user, owner_id):
+        raise HTTPException(status_code=403, detail="You can only assign records to yourself or your team")
 
 
 def _get_account(db: Session, user: User, account_id: str) -> Account:
@@ -469,13 +473,15 @@ def _filtered_query(db: Session, user: User, q=None, owner=None, account_id=None
                     campaign_id=None, consent_status=None, email_valid=None, has_phone=None, country=None,
                     industry=None, lifecycle_stage=None, lead_status=None, filters=None):
     query = _visible(db, user)
-    if can_manage_contacts(user):
-        if owner == "me":
-            query = query.filter(Prospect.owner_id == user.user_id)
-        elif owner == "unassigned":
-            query = query.filter(Prospect.owner_id.is_(None))
-        elif owner:
-            query = query.filter(Prospect.owner_id == owner)
+    # Owner filters narrow within what the user may already see
+    if owner == "me":
+        query = query.filter(Prospect.owner_id == user.user_id)
+    elif owner == "unassigned":
+        query = query.filter(Prospect.owner_id.is_(None))
+    elif owner == "team":
+        pass
+    elif owner:
+        query = query.filter(Prospect.owner_id == owner)
 
     if q and q.strip():
         query = query.filter(search_condition(q))
@@ -711,6 +717,9 @@ def contact_owners(db: Session = Depends(get_db), current_user: User = Depends(t
     users = db.query(User).filter(
         User.tenant_id == current_user.tenant_id, User.status == "ACTIVE"
     ).order_by(User.first_name, User.last_name).all()
+    visible = visible_user_ids(db, current_user)
+    if visible is not None:  # hierarchy users pick owners from their own team (BR-SH-02)
+        users = [u for u in users if u.user_id in visible]
     return [{"user_id": u.user_id, "name": _user_name(u), "email": u.email, "role": u.role} for u in users]
 
 
@@ -884,6 +893,8 @@ def bulk_update(
             raise HTTPException(status_code=400, detail=str(exc))
         result.update(updated=count, enrolled_count=count, rejected_count=len(rejections),
                       rejected_summary=summarize(rejections), rejected=rejections[:MAX_REJECTIONS_RETURNED])
+        from app.services.daily_limit import enrollment_notice
+        result["daily_limit_notice"] = enrollment_notice(db, current_user, count)
     elif action == "delete":
         if current_user.role == "AGENT":
             raise HTTPException(status_code=403, detail="Agents cannot delete contacts")

@@ -363,6 +363,7 @@ async def enroll_prospects(
     Returns the count of newly enrolled prospects and a reason for each one not enrolled.
     """
     from app.services.enrollment_rules import MAX_REJECTIONS_RETURNED, summarize
+    from app.services.daily_limit import enrollment_notice
     try:
         _get_campaign_for_user(service, campaign_id, current_user)
         count, rejections = service.enroll_prospects_with_report(
@@ -376,6 +377,7 @@ async def enroll_prospects(
             "rejected_count": len(rejections),
             "rejected_summary": summarize(rejections),
             "rejected": rejections[:MAX_REJECTIONS_RETURNED],
+            "daily_limit_notice": enrollment_notice(db, current_user, count),
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

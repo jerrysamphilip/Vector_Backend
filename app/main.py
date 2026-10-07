@@ -158,6 +158,38 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(60)
 
     send_safety_task = asyncio.create_task(run_send_safety())
+
+    # Phase 2 "Should" jobs: notification emails every minute; lead recycling and
+    # stale-deal alerts hourly (BR-SF-02, 05, 07); calendar / email sync (BR-SF-16)
+    async def run_sales_jobs():
+        from app.services import sales_jobs, account_sync
+        from app.services.notifications import email_pending
+        loop = asyncio.get_event_loop()
+        last_hourly = 0.0
+        last_sync = 0.0
+        while True:
+            try:
+                with SessionLocal() as db:
+                    await email_pending(db)
+                if loop.time() - last_hourly >= 3600:
+                    def _hourly():
+                        with SessionLocal() as db:
+                            return sales_jobs.recycle_leads(db), sales_jobs.stale_deals(db)
+                    await loop.run_in_executor(None, _hourly)
+                    last_hourly = loop.time()
+                if loop.time() - last_sync >= 600:
+                    def _sync():
+                        with SessionLocal() as db:
+                            return account_sync.sync_all(db)
+                    await loop.run_in_executor(None, _sync)
+                    last_sync = loop.time()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"Sales jobs error: {e}")
+            await asyncio.sleep(60)
+
+    sales_jobs_task = asyncio.create_task(run_sales_jobs())
     try:
         yield
     except (asyncio.CancelledError, KeyboardInterrupt):
@@ -174,6 +206,7 @@ async def lifespan(app: FastAPI):
         warmup_task.cancel()
         purge_task.cancel()
         send_safety_task.cancel()
+        sales_jobs_task.cancel()
 
         await asyncio.gather(
             scheduler_task,
@@ -182,6 +215,7 @@ async def lifespan(app: FastAPI):
             warmup_task,
             purge_task,
             send_safety_task,
+            sales_jobs_task,
             return_exceptions=True,
         )
 
@@ -596,6 +630,9 @@ try:
     from app.db.sending_schema import ensure_sending_schema
     ensure_sending_schema(engine)
 
+    from app.db.phase2_schema import ensure_phase2_schema
+    ensure_phase2_schema(engine)
+
     from app.db.security_schema import encrypt_mailbox_passwords
     encrypt_mailbox_passwords(engine)
 
@@ -688,6 +725,20 @@ app.include_router(tasks_router)
 app.include_router(lists_router)
 app.include_router(crm_router)
 app.include_router(import_router)
+
+# Phase 2: sales hierarchy, leads, pipeline, reports (BRD v2.0 5.4 - 5.10)
+from app.routers.sales_router import router as sales_router
+from app.routers.sales_reports_router import router as sales_reports_router
+app.include_router(sales_router)
+app.include_router(sales_reports_router)
+from app.routers.sales_admin_router import router as sales_admin_router
+app.include_router(sales_admin_router)
+from app.routers.quotes_router import router as quotes_router
+from app.routers.custom_reports_router import router as custom_reports_router
+from app.routers.connections_router import router as connections_router
+app.include_router(quotes_router)
+app.include_router(custom_reports_router)
+app.include_router(connections_router)
  
  
 # =============================

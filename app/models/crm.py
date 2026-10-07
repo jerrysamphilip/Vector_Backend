@@ -43,6 +43,7 @@ class CrmTask(Base):
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     prospect_id = Column(String(36), ForeignKey("prospects.prospect_id"), nullable=True, index=True)
     account_id = Column(String(36), ForeignKey("accounts.account_id"), nullable=True, index=True)
+    opportunity_id = Column(String(36), ForeignKey("opportunities.opportunity_id"), nullable=True, index=True)
     title = Column(String(255), nullable=False)
     notes = Column(Text, nullable=True)
     task_type = Column(String(20), nullable=False, default="TODO")  # TODO / CALL / EMAIL / MEETING
