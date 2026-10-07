@@ -68,6 +68,7 @@ class Lead(Base):
     next_step = Column(String(255), nullable=True)
     next_step_at = Column(TIMESTAMP, nullable=True)
     disqualified_reason = Column(String(255), nullable=True)
+    recycle_at = Column(TIMESTAMP, nullable=True)       # a disqualified lead reopens on this date (BR-SF-02)
     opportunity_id = Column(String(36), nullable=True)
     campaign_id = Column(String(36), ForeignKey("campaigns.campaign_id"), nullable=True)
     stage_changed_at = Column(TIMESTAMP, server_default=func.now())
@@ -121,6 +122,12 @@ class Opportunity(Base):
     closed_reason = Column(String(255), nullable=True)
     next_step = Column(String(255), nullable=True)
     description = Column(Text, nullable=True)
+    # Forecast category (BR-SF-08): PIPELINE / BEST_CASE / COMMIT / CLOSED / OMITTED. Follows the
+    # stage's probability unless a user set it by hand (forecast_category_manual).
+    forecast_category = Column(String(12), nullable=True)
+    forecast_category_manual = Column(Boolean, nullable=False, default=False)
+    # The campaign that sourced the deal, for campaign ROI (BR-SF-11)
+    campaign_id = Column(String(36), ForeignKey("campaigns.campaign_id"), nullable=True)
     closed_at = Column(TIMESTAMP, nullable=True)
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())

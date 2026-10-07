@@ -18,9 +18,25 @@ from app.models.user import User
 from app.services import crm
 from app.services.contact_service import can_see_owner, clean_str, scope
 
-LEAD_FIELDS = ("owner_id", "stage", "source", "next_step", "next_step_at", "disqualified_reason")
+LEAD_FIELDS = ("owner_id", "stage", "source", "next_step", "next_step_at", "disqualified_reason", "recycle_at")
 OPP_FIELDS = ("name", "owner_id", "stage_id", "amount", "close_date", "client_type", "closed_reason",
-              "next_step", "description", "account_id", "prospect_id")
+              "next_step", "description", "account_id", "prospect_id", "forecast_category")
+
+FORECAST_CATEGORIES = {"PIPELINE": "Pipeline", "BEST_CASE": "Best case", "COMMIT": "Commit",
+                       "CLOSED": "Closed", "OMITTED": "Omitted"}
+
+
+def category_for(stage) -> str:
+    """Default forecast category from the stage (BR-SF-08)."""
+    if stage.is_won:
+        return "CLOSED"
+    if stage.is_lost:
+        return "OMITTED"
+    if stage.probability >= 70:
+        return "COMMIT"
+    if stage.probability >= 40:
+        return "BEST_CASE"
+    return "PIPELINE"
 
 
 # ── Stages ───────────────────────────────────────────────────
@@ -228,7 +244,55 @@ def apply_stage(db: Session, opp: Opportunity, stage_id: str) -> SalesStage:
     elif status == "OPEN":
         opp.closed_at = None
     opp.stage_id, opp.status = stage.stage_id, status
+    # Closed deals always take the closed category; open ones follow the stage unless set by hand
+    if status != "OPEN" or not opp.forecast_category_manual:
+        opp.forecast_category = category_for(stage)
+        if status != "OPEN":
+            opp.forecast_category_manual = False
     return stage
+
+
+def require_close_reason(db: Session, opp: Opportunity, stage: SalesStage, reason: Optional[str]) -> None:
+    """A won or lost deal records why (BR-SF-05), unless the workspace turned that off."""
+    from app.services.sales_settings import get_settings
+    if stage_status(stage) != "OPEN" and not clean_str(reason) and get_settings(db, opp.tenant_id).get("require_close_reason", True):
+        raise HTTPException(status_code=400, detail=f"Say why the deal was {'won' if stage.is_won else 'lost'}")
+
+
+def source_campaign(db: Session, prospect_id: Optional[str], before: Optional[datetime] = None) -> Optional[str]:
+    """The campaign that most recently emailed the contact (before a date): its ROI gets the deal (BR-SF-11)."""
+    if not prospect_id:
+        return None
+    from app.models.email_message import EmailMessage
+    q = db.query(EmailMessage.campaign_id).filter(EmailMessage.prospect_id == prospect_id,
+                                                 EmailMessage.direction == "OUTBOUND",
+                                                 EmailMessage.sent_at.isnot(None),
+                                                 EmailMessage.campaign_id.isnot(None))
+    if before:
+        q = q.filter(EmailMessage.sent_at <= before)
+    row = q.order_by(EmailMessage.sent_at.desc()).first()
+    return row[0] if row else None
+
+
+def auto_owner(db: Session, tenant_id: str, prospect: Optional[Prospect]) -> Optional[str]:
+    """Owner for an unowned lead from the workspace's assignment rule (BR-SF-03): region, else round robin."""
+    from app.services.sales_settings import get_settings, save_settings
+    rule = get_settings(db, tenant_id)["lead_assignment"]
+    mode = rule.get("mode") or "off"
+    if mode == "off":
+        return None
+    active = {u for (u,) in db.query(User.user_id).filter(User.tenant_id == tenant_id, User.status == "ACTIVE")}
+    if mode == "region" and prospect is not None:
+        for r in rule.get("regions") or []:
+            value = (getattr(prospect, "poc_country" if r.get("field") == "country" else "poc_state", None) or "").strip().lower()
+            if value and value == (r.get("value") or "").strip().lower() and r.get("user_id") in active:
+                return r["user_id"]
+    pool = [u for u in (rule.get("users") or []) if u in active]
+    if not pool:
+        return None
+    index = int(rule.get("next_index") or 0) % len(pool)
+    save_settings(db, tenant_id, {"lead_assignment": {"next_index": index + 1}})
+    return pool[index]
 
 
 def opp_dicts(db: Session, opps: List[Opportunity]) -> List[dict]:
@@ -242,6 +306,12 @@ def opp_dicts(db: Session, opps: List[Opportunity]) -> List[dict]:
     contacts = {p.prospect_id: p for p in db.query(Prospect).filter(
         Prospect.prospect_id.in_({o.prospect_id for o in opps if o.prospect_id}))}
     today = date.today()
+    from app.models.campaign import Campaign
+    campaigns = {c.campaign_id: c.campaign_name for c in db.query(Campaign.campaign_id, Campaign.campaign_name).filter(
+        Campaign.campaign_id.in_({o.campaign_id for o in opps if o.campaign_id}))} if any(o.campaign_id for o in opps) else {}
+    last_touch = last_activity(db, [o.opportunity_id for o in opps])
+    from app.services.sales_settings import get_settings
+    stale_days = int(get_settings(db, opps[0].tenant_id).get("stale_deal_days") or 14)
     out = []
     for o in opps:
         s = stage_map.get(o.stage_id)
@@ -259,8 +329,36 @@ def opp_dicts(db: Session, opps: List[Opportunity]) -> List[dict]:
             "closed_reason": o.closed_reason, "next_step": o.next_step, "description": o.description,
             "closed_at": o.closed_at, "created_at": o.created_at, "updated_at": o.updated_at,
             "overdue": bool(o.status == "OPEN" and o.close_date and o.close_date < today),
+            "forecast_category": o.forecast_category or (category_for(s) if s else "PIPELINE"),
+            "forecast_category_manual": bool(o.forecast_category_manual),
+            "campaign_id": o.campaign_id, "campaign_name": campaigns.get(o.campaign_id),
+            "days_idle": idle_days(o, last_touch.get(o.opportunity_id)),
+            "stale": bool(o.status == "OPEN" and (idle_days(o, last_touch.get(o.opportunity_id)) >= stale_days
+                                                   or (o.close_date and o.close_date < today))),
         })
     return out
+
+
+def last_activity(db: Session, opp_ids: List[str]) -> Dict[str, datetime]:
+    """Latest logged activity or task change per deal."""
+    if not opp_ids:
+        return {}
+    from app.models.contact_activity import ContactActivity
+    from app.models.crm import CrmTask
+    out: Dict[str, datetime] = {}
+    for oid, at in db.query(ContactActivity.opportunity_id, func.max(ContactActivity.occurred_at)).filter(
+            ContactActivity.opportunity_id.in_(opp_ids)).group_by(ContactActivity.opportunity_id):
+        out[oid] = at
+    for oid, at in db.query(CrmTask.opportunity_id, func.max(CrmTask.updated_at)).filter(
+            CrmTask.opportunity_id.in_(opp_ids)).group_by(CrmTask.opportunity_id):
+        if at and (oid not in out or at > out[oid]):
+            out[oid] = at
+    return out
+
+
+def idle_days(opp: Opportunity, last_touch: Optional[datetime]) -> int:
+    latest = max([d for d in (opp.updated_at or opp.created_at, last_touch) if d] or [datetime.utcnow()])
+    return max((datetime.utcnow() - latest).days, 0)
 
 
 def convert_lead(db: Session, user: User, lead: Lead, data: dict) -> Opportunity:
@@ -288,6 +386,7 @@ def convert_lead(db: Session, user: User, lead: Lead, data: dict) -> Opportunity
         close_date=data.get("close_date"),
         client_type=data.get("client_type") or default_client_type(db, user.tenant_id, account_id),
         next_step=clean_str(data.get("next_step")) or lead.next_step, created_by=user.user_id,
+        campaign_id=lead.campaign_id or source_campaign(db, lead.prospect_id, lead.created_at),
     )
     apply_stage(db, opp, stage_id)
     db.add(opp)

@@ -19,7 +19,13 @@ class ContactActivity(Base):
 
     activity_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
-    prospect_id = Column(String(36), ForeignKey("prospects.prospect_id"), nullable=False, index=True)
+    prospect_id = Column(String(36), ForeignKey("prospects.prospect_id"), nullable=True, index=True)
+    # Activity logged on a deal (BR-SF-06); prospect_id is then the deal's contact, if it has one
+    opportunity_id = Column(String(36), ForeignKey("opportunities.opportunity_id"), nullable=True, index=True)
+    # Where it came from: MANUAL, or GMAIL / OUTLOOK / GOOGLE_CALENDAR / OUTLOOK_CALENDAR for synced items
+    # (BR-SF-16); external_id de-duplicates synced items
+    source = Column(String(20), nullable=True)
+    external_id = Column(String(255), nullable=True, index=True)
 
     activity_type = Column(String(20), nullable=False, default="NOTE")  # NOTE / CALL / MEETING / EMAIL (logged by hand)
     subject = Column(String(255), nullable=True)

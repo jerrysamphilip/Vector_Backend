@@ -38,6 +38,7 @@ class TaskWrite(BaseModel):
     owner_id: Optional[str] = None
     prospect_id: Optional[str] = None
     account_id: Optional[str] = None
+    opportunity_id: Optional[str] = None
 
 
 def _naive(value):
@@ -64,7 +65,23 @@ def task_dict(db: Session, t: CrmTask, names: dict = None) -> dict:
         "prospect_id": t.prospect_id, "contact_name": contact.full_name if contact else None,
         "contact_email": contact.email if contact else None,
         "account_id": t.account_id, "company_name": company.name if company else None,
+        "opportunity_id": t.opportunity_id, "opportunity_name": _opp_name(db, t.opportunity_id),
     }
+
+
+def _opp_name(db: Session, opportunity_id: Optional[str]) -> Optional[str]:
+    if not opportunity_id:
+        return None
+    from app.models.sales import Opportunity
+    return db.query(Opportunity.name).filter(Opportunity.opportunity_id == opportunity_id).scalar()
+
+
+def _check_deal(db: Session, user: User, opportunity_id: Optional[str]):
+    """Tasks on a deal (BR-SF-06) follow the deal's visibility."""
+    if opportunity_id:
+        from app.services.sales import get_opp
+        return get_opp(db, user, opportunity_id)
+    return None
 
 
 def _check_targets(db: Session, user: User, prospect_id: Optional[str], account_id: Optional[str]):
@@ -107,6 +124,7 @@ def list_tasks(
     due: Optional[str] = Query(None, pattern="^(overdue|today|week|none)$"),
     prospect_id: Optional[str] = None,
     account_id: Optional[str] = None,
+    opportunity_id: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -114,7 +132,10 @@ def list_tasks(
 ):
     """My tasks queue (default), everyone's tasks (admins), or a record's tasks."""
     query = db.query(CrmTask).filter(CrmTask.tenant_id == current_user.tenant_id)
-    if prospect_id or account_id:
+    if opportunity_id:
+        _check_deal(db, current_user, opportunity_id)
+        query = query.filter(CrmTask.opportunity_id == opportunity_id)
+    elif prospect_id or account_id:
         _check_targets(db, current_user, prospect_id, account_id)
         if prospect_id:
             query = query.filter(CrmTask.prospect_id == prospect_id)
@@ -160,12 +181,24 @@ def create_task(payload: TaskWrite, db: Session = Depends(get_db), current_user:
         raise HTTPException(status_code=400, detail="Give the task a title")
     _validate(data, current_user, db)
     _check_targets(db, current_user, data.get("prospect_id"), data.get("account_id"))
+    deal = _check_deal(db, current_user, data.get("opportunity_id"))
+    if deal:  # a deal task also shows on its contact and company
+        data.setdefault("prospect_id", deal.prospect_id)
+        data.setdefault("account_id", deal.account_id)
     task = CrmTask(tenant_id=current_user.tenant_id, title=clean_str(data["title"]), notes=clean_str(data.get("notes")),
                    task_type=data.get("task_type") or "TODO", priority=data.get("priority") or "MEDIUM",
                    due_at=_naive(data.get("due_at")), reminder_at=_naive(data.get("reminder_at")),
                    owner_id=data.get("owner_id") or current_user.user_id, created_by=current_user.user_id,
-                   prospect_id=data.get("prospect_id"), account_id=data.get("account_id"))
+                   prospect_id=data.get("prospect_id"), account_id=data.get("account_id"),
+                   opportunity_id=data.get("opportunity_id"))
     db.add(task)
+    if deal:
+        deal.updated_at = datetime.utcnow()
+    if task.owner_id != current_user.user_id:
+        from app.services.notifications import notify
+        notify(db, current_user.tenant_id, [task.owner_id], "TASK", f"New task: {task.title}",
+               f"Assigned by {current_user.first_name} {current_user.last_name}".strip(),
+               f"/app/deals/{deal.opportunity_id}" if deal else "/app/tasks")
     db.commit()
     return task_dict(db, task)
 
@@ -176,6 +209,7 @@ def update_task(task_id: str, payload: TaskWrite, db: Session = Depends(get_db),
     data = payload.model_dump(exclude_unset=True)
     data.pop("prospect_id", None)
     data.pop("account_id", None)
+    data.pop("opportunity_id", None)
     _validate(data, current_user, db)
     for field, value in data.items():
         if field in ("due_at", "reminder_at"):

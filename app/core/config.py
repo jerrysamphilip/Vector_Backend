@@ -94,6 +94,7 @@ class Settings(BaseSettings):
     # 1 = calendar year). New contacts emailed per user per day; follow-ups are not counted.
     FISCAL_YEAR_START_MONTH: int = 4
     DAILY_NEW_CONTACT_LIMIT: int = 500
+    QUOTE_CURRENCY: str = "USD"          # printed on proposal PDFs (BR-SF-15)
 
     # Microsoft 365 mailboxes sign in with OAuth (BR-DF-05); see app/services/ms365_oauth.py
     MS365_CLIENT_ID: str = ""
@@ -101,6 +102,13 @@ class Settings(BaseSettings):
     MS365_TENANT_ID: str = "common"
     MS365_REDIRECT_URI: str = ""          # https://<host>/vector/api/inboxes/oauth/microsoft/callback
     MS365_POST_CONNECT_URL: str = "/vector/app/inboxes"  # where the browser lands afterwards
+
+    # Personal calendar and email sync (BR-SF-16). Microsoft reuses MS365_CLIENT_ID/SECRET with its own redirect.
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = ""         # https://<host>/vector/api/connections/google/callback
+    GRAPH_REDIRECT_URI: str = ""          # https://<host>/vector/api/connections/microsoft/callback
+    CONNECTIONS_POST_CONNECT_URL: str = "/vector/app/connections"
     
     # JWT Authentication (validated at start-up, see app/core/secrets_guard.py)
     JWT_SECRET_KEY: str = "change-this-in-production-use-a-long-random-string"

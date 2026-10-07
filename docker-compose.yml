@@ -44,6 +44,15 @@ x-api-env: &api-env
   MS365_TENANT_ID: ${MS365_TENANT_ID:-common}
   MS365_REDIRECT_URI: ${MS365_REDIRECT_URI:-http://localhost/vector/api/inboxes/oauth/microsoft/callback}
   MS365_POST_CONNECT_URL: ${MS365_POST_CONNECT_URL:-/vector/app/inboxes}
+  # Personal calendar & email sync (Google, and Microsoft Graph with the same Azure app)
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost/vector/api/connections/google/callback}
+  GRAPH_REDIRECT_URI: ${GRAPH_REDIRECT_URI:-http://localhost/vector/api/connections/microsoft/callback}
+  # Sales settings
+  FISCAL_YEAR_START_MONTH: ${FISCAL_YEAR_START_MONTH:-4}
+  DAILY_NEW_CONTACT_LIMIT: ${DAILY_NEW_CONTACT_LIMIT:-500}
+  QUOTE_CURRENCY: ${QUOTE_CURRENCY:-USD}
   SENDER_EMAIL: ${SENDER_EMAIL:-}
   SENDER_NAME: ${SENDER_NAME:-Outreach AI}
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}

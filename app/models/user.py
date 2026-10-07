@@ -55,6 +55,8 @@ class User(Base):
     # user one level up; a user sees their own records and everyone's below them.
     sales_level = Column(Integer, nullable=True)
     manager_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    # Also send in-app notifications by email (BR-SF-07)
+    notify_email = Column(Boolean, nullable=False, default=True)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="users")

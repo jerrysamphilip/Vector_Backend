@@ -17,6 +17,8 @@ from app.models.contact_activity import ContactActivity
 from app.models.contact_field import ContactFieldDefinition
 from app.models.crm import PropertyChange, CrmTask, SavedView, ImportJob
 from app.models.sales import Lead, SalesStage, Opportunity, Proposal
+from app.models.sales_extra import (Notification, WorkflowRule, SalesSetting, SalesTarget, MessageTemplate,
+                                    SavedReport, Product, ProposalLine, UserConnection)
 from app.models.campaign import Campaign, CampaignStateEvent, CampaignProspect
 from app.models.email_sequence import EmailSequence
 from app.models.email_template import AIPrompt, EmailTemplate, EmailTemplateVersion

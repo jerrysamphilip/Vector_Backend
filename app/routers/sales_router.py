@@ -30,6 +30,8 @@ from app.services import crm
 from app.services import sales as svc
 from app.services.contact_service import (SALES_LEVELS, can_access_contact, clean_str, sees_everything,
                                           team_user_ids, visible_user_ids)
+from app.services.notifications import notify
+from app.services.sales_settings import can_see_amounts, get_settings, masked_for
 
 router = APIRouter(tags=["Sales"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -135,6 +137,7 @@ class LeadUpdate(BaseModel):
     next_step_at: Optional[datetime] = None
     disqualified_reason: Optional[str] = None
     qualification: Optional[Dict[str, Any]] = None
+    recycle_in_days: Optional[int] = None   # reopen a disqualified lead after this many days (BR-SF-02)
 
 
 class ConvertRequest(BaseModel):
@@ -156,6 +159,7 @@ def _naive(dt):
 
 @router.get("/leads/meta")
 def leads_meta(db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    settings_ = get_settings(db, current_user.tenant_id)
     return {
         "stages": [{"value": k, "label": v[0], "lifecycle": v[1], "open": k in OPEN_LEAD_STAGES}
                    for k, v in LEAD_STAGES.items()],
@@ -165,6 +169,12 @@ def leads_meta(db: Session = Depends(get_db), current_user: User = Depends(tenan
         "sales_stages": [svc.stage_dict(s) for s in svc.stages(db, current_user.tenant_id)],
         "fiscal_year_start_month": svc.settings.FISCAL_YEAR_START_MONTH,
         "sees_everything": sees_everything(current_user),
+        "forecast_categories": [{"value": k, "label": v} for k, v in svc.FORECAST_CATEGORIES.items()],
+        "disqualify_reasons": settings_["disqualify_reasons"],
+        "default_recycle_days": settings_["default_recycle_days"],
+        "win_reasons": settings_["win_reasons"], "loss_reasons": settings_["loss_reasons"],
+        "require_close_reason": settings_["require_close_reason"],
+        "can_see_amounts": can_see_amounts(db, current_user),
     }
 
 
@@ -258,20 +268,96 @@ def create_lead(payload: LeadCreate, db: Session = Depends(get_db), current_user
     if existing:
         raise HTTPException(status_code=409, detail={"message": "This contact already has an open lead",
                                                      "lead_id": existing.lead_id})
-    owner_id = payload.owner_id or prospect.owner_id or current_user.user_id
-    svc.check_assignable(db, current_user, owner_id)
-    lead = Lead(tenant_id=current_user.tenant_id, prospect_id=prospect.prospect_id, account_id=prospect.account_id,
-                owner_id=owner_id, source=clean_str(payload.source) or prospect.lead_source,
-                stage="NEW", next_step=clean_str(payload.next_step), next_step_at=_naive(payload.next_step_at),
-                campaign_id=payload.campaign_id, created_by=current_user.user_id)
-    db.add(lead)
-    db.flush()
-    if payload.stage and payload.stage not in ("NEW", "SQL"):
-        svc.set_lead_stage(db, lead, payload.stage, current_user)
-    svc.sync_contact_lifecycle(db, prospect, LEAD_STAGES[lead.stage][1], current_user.user_id)
-    _record(db, current_user, "LEAD", lead.lead_id, {"created": None}, {"created": "Lead created"})
+    lead = _make_lead(db, current_user, prospect, payload.owner_id, clean_str(payload.source), payload.stage,
+                      clean_str(payload.next_step), _naive(payload.next_step_at), payload.campaign_id)
     db.commit()
     return svc.lead_dicts(db, [lead])[0]
+
+
+def _make_lead(db: Session, user: User, prospect: Prospect, owner_id: Optional[str], source: Optional[str],
+               stage: Optional[str], next_step=None, next_step_at=None, campaign_id=None) -> Lead:
+    """Owner: as given, else the contact's owner, else the assignment rule (BR-SF-03), else the creator."""
+    auto = False
+    if not owner_id:
+        owner_id = prospect.owner_id
+    if not owner_id:
+        owner_id = svc.auto_owner(db, user.tenant_id, prospect)
+        auto = bool(owner_id)
+    owner_id = owner_id or user.user_id
+    if not auto:
+        svc.check_assignable(db, user, owner_id)
+    lead = Lead(tenant_id=user.tenant_id, prospect_id=prospect.prospect_id, account_id=prospect.account_id,
+                owner_id=owner_id, source=source or prospect.lead_source, stage="NEW", next_step=next_step,
+                next_step_at=next_step_at, campaign_id=campaign_id, created_by=user.user_id)
+    db.add(lead)
+    db.flush()
+    if auto and not prospect.owner_id:
+        prospect.owner_id = owner_id  # the contact follows its lead's owner
+    if stage and stage not in ("NEW", "SQL"):
+        svc.set_lead_stage(db, lead, stage, user)
+    svc.sync_contact_lifecycle(db, prospect, LEAD_STAGES[lead.stage][1], user.user_id)
+    _record(db, user, "LEAD", lead.lead_id, {"created": None}, {"created": "Lead created" + (" (auto-assigned)" if auto else "")})
+    if owner_id != user.user_id:
+        notify(db, user.tenant_id, [owner_id], "ASSIGNED", f"New lead: {prospect.full_name or prospect.email}",
+               f"{'Assigned automatically' if auto else 'Assigned to you'}"
+               f"{' from a campaign reply' if campaign_id else ''}.", f"/app/leads/{lead.lead_id}")
+    return lead
+
+
+class FromMessage(BaseModel):
+    message_id: str
+    owner_id: Optional[str] = None
+
+
+@router.post("/leads/from-message", status_code=201)
+def lead_from_message(payload: FromMessage, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    """One click: turn a positive campaign reply into an engaged lead (BR-SF-01)."""
+    from app.models.email_message import EmailMessage
+    msg = db.query(EmailMessage).filter(EmailMessage.message_id == payload.message_id).first()
+    prospect = db.query(Prospect).filter(Prospect.prospect_id == msg.prospect_id,
+                                         Prospect.tenant_id == current_user.tenant_id,
+                                         Prospect.deleted_at.is_(None)).first() if msg else None
+    if not msg or not prospect or not can_access_contact(current_user, prospect):
+        raise HTTPException(status_code=404, detail="Reply not found")
+    existing = db.query(Lead).filter(Lead.prospect_id == prospect.prospect_id, Lead.stage.in_(OPEN_LEAD_STAGES)).first()
+    if existing:
+        raise HTTPException(status_code=409, detail={"message": "This contact already has an open lead",
+                                                     "lead_id": existing.lead_id})
+    snippet = (msg.body_text or "").strip().replace("\r", "")[:300]
+    lead = _make_lead(db, current_user, prospect, payload.owner_id, "Campaign reply", "ENGAGED",
+                      "Follow up on their reply", datetime.utcnow() + timedelta(days=1), msg.campaign_id)
+    lead.qualification = {"need": True, "notes": f"Replied: {snippet}" if snippet else None}
+    db.commit()
+    return svc.lead_dicts(db, [lead])[0]
+
+
+@router.get("/leads/reply-suggestions")
+def reply_suggestions(db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    """Recent positive replies from contacts you can see who have no open lead yet (BR-SF-01)."""
+    from app.models.email_message import EmailEvent, EmailMessage
+    since = datetime.utcnow() - timedelta(days=30)
+    outbound = db.query(EmailEvent.message_id).filter(EmailEvent.event_type == EmailEvent.EVENT_POSITIVE_REPLY,
+                                                      EmailEvent.event_time >= since)
+    replied = {pid for (pid,) in db.query(EmailMessage.prospect_id).filter(EmailMessage.message_id.in_(outbound))}
+    if not replied:
+        return {"items": []}
+    open_leads = {pid for (pid,) in db.query(Lead.prospect_id).filter(Lead.prospect_id.in_(replied),
+                                                                     Lead.stage.in_(OPEN_LEAD_STAGES))}
+    from app.services.contact_service import scope
+    contacts = scope(db.query(Prospect).filter(Prospect.prospect_id.in_(replied - open_leads),
+                                               Prospect.deleted_at.is_(None),
+                                               Prospect.tenant_id == current_user.tenant_id),
+                     db, current_user, Prospect.owner_id).limit(50).all()
+    items = []
+    for p in contacts:
+        reply = db.query(EmailMessage).filter(EmailMessage.prospect_id == p.prospect_id,
+                                              EmailMessage.direction == "INBOUND").order_by(EmailMessage.sent_at.desc()).first()
+        if reply:
+            items.append({"message_id": reply.message_id, "prospect_id": p.prospect_id, "contact_name": p.full_name,
+                          "company_name": p.company_name, "subject": reply.subject,
+                          "snippet": (reply.body_text or "")[:200], "received_at": reply.sent_at,
+                          "campaign_id": reply.campaign_id})
+    return {"items": sorted(items, key=lambda i: i["received_at"] or datetime.min, reverse=True)}
 
 
 @router.get("/leads/{lead_id}")
@@ -308,6 +394,11 @@ def update_lead(lead_id: str, payload: LeadUpdate, db: Session = Depends(get_db)
         lead.qualification = q
     if data.get("stage"):
         svc.set_lead_stage(db, lead, data["stage"], current_user)
+    if lead.stage == "DISQUALIFIED" and "recycle_in_days" in data:
+        days = data["recycle_in_days"]
+        lead.recycle_at = datetime.utcnow() + timedelta(days=days) if days else None
+    elif lead.stage != "DISQUALIFIED":
+        lead.recycle_at = None
     _record(db, current_user, "LEAD", lead.lead_id, before, crm.snapshot(lead, svc.LEAD_FIELDS))
     db.commit()
     return get_lead(lead_id, db, current_user)
@@ -317,9 +408,11 @@ def update_lead(lead_id: str, payload: LeadUpdate, db: Session = Depends(get_db)
 def convert(lead_id: str, payload: ConvertRequest, db: Session = Depends(get_db),
             current_user: User = Depends(tenant_user)):
     lead = svc.get_lead(db, current_user, lead_id)
-    opp = svc.convert_lead(db, current_user, lead, payload.model_dump(exclude_unset=True))
+    data = payload.model_dump(exclude_unset=True)
+    _check_amount_rights(db, current_user, data)
+    opp = svc.convert_lead(db, current_user, lead, data)
     db.commit()
-    return svc.opp_dicts(db, [opp])[0]
+    return masked_for(db, current_user, svc.opp_dicts(db, [opp])[0])
 
 
 @router.delete("/leads/{lead_id}")
@@ -420,6 +513,7 @@ class OppWrite(BaseModel):
     closed_reason: Optional[str] = None
     next_step: Optional[str] = None
     description: Optional[str] = None
+    forecast_category: Optional[str] = None
 
 
 def _opp_query(db, user, owner=None, status=None, stage_id=None, client_type=None, close_from=None,
@@ -450,6 +544,11 @@ def _opp_query(db, user, owner=None, status=None, stage_id=None, client_type=Non
     return query
 
 
+def _check_amount_rights(db: Session, user: User, data: dict):
+    if "amount" in data and not can_see_amounts(db, user):
+        raise HTTPException(status_code=403, detail="Your role cannot see or change amounts")
+
+
 def _check_opp_links(db: Session, user: User, data: dict):
     if data.get("client_type") and data["client_type"] not in CLIENT_TYPES:
         raise HTTPException(status_code=400, detail="client_type must be NEW or EXISTING")
@@ -467,19 +566,24 @@ def _check_opp_links(db: Session, user: User, data: dict):
 def list_opps(owner: Optional[str] = None, status: Optional[str] = None, stage_id: Optional[str] = None,
               client_type: Optional[str] = None, close_from: Optional[date] = None, close_to: Optional[date] = None,
               q: Optional[str] = None, account_id: Optional[str] = None, prospect_id: Optional[str] = None,
-              sort_by: str = Query("close_date", pattern="^(close_date|amount|created_at|updated_at|name)$"),
+              stale: bool = False, sort_by: str = Query("close_date", pattern="^(close_date|amount|created_at|updated_at|name)$"),
               sort_order: str = Query("asc", pattern="^(asc|desc)$"),
               page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=500),
               db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
     query = _opp_query(db, current_user, owner, status, stage_id, client_type, close_from, close_to, q, account_id,
                        prospect_id)
+    if stale:
+        from app.services.sales_settings import get_settings as _gs
+        cutoff = datetime.utcnow() - timedelta(days=int(_gs(db, current_user.tenant_id).get("stale_deal_days") or 14))
+        query = query.filter(Opportunity.status == "OPEN", or_(Opportunity.updated_at < cutoff,
+                                                                Opportunity.close_date < date.today()))
     agg = query.with_entities(func.count(Opportunity.opportunity_id),
                               func.coalesce(func.sum(Opportunity.amount), 0)).one()
     col = getattr(Opportunity, sort_by)
     rows = query.order_by(col.is_(None), col.asc() if sort_order == "asc" else col.desc(),
                           Opportunity.opportunity_id).offset((page - 1) * page_size).limit(page_size).all()
-    return {"items": svc.opp_dicts(db, rows), "total": agg[0], "total_amount": svc.as_float(agg[1]),
-            "page": page, "page_size": page_size}
+    return masked_for(db, current_user, {"items": svc.opp_dicts(db, rows), "total": agg[0],
+                                         "total_amount": svc.as_float(agg[1]), "page": page, "page_size": page_size})
 
 
 @router.get("/opportunities/board")
@@ -494,7 +598,7 @@ def opp_board(owner: Optional[str] = None, client_type: Optional[str] = None, q:
         total = svc.as_float(query.with_entities(func.coalesce(func.sum(Opportunity.amount), 0)).scalar())
         columns.append({**svc.stage_dict(stage), "count": query.count(), "amount": total,
                         "weighted": round(total * stage.probability / 100, 2), "items": svc.opp_dicts(db, rows)})
-    return {"columns": columns}
+    return masked_for(db, current_user, {"columns": columns})
 
 
 @router.post("/opportunities", status_code=201)
@@ -504,6 +608,7 @@ def create_opp(payload: OppWrite, db: Session = Depends(get_db), current_user: U
     if not name:
         raise HTTPException(status_code=400, detail="Give the opportunity a name")
     _check_opp_links(db, current_user, data)
+    _check_amount_rights(db, current_user, data)
     owner_id = data.get("owner_id") or current_user.user_id
     svc.check_assignable(db, current_user, owner_id)
     stage_list = svc.stages(db, current_user.tenant_id)
@@ -516,13 +621,17 @@ def create_opp(payload: OppWrite, db: Session = Depends(get_db), current_user: U
                       close_date=data.get("close_date"),
                       client_type=data.get("client_type") or svc.default_client_type(db, current_user.tenant_id, account_id),
                       next_step=clean_str(data.get("next_step")), description=data.get("description"),
-                      created_by=current_user.user_id)
-    svc.apply_stage(db, opp, opp.stage_id)
+                      closed_reason=clean_str(data.get("closed_reason")), created_by=current_user.user_id,
+                      campaign_id=svc.source_campaign(db, data.get("prospect_id")))
+    stage = svc.apply_stage(db, opp, opp.stage_id)
+    svc.require_close_reason(db, opp, stage, opp.closed_reason)
+    if data.get("forecast_category") in svc.FORECAST_CATEGORIES and opp.status == "OPEN":
+        opp.forecast_category, opp.forecast_category_manual = data["forecast_category"], True
     db.add(opp)
     db.flush()
     _record(db, current_user, "DEAL", opp.opportunity_id, {"created": None}, {"created": "Opportunity created"})
     db.commit()
-    return svc.opp_dicts(db, [opp])[0]
+    return masked_for(db, current_user, svc.opp_dicts(db, [opp])[0])
 
 
 @router.get("/opportunities/{opportunity_id}")
@@ -534,7 +643,32 @@ def get_opp(opportunity_id: str, db: Session = Depends(get_db), current_user: Us
         Proposal.opportunity_id == opp.opportunity_id).order_by(Proposal.created_at.desc())]
     lead = db.query(Lead).filter(Lead.lead_id == opp.lead_id).first() if opp.lead_id else None
     result["lead"] = svc.lead_dicts(db, [lead])[0] if lead else None
-    return result
+    result["stage_history"] = _stage_history(opp, result["history"])
+    from app.models.sales_extra import ProposalLine
+    for p in result["proposals"]:
+        p["line_count"] = db.query(ProposalLine).filter(ProposalLine.proposal_id == p["proposal_id"]).count()
+    if not can_see_amounts(db, current_user):
+        result["history"] = [h for h in result["history"] if h["field"] != "amount"]
+    return masked_for(db, current_user, result)
+
+
+def _stage_history(opp: Opportunity, history: List[dict]) -> List[dict]:
+    """Each stage the deal has been in, with how long it stayed (BR-SF-04)."""
+    changes = sorted((h for h in history if h["field"] == "stage_id"), key=lambda h: h["changed_at"])
+    now = datetime.utcnow()
+    out = []
+    first = changes[0]["old_value"] if changes else None
+    start = opp.created_at or now
+    current = first
+    for h in changes:
+        out.append({"stage": current, "entered_at": start, "left_at": h["changed_at"],
+                    "days": round((h["changed_at"] - start).total_seconds() / 86400, 1)})
+        current, start = h["new_value"], h["changed_at"]
+    if current is None:
+        current = None
+    out.append({"stage": current, "entered_at": start, "left_at": None,
+                "days": round(((opp.closed_at or now) - start).total_seconds() / 86400, 1)})
+    return [o for o in out if o["stage"]]
 
 
 @router.patch("/opportunities/{opportunity_id}")
@@ -543,6 +677,7 @@ def update_opp(opportunity_id: str, payload: OppWrite, db: Session = Depends(get
     opp = svc.get_opp(db, current_user, opportunity_id)
     data = payload.model_dump(exclude_unset=True)
     _check_opp_links(db, current_user, data)
+    _check_amount_rights(db, current_user, data)
     before = crm.snapshot(opp, svc.OPP_FIELDS)
     if "owner_id" in data:
         if not data["owner_id"]:
@@ -559,8 +694,18 @@ def update_opp(opportunity_id: str, payload: OppWrite, db: Session = Depends(get
     for f in ("closed_reason", "next_step"):
         if f in data:
             setattr(opp, f, clean_str(data[f]))
+    if "forecast_category" in data:
+        if data["forecast_category"] and data["forecast_category"] not in svc.FORECAST_CATEGORIES:
+            raise HTTPException(status_code=400, detail="Unknown forecast category")
+        if data["forecast_category"]:
+            opp.forecast_category, opp.forecast_category_manual = data["forecast_category"], True
+        else:  # back to automatic
+            opp.forecast_category_manual = False
+            current = db.query(SalesStage).filter(SalesStage.stage_id == opp.stage_id).first()
+            opp.forecast_category = svc.category_for(current) if current else "PIPELINE"
     if data.get("stage_id") and data["stage_id"] != opp.stage_id:
         stage = svc.apply_stage(db, opp, data["stage_id"])
+        svc.require_close_reason(db, opp, stage, opp.closed_reason)
         if stage.is_won and opp.prospect_id:
             prospect = db.query(Prospect).filter(Prospect.prospect_id == opp.prospect_id).first()
             svc.sync_contact_lifecycle(db, prospect, "CUSTOMER", current_user.user_id)
@@ -584,6 +729,78 @@ def delete_opp(opportunity_id: str, db: Session = Depends(get_db), current_user:
     db.delete(opp)
     db.commit()
     return {"status": "deleted", "opportunity_id": opportunity_id}
+
+
+# Deal activity and timeline (BR-SF-06)
+
+class DealActivity(BaseModel):
+    activity_type: str = "NOTE"
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    outcome: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    occurred_at: Optional[datetime] = None
+    add_to_calendar: bool = False
+
+
+@router.post("/opportunities/{opportunity_id}/activities", status_code=201)
+def log_deal_activity(opportunity_id: str, payload: DealActivity, db: Session = Depends(get_db),
+                      current_user: User = Depends(tenant_user)):
+    from app.models.contact_activity import ACTIVITY_TYPES, ContactActivity
+    opp = svc.get_opp(db, current_user, opportunity_id)
+    if payload.activity_type not in ACTIVITY_TYPES:
+        raise HTTPException(status_code=400, detail=f"activity_type must be one of {list(ACTIVITY_TYPES)}")
+    if not (clean_str(payload.subject) or clean_str(payload.body)):
+        raise HTTPException(status_code=400, detail="Add a subject or some notes")
+    a = ContactActivity(tenant_id=current_user.tenant_id, prospect_id=opp.prospect_id, opportunity_id=opp.opportunity_id,
+                        activity_type=payload.activity_type, subject=clean_str(payload.subject), body=payload.body,
+                        outcome=clean_str(payload.outcome), duration_minutes=payload.duration_minutes,
+                        occurred_at=_naive(payload.occurred_at) or datetime.utcnow(), created_by=current_user.user_id,
+                        source="MANUAL")
+    db.add(a)
+    opp.updated_at = datetime.utcnow()
+    db.commit()
+    if payload.add_to_calendar and payload.activity_type == "MEETING":
+        from app.services import account_sync
+        account_sync.push_meeting(db, current_user, a, opp.name)
+    return {"activity_id": a.activity_id}
+
+
+@router.get("/opportunities/{opportunity_id}/timeline")
+def deal_timeline(opportunity_id: str, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    """Activities, tasks, emails with the deal's contact, proposals and changes, newest first."""
+    from app.models.contact_activity import ContactActivity
+    from app.models.crm import CrmTask
+    from app.models.email_message import EmailMessage
+    from app.routers.tasks_router import task_dict
+    opp = svc.get_opp(db, current_user, opportunity_id)
+    items = []
+    names = {}
+    acts = db.query(ContactActivity).filter(or_(ContactActivity.opportunity_id == opp.opportunity_id,
+                                                (ContactActivity.prospect_id == opp.prospect_id) if opp.prospect_id else False))
+    acts = acts.filter(ContactActivity.occurred_at >= (opp.created_at or datetime.utcnow()) - timedelta(days=30)) \
+        .order_by(ContactActivity.occurred_at.desc()).limit(200).all()
+    names.update(svc.user_names(db, [a.created_by for a in acts]))
+    for a in acts:
+        items.append({"kind": a.activity_type, "at": a.occurred_at, "activity": {
+            "activity_id": a.activity_id, "activity_type": a.activity_type, "subject": a.subject, "body": a.body,
+            "outcome": a.outcome, "duration_minutes": a.duration_minutes, "source": a.source,
+            "created_by_name": names.get(a.created_by), "on_deal": a.opportunity_id == opp.opportunity_id}})
+    for t in db.query(CrmTask).filter(CrmTask.opportunity_id == opp.opportunity_id).order_by(CrmTask.created_at.desc()).limit(100):
+        items.append({"kind": "TASK", "at": t.completed_at or t.created_at, "task": task_dict(db, t, names)})
+    if opp.prospect_id:
+        for m in db.query(EmailMessage).filter(EmailMessage.prospect_id == opp.prospect_id,
+                                               EmailMessage.sent_at >= (opp.created_at or datetime.utcnow()) - timedelta(days=30)
+                                               ).order_by(EmailMessage.sent_at.desc()).limit(100):
+            items.append({"kind": "EMAIL_RECEIVED" if m.direction == "INBOUND" else "EMAIL_SENT", "at": m.sent_at,
+                          "email": {"message_id": m.message_id, "subject": m.subject, "snippet": (m.body_text or "")[:300],
+                                    "status": m.status, "final_status": m.final_status}})
+    for h in _history(db, "DEAL", opp.opportunity_id):
+        if h["field"] == "amount" and not can_see_amounts(db, current_user):
+            continue
+        items.append({"kind": "PROPERTY_CHANGE", "at": h["changed_at"], "change": h})
+    items.sort(key=lambda i: i["at"] or datetime.min, reverse=True)
+    return {"items": items}
 
 
 # =============================================================
@@ -649,13 +866,14 @@ def list_proposals(status: Optional[str] = None, client_type: Optional[str] = No
         col = [i for i in items if i["status"] == key]
         columns.append({"status": key, "label": label, "count": len(col),
                         "amount": round(sum(i["amount"] or 0 for i in col), 2), "items": col})
-    return {"columns": columns, "items": items, "total": len(items),
-            "total_amount": round(sum(i["amount"] or 0 for i in items), 2)}
+    return masked_for(db, current_user, {"columns": columns, "items": items, "total": len(items),
+                                         "total_amount": round(sum(i["amount"] or 0 for i in items), 2)})
 
 
 @router.post("/proposals", status_code=201)
 def create_proposal(payload: ProposalWrite, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
     data = payload.model_dump(exclude_unset=True)
+    _check_amount_rights(db, current_user, data)
     if not data.get("opportunity_id"):
         raise HTTPException(status_code=400, detail="A proposal belongs to an opportunity")
     opp = svc.get_opp(db, current_user, data["opportunity_id"])
@@ -667,7 +885,7 @@ def create_proposal(payload: ProposalWrite, db: Session = Depends(get_db), curre
     db.add(p)
     _record(db, current_user, "DEAL", opp.opportunity_id, {"proposal": None}, {"proposal": f"{title} ({p.status.lower()})"})
     db.commit()
-    return _proposal_dict(p, svc.opp_dicts(db, [opp])[0])
+    return masked_for(db, current_user, _proposal_dict(p, svc.opp_dicts(db, [opp])[0]))
 
 
 @router.patch("/proposals/{proposal_id}")
@@ -675,6 +893,7 @@ def update_proposal(proposal_id: str, payload: ProposalWrite, db: Session = Depe
                     current_user: User = Depends(tenant_user)):
     p = _get_proposal(db, current_user, proposal_id)
     data = payload.model_dump(exclude_unset=True)
+    _check_amount_rights(db, current_user, data)
     old_status = p.status
     if "title" in data:
         p.title = clean_str(data["title"]) or p.title
@@ -690,7 +909,7 @@ def update_proposal(proposal_id: str, payload: ProposalWrite, db: Session = Depe
                 {"proposal": f"{p.title}: {p.status.lower()}"})
     db.commit()
     opp = db.query(Opportunity).filter(Opportunity.opportunity_id == p.opportunity_id).first()
-    return _proposal_dict(p, svc.opp_dicts(db, [opp])[0])
+    return masked_for(db, current_user, _proposal_dict(p, svc.opp_dicts(db, [opp])[0]))
 
 
 @router.delete("/proposals/{proposal_id}")
@@ -754,4 +973,4 @@ def revenue_pipeline(owner: Optional[str] = None, client_type: Optional[str] = N
         totals[k] = round(totals[k], 2)
     for ct in totals["by_client_type"].values():
         ct["amount"], ct["weighted"] = round(ct["amount"], 2), round(ct["weighted"], 2)
-    return {"stages": stages_out, "totals": totals}
+    return masked_for(db, current_user, {"stages": stages_out, "totals": totals})
