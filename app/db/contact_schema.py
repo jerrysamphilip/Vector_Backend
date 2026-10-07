@@ -115,8 +115,15 @@ def ensure_phase1_schema(engine) -> None:
                 if column not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN `{column}` {ddl}"))
                     added.append(f"{table}.{column}")
+        if "search_text" not in _columns(conn, "prospects"):
+            from app.models.prospect import SEARCH_TEXT_SQL
+            conn.execute(text(f"ALTER TABLE prospects ADD COLUMN search_text VARCHAR(1100) "
+                              f"GENERATED ALWAYS AS ({SEARCH_TEXT_SQL}) STORED"))
+            added.append("prospects.search_text")
         for table, name, cols in (("prospects", "ix_prospects_deleted_at", "deleted_at"),
-                                  ("prospects", "ix_prospects_lifecycle_stage", "lifecycle_stage")):
+                                  ("prospects", "ix_prospects_lifecycle_stage", "lifecycle_stage"),
+                                  ("prospects", "ix_prospects_tenant_live_created", "tenant_id, deleted_at, created_at"),
+                                  ("prospects", "ix_prospects_tenant_live_updated", "tenant_id, deleted_at, updated_at")):
             if not _index_exists(conn, table, name):
                 conn.execute(text(f"CREATE INDEX {name} ON {table} ({cols})"))
         if not _index_exists(conn, "accounts", "uq_account_tenant_domain"):
@@ -129,6 +136,11 @@ def ensure_phase1_schema(engine) -> None:
                 SET a.domain = NULL
             """))
             conn.execute(text("CREATE UNIQUE INDEX uq_account_tenant_domain ON accounts (tenant_id, domain)"))
+        precision = conn.execute(text(
+            "SELECT DATETIME_PRECISION FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
+            "AND TABLE_NAME = 'property_changes' AND COLUMN_NAME = 'changed_at'")).scalar()
+        if precision is not None and precision < 6:
+            conn.execute(text("ALTER TABLE property_changes MODIFY changed_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)"))
         if "prospects.lifecycle_stage" in added:
             for sql in BACKFILL_LIFECYCLE_SQL:
                 conn.execute(text(sql))

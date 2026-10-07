@@ -460,6 +460,16 @@ def _required_missing(db: Session, tenant_id: str, prospect: Prospect) -> List[s
     return [d.label for d in required if values.get(d.field_key) in (None, "", [])]
 
 
+def search_condition(q: str):
+    """Match name, email, company, title or phone (digits only, formatting ignored)."""
+    term = q.strip().lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    conditions = [Prospect.search_text.like(f"%{term}%")]
+    digits = phone_digits(q)
+    if len(digits) >= 4 and digits != term:
+        conditions.append(Prospect.search_text.like(f"%{digits}%"))
+    return or_(*conditions)
+
+
 def _filtered_query(db: Session, user: User, q=None, owner=None, account_id=None, tag=None, list_id=None,
                     campaign_id=None, consent_status=None, email_valid=None, has_phone=None, country=None,
                     industry=None, lifecycle_stage=None, lead_status=None, filters=None):
@@ -473,17 +483,7 @@ def _filtered_query(db: Session, user: User, q=None, owner=None, account_id=None
             query = query.filter(Prospect.owner_id == owner)
 
     if q and q.strip():
-        term = f"%{q.strip()}%"
-        conditions = [
-            Prospect.first_name.ilike(term), Prospect.last_name.ilike(term),
-            func.concat_ws(" ", Prospect.first_name, Prospect.last_name).ilike(term),
-            Prospect.email.ilike(term), Prospect.company_name.ilike(term), Prospect.designation.ilike(term),
-        ]
-        digits = phone_digits(q)
-        if len(digits) >= 4:
-            for column in (Prospect.phone, Prospect.mobile_phone):
-                conditions.append(func.regexp_replace(column, "[^0-9]", "").like(f"%{digits}%"))
-        query = query.filter(or_(*conditions))
+        query = query.filter(search_condition(q))
 
     if account_id:
         query = query.filter(Prospect.account_id == account_id)
@@ -568,9 +568,21 @@ def list_contacts(
 ):
     query = _filtered_query(db, current_user, q, owner, account_id, tag, list_id, campaign_id, consent_status,
                             email_valid, has_phone, country, industry, lifecycle_stage, lead_status, filters)
-    total = query.count()
-    order = [c.asc() if sort_order == "asc" else c.desc() for c in SORT_COLUMNS[sort_by]] + [Prospect.prospect_id.asc()]
-    rows = query.order_by(*order).offset((page - 1) * page_size).limit(page_size).all()
+    direction = (lambda c: c.asc()) if sort_order == "asc" else (lambda c: c.desc())
+    order = [direction(c) for c in SORT_COLUMNS[sort_by]] + [direction(Prospect.prospect_id)]
+    if q and q.strip():
+        # A search usually matches few rows: scan once, counting with a window function, and
+        # don't let MySQL walk the date index looking for matches (contact search < 1 s at 100k)
+        paged = query.add_columns(func.count().over().label("total")).with_hint(
+            Prospect, "IGNORE INDEX FOR ORDER BY (ix_prospects_tenant_live_created, ix_prospects_tenant_live_updated)",
+            "mysql").order_by(*order).offset((page - 1) * page_size).limit(page_size).all()
+        rows = [r[0] for r in paged]
+        total = paged[0][1] if paged else query.with_entities(func.count(Prospect.prospect_id)).order_by(None).scalar()
+    else:
+        # COUNT on the id (not .count(), which wraps every column in a subquery); the tiebreaker
+        # sorts the same way as the sort column, so MySQL walks the index instead of sorting
+        total = query.with_entities(func.count(Prospect.prospect_id)).order_by(None).scalar()
+        rows = query.order_by(*order).offset((page - 1) * page_size).limit(page_size).all()
     return {"items": _summaries(db, rows), "total": total, "page": page, "page_size": page_size}
 
 
@@ -589,14 +601,18 @@ def contacts_board(
     column = getattr(Prospect, group_by)
     base = _filtered_query(db, current_user, q=q, owner=owner, filters=filters)
     counts = dict(base.with_entities(column, func.count(Prospect.prospect_id)).group_by(column).all())
-    lanes = []
+    lanes, all_rows = [], []
     for value, label in list(values.items()) + [(None, "Not set")]:
         rows = base.filter(column == value if value else column.is_(None)).order_by(
-            Prospect.updated_at.desc()).limit(per_column).all()
+            Prospect.updated_at.desc()).limit(per_column).all() if counts.get(value) else []
         if value is None and not rows:
             continue
-        lanes.append({"value": value, "label": label, "total": counts.get(value, 0), "items": _summaries(db, rows)})
-    return {"group_by": group_by, "lanes": lanes}
+        lanes.append((value, label, rows))
+        all_rows.extend(rows)
+    summaries = {s["prospect_id"]: s for s in _summaries(db, all_rows)}
+    return {"group_by": group_by, "lanes": [
+        {"value": v, "label": l, "total": counts.get(v, 0), "items": [summaries[r.prospect_id] for r in rows]}
+        for v, l, rows in lanes]}
 
 
 @router.post("", status_code=201)
@@ -1385,11 +1401,11 @@ def contact_timeline(
     if want("TASK"):
         task_query = db.query(CrmTask).filter(CrmTask.prospect_id == prospect.prospect_id)
         if user_id:
-            task_query = task_query.filter(or_(CrmTask.created_by == user_id, CrmTask.owner_id == user_id))
+            task_query = task_query.filter(CrmTask.created_by == user_id)
         from app.routers.tasks_router import task_dict
         for t in task_query.order_by(CrmTask.created_at.desc()).limit(limit):
             items.append({"kind": "TASK", "at": t.completed_at or t.created_at, "task": task_dict(db, t),
-                          "user_id": t.owner_id})
+                          "user_id": t.created_by})
 
     if want("PROPERTY"):
         change_query = db.query(PropertyChange).filter(PropertyChange.object_type == "CONTACT",

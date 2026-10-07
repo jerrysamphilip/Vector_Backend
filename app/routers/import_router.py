@@ -16,7 +16,9 @@ users importing at once can't create duplicates: a collision becomes an update.
 import csv
 import io
 import json
+import random
 import re
+import time
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -25,7 +27,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
@@ -45,6 +47,7 @@ tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
 MAX_ROWS = 10_000
 MAX_FILE_MB = 20
 CHUNK = 500
+DEADLOCK_RETRIES = 5
 
 CONTACT_TARGETS = {
     "email": "Email", "first_name": "First name", "last_name": "Last name", "full_name": "Full name",
@@ -106,7 +109,7 @@ def _read_file(upload: UploadFile) -> pd.DataFrame:
     df = df.dropna(how="all")
     if len(df) > MAX_ROWS:
         raise HTTPException(status_code=400, detail=f"Files can have at most {MAX_ROWS:,} rows; this one has {len(df):,}")
-    return df.where(pd.notna(df), None)
+    return df.astype(object).where(pd.notna(df), None)  # blank cells -> None (NaN isn't valid JSON)
 
 
 def _suggest(headers: List[str], custom: Dict[str, str]) -> Dict[str, str]:
@@ -294,8 +297,10 @@ def run_import(
                     db.add(account)
                     db.flush()
                 created = True
-            except IntegrityError:  # another import created it a moment ago
-                account = live.filter((Account.domain == domain) if domain else (Account.name == new_name)).first()
+            except IntegrityError:  # another import created it a moment ago (locking read sees it)
+                account = db.query(Account).filter(
+                    Account.tenant_id == tenant_id,
+                    (Account.domain == domain) if domain else (Account.name == new_name)).with_for_update().first()
                 if not account:
                     raise RowError("Company could not be saved (name or domain clash)")
         before = crm.snapshot(account, COMPANY_TARGETS)
@@ -393,77 +398,104 @@ def run_import(
                                current_user.user_id, "IMPORT")
 
     rows = df.to_dict(orient="records")
+
+    def process_chunk(chunk):
+        """One all-or-nothing unit; the caller commits, or rolls back and retries on deadlock."""
+        if not has_contacts:
+            for row_no, row in chunk:
+                try:
+                    with db.begin_nested():
+                        if not company_for_row(row, None):
+                            raise RowError("Missing company name or domain")
+                except RowError as exc:
+                    errors.append({"row": row_no, "reason": str(exc), "values": row})
+            return
+
+        parsed = []
+        for row_no, row in chunk:
+            try:
+                email, vals, custom = contact_values(row)
+                key = email.lower()
+                if key in seen_emails:
+                    raise RowError(f"Duplicate of row {seen_emails[key]} in this file")
+                seen_emails[key] = row_no
+                parsed.append((row_no, row, email, vals, custom))
+            except RowError as exc:
+                errors.append({"row": row_no, "reason": str(exc), "values": row})
+
+        existing = {p.email.lower(): p for p in db.query(Prospect).filter(
+            Prospect.tenant_id == tenant_id,
+            func.lower(Prospect.email).in_([e.lower() for _, _, e, _, _ in parsed]))} if parsed else {}
+
+        for row_no, row, email, vals, custom in parsed:
+            try:
+                with db.begin_nested():
+                    account = company_for_row(row, email)  # from columns, else the email domain (BR-CM-04)
+                    p = existing.get(email.lower())
+                    if p is not None and p.deleted_at is not None:
+                        raise RowError("Matches a deleted contact; restore it first")
+                    if p is None:
+                        p = Prospect(prospect_id=str(uuid.uuid4()), tenant_id=tenant_id, email=email,
+                                     email_type="PERSONAL" if crm.is_personal_domain(crm.email_domain(email)) else "BUSINESS",
+                                     email_provider=crm.email_domain(email), consent_source="IMPORT",
+                                     consent_timestamp=datetime.utcnow(), is_valid_email=True,
+                                     consent_status="UNSUBSCRIBED" if email.lower() in unsubscribed else "OPT_IN",
+                                     owner_id=vals.get("owner_id") or owner_id or current_user.user_id,
+                                     lifecycle_stage="LEAD", lead_status="NEW")
+                        apply_contact(p, vals, custom, account, created=True)
+                        try:
+                            with db.begin_nested():
+                                db.add(p)
+                                db.flush()
+                            stats["contacts_created"] += 1
+                            db.add(PropertyChange(tenant_id=tenant_id, object_type="CONTACT", object_id=p.prospect_id,
+                                                  field="created", new_value=f"Imported from {job.file_name}",
+                                                  source="IMPORT", changed_by=current_user.user_id))
+                        except IntegrityError:
+                            # Created by another import in the meantime: update it instead (BR-CM-28)
+                            # FOR UPDATE reads the latest committed row; a plain read would use
+                            # this transaction's snapshot, which predates the other import's commit
+                            p = db.query(Prospect).filter(Prospect.tenant_id == tenant_id,
+                                                          Prospect.email == email).with_for_update().first()
+                            if p is None or p.deleted_at is not None:
+                                raise RowError("Could not save contact")
+                            apply_contact(p, vals, custom, account, created=False)
+                            stats["contacts_updated"] += 1
+                    else:
+                        if owner_id and update_existing and "owner_id" not in vals:
+                            vals["owner_id"] = owner_id
+                        apply_contact(p, vals, custom, account, created=False)
+                        stats["contacts_updated"] += 1
+                    list_members.append(p.prospect_id)
+            except RowError as exc:
+                errors.append({"row": row_no, "reason": str(exc), "values": row})
+
     try:
         for start in range(0, len(rows), CHUNK):
             chunk = list(enumerate(rows[start:start + CHUNK], start=start + 2))  # +2: header row, 1-based
-            if not has_contacts:
-                for row_no, row in chunk:
-                    try:
-                        with db.begin_nested():
-                            if not company_for_row(row, None):
-                                raise RowError("Missing company name or domain")
-                    except RowError as exc:
-                        errors.append({"row": row_no, "reason": str(exc), "values": row})
-                db.commit()
-                continue
-
-            parsed = []
-            for row_no, row in chunk:
+            for attempt in range(DEADLOCK_RETRIES + 1):
+                saved = (dict(stats), len(errors), set(companies_touched), len(list_members), dict(seen_emails))
                 try:
-                    email, vals, custom = contact_values(row)
-                    key = email.lower()
-                    if key in seen_emails:
-                        raise RowError(f"Duplicate of row {seen_emails[key]} in this file")
-                    seen_emails[key] = row_no
-                    parsed.append((row_no, row, email, vals, custom))
-                except RowError as exc:
-                    errors.append({"row": row_no, "reason": str(exc), "values": row})
-
-            existing = {p.email.lower(): p for p in db.query(Prospect).filter(
-                Prospect.tenant_id == tenant_id,
-                func.lower(Prospect.email).in_([e.lower() for _, _, e, _, _ in parsed]))} if parsed else {}
-
-            for row_no, row, email, vals, custom in parsed:
-                try:
-                    with db.begin_nested():
-                        account = company_for_row(row, email)  # from columns, else the email domain (BR-CM-04)
-                        p = existing.get(email.lower())
-                        if p is not None and p.deleted_at is not None:
-                            raise RowError("Matches a deleted contact; restore it first")
-                        if p is None:
-                            p = Prospect(prospect_id=str(uuid.uuid4()), tenant_id=tenant_id, email=email,
-                                         email_type="PERSONAL" if crm.is_personal_domain(crm.email_domain(email)) else "BUSINESS",
-                                         email_provider=crm.email_domain(email), consent_source="IMPORT",
-                                         consent_timestamp=datetime.utcnow(), is_valid_email=True,
-                                         consent_status="UNSUBSCRIBED" if email.lower() in unsubscribed else "OPT_IN",
-                                         owner_id=vals.get("owner_id") or owner_id or current_user.user_id,
-                                         lifecycle_stage="LEAD", lead_status="NEW")
-                            apply_contact(p, vals, custom, account, created=True)
-                            try:
-                                with db.begin_nested():
-                                    db.add(p)
-                                    db.flush()
-                                stats["contacts_created"] += 1
-                                db.add(PropertyChange(tenant_id=tenant_id, object_type="CONTACT", object_id=p.prospect_id,
-                                                      field="created", new_value=f"Imported from {job.file_name}",
-                                                      source="IMPORT", changed_by=current_user.user_id))
-                            except IntegrityError:
-                                # Created by another import in the meantime: update it instead (BR-CM-28)
-                                p = db.query(Prospect).filter(Prospect.tenant_id == tenant_id,
-                                                              Prospect.email == email).first()
-                                if p is None or p.deleted_at is not None:
-                                    raise RowError("Could not save contact")
-                                apply_contact(p, vals, custom, account, created=False)
-                                stats["contacts_updated"] += 1
-                        else:
-                            if owner_id and update_existing and "owner_id" not in vals:
-                                vals["owner_id"] = owner_id
-                            apply_contact(p, vals, custom, account, created=False)
-                            stats["contacts_updated"] += 1
-                        list_members.append(p.prospect_id)
-                except RowError as exc:
-                    errors.append({"row": row_no, "reason": str(exc), "values": row})
-            db.commit()
+                    process_chunk(chunk)
+                    db.commit()
+                    break
+                except OperationalError as exc:
+                    # Simultaneous imports can deadlock on the unique keys; MySQL rolls one back.
+                    # Undo this chunk's bookkeeping and run it again (BR-CM-28).
+                    # 1213 deadlock / 1205 lock wait timeout; 1305 "savepoint does not exist" is what
+                    # surfaces when the deadlock hit inside a savepoint (MySQL dropped the whole trx)
+                    if getattr(exc.orig, "args", [None])[0] not in (1213, 1205, 1305) or attempt == DEADLOCK_RETRIES:
+                        raise
+                    db.rollback()
+                    stats.clear()
+                    stats.update(saved[0])
+                    del errors[saved[1]:]
+                    companies_touched.clear()
+                    companies_touched.update(saved[2])
+                    del list_members[saved[3]:]
+                    seen_emails.clear()
+                    seen_emails.update(saved[4])
+                    time.sleep(random.uniform(0.1, 0.5) * (attempt + 1))
 
         if target_list and list_members:
             existing_members = {r[0] for r in db.query(ProspectListMember.prospect_id).filter(

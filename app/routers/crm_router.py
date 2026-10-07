@@ -115,14 +115,8 @@ def global_search(q: str = Query(..., min_length=2, max_length=100), limit: int 
     contacts = db.query(Prospect).filter(Prospect.tenant_id == current_user.tenant_id, Prospect.deleted_at.is_(None))
     if not can_manage_contacts(current_user):
         contacts = contacts.filter(Prospect.owner_id == current_user.user_id)
-    conditions = [Prospect.email.ilike(term), Prospect.first_name.ilike(term), Prospect.last_name.ilike(term),
-                  func.concat_ws(" ", Prospect.first_name, Prospect.last_name).ilike(term),
-                  Prospect.company_name.ilike(term)]
-    digits = phone_digits(q)
-    if len(digits) >= 4:
-        conditions += [func.regexp_replace(Prospect.phone, "[^0-9]", "").like(f"%{digits}%"),
-                       func.regexp_replace(Prospect.mobile_phone, "[^0-9]", "").like(f"%{digits}%")]
-    contact_rows = contacts.filter(or_(*conditions)).order_by(Prospect.updated_at.desc()).limit(limit).all()
+    from app.routers.contacts_router import search_condition
+    contact_rows = contacts.filter(search_condition(q)).order_by(Prospect.updated_at.desc()).limit(limit).all()
 
     companies = db.query(Account).filter(Account.tenant_id == current_user.tenant_id, Account.deleted_at.is_(None),
                                          or_(Account.name.ilike(term), Account.domain.ilike(term)))

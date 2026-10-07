@@ -4,12 +4,18 @@ Prospect and Global Unsubscribe models.
 GDPR compliant with consent tracking and anonymization support.
 """
 
-from sqlalchemy import Column, String, Boolean, TIMESTAMP, ForeignKey, JSON, UniqueConstraint, Index
+from sqlalchemy import Column, String, Boolean, TIMESTAMP, ForeignKey, JSON, UniqueConstraint, Index, Computed
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
 
 from app.models.base import Base
+
+
+SEARCH_TEXT_SQL = (
+    "LOWER(CONCAT_WS(' ', first_name, last_name, email, company_name, designation, "
+    "REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', ''), REGEXP_REPLACE(COALESCE(mobile_phone, ''), '[^0-9]', '')))"
+)
 
 
 class Prospect(Base):
@@ -45,6 +51,10 @@ class Prospect(Base):
     deleted_at = Column(TIMESTAMP, nullable=True)
     deleted_by = Column(String(36), nullable=True)
     merged_into_id = Column(String(36), nullable=True)
+
+    # Lower-cased name, email, company, title and phone digits in one column, so a search
+    # scans one narrow column instead of six (contact search < 1 s at 100k contacts)
+    search_text = Column(String(1100), Computed(SEARCH_TEXT_SQL, persisted=True))
 
     # Tags (JSON list of strings) and tenant-defined custom field values (JSON object)
     tags = Column(JSON, nullable=True)
@@ -94,6 +104,8 @@ class Prospect(Base):
         Index("ix_prospects_account_id", "account_id"),
         Index("ix_prospects_deleted_at", "deleted_at"),
         Index("ix_prospects_lifecycle_stage", "lifecycle_stage"),
+        Index("ix_prospects_tenant_live_created", "tenant_id", "deleted_at", "created_at"),
+        Index("ix_prospects_tenant_live_updated", "tenant_id", "deleted_at", "updated_at"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

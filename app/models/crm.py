@@ -6,7 +6,8 @@ property change history, tasks, saved views and import jobs.
 
 import uuid
 
-from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, JSON, String, Text, TIMESTAMP
+from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, JSON, String, Text, TIMESTAMP, text
+from sqlalchemy.dialects import mysql
 from sqlalchemy.sql import func
 
 from app.models.base import Base
@@ -27,7 +28,9 @@ class PropertyChange(Base):
     new_value = Column(Text, nullable=True)
     source = Column(String(20), nullable=False, default="UI")  # UI / BULK / IMPORT / MERGE / API / SYSTEM
     changed_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    changed_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
+    # Microsecond precision keeps changes made in the same second in order
+    changed_at = Column(TIMESTAMP().with_variant(mysql.TIMESTAMP(fsp=6), "mysql"),
+                        server_default=text("CURRENT_TIMESTAMP(6)"), nullable=False)
 
     __table_args__ = (Index("ix_property_changes_object", "object_type", "object_id", "changed_at"), MYSQL_OPTS)
 
