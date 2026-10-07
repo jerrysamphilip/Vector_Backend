@@ -537,6 +537,9 @@ try:
 
     # Seed/update persona blueprints on every startup
     # This ensures all developers get the latest blueprint definitions
+    from app.db.contact_schema import ensure_contact_schema
+    ensure_contact_schema(engine)
+
     with SessionLocal() as db:
         total = seed_blueprints(db)
         print(f"Persona blueprints synchronized ({total} total)")
@@ -604,6 +607,12 @@ app.include_router(reports_router)
 
 from app.routers.platform_admin_router import router as platform_admin_router
 app.include_router(platform_admin_router)
+
+# Contact management (contacts across all lists, accounts, activities)
+from app.routers.contacts_router import router as contacts_router
+from app.routers.accounts_router import router as accounts_router
+app.include_router(contacts_router)
+app.include_router(accounts_router)
  
  
 # =============================

@@ -352,6 +352,13 @@ async def delete_prospect_list(
                 ProspectListMember.list_id != list_id
             ).all()}
             orphaned_ids = [pid for pid in prospects_in_list if pid not in prospects_in_other_lists]
+            # Contacts with logged calls/meetings/notes are CRM records now: keep them.
+            if orphaned_ids:
+                from app.models.contact_activity import ContactActivity
+                with_history = {r[0] for r in db.query(ContactActivity.prospect_id).filter(
+                    ContactActivity.prospect_id.in_(orphaned_ids)
+                ).distinct()}
+                orphaned_ids = [pid for pid in orphaned_ids if pid not in with_history]
             db.query(ProspectListMember).filter(
                 ProspectListMember.list_id == list_id
             ).delete(synchronize_session=False)
@@ -508,11 +515,6 @@ async def delete_prospect(
     """
     Delete an individual prospect and all related records.
     """
-    from app.models.campaign import CampaignProspect
-    from app.models.prospect_persona import ProspectPersona
-    from app.models.email_message import EmailMessage, EmailEvent
-    from app.models.conversation import Conversation
-    
     # Check prospect exists
     prospect = db.query(Prospect).filter(
         Prospect.prospect_id == prospect_id,
@@ -522,45 +524,8 @@ async def delete_prospect(
     if not prospect:
         raise HTTPException(status_code=404, detail="Prospect not found")
     
-    # Get all message IDs for this prospect first (needed for EmailEvent deletion)
-    message_ids = [m[0] for m in db.query(EmailMessage.message_id).filter(
-        EmailMessage.prospect_id == prospect_id
-    ).all()]
-    
-    # Delete in order to respect FK constraints:
-    # 0. Email events (references email_messages)
-    if message_ids:
-        db.query(EmailEvent).filter(
-            EmailEvent.message_id.in_(message_ids)
-        ).delete(synchronize_session=False)
-    
-    # 1. Email messages
-    db.query(EmailMessage).filter(
-        EmailMessage.prospect_id == prospect_id
-    ).delete(synchronize_session=False)
-    
-    # 2. Conversations
-    db.query(Conversation).filter(
-        Conversation.prospect_id == prospect_id
-    ).delete(synchronize_session=False)
-    
-    # 3. Prospect personas
-    db.query(ProspectPersona).filter(
-        ProspectPersona.prospect_id == prospect_id
-    ).delete(synchronize_session=False)
-    
-    # 4. Campaign enrollments
-    db.query(CampaignProspect).filter(
-        CampaignProspect.prospect_id == prospect_id
-    ).delete(synchronize_session=False)
-    
-    # 5. List memberships
-    db.query(ProspectListMember).filter(
-        ProspectListMember.prospect_id == prospect_id
-    ).delete(synchronize_session=False)
-    
-    # 6. Delete the prospect
-    db.delete(prospect)
+    from app.services.contact_service import delete_contacts
+    delete_contacts(db, [prospect_id])
     db.commit()
     
     return {"status": "deleted", "prospect_id": prospect_id}

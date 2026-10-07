@@ -14,6 +14,7 @@ from app.models import (
     ProspectListMember,
     GlobalUnsubscribe,
 )
+from app.services.contact_service import get_or_create_account
 from app.utils.email_utils import parse_email
 from app.utils.business_calendar import get_timezone_for_state
 
@@ -32,6 +33,19 @@ def _sanitize_value(val):
 
 # STEP 0: DRY RUN (VALIDATION ONLY)
 # =====================================================
+
+# Accepted spreadsheet headers for phone numbers (first non-blank wins)
+PHONE_COLUMNS = ("Phone", "Phone Number", "POC Phone", "Direct Phone", "Work Phone", "Office Phone")
+MOBILE_COLUMNS = ("Mobile", "Mobile Phone", "Mobile Number", "Cell", "Cell Phone")
+
+
+def _first_value(row, columns):
+    for column in columns:
+        value = _sanitize_value(row.get(column))
+        if value:
+            return str(value)[:50]
+    return None
+
 
 def dry_run_validate(
     df,
@@ -73,6 +87,8 @@ def dry_run_validate(
         poc_city = _sanitize_value(row.get("POC City"))
         poc_country = _sanitize_value(row.get("POC Country") or row.get("Country"))
         emp_band = _sanitize_value(row.get("Emp Band"))
+        phone = _first_value(row, PHONE_COLUMNS)
+        mobile_phone = _first_value(row, MOBILE_COLUMNS)
 
         # Required fields: First Name, Last Name, Company Name, Email.
         # Everything else (POC State/City/Country, Designation, Industry, Emp Band,
@@ -121,6 +137,8 @@ def dry_run_validate(
                 "industry": _sanitize_value(row.get("Industry")),
                 "emp_band": emp_band,
                 "linkedin_url": _sanitize_value(row.get("POC LinkedIn")),
+                "phone": phone,
+                "mobile_phone": mobile_phone,
                 "poc_state": poc_state,
                 "poc_city": poc_city,
                 "poc_country": poc_country,
@@ -145,6 +163,8 @@ def dry_run_validate(
                 "industry": _sanitize_value(row.get("Industry")),
                 "emp_band": emp_band,
                 "linkedin_url": _sanitize_value(row.get("POC LinkedIn")),
+                "phone": phone,
+                "mobile_phone": mobile_phone,
                 "poc_state": poc_state,
                 "poc_city": poc_city,
                 "poc_country": poc_country,
@@ -369,6 +389,20 @@ def confirm_upload(
         if p.email
     }
 
+    # Link contacts to account records by company name, creating accounts as needed
+    accounts_by_name = {}
+
+    def _account_id_for(company_name, record):
+        key = (company_name or "").strip().lower()
+        if not key:
+            return None
+        if key not in accounts_by_name:
+            account = get_or_create_account(
+                db, tenant_id, company_name,
+                industry=record.get("industry"), emp_band=record.get("emp_band"))
+            accounts_by_name[key] = account.account_id if account else None
+        return accounts_by_name[key]
+
     try:
         for r in safe_records:
             email = r.get("email")
@@ -395,6 +429,12 @@ def confirm_upload(
                 existing.poc_state = r.get("poc_state") or existing.poc_state
                 existing.poc_city = r.get("poc_city") or existing.poc_city
                 existing.poc_country = r.get("poc_country") or existing.poc_country
+                existing.phone = existing.phone or r.get("phone")
+                existing.mobile_phone = existing.mobile_phone or r.get("mobile_phone")
+                if not existing.account_id:
+                    existing.account_id = _account_id_for(existing.company_name, r)
+                if not existing.owner_id:
+                    existing.owner_id = uploaded_by
                 # Re-derive timezone from potentially updated poc_state
                 if r.get("poc_state"):
                     existing.timezone = get_timezone_for_state(r.get("poc_state"))
@@ -425,6 +465,10 @@ def confirm_upload(
                     timezone=derived_timezone,
                     consent_status="OPT_IN",
                     is_valid_email=True,
+                    phone=r.get("phone"),
+                    mobile_phone=r.get("mobile_phone"),
+                    owner_id=uploaded_by,
+                    account_id=_account_id_for(r.get("company_name"), r),
                 )
                 db.add(new_prospect)
 

@@ -4,7 +4,7 @@ Prospect and Global Unsubscribe models.
 GDPR compliant with consent tracking and anonymization support.
 """
 
-from sqlalchemy import Column, String, Boolean, TIMESTAMP, ForeignKey, JSON, UniqueConstraint
+from sqlalchemy import Column, String, Boolean, TIMESTAMP, ForeignKey, JSON, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -28,6 +28,16 @@ class Prospect(Base):
     email = Column(String(255), nullable=False)
     email_type = Column(String(50), nullable=True)  # BUSINESS / PERSONAL / UNKNOWN
     email_provider = Column(String(100), nullable=True)
+    phone = Column(String(50), nullable=True)
+    mobile_phone = Column(String(50), nullable=True)
+
+    # Ownership & account (company_name is kept for display, imports and existing queries)
+    owner_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    account_id = Column(String(36), ForeignKey("accounts.account_id"), nullable=True)
+
+    # Tags (JSON list of strings) and tenant-defined custom field values (JSON object)
+    tags = Column(JSON, nullable=True)
+    custom_fields = Column(JSON, nullable=True)
 
     # Company Info
     company_name = Column(String(255), nullable=True)
@@ -63,9 +73,14 @@ class Prospect(Base):
     list_memberships = relationship("ProspectListMember", back_populates="prospect", lazy="dynamic")
     campaign_enrollments = relationship("CampaignProspect", back_populates="prospect", lazy="dynamic")
     email_messages = relationship("EmailMessage", back_populates="prospect", lazy="dynamic")
+    owner = relationship("User", foreign_keys=[owner_id])
+    account = relationship("Account", back_populates="contacts")
+    activities = relationship("ContactActivity", back_populates="prospect", lazy="dynamic")
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "email", name="uq_tenant_email"),
+        Index("ix_prospects_owner_id", "owner_id"),
+        Index("ix_prospects_account_id", "account_id"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
