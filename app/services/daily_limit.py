@@ -59,8 +59,8 @@ def status_for(db: Session, user: User) -> dict:
     message = None
     if used >= limit:
         message = (f"You have reached today's limit of {limit} new contacts. "
-                   + (f"{held} first emails are queued for tomorrow; " if held else "")
-                   + "follow-up emails keep sending.")
+                   + (f"{held} first emails are queued for tomorrow. " if held else "")
+                   + "Follow-up emails keep sending.")
     return {"limit": limit, "used_today": used, "remaining": max(limit - used, 0), "held_for_tomorrow": held,
             "reached": used >= limit, "message": message}
 

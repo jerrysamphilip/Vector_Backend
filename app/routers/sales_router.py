@@ -168,8 +168,10 @@ def leads_meta(db: Session = Depends(get_db), current_user: User = Depends(tenan
     }
 
 
-def _lead_query(db, user, stage=None, owner=None, q=None, source=None, open_only=False):
+def _lead_query(db, user, stage=None, owner=None, q=None, source=None, open_only=False, prospect_id=None):
     query = svc.visible_leads(db, user)
+    if prospect_id:
+        query = query.filter(Lead.prospect_id == prospect_id)
     if stage:
         query = query.filter(Lead.stage.in_(stage.split(",")))
     elif open_only:
@@ -190,12 +192,12 @@ def _lead_query(db, user, stage=None, owner=None, q=None, source=None, open_only
 
 @router.get("/leads")
 def list_leads(stage: Optional[str] = None, owner: Optional[str] = None, q: Optional[str] = None,
-               source: Optional[str] = None, open_only: bool = False,
+               source: Optional[str] = None, open_only: bool = False, prospect_id: Optional[str] = None,
                sort_by: str = Query("created_at", pattern="^(created_at|stage_changed_at|next_step_at)$"),
                sort_order: str = Query("desc", pattern="^(asc|desc)$"),
                page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
                db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
-    query = _lead_query(db, current_user, stage, owner, q, source, open_only)
+    query = _lead_query(db, current_user, stage, owner, q, source, open_only, prospect_id)
     total = query.count()
     col = getattr(Lead, sort_by)
     rows = query.order_by(col.asc() if sort_order == "asc" else col.desc(), Lead.lead_id) \
@@ -421,8 +423,10 @@ class OppWrite(BaseModel):
 
 
 def _opp_query(db, user, owner=None, status=None, stage_id=None, client_type=None, close_from=None,
-               close_to=None, q=None, account_id=None):
+               close_to=None, q=None, account_id=None, prospect_id=None):
     query = svc.visible_opps(db, user)
+    if prospect_id:
+        query = query.filter(Opportunity.prospect_id == prospect_id)
     if owner == "me":
         query = query.filter(Opportunity.owner_id == user.user_id)
     elif owner:
@@ -462,12 +466,13 @@ def _check_opp_links(db: Session, user: User, data: dict):
 @router.get("/opportunities")
 def list_opps(owner: Optional[str] = None, status: Optional[str] = None, stage_id: Optional[str] = None,
               client_type: Optional[str] = None, close_from: Optional[date] = None, close_to: Optional[date] = None,
-              q: Optional[str] = None, account_id: Optional[str] = None,
+              q: Optional[str] = None, account_id: Optional[str] = None, prospect_id: Optional[str] = None,
               sort_by: str = Query("close_date", pattern="^(close_date|amount|created_at|updated_at|name)$"),
               sort_order: str = Query("asc", pattern="^(asc|desc)$"),
               page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=500),
               db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
-    query = _opp_query(db, current_user, owner, status, stage_id, client_type, close_from, close_to, q, account_id)
+    query = _opp_query(db, current_user, owner, status, stage_id, client_type, close_from, close_to, q, account_id,
+                       prospect_id)
     agg = query.with_entities(func.count(Opportunity.opportunity_id),
                               func.coalesce(func.sum(Opportunity.amount), 0)).one()
     col = getattr(Opportunity, sort_by)

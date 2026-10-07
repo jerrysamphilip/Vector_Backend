@@ -50,6 +50,18 @@ docker compose exec api python -m app.db.seed_contacts_demo --reset    # remove 
 Re-running replaces the previous demo data. Demo emails use the reserved `.example` domain and the campaign is
 completed, so nothing is ever sent. Demo reps sign in as e.g. `marcus.bell@vector-demo.example` / `demo-pass-123`.
 
+For the sales features (Phase 2), run this after the contact demo. It builds a four-level team, 100 leads at every
+stage, an SQL queue, 30 opportunities across this financial year (some won, some lost) and proposals:
+
+```bash
+docker compose exec api python -m app.db.seed_sales_demo               # needs seed_contacts_demo first
+docker compose exec api python -m app.db.seed_sales_demo --reset       # remove it again
+```
+
+Sign in as `arjun.mehta@…` (L1 Sales Head, sees everything), `priya.nair@…` (L2 Business Development, her team),
+`marcus.bell@…` / `sofia.alvarez@…` (L3 Business Executive) or `leo.fischer@…` (L4 Market Research), all
+`@vector-demo.example` / `demo-pass-123`. Set levels and managers for real users under Sales → Sales Team.
+
 ## Hub nginx
 
 Add the block in `docker/hub-nginx-vector.conf` to the hub's `server { ... }` block (next to PatientTrack)
@@ -93,3 +105,6 @@ API_PROXY_TARGET=http://localhost:8191 npm run dev     # http://localhost:5173
   (from 50 sends; before that at 5 hard bounces or 2 complaints). Tune with `AUTO_PAUSE_*` settings. Every sent
   email shows a final status (delivered, bounced, complained, rejected, failed, or unconfirmed when SES sent no
   event within `DELIVERY_CONFIRM_MINUTES`, default 15).
+- Sales settings: `FISCAL_YEAR_START_MONTH` (default 4, April; 1 = calendar year) drives the forecast, and
+  `DAILY_NEW_CONTACT_LIMIT` (default 500) caps first emails per user per day; follow-ups are never limited. Amounts
+  display in USD; build the frontend with `VITE_CURRENCY=INR` (or another ISO code) to change that.

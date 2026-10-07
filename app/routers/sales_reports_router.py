@@ -176,8 +176,11 @@ def funnel(date_from: Optional[date] = None, date_to: Optional[date] = None, mem
              ("opportunity", "Opportunities", m["opportunities_created"]), ("won", "Won", m["won_count"])]
     out, prev = [], None
     for key, label, n in steps:
+        # Step counts are period volumes, not one cohort, so a step can exceed the one before
+        # (e.g. deals created directly); a ratio over 100% would mislead, so none is shown.
+        ratio = _pct(n, prev) if prev is not None else None
         out.append({"key": key, "label": label, "count": n,
-                    "from_previous": _pct(n, prev) if prev is not None else None,
+                    "from_previous": ratio if ratio is not None and ratio <= 100 else None,
                     "from_first": _pct(n, steps[0][2]) if steps[0][2] else None})
         prev = n
     return {"period": {"from": d0, "to": d1}, "stages": out, "won_amount": m["won_amount"]}
@@ -375,8 +378,13 @@ def team_performance(date_from: Optional[date] = None, date_to: Optional[date] =
                                 EmailMessage.sent_at >= start, EmailMessage.sent_at < end)
                         .group_by(Prospect.owner_id).all())
     lead_q = db.query(Lead).filter(Lead.tenant_id == tenant, Lead.owner_id.in_(ids))
-    leads = grouped(lead_q.filter(Lead.created_at >= start, Lead.created_at < end), Lead.owner_id)
-    sqls = grouped(lead_q.filter(Lead.qualified_at >= start, Lead.qualified_at < end), Lead.owner_id)
+    created = lead_q.filter(Lead.created_at >= start, Lead.created_at < end)
+    leads = grouped(created, Lead.owner_id)
+    qualified = lead_q.filter(Lead.qualified_at >= start, Lead.qualified_at < end)
+    sqls = grouped(qualified, Lead.owner_id)
+    # Conversion rates follow one cohort so they never exceed 100%
+    cohort_sql = grouped(created.filter(Lead.qualified_at.isnot(None)), Lead.owner_id)
+    sql_converted = grouped(qualified.filter(Lead.converted_at.isnot(None)), Lead.owner_id)
     opp_q = db.query(Opportunity).filter(Opportunity.tenant_id == tenant, Opportunity.owner_id.in_(ids))
     opps = grouped(opp_q.filter(Opportunity.created_at >= start, Opportunity.created_at < end), Opportunity.owner_id)
     closed = opp_q.filter(Opportunity.closed_at >= start, Opportunity.closed_at < end)
@@ -388,7 +396,8 @@ def team_performance(date_from: Optional[date] = None, date_to: Optional[date] =
         Opportunity.owner_id, func.coalesce(func.sum(Opportunity.amount), 0)).group_by(Opportunity.owner_id).all()}
 
     reps, totals = [], {k: 0 for k in ("activities", "calls", "meetings", "tasks_done", "emails_sent", "leads",
-                                       "sqls", "opportunities", "won_count", "lost_count")}
+                                       "sqls", "opportunities", "won_count", "lost_count", "leads_reaching_sql",
+                                       "sqls_converted")}
     totals.update(won_amount=0.0, open_pipeline=0.0)
     for u in users:
         uid = u.user_id
@@ -399,15 +408,17 @@ def team_performance(date_from: Optional[date] = None, date_to: Optional[date] =
              "leads": leads.get(uid, 0), "sqls": sqls.get(uid, 0), "opportunities": opps.get(uid, 0),
              "won_count": won_rows.get(uid, (0, 0))[0], "won_amount": round(won_rows.get(uid, (0, 0.0))[1], 2),
              "lost_count": lost.get(uid, 0), "open_pipeline": round(open_pipe.get(uid, 0.0), 2)}
-        r["lead_to_sql"] = _pct(r["sqls"], r["leads"])
-        r["sql_to_opportunity"] = _pct(r["opportunities"], r["sqls"])
+        r["leads_reaching_sql"] = cohort_sql.get(uid, 0)
+        r["sqls_converted"] = sql_converted.get(uid, 0)
+        r["lead_to_sql"] = _pct(r["leads_reaching_sql"], r["leads"])
+        r["sql_to_opportunity"] = _pct(r["sqls_converted"], r["sqls"])
         r["win_rate"] = _pct(r["won_count"], r["won_count"] + r["lost_count"])
         for k in totals:
             totals[k] += r[k]
         reps.append(r)
     totals["won_amount"], totals["open_pipeline"] = round(totals["won_amount"], 2), round(totals["open_pipeline"], 2)
-    totals["lead_to_sql"] = _pct(totals["sqls"], totals["leads"])
-    totals["sql_to_opportunity"] = _pct(totals["opportunities"], totals["sqls"])
+    totals["lead_to_sql"] = _pct(totals["leads_reaching_sql"], totals["leads"])
+    totals["sql_to_opportunity"] = _pct(totals["sqls_converted"], totals["sqls"])
     totals["win_rate"] = _pct(totals["won_count"], totals["won_count"] + totals["lost_count"])
     return {"period": {"from": d0, "to": d1}, "reps": reps, "totals": totals}
 
