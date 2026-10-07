@@ -130,6 +130,28 @@ spec:
                 secretKeyRef:
                   name: sales360-secret
                   key: SES_WEBHOOK_TOKEN
+
+            # Microsoft 365 mailboxes (BR-DF-05), from the Azure app registration. Optional:
+            # without them the "Connect Microsoft 365" button explains what is missing.
+            # MS365_REDIRECT_URI = https://<host>/vector/api/inboxes/oauth/microsoft/callback
+            - name: MS365_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MS365_CLIENT_ID
+                  optional: true
+            - name: MS365_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MS365_CLIENT_SECRET
+                  optional: true
+            - name: MS365_REDIRECT_URI
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MS365_REDIRECT_URI
+                  optional: true
             
 
           resources:

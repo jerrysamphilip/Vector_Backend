@@ -84,12 +84,9 @@ def screen(
     ids = [p.prospect_id for p in prospects]
     emails = {(p.email or "").strip().lower() for p in prospects}
 
-    now = datetime.utcnow()
-    unsubscribed = {(e or "").strip().lower() for (e,) in db.query(GlobalUnsubscribe.email).filter(
-        GlobalUnsubscribe.tenant_id == tenant_id,
-        func.lower(GlobalUnsubscribe.email).in_(emails),
-        or_(GlobalUnsubscribe.suppression_expires_at.is_(None), GlobalUnsubscribe.suppression_expires_at > now),
-    )}
+    # Same rule the scheduler applies at send time (BR-DF-08)
+    from app.services.suppression import suppressed_emails
+    unsubscribed = suppressed_emails(db, tenant_id, emails)
     enrolled = set()
     if campaign_id:
         enrolled = {r[0] for r in db.query(CampaignProspect.prospect_id).filter(

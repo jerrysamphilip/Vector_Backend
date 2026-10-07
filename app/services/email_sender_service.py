@@ -15,7 +15,10 @@ from email.mime.multipart import MIMEMultipart
 import email.utils
 
 import boto3
-from botocore.exceptions import ClientError, BotoCoreError
+from botocore.exceptions import (
+    BotoCoreError, ClientError, ConnectionClosedError, ConnectTimeoutError,
+    EndpointConnectionError, ReadTimeoutError,
+)
 
 from app.core.config import settings
 from app.models import EmailMessage, EmailTemplate, Prospect
@@ -43,6 +46,25 @@ class TransientEmailFailure(Exception):
 class PermanentEmailFailure(Exception):
     """Non-retryable SES error (rejected, invalid email)"""
     pass
+
+
+class AmbiguousEmailFailure(Exception):
+    """
+    The request may have reached SES before the connection failed (read timeout,
+    connection dropped mid-response), so SES may have sent the email. Retrying
+    could deliver it twice (BR-DF-06); callers must not retry.
+    """
+    pass
+
+
+def classify_botocore_error(exc: BotoCoreError) -> Exception:
+    # The request never left (no connection): safe to retry
+    if isinstance(exc, (EndpointConnectionError, ConnectTimeoutError)):
+        return TransientEmailFailure(str(exc))
+    # It was sent but no answer came back: outcome unknown
+    if isinstance(exc, (ReadTimeoutError, ConnectionClosedError)):
+        return AmbiguousEmailFailure(str(exc))
+    return TransientEmailFailure(str(exc))
 
 
 # -----------------------------
@@ -701,7 +723,7 @@ class EmailSenderService:
             
         except BotoCoreError as exc:
             logger.error(f"[SES] BotoCoreError: {str(exc)}")
-            raise TransientEmailFailure(str(exc))
+            raise classify_botocore_error(exc)
 
     async def send_plain_email(
         self,

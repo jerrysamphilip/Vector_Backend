@@ -6,12 +6,15 @@ Processes scheduled emails from the queue and sends via AWS SES.
 
 import asyncio
 import logging
+import math
+from collections import defaultdict
 from datetime import datetime, timedelta, time
 from typing import List, Optional
 from types import SimpleNamespace
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, func, or_
 
 from app.core.database import SessionLocal
 from app.core.config import settings
@@ -30,7 +33,8 @@ import random
 from app.services.email_sender_service import (
     email_sender,
     TransientEmailFailure,
-    PermanentEmailFailure
+    PermanentEmailFailure,
+    AmbiguousEmailFailure,
 )
 from app.utils.campaign_prospect_status import set_prospect_status
 from app.utils.conversation_lock import conversation_creation_lock
@@ -50,8 +54,15 @@ class EmailSchedulerService:
     5. Update status
     """
     
+    # Each inbox works through its own queue concurrently (BR-DF-01). Per cycle an
+    # inbox takes about this many seconds of sends at its configured pace, so one
+    # slow inbox never holds the others back and the loop comes round quickly.
+    INBOX_CYCLE_SECONDS = 120
+    # A message left in SENDING this long belongs to a worker that died mid-send
+    STUCK_SENDING_MINUTES = 15
+
     def __init__(self):
-        self.batch_size = 100  # Process N emails per batch
+        self.batch_size = 500  # Due messages considered per cycle (all inboxes)
         self.is_running = False
 
     def _resolve_sender_for_message(
@@ -174,7 +185,9 @@ class EmailSchedulerService:
             # ── BUG FIX: JOIN Campaign so emails from PAUSED/COMPLETED campaigns
             # are never picked up by the scheduler. Without this join the scheduler
             # would happily send queued messages even while the campaign is paused.
-            scheduled_emails = db.query(EmailMessage).join(
+            self._recover_stuck_sends(db)
+
+            due = db.query(EmailMessage.message_id, EmailMessage.inbox_id).join(
                 Campaign, Campaign.campaign_id == EmailMessage.campaign_id
             ).filter(
                 and_(
@@ -189,39 +202,36 @@ class EmailSchedulerService:
                         EmailMessage.next_retry_at <= now
                     )
                 )
-            ).limit(self.batch_size).all()
+            # Oldest first, so nothing waits behind newer messages (BR-DF-01)
+            ).order_by(EmailMessage.scheduled_at, EmailMessage.message_id).limit(self.batch_size).all()
 
-            # ── CRITICAL: Expire ALL objects loaded by the JOIN above.
-            # SQLAlchemy caches Campaign rows in the session identity map with
-            # the status they had at query time (ACTIVE). If the campaign gets
-            # paused AFTER this point, any subsequent db.query(Campaign) inside
-            # _process_single_email will return the stale cached ACTIVE object
-            # instead of hitting the DB again. expire_all() forces a fresh SELECT
-            # next time any attribute is accessed on any cached object.
-            db.expire_all()
-            
-            if not scheduled_emails:
+            if not due:
                 logger.debug("[Scheduler] No scheduled emails to process")
                 self._check_completed_campaigns(db)
                 return stats
-            
-            logger.info(f"[Scheduler] Processing {len(scheduled_emails)} scheduled emails")
-            
-            for email_msg in scheduled_emails:
-                stats["processed"] += 1
-                result = await self._process_single_email(email_msg, db)
-                
-                if result == "sent":
-                    stats["sent"] += 1
-                elif result == "failed":
-                    stats["failed"] += 1
-                elif result == "suppressed":
-                    stats["suppressed"] += 1
-                else:
-                    stats["skipped"] += 1
-            
-            db.commit()
-            
+
+            # One queue per sending inbox, each capped to roughly one cycle of
+            # sends at that inbox's pace; the inboxes then send in parallel.
+            queues = defaultdict(list)
+            for message_id, inbox_id in due:
+                queues[inbox_id].append(message_id)
+            delays = dict(db.query(SendingInbox.inbox_id, SendingInbox.delay_between_emails).filter(
+                SendingInbox.inbox_id.in_([i for i in queues if i])).all()) if any(queues) else {}
+            for inbox_id, ids in queues.items():
+                delay = delays.get(inbox_id) or 0
+                cap = max(1, math.ceil(self.INBOX_CYCLE_SECONDS / delay)) if delay > 0 else 50
+                del ids[cap:]
+
+            logger.info(
+                f"[Scheduler] Processing {sum(len(v) for v in queues.values())} due emails "
+                f"across {len(queues)} inbox queue(s)"
+            )
+            results = await asyncio.gather(*(self._run_inbox_queue(ids) for ids in queues.values()))
+            for queue_stats in results:
+                for key, value in queue_stats.items():
+                    stats[key] += value
+
+            db.expire_all()
             # Mark campaigns as completed if objective met
             self._check_completed_campaigns(db)
             
@@ -241,6 +251,103 @@ class EmailSchedulerService:
             if close_db:
                 db.close()
                 
+
+    async def _run_inbox_queue(self, message_ids: List[str]) -> dict:
+        """Send one inbox's due messages in order, at its pace, in its own session."""
+        stats = defaultdict(int)
+        db = SessionLocal()
+        try:
+            for message_id in message_ids:
+                email_msg = db.query(EmailMessage).filter(EmailMessage.message_id == message_id).first()
+                if not email_msg or email_msg.status not in ("QUEUED", "SCHEDULED") or email_msg.sent_at:
+                    continue
+                stats["processed"] += 1
+                try:
+                    result = await self._process_single_email(email_msg, db)
+                    if email_msg.status in ("QUEUED", "SCHEDULED", "CANCELLED") and not email_msg.sent_at:
+                        email_msg.send_key = None  # not sent: free the step for a later attempt
+                    db.commit()
+                except Exception as exc:  # one bad message must not stop the queue
+                    logger.exception(f"[Scheduler] Message {message_id} errored: {exc}")
+                    db.rollback()
+                    result = "failed"
+                stats[result if result in ("sent", "failed", "suppressed") else "skipped"] += 1
+        finally:
+            db.close()
+        return stats
+
+    def _recover_stuck_sends(self, db: Session) -> None:
+        """
+        A message claimed (SENDING) by a worker that then died is never retried
+        automatically: SES may already have accepted it, and resending could
+        email the contact twice (BR-DF-06). It is marked failed with the reason,
+        so it shows a final status instead of hanging in SENDING forever.
+        """
+        cutoff = datetime.utcnow() - timedelta(minutes=self.STUCK_SENDING_MINUTES)
+        stuck = db.query(EmailMessage).filter(
+            EmailMessage.status == "SENDING", EmailMessage.sent_at.is_(None),
+            or_(EmailMessage.claimed_at < cutoff, EmailMessage.claimed_at.is_(None)),
+        ).all()
+        for msg in stuck:
+            msg.status = "FAILED"
+            msg.final_status, msg.final_status_at = "FAILED", datetime.utcnow()
+            msg.failure_reason = ("Sending was interrupted and the outcome is unknown; "
+                                  "not retried so the contact cannot receive it twice.")
+        if stuck:
+            db.commit()
+            logger.warning(f"[Scheduler] Marked {len(stuck)} interrupted send(s) as failed")
+
+    @staticmethod
+    def send_key_for(email_msg: EmailMessage) -> Optional[str]:
+        """Identity of 'this campaign step to this address' (BR-DF-06); None for ad-hoc mail."""
+        if not (email_msg.campaign_id and email_msg.sequence_id and email_msg.to_email):
+            return None
+        return f"{email_msg.campaign_id}:{email_msg.sequence_id}:{email_msg.to_email.strip().lower()}"[:330]
+
+    def _claim(self, email_msg: EmailMessage, db: Session) -> bool:
+        """
+        Atomically take ownership of a message for sending. Fails if another
+        worker has it, or if this campaign step was already sent (or is being
+        sent) to the same address, in which case the message is cancelled.
+        """
+        key = self.send_key_for(email_msg)
+        if key:
+            already = db.query(EmailMessage.message_id).filter(
+                EmailMessage.campaign_id == email_msg.campaign_id,
+                EmailMessage.sequence_id == email_msg.sequence_id,
+                func.lower(EmailMessage.to_email) == email_msg.to_email.strip().lower(),
+                EmailMessage.message_id != email_msg.message_id,
+                or_(EmailMessage.sent_at.isnot(None), EmailMessage.status.in_(["SENDING", "SENT"])),
+            ).first()
+            if already:
+                self._cancel_duplicate(email_msg, db, already[0])
+                return False
+        try:
+            rows = db.query(EmailMessage).filter(
+                EmailMessage.message_id == email_msg.message_id,
+                EmailMessage.status.in_(["QUEUED", "SCHEDULED"]),
+            ).update({"status": "SENDING", "send_key": key, "claimed_at": datetime.utcnow()},
+                     synchronize_session=False)
+            db.commit()
+        except IntegrityError:
+            # The unique send_key: a concurrent worker claimed the same step for this address
+            db.rollback()
+            self._cancel_duplicate(email_msg, db, None)
+            return False
+        if rows:
+            db.refresh(email_msg)
+        return bool(rows)
+
+    def _cancel_duplicate(self, email_msg: EmailMessage, db: Session, original_id: Optional[str]) -> None:
+        db.query(EmailMessage).filter(
+            EmailMessage.message_id == email_msg.message_id,
+            EmailMessage.status.in_(["QUEUED", "SCHEDULED"]),
+        ).update({"status": "CANCELLED",
+                  "failure_reason": "Duplicate: this step was already sent to this address"
+                                    + (f" (message {original_id})" if original_id else "")},
+                 synchronize_session=False)
+        db.commit()
+        logger.warning(f"[Scheduler] Cancelled duplicate send {email_msg.message_id} to {email_msg.to_email}")
 
     def _check_completed_campaigns(self, db: Session):
         """
@@ -318,14 +425,8 @@ class EmailSchedulerService:
                 db.commit()
                 return "skipped"
 
-            # Atomic ownership claim to prevent race conditions
-            rows = db.query(EmailMessage).filter(
-                EmailMessage.message_id == email_msg.message_id,
-                EmailMessage.status.in_(["QUEUED", "SCHEDULED"])
-            ).update({"status": "SENDING"}, synchronize_session=False)
-            db.commit()
-            
-            if rows == 0:
+            # Atomic ownership claim, with the duplicate-send guard (BR-DF-06)
+            if not self._claim(email_msg, db):
                 return "skipped"
 
             # Get prospect
@@ -339,26 +440,26 @@ class EmailSchedulerService:
                 email_msg.failure_reason = "Prospect not found"
                 return "failed"
             
-            # Check suppression list
-            is_suppressed = db.query(GlobalUnsubscribe).filter(
-                and_(
-                    GlobalUnsubscribe.email == prospect.email,
-                    GlobalUnsubscribe.tenant_id == prospect.tenant_id
-                )
-            ).first()
-            
-            if is_suppressed:
-                logger.info(f"[Scheduler] Email {prospect.email} is suppressed, skipping")
+            # Same suppression rule as enrollment (BR-DF-08)
+            from app.services.suppression import blocked_reason
+            reason = blocked_reason(db, prospect)
+            if reason:
+                logger.info(f"[Scheduler] {prospect.email} is suppressed ({reason}), skipping")
                 email_msg.status = "CANCELLED"
-                email_msg.failure_reason = f"Suppressed: {is_suppressed.reason}"
+                email_msg.failure_reason = reason
                 return "suppressed"
-            
-            # Check prospect consent
-            if prospect.consent_status == "UNSUBSCRIBED":
-                logger.info(f"[Scheduler] Prospect {prospect.email} unsubscribed, skipping")
-                email_msg.status = "CANCELLED"
-                email_msg.failure_reason = "Prospect unsubscribed"
-                return "suppressed"
+
+            # Stop on reply / bounce / unsubscribe in this campaign (BR-DF-05): later
+            # steps are queued at launch, so check the contact's state before each send.
+            if email_msg.campaign_id and email_msg.direction != "INBOUND" and email_msg.sequence_id:
+                enrollment = db.query(CampaignProspect.status).filter(
+                    CampaignProspect.campaign_id == email_msg.campaign_id,
+                    CampaignProspect.prospect_id == email_msg.prospect_id,
+                ).first()
+                if enrollment and enrollment[0] in ("REPLIED", "BOUNCED", "UNSUBSCRIBED"):
+                    email_msg.status = "CANCELLED"
+                    email_msg.failure_reason = f"Stopped: contact {enrollment[0].lower()}"
+                    return "suppressed"
             
             # Get template. Manual unified-inbox replies can be queued without template_id,
             # using the message snapshot subject/body directly.
@@ -403,6 +504,7 @@ class EmailSchedulerService:
                         f"re-queuing message {email_msg.message_id} for 1 hour."
                     )
                     email_msg.status = "QUEUED"
+                    email_msg.send_key = None
                     email_msg.scheduled_at = datetime.utcnow() + timedelta(hours=1)
                     return "skipped"
 
@@ -439,6 +541,7 @@ class EmailSchedulerService:
                      )
                      # Re-queue for next hour check
                      email_msg.status = "QUEUED"
+                     email_msg.send_key = None
                      # Add small delay so we don't spam the checks immediately
                      email_msg.scheduled_at = datetime.utcnow() + timedelta(minutes=30)
                      return "skipped"
@@ -447,6 +550,7 @@ class EmailSchedulerService:
             # INBOX ROTATION & SELECTION LOGIC
             # ---------------------------------------------------------
             from_email_address = self._resolve_sender_for_message(email_msg, campaign, db)
+            paced = False
 
             # ---------------------------------------------------------
             # PER-INBOX WARMUP & THROTTLE CHECK
@@ -493,27 +597,31 @@ class EmailSchedulerService:
                             f"({effective_limit}), re-queuing message {email_msg.message_id}"
                         )
                         email_msg.status = "QUEUED"
+                        email_msg.send_key = None
                         email_msg.scheduled_at = datetime.utcnow() + timedelta(
                             hours=inbox.cooling_period_hours
                         )
                         return "skipped"
 
-                    # Per-email delay (throttle between sends for this inbox)
-                    if inbox.delay_between_emails and inbox.delay_between_emails > 0 and inbox.last_sent_at:
-                        seconds_since_last = (datetime.utcnow() - inbox.last_sent_at).total_seconds()
-                        if seconds_since_last < inbox.delay_between_emails:
-                            remaining = inbox.delay_between_emails - seconds_since_last
-                            await asyncio.sleep(remaining)
+                    # Per-inbox pace (BR-DF-01): the next send from this inbox waits
+                    # delay_between_emails after the previous one, varied by up to
+                    # +/- the jitter so the rhythm isn't machine-regular. The jitter
+                    # averages out, so the configured pace is what is achieved.
+                    if inbox.delay_between_emails and inbox.delay_between_emails > 0:
+                        spread = min(settings.SENDING_JITTER_MAX_SECONDS, inbox.delay_between_emails * 0.25)
+                        gap = inbox.delay_between_emails + random.uniform(-spread, spread)
+                        if inbox.last_sent_at:
+                            wait = gap - (datetime.utcnow() - inbox.last_sent_at).total_seconds()
+                            if wait > 0:
+                                await asyncio.sleep(wait)
+                        paced = True
 
             # ---------------------------------------------------------
-            # HUMAN-PACED SENDING JITTER
+            # HUMAN-PACED SENDING JITTER (inboxes without their own pace)
             # ---------------------------------------------------------
-            # Add random delay between sends to mimic human behaviour.
-            # Without jitter, sending 50 emails exactly N seconds apart
-            # creates a machine-like pattern that spam filters detect.
             jitter_min = settings.SENDING_JITTER_MIN_SECONDS
             jitter_max = settings.SENDING_JITTER_MAX_SECONDS
-            if jitter_max > 0 and jitter_min < jitter_max:
+            if not paced and jitter_max > 0 and jitter_min < jitter_max:
                 jitter_delay = random.uniform(jitter_min, jitter_max)
                 logger.debug(
                     f"[Scheduler] Applying {jitter_delay:.1f}s jitter for msg {email_msg.message_id}"
@@ -544,15 +652,15 @@ class EmailSchedulerService:
                 email_msg.provider_message_id = (
                     result.get("internet_message_id") or result.get("ses_message_id")
                 )
+                # SES's id, so delivery events without our tag still match (BR-DF-04)
+                email_msg.ses_message_id = result.get("ses_message_id")
 
-                # Update inbox warmup counters
+                # Update inbox warmup counters (in SQL, so parallel queues can't lose a count)
                 if email_msg.inbox_id:
-                    sent_inbox = db.query(SendingInbox).filter(
-                        SendingInbox.inbox_id == email_msg.inbox_id
-                    ).first()
-                    if sent_inbox:
-                        sent_inbox.emails_sent_today = (sent_inbox.emails_sent_today or 0) + 1
-                        sent_inbox.last_sent_at = datetime.utcnow()
+                    db.query(SendingInbox).filter(SendingInbox.inbox_id == email_msg.inbox_id).update({
+                        SendingInbox.emails_sent_today: func.coalesce(SendingInbox.emails_sent_today, 0) + 1,
+                        SendingInbox.last_sent_at: datetime.utcnow(),
+                    }, synchronize_session=False)
 
                 # Create sent event
                 event = EmailEvent(
@@ -592,20 +700,33 @@ class EmailSchedulerService:
                 else:
                     # Schedule retry with exponential backoff
                     email_msg.status = "QUEUED"
+                    email_msg.send_key = None
                     email_msg.next_retry_at = datetime.utcnow() + timedelta(
                         minutes=2 ** email_msg.retry_count
                     )
                     email_msg.last_error_code = result.get("error", "")[:50]
+                if email_msg.status == "FAILED":
+                    email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
                 
                 logger.warning(
                     f"[Scheduler] Email failed for {prospect.email}: {result.get('error')}"
                 )
                 return "failed"
                 
+        except AmbiguousEmailFailure as e:
+            # SES may have accepted the message before the connection failed:
+            # retrying could send it twice (BR-DF-06), so stop here and say why.
+            email_msg.status = "FAILED"
+            email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+            email_msg.failure_reason = f"Send outcome unknown, not retried to avoid a duplicate: {e}"[:1000]
+            logger.error(f"[Scheduler] Ambiguous send failure for {email_msg.message_id}: {e}")
+            return "failed"
+
         except TransientEmailFailure as e:
             # Retryable error
             email_msg.retry_count += 1
             email_msg.status = "QUEUED"
+            email_msg.send_key = None
             email_msg.next_retry_at = datetime.utcnow() + timedelta(
                 minutes=2 ** email_msg.retry_count
             )
@@ -616,6 +737,7 @@ class EmailSchedulerService:
         except PermanentEmailFailure as e:
             # Non-retryable error
             email_msg.status = "FAILED"
+            email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
             email_msg.failure_reason = str(e)
             logger.error(f"[Scheduler] Permanent failure: {e}")
 
@@ -630,6 +752,7 @@ class EmailSchedulerService:
         except Exception as e:
             logger.error(f"[Scheduler] Unexpected error: {e}")
             email_msg.status = "FAILED"
+            email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
             email_msg.failure_reason = f"Unexpected: {str(e)[:200]}"
             return "failed"
 
@@ -745,63 +868,13 @@ class EmailSchedulerService:
         required by major mailbox providers (Microsoft, Google).
         """
         try:
-            # 1. Add to GlobalUnsubscribe (skip if already exists)
-            existing_unsub = db.query(GlobalUnsubscribe).filter(
-                and_(
-                    GlobalUnsubscribe.email == prospect.email,
-                    GlobalUnsubscribe.tenant_id == prospect.tenant_id,
-                )
-            ).first()
-
-            if not existing_unsub:
-                unsub = GlobalUnsubscribe(
-                    tenant_id=prospect.tenant_id,
-                    email=prospect.email,
-                    unsubscribed_at=datetime.utcnow(),
-                    reason=f"HARD_BOUNCE_AUTO_SUPPRESSED: {error_details[:200]}",
-                )
-                db.merge(unsub)
-                logger.warning(
-                    f"[Scheduler] Hard bounce auto-suppressed: {prospect.email} "
-                    f"(Error: {error_details[:100]})"
-                )
-
-            # 2. Cancel all remaining queued emails for this prospect in this campaign
-            remaining = db.query(EmailMessage).filter(
-                and_(
-                    EmailMessage.campaign_id == email_msg.campaign_id,
-                    EmailMessage.prospect_id == email_msg.prospect_id,
-                    EmailMessage.status.in_(["QUEUED", "SCHEDULED"]),
-                    EmailMessage.message_id != email_msg.message_id,
-                )
-            ).all()
-
-            for msg in remaining:
-                msg.status = "CANCELLED"
-                msg.failure_reason = f"Hard bounce auto-suppression for {prospect.email}"
-
-            if remaining:
-                logger.info(
-                    f"[Scheduler] Cancelled {len(remaining)} remaining emails "
-                    f"for hard-bounced prospect {prospect.email}"
-                )
-
-            # Reflect the hard bounce on the prospect's status for this campaign
-            # (this is the synchronous, send-time bounce path — SES rejected the
-            # send outright rather than the async SNS bounce webhook).
-            campaign_prospect = db.query(CampaignProspect).filter(
-                and_(
-                    CampaignProspect.campaign_id == email_msg.campaign_id,
-                    CampaignProspect.prospect_id == email_msg.prospect_id,
-                )
-            ).first()
-            set_prospect_status(
-                campaign_prospect,
-                "BOUNCED",
-                stopped_reason=f"Hard bounce (send-time): {error_details[:200]}"
-            )
-
+            # Applies across every campaign in the workspace (BR-DF-08)
+            from app.services.suppression import suppress
+            suppress(db, prospect.tenant_id, prospect.email,
+                     f"HARD_BOUNCE_AUTO_SUPPRESSED: {error_details[:200]}", kind="HARD_BOUNCE")
             db.flush()
+            from app.services.send_safety import check_campaign_health
+            check_campaign_health(db, email_msg.campaign_id, trigger="hard bounce at send time")
         except Exception as e:
             logger.error(f"[Scheduler] Failed to auto-suppress hard bounce: {e}")
     
@@ -820,12 +893,14 @@ class EmailSchedulerService:
         logger.info(f"[Scheduler] Starting continuous mode, interval={interval_seconds}s")
         
         while self.is_running:
+            stats = {}
             try:
-                await self.process_scheduled_emails()
+                stats = await self.process_scheduled_emails() or {}
             except Exception as e:
                 logger.error(f"[Scheduler] Error in continuous run: {e}")
             
-            await asyncio.sleep(interval_seconds)
+            # Come straight back while there is work, so pace is set by the inboxes (BR-DF-01)
+            await asyncio.sleep(2 if stats.get("processed") else interval_seconds)
     
     def stop(self):
         """Stop continuous scheduler."""

@@ -26,6 +26,12 @@ class SendingInboxResponse(BaseModel):
     imap_port: Optional[int] = 993
     imap_username: Optional[str] = None
     last_sync_at: Optional[datetime] = None
+    imap_last_error: Optional[str] = None
+
+    # Sign-in: PASSWORD or OAUTH_MS365 (BR-DF-05)
+    auth_type: Optional[str] = "PASSWORD"
+    oauth_expires_at: Optional[datetime] = None
+    oauth_error: Optional[str] = None
 
     # Warm-up & Throttle fields
     warmup_enabled: Optional[bool] = True

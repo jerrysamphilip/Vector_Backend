@@ -253,10 +253,8 @@ class CampaignExecutionService:
             return False
             
         # 1. Global Unsubscribe
-        is_unsub = self.db.query(GlobalUnsubscribe).filter(
-            GlobalUnsubscribe.email == prospect.email
-        ).first()
-        if is_unsub:
+        from app.services.suppression import blocked_reason
+        if blocked_reason(self.db, prospect):
             set_prospect_status(cp, "UNSUBSCRIBED", stopped_reason="Global Unsubscribe")
             return False
             

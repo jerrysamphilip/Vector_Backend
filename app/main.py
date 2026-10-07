@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
     # Run in a thread-pool executor so blocking imaplib calls don't freeze the event loop.
     async def run_imap_sync():
         loop = asyncio.get_event_loop()
-        print("Starting IMAP sync service (300s interval)...")
+        print("Starting IMAP sync service (120s interval)...")
         while True:
             try:
                 with SessionLocal() as db:
@@ -65,7 +65,8 @@ async def lifespan(app: FastAPI):
                 break
             except Exception as e:
                 print(f"IMAP Sync Error: {e}")
-            await asyncio.sleep(300)
+            # Each inbox syncs about every 4 minutes (replies visible within 10, BR-DF-05)
+            await asyncio.sleep(120)
 
     imap_task = asyncio.create_task(run_imap_sync())
 
@@ -129,6 +130,34 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(6 * 3600)
 
     purge_task = asyncio.create_task(run_crm_purge())
+
+    # Every sent email gets a final status within 15 minutes (BR-DF-04), and domain /
+    # campaign health is recomputed hourly with auto-pause on risk (BR-DF-07).
+    async def run_send_safety():
+        from app.services.send_safety import reconcile_delivery_status, run_health_cycle
+        loop = asyncio.get_event_loop()
+        last_health = 0.0
+        while True:
+            try:
+                def _reconcile():
+                    with SessionLocal() as db:
+                        return reconcile_delivery_status(db)
+                await loop.run_in_executor(None, _reconcile)
+                if loop.time() - last_health >= 3600:
+                    def _health():
+                        with SessionLocal() as db:
+                            return run_health_cycle(db)
+                    result = await loop.run_in_executor(None, _health)
+                    last_health = loop.time()
+                    if result.get("paused"):
+                        print(f"Health check paused {result['paused']} campaign(s)")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"Send safety loop error: {e}")
+            await asyncio.sleep(60)
+
+    send_safety_task = asyncio.create_task(run_send_safety())
     try:
         yield
     except (asyncio.CancelledError, KeyboardInterrupt):
@@ -144,6 +173,7 @@ async def lifespan(app: FastAPI):
         deliverability_task.cancel()
         warmup_task.cancel()
         purge_task.cancel()
+        send_safety_task.cancel()
 
         await asyncio.gather(
             scheduler_task,
@@ -151,6 +181,7 @@ async def lifespan(app: FastAPI):
             deliverability_task,
             warmup_task,
             purge_task,
+            send_safety_task,
             return_exceptions=True,
         )
 
@@ -561,6 +592,9 @@ try:
     # This ensures all developers get the latest blueprint definitions
     from app.db.contact_schema import ensure_contact_schema
     ensure_contact_schema(engine)
+
+    from app.db.sending_schema import ensure_sending_schema
+    ensure_sending_schema(engine)
 
     from app.db.security_schema import encrypt_mailbox_passwords
     encrypt_mailbox_passwords(engine)

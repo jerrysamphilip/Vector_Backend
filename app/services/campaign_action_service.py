@@ -323,6 +323,9 @@ class CampaignActionService:
         
         old_status = campaign.status
         campaign.status = CampaignStatus.PAUSED.value
+        campaign.paused_reason = reason
+        campaign.paused_at = datetime.utcnow()
+        campaign.auto_paused = False
         
         # ── CORE FIX: Freeze all queued emails for this campaign.
         # Without this, QUEUED EmailMessage rows keep their scheduled_at and
@@ -373,6 +376,12 @@ class CampaignActionService:
         
         old_status = campaign.status
         campaign.status = CampaignStatus.ACTIVE.value
+        if campaign.auto_paused:
+            # The user has reviewed the auto-pause: judge health on sends from now on (BR-DF-07)
+            campaign.health_baseline_at = datetime.utcnow()
+        campaign.auto_paused = False
+        campaign.paused_reason = None
+        campaign.paused_at = None
         
         # ── CORE FIX: Restore all emails that were frozen by pause().
         # Set them back to QUEUED so the scheduler picks them up again.

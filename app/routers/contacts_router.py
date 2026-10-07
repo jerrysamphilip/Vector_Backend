@@ -363,18 +363,13 @@ def _check_enum(field, value, allowed):
 
 def _sync_subscription(db: Session, prospect: Prospect, status: str, user: User):
     """Keep the global unsubscribe list in step with the contact's subscription (BR-CM-39)."""
-    entry = db.query(GlobalUnsubscribe).filter(
-        GlobalUnsubscribe.tenant_id == prospect.tenant_id, func.lower(GlobalUnsubscribe.email) == prospect.email.lower())
+    from app.services.suppression import lift, suppress
     if status == "UNSUBSCRIBED":
-        if not entry.first():
-            db.add(GlobalUnsubscribe(tenant_id=prospect.tenant_id, email=prospect.email,
-                                     reason=f"Unsubscribed by {_user_name(user)}"))
-        db.query(EmailMessage).filter(
-            EmailMessage.prospect_id == prospect.prospect_id, EmailMessage.status.in_(["QUEUED", "SCHEDULED"])
-        ).update({EmailMessage.status: "CANCELLED", EmailMessage.failure_reason: "Prospect unsubscribed"},
-                 synchronize_session=False)
+        # Excluded from every campaign at once; pending emails are cancelled (BR-DF-08)
+        suppress(db, prospect.tenant_id, prospect.email, f"Unsubscribed by {_user_name(user)}",
+                 kind="UNSUBSCRIBE", source="MANUAL")
     else:
-        entry.delete(synchronize_session=False)
+        lift(db, prospect.tenant_id, prospect.email)
     prospect.consent_timestamp = datetime.utcnow()
     prospect.consent_source = "MANUAL"
 
@@ -1429,7 +1424,7 @@ def contact_timeline(
                 "at": m.sent_at or m.scheduled_at,
                 "email": {
                     "message_id": m.message_id, "subject": m.subject,
-                    "snippet": (m.body_text or "")[:400], "status": m.status,
+                    "snippet": (m.body_text or "")[:400], "status": m.status, "final_status": m.final_status, "failure_reason": m.failure_reason,
                     "from_email": m.from_email, "to_email": m.to_email,
                     "campaign_id": m.campaign_id, "campaign_name": campaign_name,
                     "conversation_id": m.conversation_id,

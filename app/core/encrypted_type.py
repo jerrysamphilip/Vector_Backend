@@ -11,7 +11,7 @@ import logging
 from functools import lru_cache
 
 from cryptography.fernet import Fernet, InvalidToken
-from sqlalchemy.types import String, TypeDecorator
+from sqlalchemy.types import String, Text, TypeDecorator
 
 logger = logging.getLogger(__name__)
 
@@ -55,3 +55,9 @@ class EncryptedString(TypeDecorator):
 
     def process_result_value(self, value, dialect):
         return decrypt_value(value)
+
+
+class EncryptedText(EncryptedString):
+    """Encrypted at rest like EncryptedString, for long values such as OAuth tokens."""
+    impl = Text
+    cache_ok = True

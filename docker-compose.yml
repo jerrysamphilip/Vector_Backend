@@ -38,6 +38,12 @@ x-api-env: &api-env
   AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
   AWS_REGION: ${AWS_REGION:-us-east-1}
   AWS_SES_CONFIGURATION_SET: ${AWS_SES_CONFIGURATION_SET:-}
+  # Microsoft 365 mailboxes (OAuth). Register the redirect URI below in the Azure app.
+  MS365_CLIENT_ID: ${MS365_CLIENT_ID:-}
+  MS365_CLIENT_SECRET: ${MS365_CLIENT_SECRET:-}
+  MS365_TENANT_ID: ${MS365_TENANT_ID:-common}
+  MS365_REDIRECT_URI: ${MS365_REDIRECT_URI:-http://localhost/vector/api/inboxes/oauth/microsoft/callback}
+  MS365_POST_CONNECT_URL: ${MS365_POST_CONNECT_URL:-/vector/app/inboxes}
   SENDER_EMAIL: ${SENDER_EMAIL:-}
   SENDER_NAME: ${SENDER_NAME:-Outreach AI}
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}

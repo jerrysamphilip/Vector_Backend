@@ -137,35 +137,15 @@ def track_unsubscribe(
             )
             db.add(event)
             
-            # Update Prospect's consent status
-            # Local import to avoid circular dependency
-            from app.models.prospect import Prospect, GlobalUnsubscribe
-            
+            # Unsubscribe from every campaign in the workspace, not just this one (BR-DF-08)
+            from app.models.prospect import Prospect
+            from app.services.suppression import suppress
+
             if email_message.prospect_id:
                 prospect = db.query(Prospect).filter(Prospect.prospect_id == email_message.prospect_id).first()
-                if prospect:
-                    prospect.consent_status = "UNSUBSCRIBED"
-                    prospect.consent_source = f"email_link:{message_id}"
-                    prospect.consent_timestamp = datetime.utcnow()
-                    db.add(prospect)
-                    
-                    # Add to Global Unsubscribe list with a suppression expiry date
-                    if prospect.email and prospect.tenant_id:
-                        # Calculate suppression expiry
-                        now = datetime.utcnow()
-                        if settings.UNSUBSCRIBE_SUPPRESSION_HOURS > 0:
-                            suppression_expires = now + timedelta(hours=settings.UNSUBSCRIBE_SUPPRESSION_HOURS)
-                        else:
-                            suppression_expires = now + timedelta(days=settings.UNSUBSCRIBE_SUPPRESSION_DAYS)
-                        
-                        global_unsub = GlobalUnsubscribe(
-                            tenant_id=prospect.tenant_id,
-                            email=prospect.email,
-                            unsubscribed_at=now,
-                            suppression_expires_at=suppression_expires,
-                            reason="User clicked unsubscribe link"
-                        )
-                        db.merge(global_unsub)  # merge handles insert or update
+                if prospect and prospect.email and prospect.tenant_id:
+                    suppress(db, prospect.tenant_id, prospect.email, "User clicked unsubscribe link",
+                             kind="UNSUBSCRIBE", source=f"email_link:{message_id}")
             
             db.commit()
             

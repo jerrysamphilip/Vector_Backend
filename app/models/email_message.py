@@ -3,7 +3,7 @@
 Email Message and Event models for the SMTP sequencing engine.
 """
 
-from sqlalchemy import Column, String, SmallInteger, Integer, Text, TIMESTAMP, ForeignKey, JSON
+from sqlalchemy import Column, String, SmallInteger, Integer, Text, TIMESTAMP, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -54,6 +54,20 @@ class EmailMessage(Base):
     failure_reason = Column(Text, nullable=True)
     last_error_code = Column(String(50), nullable=True)
 
+    # Send safety (BR-DF-06): set when the scheduler claims a campaign step for a
+    # recipient, "<campaign>:<step>:<email>". The unique index means the same
+    # step can never be claimed twice for the same address, even concurrently.
+    send_key = Column(String(330), nullable=True, unique=True)
+    claimed_at = Column(TIMESTAMP, nullable=True)
+
+    # Delivery outcome (BR-DF-04). SES's own id, for matching events that arrive
+    # without our message_id tag, and the final status every sent email gets
+    # within 15 minutes: DELIVERED / BOUNCED / COMPLAINED / REJECTED / FAILED /
+    # UNCONFIRMED (SES never reported back).
+    ses_message_id = Column(String(100), nullable=True, index=True)
+    final_status = Column(String(30), nullable=True)
+    final_status_at = Column(TIMESTAMP, nullable=True)
+
     # Relationships
     campaign = relationship("Campaign", back_populates="messages")
     prospect = relationship("Prospect", back_populates="email_messages")
@@ -63,6 +77,8 @@ class EmailMessage(Base):
     events = relationship("EmailEvent", back_populates="message", lazy="dynamic")
 
     __table_args__ = (
+        Index("ix_email_messages_status_scheduled", "status", "scheduled_at"),
+        Index("ix_email_messages_reconcile", "final_status", "status", "sent_at"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

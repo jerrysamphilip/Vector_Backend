@@ -8,6 +8,7 @@ import json
 import logging
 import uuid
 from datetime import datetime
+from typing import List, Optional
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
@@ -22,6 +23,9 @@ from app.models.automation_rule import TriggerType
 from app.services.metrics_service import MetricsService
 from app.services.deliverability_service import deliverability_service
 from app.utils.campaign_prospect_status import set_prospect_status
+from app.services.send_safety import on_risk_event, set_final_status
+from app.services.suppression import suppress
+from sqlalchemy import func
 from app.core.secrets_guard import is_deployed
 from app.utils.sns_verify import is_sns_url, token_matches, verify_sns_signature
 
@@ -50,6 +54,37 @@ def _extract_tags(mail_info: dict) -> dict:
         return {tag.get("name"): tag.get("value") for tag in tags_raw if "name" in tag}
         
     return {}
+
+
+def _tenants_for(db: Session, email_message, email: Optional[str]) -> List[str]:
+    """The workspace an event belongs to: the message's, else every workspace that has this address."""
+    if email_message is not None and email_message.prospect_id:
+        tenant = db.query(Prospect.tenant_id).filter(Prospect.prospect_id == email_message.prospect_id).first()
+        if tenant:
+            return [tenant[0]]
+    if not email:
+        return []
+    return [t for (t,) in db.query(Prospect.tenant_id).filter(
+        func.lower(Prospect.email) == email.strip().lower()).distinct()]
+
+
+def _resolve_message_id(db: Session, mail_info: dict, tags: dict) -> Optional[str]:
+    """
+    Our message_id for an SES event (BR-DF-04). Normally it is the message_id
+    tag we attach on send; events that arrive without it (tags stripped, sent
+    before tagging, other configuration sets) are matched on SES's own
+    messageId, which the scheduler stores on every send.
+    """
+    if tags.get("message_id"):
+        return tags["message_id"]
+    ses_id = mail_info.get("messageId")
+    if not ses_id:
+        return None
+    row = db.query(EmailMessage.message_id).filter(EmailMessage.ses_message_id == ses_id).first() \
+        or db.query(EmailMessage.message_id).filter(EmailMessage.provider_message_id == ses_id).first()
+    if not row:
+        logger.warning(f"[SES-WEBHOOK] Event for unknown SES message {ses_id}")
+    return row[0] if row else None
 
 
 # Diagnostic-code substrings indicating the recipient's server rejected the
@@ -230,9 +265,10 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
     
     # Extract tags using helper
     tags = _extract_tags(mail_info)
-    internal_message_id = tags.get("message_id")
+    internal_message_id = _resolve_message_id(db, mail_info, tags)
     
     processed_emails = []
+    email_message = None
     
     for recipient in bounced_recipients:
         email = recipient.get("emailAddress")
@@ -248,6 +284,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
         if email_message:
             # Update message status
             email_message.status = "BOUNCED"
+            set_final_status(email_message, "BOUNCED")
             email_message.failure_reason = f"{bounce_type}: {bounce_subtype}"
             email_message.last_error_code = f"BOUNCE_{bounce_type}"
 
@@ -324,43 +361,15 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
         # or unsubscribe would. (Transient/soft bounces don't change status:
         # the address may still be reachable on a later attempt.)
         if bounce_type == "Permanent":
-            prospect = db.query(Prospect).filter(
-                Prospect.email == email
-            ).first()
-
-            if prospect:
-                existing = db.query(GlobalUnsubscribe).filter(
-                    GlobalUnsubscribe.tenant_id == prospect.tenant_id,
-                    GlobalUnsubscribe.email == email
-                ).first()
-
-                if not existing:
-                    unsubscribe = GlobalUnsubscribe(
-                        tenant_id=prospect.tenant_id,
-                        email=email,
-                        reason=f"Hard bounce: {bounce_subtype}"
-                    )
-                    db.add(unsubscribe)
-                    logger.warning(f"[SES-WEBHOOK] Added {email} to global unsubscribe (hard bounce)")
-
-                if email_message and email_message.campaign_id:
-                    campaign_prospect = db.query(CampaignProspect).filter(
-                        CampaignProspect.campaign_id == email_message.campaign_id,
-                        CampaignProspect.prospect_id == prospect.prospect_id
-                    ).first()
-                    set_prospect_status(
-                        campaign_prospect,
-                        "BOUNCED",
-                        stopped_reason=f"Hard bounce: {bounce_subtype}"
-                    )
-    
+            # Dead address: suppressed and stopped in every campaign in the workspace (BR-DF-08)
+            tenant_ids = _tenants_for(db, email_message, email)
+            for tenant_id in tenant_ids:
+                suppress(db, tenant_id, email, f"Hard bounce: {bounce_subtype}", kind="HARD_BOUNCE")
     db.commit()
 
-    if sender_domain:
-        try:
-            deliverability_service.update_domain_stats(sender_domain, "BOUNCE", db)
-        except Exception as e:
-            logger.error(f"[SES-WEBHOOK] Failed to update domain stats for bounce ({sender_domain}): {e}")
+    # Auto-pause within seconds if this pushes the campaign or domain over the limits (BR-DF-07)
+    if bounce_type == "Permanent":
+        on_risk_event(db, email_message.campaign_id if email_message else None, sender_domain, "hard bounce")
     
     logger.info(f"[SES-WEBHOOK] Processed {bounce_type} bounce for {len(processed_emails)} recipients")
     
@@ -397,9 +406,10 @@ async def _handle_complaint(message: dict, db: Session) -> dict:
     source_email = (mail_info.get("source") or "").lower()
     sender_domain = source_email.split("@", 1)[1] if "@" in source_email else None
     tags = _extract_tags(mail_info)
-    internal_message_id = tags.get("message_id")
+    internal_message_id = _resolve_message_id(db, mail_info, tags)
     
     processed_emails = []
+    email_message = None
     
     for recipient in complained_recipients:
         email = recipient.get("emailAddress")
@@ -412,6 +422,7 @@ async def _handle_complaint(message: dict, db: Session) -> dict:
             
             if email_message:
                 email_message.status = "COMPLAINED"
+                set_final_status(email_message, "COMPLAINED")
                 email_message.failure_reason = f"Spam complaint: {complaint_type}"
                 
                 event = EmailEvent(
@@ -425,33 +436,13 @@ async def _handle_complaint(message: dict, db: Session) -> dict:
                 )
                 db.add(event)
         
-        prospect = db.query(Prospect).filter(
-            Prospect.email == email
-        ).first()
-        
-        if prospect:
-            existing = db.query(GlobalUnsubscribe).filter(
-                GlobalUnsubscribe.tenant_id == prospect.tenant_id,
-                GlobalUnsubscribe.email == email
-            ).first()
-            
-            if not existing:
-                unsubscribe = GlobalUnsubscribe(
-                    tenant_id=prospect.tenant_id,
-                    email=email,
-                    reason=f"Spam complaint: {complaint_type or 'unknown'}"
-                )
-                db.add(unsubscribe)
-                logger.warning(f"[SES-WEBHOOK] Added {email} to global unsubscribe (complaint)")
-            
-            prospect.consent_status = "UNSUBSCRIBED"
+        # A complaint unsubscribes the contact from every campaign, permanently (BR-DF-08)
+        for tenant_id in _tenants_for(db, email_message if internal_message_id else None, email):
+            suppress(db, tenant_id, email, f"Spam complaint: {complaint_type or 'unknown'}", kind="COMPLAINT")
     
     db.commit()
-    if sender_domain:
-        try:
-            deliverability_service.update_domain_stats(sender_domain, "COMPLAINT", db)
-        except Exception as e:
-            logger.error(f"[SES-WEBHOOK] Failed to update domain stats for complaint ({sender_domain}): {e}")
+    on_risk_event(db, email_message.campaign_id if internal_message_id and email_message else None,
+                  sender_domain, "spam complaint")
     logger.warning(f"[SES-WEBHOOK] Processed complaint for {len(processed_emails)} recipients")
     return {"status": "processed", "type": "complaint", "emails": processed_emails}
 
@@ -464,7 +455,7 @@ async def _handle_delivery(message: dict, db: Session) -> dict:
     delivery_info = message.get("delivery", {})
     
     tags = _extract_tags(mail_info)
-    internal_message_id = tags.get("message_id")
+    internal_message_id = _resolve_message_id(db, mail_info, tags)
     
     recipients = delivery_info.get("recipients", [])
     
@@ -479,6 +470,7 @@ async def _handle_delivery(message: dict, db: Session) -> dict:
         # instead of transitioning status away from SENT.
         if email_message and email_message.status == "SENT" and not email_message.delivered_at:
             email_message.delivered_at = datetime.utcnow()
+            set_final_status(email_message, "DELIVERED", email_message.delivered_at)
 
             event = EmailEvent(
                 message_id=email_message.message_id,
@@ -504,7 +496,7 @@ async def _handle_open(message: dict, db: Session) -> dict:
     open_info = message.get("open", {})
     
     tags = _extract_tags(mail_info)
-    internal_message_id = tags.get("message_id")
+    internal_message_id = _resolve_message_id(db, mail_info, tags)
     
     if not internal_message_id:
         headers = {h["name"]: h["value"] for h in mail_info.get("headers", [])}
@@ -559,7 +551,7 @@ async def _handle_click(message: dict, db: Session) -> dict:
     click_info = message.get("click", {})
     
     tags = _extract_tags(mail_info)
-    internal_message_id = tags.get("message_id")
+    internal_message_id = _resolve_message_id(db, mail_info, tags)
     
     if not internal_message_id:
         headers = {h["name"]: h["value"] for h in mail_info.get("headers", [])}
@@ -616,7 +608,7 @@ async def _handle_reject(message: dict, db: Session) -> dict:
     reject_info = message.get("reject", {})
     
     tags = _extract_tags(mail_info)
-    internal_message_id = tags.get("message_id")
+    internal_message_id = _resolve_message_id(db, mail_info, tags)
     
     if internal_message_id:
         email_message = db.query(EmailMessage).filter(
@@ -625,6 +617,7 @@ async def _handle_reject(message: dict, db: Session) -> dict:
         
         if email_message:
             email_message.status = "REJECTED"
+            set_final_status(email_message, "REJECTED")
             email_message.failure_reason = f"Rejected: {reject_info.get('reason', 'virus detected')}"
             email_message.last_error_code = "REJECT_VIRUS"
             
@@ -652,7 +645,7 @@ async def _handle_delivery_delay(message: dict, db: Session) -> dict:
     delay_info = message.get("deliveryDelay", {})
     
     tags = _extract_tags(mail_info)
-    internal_message_id = tags.get("message_id")
+    internal_message_id = _resolve_message_id(db, mail_info, tags)
     
     delayed_recipients = delay_info.get("delayedRecipients", [])
     delay_type = delay_info.get("delayType", "UNKNOWN")
@@ -694,7 +687,7 @@ async def _handle_rendering_failure(message: dict, db: Session) -> dict:
     failure_info = message.get("failure", {})
     
     tags = _extract_tags(mail_info)
-    internal_message_id = tags.get("message_id")
+    internal_message_id = _resolve_message_id(db, mail_info, tags)
     
     error_message = failure_info.get("errorMessage", "Template rendering failed")
     template_name = failure_info.get("templateName", "unknown")
@@ -706,6 +699,7 @@ async def _handle_rendering_failure(message: dict, db: Session) -> dict:
         
         if email_message:
             email_message.status = "FAILED"
+            set_final_status(email_message, "FAILED")
             email_message.failure_reason = f"Rendering failure: {error_message}"
             email_message.last_error_code = "RENDER_FAILURE"
             db.commit()
@@ -728,7 +722,7 @@ async def _handle_subscription(message: dict, db: Session) -> dict:
     subscription_info = message.get("subscription", {})
     
     tags = _extract_tags(mail_info)
-    internal_message_id = tags.get("message_id")
+    internal_message_id = _resolve_message_id(db, mail_info, tags)
     
     contact_list = subscription_info.get("contactList")
     
@@ -754,17 +748,8 @@ async def _handle_subscription(message: dict, db: Session) -> dict:
                     Prospect.prospect_id == email_message.prospect_id
                 ).first()
                 if prospect:
-                    prospect.consent_status = "UNSUBSCRIBED"
-                    existing = db.query(GlobalUnsubscribe).filter(
-                        GlobalUnsubscribe.tenant_id == prospect.tenant_id,
-                        GlobalUnsubscribe.email == prospect.email
-                    ).first()
-                    if not existing:
-                        db.add(GlobalUnsubscribe(
-                            tenant_id=prospect.tenant_id,
-                            email=prospect.email,
-                            reason="List-Unsubscribe header"
-                        ))
+                    suppress(db, prospect.tenant_id, prospect.email, "List-Unsubscribe header",
+                             kind="UNSUBSCRIBE", source="list_unsubscribe")
             
             db.commit()
             return {"status": "processed", "type": "subscription", "message_id": internal_message_id}

@@ -23,6 +23,12 @@ class Campaign(Base):
     campaign_name = Column(String(255), nullable=False)
     campaign_description = Column(Text, nullable=True)  # Rich context for AI email generation
     status = Column(String(50), default="DRAFT")  # DRAFT / ACTIVE / PAUSED / COMPLETED
+    # Why the campaign is paused; auto_paused marks a pause by the deliverability guard (BR-DF-07)
+    paused_reason = Column(Text, nullable=True)
+    paused_at = Column(TIMESTAMP, nullable=True)
+    auto_paused = Column(Boolean, default=False)
+    # Health checks only count sends after this (set when a user resumes after an auto-pause)
+    health_baseline_at = Column(TIMESTAMP, nullable=True)
     
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=False)
     sender_name = Column(String(100), nullable=True)  # For {{your_name}} token

@@ -36,7 +36,9 @@ def _connect(host: str, port: int, username: str, password: str) -> imaplib.IMAP
         imap = imaplib.IMAP4_SSL(host, port or 993)
     else:
         imap = imaplib.IMAP4(host, port)
-    imap.login(username, password)
+    # password may be an OAuthToken for Microsoft 365 mailboxes (XOAUTH2, BR-DF-05)
+    from app.services.ms365_oauth import imap_login
+    imap_login(imap, username, password)
     return imap
 
 
