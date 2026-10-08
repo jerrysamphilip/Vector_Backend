@@ -233,6 +233,9 @@ def meta(current_user: User = Depends(tenant_user)):
 
 @router.post("/run")
 def run(d: Definition, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    """Ad-hoc run while building: same permission as saving a report (shared reports run via GET /{id})."""
+    if not _can_build(current_user):
+        raise HTTPException(status_code=403, detail="Only managers can build reports")
     return run_definition(db, current_user, d)
 
 

@@ -2,6 +2,9 @@
 """
 Email Scheduler API endpoints.
 For triggering and monitoring email processing.
+
+The scheduler is a single process-wide worker that sends for every tenant, so
+anything that starts, stops or runs it is restricted to PLATFORM_ADMIN.
 """
 
 import logging
@@ -22,7 +25,7 @@ router = APIRouter(prefix="/scheduler", tags=["Email Scheduler"])
 async def process_emails_now(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER")),
+    current_user: User = Depends(require_role("PLATFORM_ADMIN")),
 ):
     """
     Trigger immediate processing of scheduled emails.
@@ -39,7 +42,7 @@ async def process_emails_now(
 @router.post("/process/sync")
 async def process_emails_sync(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER")),
+    current_user: User = Depends(require_role("PLATFORM_ADMIN")),
 ):
     """
     Process scheduled emails synchronously (waits for completion).
@@ -61,7 +64,7 @@ async def process_emails_sync(
 
 @router.get("/status")
 async def get_scheduler_status(
-    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
+    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "PLATFORM_ADMIN")),
 ):
     """Get current scheduler status."""
     return {
@@ -74,7 +77,7 @@ async def get_scheduler_status(
 async def start_scheduler(
     background_tasks: BackgroundTasks,
     interval: int = 30,
-    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
+    current_user: User = Depends(require_role("PLATFORM_ADMIN")),
 ):
     """
     Start continuous email scheduler in background.
@@ -98,7 +101,7 @@ async def start_scheduler(
 
 @router.post("/stop")
 async def stop_scheduler(
-    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
+    current_user: User = Depends(require_role("PLATFORM_ADMIN")),
 ):
     """Stop the continuous email scheduler."""
     if not email_scheduler.is_running:

@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, require_role, require_permission
 from app.core.config import settings
+from app.core.secrets_guard import is_deployed
 from app.core.database import get_db
 from app.core.security import hash_password, hash_token
 from app.models.audit import AuditLog
@@ -378,7 +379,6 @@ def _send_invitation_email(
 
     return {
         "sent": True,
-        "magic_login_link": magic_login_link,
         "ses_message_id": response.get("MessageId"),
     }
 
@@ -543,7 +543,6 @@ def invite_user(
     email_delivery = {
         "attempted": True,
         "sent": False,
-        "magic_login_link": magic_login_link,
         "ses_message_id": None,
         "error": None,
     }
@@ -558,10 +557,10 @@ def invite_user(
         )
         email_delivery.update(send_result)
     except (ClientError, BotoCoreError, RuntimeError) as exc:
-        email_delivery["error"] = str(exc)
+        email_delivery["error"] = "Invitation email could not be sent"
         logger.error(f"Invitation email failed for {body.email}: {exc}")
     except Exception as exc:
-        email_delivery["error"] = str(exc)
+        email_delivery["error"] = "Invitation email could not be sent"
         logger.exception(f"Unexpected invitation email failure for {body.email}: {exc}")
 
     if email_delivery.get("sent"):
@@ -572,6 +571,13 @@ def invite_user(
             f"Reason: {email_delivery.get('error')}"
         )
 
+    # Never hand the sign-in link/password to the inviting admin (SEC-15); only a local
+    # development setup without email gets them back so invites can still be tested.
+    expose_credentials = (
+        not email_delivery.get("sent")
+        and (settings.ENVIRONMENT or "").strip().lower() in ("development", "dev", "local")
+        and not is_deployed()
+    )
     return {
         "invitation_id": invitation.invitation_id,
         "user_id": user.user_id,
@@ -584,7 +590,7 @@ def invite_user(
             "email": body.email,
             "password": temporary_password,
             "magic_login_link": magic_login_link,
-        } if not email_delivery.get("sent") else None,
+        } if expose_credentials else None,
     }
 
 
@@ -810,8 +816,10 @@ def delete_user_permanent(
     # Delete invitations this user sent (invited_by is NOT NULL so can't null it out)
     db.query(Invitation).filter(Invitation.invited_by == user_id).delete(synchronize_session=False)
 
-    # Null out audit logs for this user (user_id is NOT NULL — delete audit trail)
-    db.query(AuditLog).filter(AuditLog.user_id == user_id).delete(synchronize_session=False)
+    # Keep the audit trail (SEC-16): detach it from the deleted user instead of deleting it
+    db.query(AuditLog).filter(AuditLog.user_id == user_id).update(
+        {AuditLog.user_id: None}, synchronize_session=False
+    )
 
     # Null out nullable FK: email_templates approved_by
     db.query(EmailTemplate).filter(EmailTemplate.approved_by == user_id).update(

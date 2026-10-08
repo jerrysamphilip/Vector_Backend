@@ -29,7 +29,7 @@ def get_conversation_thread(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):
     service = ConversationService(db)
-    thread = service.get_conversation_thread(conversation_id)
+    thread = service.get_conversation_thread(conversation_id, current_user.tenant_id)
     if not thread:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return thread
@@ -42,7 +42,7 @@ def reply_to_conversation(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")),
 ):
     service = ConversationService(db)
-    message = service.create_reply(conversation_id, request.body_text, current_user.user_id)
+    message = service.create_reply(conversation_id, request.body_text, current_user.user_id, current_user.tenant_id)
     if not message:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return {"message": message, "status": "sent"}

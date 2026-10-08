@@ -5,6 +5,7 @@ Stored as one JSON document per workspace; missing keys fall back to DEFAULTS,
 so new settings never need a migration.
 """
 import copy
+from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -83,14 +84,46 @@ MONEY_KEYS = {
     "won_amount", "lost_amount", "won", "lost", "pipeline", "forecast", "best_case", "average_deal",
     "new_amount", "existing_amount", "annual_revenue", "unit_price", "line_total", "subtotal", "discount_total",
     "target", "gap", "commit", "closed", "revenue", "revenue_per_contact",
+    # Derived from amounts, so they reveal them too (forecast categories, % of target)
+    "best_case_category", "attainment", "categories",
 }
+
+
+def _is_number(v) -> bool:
+    if isinstance(v, bool):
+        return False
+    if isinstance(v, (int, float, Decimal)):
+        return True
+    if isinstance(v, str):  # amounts serialised as text ("12500.00")
+        try:
+            Decimal(v.replace(",", "").strip())
+            return True
+        except (InvalidOperation, ValueError):
+            return False
+    return False
+
+
+def _blank_all(data):
+    """Every number below a money key (e.g. {"categories": {"COMMIT": 120.0}}) is an amount."""
+    if isinstance(data, dict):
+        return {k: _blank_all(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_blank_all(v) for v in data]
+    return None if _is_number(data) else data
 
 
 def mask_money(data, keys=MONEY_KEYS):
     """Blank every money field in an API response, recursively."""
     if isinstance(data, dict):
-        return {k: (None if k in keys and isinstance(v, (int, float)) and not isinstance(v, bool)
-                    else mask_money(v, keys)) for k, v in data.items()}
+        out = {}
+        for k, v in data.items():
+            if k in keys and isinstance(v, dict):
+                out[k] = _blank_all(v)
+            elif k in keys and _is_number(v):
+                out[k] = None
+            else:
+                out[k] = mask_money(v, keys)
+        return out
     if isinstance(data, list):
         return [mask_money(v, keys) for v in data]
     return data

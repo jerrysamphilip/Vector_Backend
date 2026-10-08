@@ -115,3 +115,11 @@ original-*.gif
 frontend/
 
 docs/
+# Stray local artefacts (never commit; may contain logs/credentials)
+kill_locks.py
+=*
+logs.txt
+*_output.txt
+output.txt
+alembic_error.txt
+uvicorn_*.txt

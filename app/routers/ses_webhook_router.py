@@ -87,6 +87,42 @@ def _resolve_message_id(db: Session, mail_info: dict, tags: dict) -> Optional[st
     return row[0] if row else None
 
 
+# Where each SES event kind keeps its own timestamp (used to build the dedupe key)
+_EVENT_DETAIL_KEYS = {
+    "Bounce": "bounce", "Complaint": "complaint", "Delivery": "delivery", "Open": "open",
+    "Click": "click", "Reject": "reject", "DeliveryDelay": "deliveryDelay",
+    "Rendering Failure": "failure", "Subscription": "subscription",
+}
+
+
+def _dedupe_key(message: dict, notification_type: str, sns_message_id: Optional[str]) -> Optional[str]:
+    """
+    Stable identity of one SES event (B09), so SNS retries/redeliveries are processed once:
+    (SES messageId, event type, event timestamp[, link]) when SES gives a timestamp, else the
+    SNS MessageId. Stored as event_metadata.dedupe_key on every event the webhook writes.
+    """
+    mail_id = (message.get("mail") or {}).get("messageId")
+    detail = message.get(_EVENT_DETAIL_KEYS.get(notification_type, ""), {}) or {}
+    stamp = detail.get("timestamp") if isinstance(detail, dict) else None
+    if mail_id and stamp:
+        key = f"{mail_id}:{notification_type}:{stamp}"
+        if notification_type == "Click" and detail.get("link"):
+            key += f":{detail.get('link')}"
+        return key[:512]
+    if sns_message_id:
+        return f"sns:{sns_message_id}"
+    return None
+
+
+def _already_processed(db: Session, internal_message_id: Optional[str], key: Optional[str]) -> bool:
+    if not internal_message_id or not key:
+        return False
+    return db.query(EmailEvent.event_id).filter(
+        EmailEvent.message_id == internal_message_id,
+        func.json_unquote(func.json_extract(EmailEvent.event_metadata, "$.dedupe_key")) == key,
+    ).first() is not None
+
+
 # Diagnostic-code substrings indicating the recipient's server rejected the
 # message because of OUR sending domain (auth/reputation), not because the
 # recipient address itself is bad.
@@ -127,6 +163,11 @@ async def handle_ses_notification(
     3. We process and update email status
     """
     try:
+        # Fail closed: production must pin the SNS topic the events come from
+        if settings.is_production and not (settings.AWS_SNS_TOPIC_ARN or "").strip():
+            logger.error("[SES-WEBHOOK] Rejected: AWS_SNS_TOPIC_ARN is not configured in production")
+            raise HTTPException(status_code=403, detail="Webhook not configured")
+
         body = await request.json()
 
         # ── Authenticity (BR-DF-09) ──
@@ -202,6 +243,17 @@ async def handle_ses_notification(
             notification_type = message.get("notificationType") or message.get("eventType")
 
             logger.info(f"[SES-WEBHOOK] Received {notification_type} notification")
+
+            # Idempotency (B09): skip events we've already recorded (SNS retries / redelivery)
+            sns_message_id = (body.get("MessageId") if isinstance(body, dict) and "Message" in body else None) \
+                or request.headers.get("x-amz-sns-message-id")
+            dedupe_key = _dedupe_key(message, notification_type, sns_message_id)
+            if dedupe_key:
+                mail_info = message.get("mail", {}) or {}
+                if _already_processed(db, _resolve_message_id(db, mail_info, _extract_tags(mail_info)), dedupe_key):
+                    logger.info(f"[SES-WEBHOOK] Duplicate {notification_type} event ignored ({dedupe_key})")
+                    return {"status": "duplicate", "type": notification_type}
+                message["_dedupe_key"] = dedupe_key
             
             if notification_type == "Bounce":
                 return await _handle_bounce(message, db)
@@ -269,19 +321,39 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
     
     processed_emails = []
     email_message = None
-    
+    # Only a Permanent bounce means the address is dead (B10). Transient/Undetermined
+    # (mailbox full, greylisting, rate limits...) are recorded as an event only: the
+    # message status, the prospect, suppression and auto-pause are left alone.
+    is_hard = bounce_type == "Permanent"
+
     for recipient in bounced_recipients:
         email = recipient.get("emailAddress")
         processed_emails.append(email)
-        
+
         # Find and update email message
         email_message = None
         if internal_message_id:
             email_message = db.query(EmailMessage).filter(
                 EmailMessage.message_id == internal_message_id
             ).first()
-        
-        if email_message:
+
+        if email_message and not is_hard:
+            # Soft bounce: one "sender bounced" event, nothing else
+            db.add(EmailEvent(
+                message_id=email_message.message_id,
+                event_type=EmailEvent.EVENT_SENDER_BOUNCE,
+                event_time=datetime.utcnow(),
+                event_metadata={
+                    "dedupe_key": message.get("_dedupe_key"),
+                    "bounce_type": bounce_type,
+                    "bounce_subtype": bounce_subtype,
+                    "diagnostic_code": recipient.get("diagnosticCode"),
+                    "ses_message_id": ses_message_id,
+                }
+            ))
+            MetricsService(db).process_event(email_message.campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
+
+        elif email_message:
             # Update message status
             email_message.status = "BOUNCED"
             set_final_status(email_message, "BOUNCED")
@@ -294,6 +366,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
                 event_type=EmailEvent.EVENT_BOUNCE,
                 event_time=datetime.utcnow(),
                 event_metadata={
+                    "dedupe_key": message.get("_dedupe_key"),
                     "bounce_type": bounce_type,
                     "bounce_subtype": bounce_subtype,
                     "diagnostic_code": recipient.get("diagnosticCode"),
@@ -312,6 +385,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
                     event_type=EmailEvent.EVENT_SENDER_BOUNCE,
                     event_time=datetime.utcnow(),
                     event_metadata={
+                        "dedupe_key": message.get("_dedupe_key"),
                         "bounce_type": bounce_type,
                         "bounce_subtype": bounce_subtype,
                         "diagnostic_code": recipient.get("diagnosticCode"),
@@ -374,7 +448,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
     logger.info(f"[SES-WEBHOOK] Processed {bounce_type} bounce for {len(processed_emails)} recipients")
     
     # TRIGGER AUTOMATION
-    if email_message and email_message.campaign_id and email_message.prospect_id:
+    if is_hard and email_message and email_message.campaign_id and email_message.prospect_id:
         try:
             automation_service.process_event(
                 event_type=TriggerType.EMAIL_BOUNCED,
@@ -430,6 +504,7 @@ async def _handle_complaint(message: dict, db: Session) -> dict:
                     event_type=EmailEvent.EVENT_UNSUBSCRIBE,
                     event_time=datetime.utcnow(),
                     event_metadata={
+                        "dedupe_key": message.get("_dedupe_key"),
                         "complaint_type": complaint_type,
                         "source": "ses_complaint"
                     }
@@ -477,6 +552,7 @@ async def _handle_delivery(message: dict, db: Session) -> dict:
                 event_type=EmailEvent.EVENT_DELIVERED,
                 event_time=datetime.utcnow(),
                 event_metadata={
+                    "dedupe_key": message.get("_dedupe_key"),
                     "smtp_response": delivery_info.get("smtpResponse"),
                     "processing_time_ms": delivery_info.get("processingTimeMillis")
                 }
@@ -513,6 +589,7 @@ async def _handle_open(message: dict, db: Session) -> dict:
                 event_type=EmailEvent.EVENT_OPEN,
                 event_time=datetime.utcnow(),
                 event_metadata={
+                    "dedupe_key": message.get("_dedupe_key"),
                     "ip_address": open_info.get("ipAddress"),
                     "user_agent": open_info.get("userAgent"),
                     "timestamp": open_info.get("timestamp"),
@@ -568,6 +645,7 @@ async def _handle_click(message: dict, db: Session) -> dict:
                 event_type=EmailEvent.EVENT_CLICK,
                 event_time=datetime.utcnow(),
                 event_metadata={
+                    "dedupe_key": message.get("_dedupe_key"),
                     "ip_address": click_info.get("ipAddress"),
                     "user_agent": click_info.get("userAgent"),
                     "link": click_info.get("link"),
@@ -626,6 +704,7 @@ async def _handle_reject(message: dict, db: Session) -> dict:
                 event_type=EmailEvent.EVENT_BOUNCE,
                 event_time=datetime.utcnow(),
                 event_metadata={
+                    "dedupe_key": message.get("_dedupe_key"),
                     "reason": reject_info.get("reason"),
                     "source": "ses_reject"
                 }
@@ -662,6 +741,7 @@ async def _handle_delivery_delay(message: dict, db: Session) -> dict:
                 event_type=EmailEvent.EVENT_SENT,
                 event_time=datetime.utcnow(),
                 event_metadata={
+                    "dedupe_key": message.get("_dedupe_key"),
                     "delay_type": delay_type,
                     "expiration_time": expiration_time,
                     "source": "ses_delivery_delay"
@@ -737,6 +817,7 @@ async def _handle_subscription(message: dict, db: Session) -> dict:
                 event_type=EmailEvent.EVENT_UNSUBSCRIBE,
                 event_time=datetime.utcnow(),
                 event_metadata={
+                    "dedupe_key": message.get("_dedupe_key"),
                     "contact_list": contact_list,
                     "source": "ses_list_unsubscribe"
                 }

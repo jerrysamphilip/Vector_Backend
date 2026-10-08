@@ -20,11 +20,13 @@ class SendingInboxResponse(BaseModel):
     smtp_port: Optional[int] = 587
     smtp_username: Optional[str] = None
     smtp_use_ssl: Optional[bool] = False
+    has_smtp_password: bool = False
 
     # IMAP fields
     imap_host: Optional[str] = None
     imap_port: Optional[int] = 993
     imap_username: Optional[str] = None
+    has_imap_password: bool = False
     last_sync_at: Optional[datetime] = None
     imap_last_error: Optional[str] = None
 
@@ -62,6 +64,7 @@ class SendingInboxResponse(BaseModel):
         from_attributes = True
 
 class SendingInboxUpdate(BaseModel):
+    provider: Optional[str] = None
     # SMTP settings
     smtp_host: Optional[str] = None
     smtp_port: Optional[int] = None
@@ -70,7 +73,7 @@ class SendingInboxUpdate(BaseModel):
     smtp_use_ssl: Optional[bool] = None
     # IMAP settings
     imap_host: Optional[str] = None
-    imap_port: Optional[int] = 993
+    imap_port: Optional[int] = None
     imap_username: Optional[str] = None
     imap_password: Optional[str] = None
     daily_limit: Optional[int] = None

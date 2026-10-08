@@ -69,7 +69,7 @@ class EmailTemplateUpdate(BaseModel):
 class EmailTemplateApprove(BaseModel):
     """Schema for approving a template."""
     
-    approved_by: str = Field(..., description="User ID of approver")
+    approved_by: Optional[str] = Field(None, description="Ignored: the approver is always the signed-in user")
     
     class Config:
         json_schema_extra = {

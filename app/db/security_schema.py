@@ -39,3 +39,16 @@ def encrypt_mailbox_passwords(engine) -> int:
     if changed:
         print(f"Security: encrypted {changed} stored mailbox password(s)")
     return changed
+
+
+def allow_anonymised_audit_logs(engine) -> None:
+    """audit_logs.user_id becomes nullable so deleting a user keeps their audit trail (SEC-16)."""
+    with engine.connect() as conn:
+        nullable = conn.execute(text("""
+            SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'audit_logs' AND COLUMN_NAME = 'user_id'
+        """)).scalar()
+        if nullable == "NO":
+            conn.execute(text("ALTER TABLE audit_logs MODIFY user_id VARCHAR(36) NULL"))
+            conn.commit()
+            print("Security: audit_logs.user_id is now nullable (user deletion keeps audit history)")

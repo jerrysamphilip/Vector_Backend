@@ -1,3 +1,4 @@
+from sqlalchemy import bindparam, text
 # app/db/seed_sales_demo.py
 """
 Demo data for Phase 2 sales: a four-level team, leads at every stage, an SQL
@@ -13,7 +14,7 @@ Run the contact demo first; this works on the demo reps' contacts.
     docker compose exec api python -m app.db.seed_sales_demo                # into the first Super Admin's workspace
     docker compose exec api python -m app.db.seed_sales_demo --reset        # remove the demo sales data only
 
-Demo users sign in with demo-pass-123. Opportunity names start with "[Demo]".
+Demo users sign in with $DEMO_PASSWORD (dev default demo-pass-123); runs only in development/local. Opportunity names start with "[Demo]".
 Re-running replaces the previous demo sales data.
 """
 import argparse
@@ -22,6 +23,7 @@ from datetime import date, datetime, timedelta
 
 from app.core.database import SessionLocal
 from app.core.security import hash_password
+from app.db.seed_guard import demo_password, require_dev_environment
 from app.models.campaign import Campaign, CampaignProspect
 from app.models.contact_activity import ContactActivity
 from app.models.conversation import Conversation
@@ -39,7 +41,6 @@ from app.services import sales as svc
 
 DEMO_PREFIX = "[Demo]"
 DEMO_DOMAIN = "vector-demo.example"
-DEMO_PASSWORD = "demo-pass-123"
 
 # email local part -> (first, last, role, level, manager local part)
 TEAM = {
@@ -74,7 +75,7 @@ def _users(db, tenant_id):
         u = db.query(User).filter(User.email == email).first()
         if not u:
             u = User(tenant_id=tenant_id, first_name=first, last_name=last, email=email, role=role, status="ACTIVE",
-                     password_hash=hash_password(DEMO_PASSWORD), auth_provider="local", email_verified=True)
+                     password_hash=hash_password(demo_password()), auth_provider="local", email_verified=True)
             db.add(u)
             db.flush()
         out[local] = u
@@ -124,6 +125,7 @@ def reset(db, tenant_id) -> int:
 
 
 def seed(db, admin: User, rng: random.Random):
+    require_dev_environment("seed_sales_demo")
     tenant_id = admin.tenant_id
     team = _users(db, tenant_id)
     reps = [team["priya.nair"], team["marcus.bell"], team["sofia.alvarez"], team["leo.fischer"]]
@@ -285,6 +287,14 @@ def _reset_engagement(db, tenant_id, demo_ids, opp_ids):
         db.query(Opportunity).filter(Opportunity.campaign_id.in_(camps)).update({Opportunity.campaign_id: None},
                                                                                 synchronize_session=False)
         db.query(Campaign).filter(Campaign.campaign_id.in_(camps)).delete(synchronize_session=False)
+    demo_inbox_ids = [i for (i,) in db.query(SendingInbox.inbox_id).filter(
+        SendingInbox.tenant_id == tenant_id, SendingInbox.email_address == DEMO_INBOX)]
+    if demo_inbox_ids:
+        # Warmup history references the inbox (the warmup loop may have run on it).
+        db.execute(text("DELETE FROM inbox_warmup_events WHERE inbox_id IN :ids OR peer_inbox_id IN :ids")
+                   .bindparams(bindparam("ids", expanding=True)), {"ids": demo_inbox_ids})
+        db.execute(text("DELETE FROM inbox_warmup_metrics WHERE inbox_id IN :ids")
+                   .bindparams(bindparam("ids", expanding=True)), {"ids": demo_inbox_ids})
     db.query(SendingInbox).filter(SendingInbox.tenant_id == tenant_id, SendingInbox.email_address == DEMO_INBOX) \
         .delete(synchronize_session=False)
     task_q = db.query(CrmTask).filter(CrmTask.tenant_id == tenant_id)
@@ -493,6 +503,7 @@ def _seed_engagement(db, admin, team, made, extra_contacts, rng, now):
 
 
 def main():
+    require_dev_environment("seed_sales_demo")
     parser = argparse.ArgumentParser(description="Seed demo sales data (hierarchy, leads, deals, proposals).")
     parser.add_argument("--email", help="Admin whose workspace gets the data (default: first Super Admin)")
     parser.add_argument("--reset", action="store_true", help="Only remove previously seeded demo sales data")
@@ -511,7 +522,7 @@ def main():
             return
         result = seed(db, admin, random.Random(args.seed))
         print(f"Seeded into {admin.email}'s workspace: {result}")
-        print(f"Team (password {DEMO_PASSWORD}): " + ", ".join(f"{k}@{DEMO_DOMAIN} (L{v[3]})" for k, v in TEAM.items()))
+        print(f"Team (password {demo_password()}): " + ", ".join(f"{k}@{DEMO_DOMAIN} (L{v[3]})" for k, v in TEAM.items()))
     finally:
         db.close()
 

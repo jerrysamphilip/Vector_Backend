@@ -16,11 +16,43 @@ spec:
       labels:
         app: backend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: backend-container
           image: <ECR_IMAGE_URI>
           ports:
             - containerPort: 8001
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          # /health = process is up (liveness); /health/ready = database reachable (readiness)
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8001
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
             
           env:
             # - name: NODE_ENV
@@ -130,6 +162,23 @@ spec:
                 secretKeyRef:
                   name: sales360-secret
                   key: SES_WEBHOOK_TOKEN
+
+            # Platform hardening, optional. ENVIRONMENT=production disables /docs, self sign-up
+            # (override with ALLOW_SELF_SIGNUP) and requires AWS_SNS_TOPIC_ARN for the SES webhook.
+            - name: ENVIRONMENT
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: ENVIRONMENT
+                  optional: true
+            - name: ALLOW_SELF_SIGNUP
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: ALLOW_SELF_SIGNUP
+                  optional: true
+            - name: LOG_LEVEL
+              value: "INFO"
 
             # Microsoft 365 mailboxes (BR-DF-05), from the Azure app registration. Optional:
             # without them the "Connect Microsoft 365" button explains what is missing.

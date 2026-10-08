@@ -8,6 +8,7 @@ from typing import List
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func, or_
 
 from app.core.database import get_db
 from app.core.auth import require_role
@@ -50,6 +51,31 @@ def _tenant_domain_set(db: Session, current_user: User) -> set[str]:
         if email and "@" in email:
             domains.add(email.split("@", 1)[1].lower())
     return domains
+
+def _require_exclusive_domain(db: Session, current_user: User, domain_name: str) -> None:
+    """
+    sending_domains rows are global (no tenant_id). Only allow a tenant to mutate
+    one when it has an inbox on that domain and no other tenant does; otherwise
+    the change would affect another tenant. Platform admins may act on any domain.
+    """
+    if current_user.role == "PLATFORM_ADMIN":
+        return
+    domain = domain_name.lower()
+    if domain not in _tenant_domain_set(db, current_user):
+        raise HTTPException(status_code=404, detail="Domain not found")
+    shared = (
+        db.query(SendingInbox.inbox_id)
+        .filter(
+            SendingInbox.tenant_id != current_user.tenant_id,
+            func.lower(SendingInbox.email_address).like(f"%@{domain}"),
+        )
+        .first()
+    )
+    if shared:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This domain is shared with another workspace and can only be changed by a platform admin",
+        )
 
 # Kartik has changed this: Explicit collection path
 @router.get("/deliverability/statistics", response_model=SESStatisticsResponse)
@@ -168,9 +194,7 @@ def delete_domain(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
 ):
     """Delete a domain and its stats from the system."""
-    allowed_domains = _tenant_domain_set(db, current_user)
-    if domain_name.lower() not in allowed_domains:
-        raise HTTPException(status_code=404, detail="Domain not found")
+    _require_exclusive_domain(db, current_user, domain_name)
     # Note: If inboxes still exist for this domain, it might be recreated by sync.
     domain = db.query(SendingDomain).filter(SendingDomain.domain_name == domain_name).first()
     if not domain:
@@ -202,6 +226,15 @@ def get_domain_sent_log(
         .filter(
             EmailMessage.direction == "OUTBOUND",
             EmailMessage.from_email.ilike(f"%@{domain_name}"),
+            # Only this tenant's messages, even when the domain is shared.
+            or_(
+                EmailMessage.inbox_id.in_(
+                    db.query(SendingInbox.inbox_id).filter(
+                        SendingInbox.tenant_id == current_user.tenant_id
+                    )
+                ),
+                Campaign.tenant_id == current_user.tenant_id,
+            ),
         )
         .order_by(EmailMessage.sent_at.desc(), EmailMessage.scheduled_at.desc())
         .limit(limit)
@@ -236,12 +269,15 @@ def get_integration_status(
 def ingest_provider_metrics(
     request: ProviderIngestRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
+    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "PLATFORM_ADMIN")),
 ):
     """
     Read-only ingestion endpoint for Google Postmaster / SNDS / JMRP.
     Safe by design: stores metrics/events only, no campaign/send side effects.
+    Metrics are stored per domain (not per tenant), so tenants may only ingest
+    for a domain they own exclusively.
     """
+    _require_exclusive_domain(db, current_user, request.domain_name or "")
     result = provider_ingestion_service.ingest(
         db=db,
         provider=request.provider,

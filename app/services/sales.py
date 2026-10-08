@@ -237,7 +237,8 @@ def apply_stage(db: Session, opp: Opportunity, stage_id: str) -> SalesStage:
     if not stage:
         raise HTTPException(status_code=400, detail="Unknown sales stage")
     status = stage_status(stage)
-    if status != "OPEN" and opp.status == "OPEN":
+    # A brand-new deal has no status yet (the column default applies on insert): treat it as open
+    if status != "OPEN" and opp.status in (None, "OPEN"):
         opp.closed_at = datetime.utcnow()
         if not opp.close_date:
             opp.close_date = date.today()
@@ -363,6 +364,8 @@ def idle_days(opp: Opportunity, last_touch: Optional[datetime]) -> int:
 
 def convert_lead(db: Session, user: User, lead: Lead, data: dict) -> Opportunity:
     """SQL → opportunity, carrying contact, company and owner across (BR-LD-06)."""
+    # Lock the lead row and re-read it so two simultaneous conversions can't both create a deal
+    lead = db.query(Lead).filter(Lead.lead_id == lead.lead_id).with_for_update().populate_existing().one()
     if lead.stage != "SQL":
         raise HTTPException(status_code=400, detail="Only sales-qualified leads (SQL) can be converted")
     prospect = db.query(Prospect).filter(Prospect.prospect_id == lead.prospect_id).first()
@@ -400,3 +403,49 @@ def convert_lead(db: Session, user: User, lead: Lead, data: dict) -> Opportunity
     crm.record_changes(db, user.tenant_id, "DEAL", opp.opportunity_id, {"created": None},
                        {"created": "Converted from lead"}, user.user_id, "UI")
     return opp
+
+
+# ── Delete (dependents first: the database has no ON DELETE CASCADE) ──
+
+def delete_proposals(db: Session, proposal_ids: List[str]) -> None:
+    """Delete proposals (quotes) with their line items. Caller commits."""
+    if not proposal_ids:
+        return
+    from app.models.sales import Proposal
+    from app.models.sales_extra import ProposalLine
+    db.query(ProposalLine).filter(ProposalLine.proposal_id.in_(proposal_ids)).delete(synchronize_session=False)
+    db.query(Proposal).filter(Proposal.proposal_id.in_(proposal_ids)).delete(synchronize_session=False)
+
+
+def delete_opportunities(db: Session, opportunity_ids: List[str]) -> None:
+    """Delete deals and everything hanging off them: proposals and their lines, deal tasks and
+    history. Activities stay on the contact's timeline; converted leads go back to SQL. Caller commits."""
+    if not opportunity_ids:
+        return
+    from app.models.contact_activity import ContactActivity
+    from app.models.crm import CrmTask, PropertyChange
+    from app.models.sales import Proposal
+    delete_proposals(db, [pid for (pid,) in db.query(Proposal.proposal_id).filter(
+        Proposal.opportunity_id.in_(opportunity_ids))])
+    db.query(CrmTask).filter(CrmTask.opportunity_id.in_(opportunity_ids)).delete(synchronize_session=False)
+    db.query(ContactActivity).filter(ContactActivity.opportunity_id.in_(opportunity_ids),
+                                     ContactActivity.prospect_id.is_(None)).delete(synchronize_session=False)
+    db.query(ContactActivity).filter(ContactActivity.opportunity_id.in_(opportunity_ids)).update(
+        {ContactActivity.opportunity_id: None}, synchronize_session=False)
+    db.query(Lead).filter(Lead.opportunity_id.in_(opportunity_ids)).update(
+        {Lead.opportunity_id: None, Lead.stage: "SQL"}, synchronize_session=False)
+    db.query(PropertyChange).filter(PropertyChange.object_type == "DEAL",
+                                    PropertyChange.object_id.in_(opportunity_ids)).delete(synchronize_session=False)
+    db.query(Opportunity).filter(Opportunity.opportunity_id.in_(opportunity_ids)).delete(synchronize_session=False)
+
+
+def delete_leads(db: Session, lead_ids: List[str]) -> None:
+    """Delete leads; deals converted from them keep going without the link. Caller commits."""
+    if not lead_ids:
+        return
+    from app.models.crm import PropertyChange
+    db.query(Opportunity).filter(Opportunity.lead_id.in_(lead_ids)).update(
+        {Opportunity.lead_id: None}, synchronize_session=False)
+    db.query(PropertyChange).filter(PropertyChange.object_type == "LEAD",
+                                    PropertyChange.object_id.in_(lead_ids)).delete(synchronize_session=False)
+    db.query(Lead).filter(Lead.lead_id.in_(lead_ids)).delete(synchronize_session=False)

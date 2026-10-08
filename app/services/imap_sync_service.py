@@ -179,7 +179,12 @@ class IMAPSyncService:
                 prospect_email = sender_email if direction == "INBOUND" else receiver_email
                 
                 # Check if prospect exists in our system (Case Insensitive)
-                prospect = self.db.query(Prospect).filter(func.lower(Prospect.email) == prospect_email).first()
+                # Scope to the inbox's tenant: the same address can be a prospect in
+                # several tenants, and mail must never be filed into another tenant.
+                prospect = self.db.query(Prospect).filter(
+                    Prospect.tenant_id == inbox_model.tenant_id,
+                    func.lower(Prospect.email) == prospect_email
+                ).first()
                 if not prospect:
                     logger.info(f"[IMAP] Skipped '{subject[:30]}' — {prospect_email} is not a known prospect.")
                     sp.rollback()
@@ -207,7 +212,10 @@ class IMAPSyncService:
                 # Deduplicate by provider_message_id (Message-ID header)
                 provider_msg_id = msg.get("Message-ID")
                 if provider_msg_id:
-                    exists = self.db.query(EmailMessage).filter(EmailMessage.provider_message_id == provider_msg_id).first()
+                    exists = self.db.query(EmailMessage).filter(
+                        EmailMessage.provider_message_id == provider_msg_id,
+                        EmailMessage.prospect_id == prospect.prospect_id
+                    ).first()
                     if exists:
                         logger.debug(f"[IMAP] Skipped duplicate message {provider_msg_id}")
                         sp.rollback()
@@ -252,7 +260,8 @@ class IMAPSyncService:
                             continue
                         orig = self.db.query(EmailMessage).filter(
                             EmailMessage.provider_message_id == header_val,
-                            EmailMessage.direction == "OUTBOUND"
+                            EmailMessage.direction == "OUTBOUND",
+                            EmailMessage.prospect_id == prospect.prospect_id
                         ).first()
                         if orig:
                             # Always capture for campaign attribution even if conversation_id
@@ -260,7 +269,8 @@ class IMAPSyncService:
                             original_outbound_msg = orig
                             if orig.conversation_id:
                                 conv = self.db.query(Conversation).filter(
-                                    Conversation.id == orig.conversation_id
+                                    Conversation.id == orig.conversation_id,
+                                    Conversation.tenant_id == prospect.tenant_id
                                 ).first()
                                 if conv:
                                     logger.info(

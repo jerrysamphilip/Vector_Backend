@@ -21,6 +21,8 @@ from app.models.email_message import EmailMessage
 
 def seed_test_data():
     """Add test data to existing campaigns."""
+    from app.db.seed_guard import require_dev_environment
+    require_dev_environment("seed_test_data")
     db = SessionLocal()
     
     try:

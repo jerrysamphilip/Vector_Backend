@@ -20,6 +20,7 @@ from app.models.email_template import EmailTemplate, EmailTemplateVersion
 from app.models.email_attachment import EmailAttachment
 from app.models.user import User
 from app.models.email_sequence import EmailSequence
+from app.models.campaign import Campaign
 from app.schemas.template_schema import (
     EmailTemplateCreate,
     EmailTemplateUpdate,
@@ -95,6 +96,13 @@ async def create_template(
     
     Supports personalization tokens like {{first_name}}, {{company_name}}.
     """
+    owns_campaign = db.query(Campaign.campaign_id).filter(
+        Campaign.campaign_id == data.campaign_id,
+        Campaign.tenant_id == current_user.tenant_id,
+    ).first()
+    if not owns_campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
     template = EmailTemplate(
         template_id=str(uuid.uuid4()),
         campaign_id=data.campaign_id,
@@ -144,12 +152,7 @@ async def get_template(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):
     """Get template details."""
-    template = db.query(EmailTemplate).filter(
-        EmailTemplate.template_id == template_id
-    ).first()
-    
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+    template = _get_template_or_404(template_id, db, current_user.tenant_id)
     
     return _to_response(template, db)
 
@@ -167,12 +170,7 @@ async def update_template(
     
     Creates a new version in history. Clears approval status.
     """
-    template = db.query(EmailTemplate).filter(
-        EmailTemplate.template_id == template_id
-    ).first()
-    
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+    template = _get_template_or_404(template_id, db, current_user.tenant_id)
     
     # Get current max version
     max_version = db.query(EmailTemplateVersion).filter(
@@ -236,7 +234,7 @@ async def update_template(
 @router.post("/{template_id}/approve", response_model=EmailTemplateResponse)
 async def approve_template(
     template_id: str,
-    data: EmailTemplateApprove,
+    data: Optional[EmailTemplateApprove] = None,
     db: Session = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER")),
@@ -246,20 +244,17 @@ async def approve_template(
     
     Only approved templates can be used in campaigns.
     """
-    template = db.query(EmailTemplate).filter(
-        EmailTemplate.template_id == template_id
-    ).first()
+    template = _get_template_or_404(template_id, db, current_user.tenant_id)
     
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
-    
-    template.approved_by = data.approved_by
+    # The approver is always the authenticated user; any approved_by in the
+    # request body is ignored so it can't be spoofed.
+    template.approved_by = current_user.user_id
     template.approved_at = datetime.utcnow()
     
     # Audit log
     audit.log_action(
         tenant_id=current_user.tenant_id,
-        user_id=data.approved_by,
+        user_id=current_user.user_id,
         action=AuditService.ACTION_APPROVE,
         entity_type=AuditService.ENTITY_TEMPLATE,
         entity_id=template_id,
@@ -276,12 +271,7 @@ async def get_template_versions(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):
     """Get version history for a template."""
-    template = db.query(EmailTemplate).filter(
-        EmailTemplate.template_id == template_id
-    ).first()
-    
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+    template = _get_template_or_404(template_id, db, current_user.tenant_id)
     
     versions = db.query(EmailTemplateVersion).filter(
         EmailTemplateVersion.template_id == template_id
@@ -310,12 +300,7 @@ async def delete_template(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")),
 ):
     """Delete a template and its versions."""
-    template = db.query(EmailTemplate).filter(
-        EmailTemplate.template_id == template_id
-    ).first()
-    
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+    template = _get_template_or_404(template_id, db, current_user.tenant_id)
     
     # Audit log
     audit.log_action(
@@ -345,9 +330,14 @@ def _attachments_dir() -> Path:
     return directory
 
 
-def _get_template_or_404(template_id: str, db: Session) -> EmailTemplate:
-    template = db.query(EmailTemplate).filter(
-        EmailTemplate.template_id == template_id
+def _get_template_or_404(template_id: str, db: Session, tenant_id: str) -> EmailTemplate:
+    # Templates have no tenant_id of their own; ownership is via their campaign.
+    # Another tenant's template is reported as not found.
+    template = db.query(EmailTemplate).join(
+        Campaign, Campaign.campaign_id == EmailTemplate.campaign_id
+    ).filter(
+        EmailTemplate.template_id == template_id,
+        Campaign.tenant_id == tenant_id,
     ).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -367,7 +357,7 @@ async def upload_attachment(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")),
 ):
     """Upload a file attachment for an email template (Gmail-style compose attachment)."""
-    template = _get_template_or_404(template_id, db)
+    template = _get_template_or_404(template_id, db, current_user.tenant_id)
 
     existing_count = db.query(EmailAttachment).filter(
         EmailAttachment.template_id == template_id
@@ -416,7 +406,7 @@ async def list_attachments(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):
     """List attachments for a template."""
-    _get_template_or_404(template_id, db)
+    _get_template_or_404(template_id, db, current_user.tenant_id)
     attachments = db.query(EmailAttachment).filter(
         EmailAttachment.template_id == template_id
     ).order_by(EmailAttachment.created_at.asc()).all()
@@ -431,6 +421,7 @@ async def download_attachment(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):
     """Download/preview an attachment's original file."""
+    _get_template_or_404(template_id, db, current_user.tenant_id)
     attachment = db.query(EmailAttachment).filter(
         EmailAttachment.attachment_id == attachment_id,
         EmailAttachment.template_id == template_id,
@@ -461,6 +452,7 @@ async def delete_attachment(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")),
 ):
     """Remove an attachment from a template."""
+    _get_template_or_404(template_id, db, current_user.tenant_id)
     attachment = db.query(EmailAttachment).filter(
         EmailAttachment.attachment_id == attachment_id,
         EmailAttachment.template_id == template_id,

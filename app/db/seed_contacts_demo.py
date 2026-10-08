@@ -23,6 +23,7 @@ from sqlalchemy import or_
 
 from app.core.database import SessionLocal
 from app.core.security import hash_password
+from app.db.seed_guard import demo_password, require_dev_environment
 from app.models.account import Account
 from app.models.campaign import Campaign, CampaignProspect
 from app.models.contact_activity import ContactActivity
@@ -39,7 +40,6 @@ from app.utils.business_calendar import get_timezone_for_state
 
 DEMO_PREFIX = "[Demo]"
 DEMO_USER_DOMAIN = "vector-demo.example"
-DEMO_PASSWORD = "demo-pass-123"
 
 REPS = [
     ("Priya", "Nair", "MANAGER"),
@@ -174,6 +174,7 @@ def reset(db, tenant_id):
 
 
 def seed(db, admin: User, rng: random.Random, with_users: bool):
+    require_dev_environment("seed_contacts_demo")
     tenant_id = admin.tenant_id
 
     # ── Reps ───────────────────────────────────────────────
@@ -187,7 +188,7 @@ def seed(db, admin: User, rng: random.Random, with_users: bool):
                 rep = User(tenant_id=tenant_id, email=email, invited_by=admin.user_id)
                 db.add(rep)
             rep.first_name, rep.last_name, rep.role, rep.status = first, last, role, "ACTIVE"
-            rep.password_hash, rep.email_verified = hash_password(DEMO_PASSWORD), True
+            rep.password_hash, rep.email_verified = hash_password(demo_password()), True
             reps.append(rep)
         db.flush()
 
@@ -366,6 +367,7 @@ def seed(db, admin: User, rng: random.Random, with_users: bool):
 
 
 def main():
+    require_dev_environment("seed_contacts_demo")
     parser = argparse.ArgumentParser(description="Seed demo contacts, accounts and activity.")
     parser.add_argument("--email", help="Admin whose workspace gets the data (default: first Super Admin)")
     parser.add_argument("--reset", action="store_true", help="Only remove previously seeded demo data")
@@ -392,7 +394,7 @@ def main():
               f"{counts['activities']} activities, {counts['campaign_contacts']} contacts with campaign email history, "
               f"{counts['reps']} demo reps.")
         if counts["reps"]:
-            print(f"Demo reps sign in as <first>.<last>@{DEMO_USER_DOMAIN} with password '{DEMO_PASSWORD}' "
+            print(f"Demo reps sign in as <first>.<last>@{DEMO_USER_DOMAIN} with password '{demo_password()}' "
                   f"(e.g. marcus.bell@{DEMO_USER_DOMAIN}, an Agent who only sees their own contacts).")
         print("Remove it any time with: python -m app.db.seed_contacts_demo --reset")
     finally:

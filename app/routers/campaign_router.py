@@ -613,6 +613,8 @@ async def send_campaign_now(
     from app.services.email_sender_service import email_sender, TransientEmailFailure, PermanentEmailFailure
     from app.services.email_scheduler_service import email_scheduler
     from app.models.sending_inbox import SendingInbox
+    from app.services.suppression import blocked_reason
+    from app.services import daily_limit
     
     campaign = _get_campaign_for_user(service, campaign_id, current_user)
     
@@ -631,6 +633,7 @@ async def send_campaign_now(
     sent_count = 0
     failed_count = 0
     errors = []
+    skipped = []  # prospects blocked by a send-time safety guard
     
     import asyncio
 
@@ -682,12 +685,60 @@ async def send_campaign_now(
                 failed_count += 1
                 continue
 
+            # ── Same send-time safety guards as the scheduler ──
+            # Suppression / unsubscribe (BR-DF-08)
+            reason = blocked_reason(db, prospect)
+            # Stop on reply / bounce / unsubscribe in this campaign (BR-DF-05)
+            if not reason and email_msg.sequence_id:
+                enrollment = db.query(CampaignProspect.status).filter(
+                    CampaignProspect.campaign_id == email_msg.campaign_id,
+                    CampaignProspect.prospect_id == email_msg.prospect_id,
+                ).first()
+                if enrollment and enrollment[0] in ("REPLIED", "BOUNCED", "UNSUBSCRIBED"):
+                    reason = f"Stopped: contact {enrollment[0].lower()}"
+            if reason:
+                email_msg.status = "CANCELLED"
+                email_msg.failure_reason = reason
+                db.add(email_msg)
+                db.commit()
+                skipped.append({"email": prospect.email, "reason": reason})
+                continue
+
             from_email_address = email_scheduler._resolve_sender_for_message(
                 email_msg=email_msg,
                 campaign=campaign,
                 db=db,
             )
-            
+
+            # Per-inbox daily cap (respects warmup schedule + user override)
+            if email_msg.inbox_id:
+                cap_inbox = db.query(SendingInbox).filter(
+                    SendingInbox.inbox_id == email_msg.inbox_id
+                ).first()
+                if cap_inbox:
+                    sent_today = cap_inbox.emails_sent_today or 0
+                    if not cap_inbox.last_daily_reset or cap_inbox.last_daily_reset.date() < datetime.utcnow().date():
+                        sent_today = 0
+                    if sent_today >= email_sender.get_inbox_daily_limit(cap_inbox):
+                        email_msg.status = "QUEUED"
+                        db.add(email_msg)
+                        db.commit()
+                        skipped.append({"email": prospect.email,
+                                        "reason": f"Inbox {cap_inbox.email_address} reached its daily limit; left queued"})
+                        continue
+
+            # Daily new-contact limit (BR-OV-01): first steps only
+            limit_user = None
+            if daily_limit.is_first_step(db, email_msg):
+                limit_user = prospect.owner_id or campaign.created_by
+                if limit_user and not email_scheduler._daily.reserve(db, limit_user):
+                    email_msg.status = "QUEUED"
+                    db.add(email_msg)
+                    db.commit()
+                    skipped.append({"email": prospect.email,
+                                    "reason": "Daily new-contact limit reached; left queued"})
+                    continue
+
             # Send via SES
             result = await email_sender.send_with_retry(
                 email_message=email_msg,
@@ -750,6 +801,8 @@ async def send_campaign_now(
                             cp.status = "COMPLETED"
                             cp.next_scheduled_at = None
             else:
+                if limit_user:
+                    email_scheduler._daily.release(limit_user)
                 email_msg.status = "FAILED"
                 email_msg.failure_reason = result.get("error", "Unknown error")
                 failed_count += 1
@@ -775,6 +828,8 @@ async def send_campaign_now(
         "status": "completed",
         "sent": sent_count,
         "failed": failed_count,
+        "skipped": len(skipped),
+        "skipped_details": skipped[:50],
         "total": len(queued_emails),
         "errors": errors[:5] if errors else []  # Return first 5 errors
     }
@@ -1571,10 +1626,13 @@ async def regenerate_template(
 async def get_sequence_step_emails(
     campaign_id: str,
     step: int,
+    service: CampaignService = Depends(get_campaign_service),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT"))
 ):
     """Get the email template and any related prospect replies for a specific sequence step."""
+    _get_campaign_for_user(service, campaign_id, current_user)
+
     # Find the sequence
     seq = db.query(EmailSequence).filter(
         EmailSequence.campaign_id == campaign_id,
@@ -2053,7 +2111,7 @@ class RevalidateProspectRequest(BaseModel):
 @router.get("/bounced-prospects/revalidation-candidates")
 def list_bounced_revalidation_candidates(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("OWNER", "ADMIN")),
+    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
 ):
     """
     ADMIN-ONLY. List all prospects who hard-bounced and are candidates for
@@ -2072,7 +2130,7 @@ def revalidate_bounced_prospect(
     prospect_id: str,
     request: RevalidateProspectRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("OWNER", "ADMIN")),
+    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
 ):
     """
     ADMIN-ONLY. Re-validate a bounced prospect by updating their email address.

@@ -228,12 +228,18 @@ def soft_delete_contacts(db: Session, prospects: list, user_id: Optional[str]) -
     return len(ids)
 
 
-def restore_contacts(db: Session, tenant_id: str, ids: list, user_id: Optional[str]) -> int:
+def restore_contacts(db: Session, tenant_id: str, ids: list, user_id: Optional[str],
+                     user: Optional[User] = None) -> int:
+    """Restore soft-deleted contacts; with `user`, only those inside their visibility (BR-SH-02)."""
     cutoff = datetime.utcnow() - timedelta(days=RESTORE_WINDOW_DAYS)
-    rows = db.query(Prospect).filter(
+    query = db.query(Prospect).filter(
         Prospect.tenant_id == tenant_id, Prospect.prospect_id.in_(ids),
         Prospect.deleted_at.isnot(None), Prospect.deleted_at > cutoff, Prospect.merged_into_id.is_(None),
-    ).all()
+    )
+    if user is not None:
+        from app.services.contact_service import scope
+        query = scope(query, db, user, Prospect.owner_id)
+    rows = query.all()
     for p in rows:
         p.deleted_at, p.deleted_by = None, None
         db.add(PropertyChange(tenant_id=tenant_id, object_type="CONTACT", object_id=p.prospect_id,
@@ -249,11 +255,16 @@ def purge_expired(db: Session) -> int:
         Prospect.deleted_at.isnot(None), Prospect.deleted_at <= cutoff).limit(5000)]
     delete_contacts(db, ids)
     accounts = db.query(Account).filter(Account.deleted_at.isnot(None), Account.deleted_at <= cutoff).all()
+    from app.models.crm import CrmTask
+    from app.models.sales import Lead, Opportunity
     for account in accounts:
-        db.query(Prospect).filter(Prospect.account_id == account.account_id).update(
-            {Prospect.account_id: None}, synchronize_session=False)
-        from app.models.crm import CrmTask
+        # Detach everything that still points at the company (FKs) before removing it
+        for model in (Prospect, Lead, Opportunity):
+            db.query(model).filter(model.account_id == account.account_id).update(
+                {model.account_id: None}, synchronize_session=False)
         db.query(CrmTask).filter(CrmTask.account_id == account.account_id).delete(synchronize_session=False)
+        db.query(PropertyChange).filter(PropertyChange.object_type == "COMPANY",
+                                        PropertyChange.object_id == account.account_id).delete(synchronize_session=False)
         db.delete(account)
     db.commit()
     return len(ids) + len(accounts)
@@ -377,6 +388,10 @@ def _condition(db: Session, cond: dict, user: User):
             raw = cast(raw, Numeric(18, 4))  # number properties compare numerically, dates as ISO text
         return _compare(raw, operator, value)
     if field and field.startswith("company."):
+        if field == "company.annual_revenue":
+            from app.services.sales_settings import can_see_amounts
+            if not can_see_amounts(db, user):
+                raise FilterError("Your role cannot filter on revenue")
         column = COMPANY_FIELDS.get(field[len("company."):])
         if column is None:
             raise FilterError(f"Unknown company property: {field}")
@@ -453,3 +468,20 @@ def quality_flags(p: Prospect) -> list:
         if name and len(name) > 1 and (name.islower() or (name.isupper() and len(name) > 3)):
             flags.append(f"{label} capitalisation looks wrong")
     return flags
+
+
+# ── Exports ─────────────────────────────────────────────────────
+
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def csv_safe(value):
+    """Neutralise spreadsheet formula injection: text starting with = + - @ (or tab / CR)
+    is prefixed with a single quote so Excel / Sheets treat it as text."""
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
+def csv_safe_row(values) -> list:
+    return [csv_safe(v) for v in values]

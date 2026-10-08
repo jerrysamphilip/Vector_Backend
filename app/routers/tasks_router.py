@@ -90,9 +90,12 @@ def _check_targets(db: Session, user: User, prospect_id: Optional[str], account_
                                       Prospect.deleted_at.is_(None)).first()
         if not p or not can_access_contact(user, p):
             raise HTTPException(status_code=404, detail="Contact not found")
-    if account_id and not db.query(Account.account_id).filter(Account.account_id == account_id,
-                                                              Account.tenant_id == user.tenant_id).first():
-        raise HTTPException(status_code=404, detail="Company not found")
+    if account_id:
+        account = db.query(Account).filter(Account.account_id == account_id,
+                                           Account.tenant_id == user.tenant_id).first()
+        from app.routers.accounts_router import _can_see_account
+        if not account or not _can_see_account(db, user, account):
+            raise HTTPException(status_code=404, detail="Company not found")
 
 
 def _validate(data: dict, user: User, db: Session):
@@ -141,6 +144,10 @@ def list_tasks(
             query = query.filter(CrmTask.prospect_id == prospect_id)
         if account_id:
             query = query.filter(CrmTask.account_id == account_id)
+            # A company is shared across teams: show only the tasks of people you can see (BR-SH-02)
+            visible = visible_user_ids(db, current_user)
+            if visible is not None:
+                query = query.filter(or_(CrmTask.owner_id.in_(visible), CrmTask.created_by == current_user.user_id))
     elif scope in ("all", "team"):
         # Everyone's tasks you may see: the whole workspace, or you and your team (BR-SH-02)
         visible = visible_user_ids(db, current_user)

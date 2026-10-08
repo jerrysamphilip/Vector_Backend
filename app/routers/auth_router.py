@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user
+from app.core.auth import ensure_tenant_active, get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.core import rate_limit
@@ -273,6 +273,8 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
     Register the first SUPER_ADMIN user and create a new tenant workspace.
     Subsequent users should be invited via /api/users/invite.
     """
+    if not settings.self_signup_enabled:
+        raise HTTPException(status_code=403, detail="Self sign-up is disabled. Ask your administrator for an invitation.")
     rate_limit.check(request, "register", rate_limit.REGISTER_PER_IP)
     # Check for existing user with same email
     existing = db.query(User).filter(User.email == body.email).first()
@@ -318,6 +320,7 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
 
     if user.status not in ("ACTIVE", "INVITED"):
         raise HTTPException(status_code=403, detail="Account is suspended or inactive")
+    ensure_tenant_active(db, user)
 
     # Activate invited user on first login
     is_first_login = user.status == "INVITED"
@@ -342,6 +345,7 @@ def refresh_token(body: RefreshRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.user_id == rt.user_id).first()
     if not user or user.status != "ACTIVE":
         raise HTTPException(status_code=401, detail="User not found or inactive")
+    ensure_tenant_active(db, user)
 
     # Revoke old refresh token (rotation)
     rt.revoked_at = datetime.utcnow()
@@ -465,6 +469,7 @@ def magic_login(body: MagicLoginRequest, request: Request, db: Session = Depends
     user = db.query(User).filter(User.user_id == magic_record.user_id).first()
     if not user or user.status not in ("ACTIVE", "INVITED"):
         raise HTTPException(status_code=401, detail="User not found or inactive")
+    ensure_tenant_active(db, user)
 
     # Activate invited user on first login via magic link
     is_first_login = user.status == "INVITED"
@@ -504,13 +509,15 @@ def google_callback(body: GoogleCallbackRequest, db: Session = Depends(get_db)):
     Verify Google ID token from the frontend, then login or register the user.
     The frontend uses Google Sign-In and sends the credential (ID token) here.
     """
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=501, detail="Google OAuth not configured")
     try:
         from google.oauth2 import id_token
         from google.auth.transport import requests as google_requests
-
-        if not settings.GOOGLE_CLIENT_ID:
-            raise HTTPException(status_code=501, detail="Google OAuth not configured")
-
+    except ImportError:
+        logger.error("Google sign-in requested but the google-auth package is not installed")
+        raise HTTPException(status_code=501, detail="Google OAuth not configured")
+    try:
         idinfo = id_token.verify_oauth2_token(
             body.credential,
             google_requests.Request(),
@@ -524,6 +531,8 @@ def google_callback(body: GoogleCallbackRequest, db: Session = Depends(get_db)):
     first_name = idinfo.get("given_name", "")
     last_name = idinfo.get("family_name", "")
     avatar = idinfo.get("picture", "")
+    if not email or idinfo.get("email_verified") not in (True, "true"):
+        raise HTTPException(status_code=401, detail="Google account email is not verified")
 
     # Check if user exists by google_id or email
     user = db.query(User).filter(User.google_id == google_id).first()
@@ -531,6 +540,9 @@ def google_callback(body: GoogleCallbackRequest, db: Session = Depends(get_db)):
         user = db.query(User).filter(User.email == email).first()
 
     if user:
+        if user.status not in ("ACTIVE", "INVITED"):
+            raise HTTPException(status_code=403, detail="Account is suspended or inactive")
+        ensure_tenant_active(db, user)
         # Existing user — link Google if not already
         if not user.google_id:
             user.google_id = google_id
@@ -539,6 +551,8 @@ def google_callback(body: GoogleCallbackRequest, db: Session = Depends(get_db)):
             user.avatar_url = avatar
         user.email_verified = True
     else:
+        if not settings.self_signup_enabled:
+            raise HTTPException(status_code=403, detail="Self sign-up is disabled. Ask your administrator for an invitation.")
         # New user — create tenant + SUPER_ADMIN (tenant creator)
         tenant = Tenant(tenant_name=f"{first_name}'s Workspace")
         db.add(tenant)

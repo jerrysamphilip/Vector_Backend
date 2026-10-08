@@ -74,3 +74,23 @@ def generate_refresh_token() -> str:
 def hash_token(token: str) -> str:
     """SHA-256 hash a refresh/invitation token for storage."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+# ── Tracking-link signatures ──────────────────────────────
+
+def sign_tracking_url(message_id: str, url: str) -> str:
+    """HMAC (JWT secret) over message id + destination, so /tracking/click can't be used as an open redirect."""
+    import hmac
+    digest = hmac.new(
+        settings.JWT_SECRET_KEY.encode("utf-8"),
+        f"click|{message_id}|{url}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return digest[:32]
+
+
+def verify_tracking_url(message_id: str, url: str, signature: Optional[str]) -> bool:
+    import hmac
+    if not signature:
+        return False
+    return hmac.compare_digest(sign_tracking_url(message_id, url), signature)

@@ -43,6 +43,11 @@ def resolve_jwt_secret(configured: str) -> str:
 
 def credentials_fernet_key(configured: str) -> bytes:
     """Fernet key from CREDENTIALS_ENCRYPTION_KEY. Any string works; it's stretched with SHA-256."""
+    if configured and is_deployed() and configured == _DEV_CREDENTIALS_KEY:
+        raise RuntimeError(
+            "CREDENTIALS_ENCRYPTION_KEY is set to the public development key. "
+            "Set a long random value in the deployment secret before starting the API."
+        )
     if not configured:
         if is_deployed():
             raise RuntimeError(

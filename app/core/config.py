@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import quote_plus
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from typing import Optional
 
 
 _BASE_DIR = Path(__file__).resolve().parents[2]
@@ -137,6 +138,14 @@ class Settings(BaseSettings):
 
     # Environment
     ENVIRONMENT: str = "development"
+    # Root log level (read from the environment in app/main.py before settings load)
+    LOG_LEVEL: str = "INFO"
+    # /docs, /redoc and /openapi.json are disabled in production unless this is true
+    ENABLE_DOCS: bool = False
+    # Public self-registration (creates a tenant + SUPER_ADMIN). Unset = off in production, on elsewhere.
+    ALLOW_SELF_SIGNUP: Optional[bool] = None
+    # Number of reverse proxies in front of the API that append to X-Forwarded-For (rate limiting)
+    TRUSTED_PROXY_HOPS: int = 1
     BASE_URL: str = "https://outreach360.neutrinoaistudio.com"
 
     # Unsubscribe Suppression
@@ -168,6 +177,16 @@ class Settings(BaseSettings):
     WARMUP_RANDOMIZE_VARIANCE: int = 15
     
     @property
+    def is_production(self) -> bool:
+        return (self.ENVIRONMENT or "").strip().lower() in ("production", "prod")
+
+    @property
+    def self_signup_enabled(self) -> bool:
+        if self.ALLOW_SELF_SIGNUP is not None:
+            return self.ALLOW_SELF_SIGNUP
+        return not self.is_production
+
+    @property
     def DATABASE_URL(self) -> str:
         """
         Return database URL.
@@ -188,17 +207,10 @@ class Settings(BaseSettings):
                         user, password = auth_part.split(":", 1)
                         # Re-encode to ensure compatibility (unquote handles already encoded chars)
                         clean_password = quote_plus(unquote(password))
-                        
-                        # DEBUG: Log the intervention (Safe masking)
-                        masked_pass = password[:1] + "****" + password[-1:] if len(password) > 2 else "****"
-                        print(f"DEBUG: Self-healing DB URL. User: {user}, Pass: {masked_pass}, Host: {host_part}")
-                        
                         return f"{prefix}://{user}:{clean_password}@{host_part}"
-            except Exception as e:
-                print(f"DEBUG: Self-healing failed: {e}")
-                pass # Fallback to returning original if parsing fails
-            
-            print("DEBUG: Using provided DATABASE_URL without modification.")
+            except Exception:
+                pass  # Fallback to returning original if parsing fails (never log the URL: it holds the password)
+
             return database_url
             
         # Fallback to individual components with encoding

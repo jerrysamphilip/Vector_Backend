@@ -205,9 +205,11 @@ class EmailSenderService:
                 original_url.startswith('#')):
                 return match.group(0)
             
+            from app.core.security import sign_tracking_url
             tracked_url = (
                 f"{settings.BASE_URL}/api/tracking/click/{message_id}"
                 f"?url={quote_plus(original_url)}"
+                f"&sig={sign_tracking_url(message_id, original_url)}"
             )
             return f'href="{tracked_url}"'
         
@@ -336,6 +338,7 @@ class EmailSenderService:
         unsubscribe_url: Optional[str] = None,
         extra_headers: Optional[Dict[str, str]] = None,
         attachments: Optional[list] = None,
+        unsubscribe_mailto: Optional[str] = None,
     ) -> MIMEMultipart:
         """
         Build a clean MIME message optimized for inbox placement.
@@ -432,6 +435,15 @@ class EmailSenderService:
 
         # Reply-To (safer if same as From)
         msg["Reply-To"] = from_email
+
+        # RFC 2369 / RFC 8058 one-click unsubscribe (Gmail/Yahoo bulk-sender requirement).
+        # Only campaign sends pass unsubscribe_url; warmup/internal mail gets no list headers.
+        if unsubscribe_url:
+            targets = [f"<{unsubscribe_url}>"]
+            if unsubscribe_mailto:
+                targets.append(f"<mailto:{unsubscribe_mailto}?subject=unsubscribe&body=unsubscribe>")
+            msg["List-Unsubscribe"] = ", ".join(targets)
+            msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
 
         # Optional extra headers (only if explicitly passed)
         if extra_headers:
@@ -637,8 +649,10 @@ class EmailSenderService:
                 message_id=str(email_message.message_id),
                 campaign_id=str(email_message.campaign_id),
                 sender_email=sender_email,
-                unsubscribe_url=unsubscribe_url,
+                # Same-domain (internal) mail carries no unsubscribe footer, so no list headers either
+                unsubscribe_url=None if is_internal else unsubscribe_url,
                 attachments=self._load_template_attachments(email_template),
+                unsubscribe_mailto=sender_email if "@" in (sender_email or "") else None,
             )
 
             # Prepare SES raw email request
