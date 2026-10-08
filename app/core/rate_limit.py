@@ -67,10 +67,16 @@ GLOBAL_PER_IP = (1200, 60)
 
 
 def client_ip(request: Request) -> str:
+    """Client IP for rate limiting. The left-most X-Forwarded-For entries are client-controlled,
+    so take the hop appended by our own proxy: the TRUSTED_PROXY_HOPS-th entry from the right."""
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.headers.get("x-real-ip") or (request.client.host if request.client else "unknown")
+        from app.core.config import settings
+        hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+        trusted = max(1, int(settings.TRUSTED_PROXY_HOPS or 1))
+        if hops:
+            return hops[-trusted] if len(hops) >= trusted else hops[0]
+    return request.client.host if request.client else "unknown"
 
 
 def _too_many(retry_after: int, message: str):

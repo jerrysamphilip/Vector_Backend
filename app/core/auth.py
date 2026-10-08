@@ -22,6 +22,22 @@ from app.models.user import User
 
 bearer_scheme = HTTPBearer(auto_error=True)
 
+# Tenants in these states cannot sign in or call the API (PLATFORM_ADMIN has no tenant and is unaffected)
+BLOCKED_TENANT_STATUSES = frozenset({"SUSPENDED", "INACTIVE", "DELETED"})
+
+
+def ensure_tenant_active(db: Session, user: User) -> None:
+    """Raise 403 "Tenant suspended" when the user's tenant is suspended/inactive."""
+    if user.role == "PLATFORM_ADMIN" or not user.tenant_id:
+        return
+    from app.models.tenant import Tenant
+    tenant_status = db.query(Tenant.status).filter(Tenant.tenant_id == user.tenant_id).scalar()
+    if (tenant_status or "ACTIVE").upper() in BLOCKED_TENANT_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant suspended",
+        )
+
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
@@ -56,6 +72,7 @@ async def get_current_user(
             detail="User not found or inactive",
         )
 
+    ensure_tenant_active(db, user)
     return user
 
 

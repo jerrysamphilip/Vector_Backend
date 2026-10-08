@@ -56,10 +56,7 @@ class AutomationRuleService:
             db.commit()
             
         except Exception as e:
-            import traceback
-            with open("c:/Users/NTS-PranavParvekar/Desktop/SALES_PRO/error.log", "w") as f:
-                traceback.print_exc(file=f)
-            logger.error(f"[Automation] Error processing event {event_type}: {e}")
+            logger.exception(f"[Automation] Error processing event {event_type}: {e}")
             db.rollback()
         finally:
             if close_db:

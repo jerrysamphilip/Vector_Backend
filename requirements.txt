@@ -1,47 +1,47 @@
 # Outreach AI - Backend Dependencies
 
 # FastAPI & Server
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-python-multipart>=0.0.6
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+python-multipart==0.0.32
 # Optional: rate limiting middleware (currently unavailable on this package index)
 # slowapi==0.1.9
 
 # Database
-sqlalchemy>=2.0.0
-pymysql>=1.1.0
-cryptography>=41.0.0  # Required for PyMySQL SSL
-alembic>=1.13.0  # Database migrations
+sqlalchemy==2.1.3
+pymysql==1.2.3
+cryptography==50.0.2  # Required for PyMySQL SSL
+alembic==1.20.0  # Database migrations
 
 # Data Validation
-pydantic>=2.0.0
-pydantic-settings>=2.0.0
-email-validator>=2.0.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+email-validator==2.3.0
 
 # Data Processing
-pandas>=2.0.0
-openpyxl>=3.1.0
-python-docx>=1.1.0
+pandas==3.0.6
+openpyxl==3.1.5
+python-docx==1.2.0
 
 # Utilities
-python-dotenv>=1.0.0
-typing-extensions>=4.8.0
-markdown>=3.5.0
-httpx>=0.25.0
-holidays>=0.40  # US federal holiday detection
-bcrypt>=4.1.0
-python-jose[cryptography]>=3.3.0
-# Optional: Google OAuth support (unavailable on current package index)
-# google-auth>=2.35.0
-# google-auth-oauthlib>=1.2.0
+python-dotenv==1.2.4
+typing-extensions==4.16.0
+markdown==3.11
+httpx==0.28.1
+holidays==0.106  # US federal holiday detection
+bcrypt==5.0.0
+python-jose[cryptography]==3.5.0
+# Google sign-in (ID-token verification in app/routers/auth_router.py; endpoints return 501 when
+# GOOGLE_CLIENT_ID is unset or the package is missing)
+google-auth[requests]==2.58.1
 
 
 # Email (for future SMTP features)
 # aiosmtplib>=3.0.0
 
 # AI Integration
-openai>=1.0.0
+openai==3.26.0
 
 # AWS SES Integration
-boto3>=1.34.0
-tenacity>=8.2.0  # Retry logic
+boto3==1.43.108
+tenacity==9.2.1  # Retry logic

@@ -154,3 +154,12 @@ class SendingInbox(Base):
 
     def __repr__(self):
         return f"<SendingInbox {self.email_address}>"
+
+    # Shown on the edit form so users can see a password is saved without exposing it.
+    @property
+    def has_smtp_password(self) -> bool:
+        return bool(self.smtp_password)
+
+    @property
+    def has_imap_password(self) -> bool:
+        return bool(self.imap_password)

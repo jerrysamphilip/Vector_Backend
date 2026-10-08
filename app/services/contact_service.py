@@ -185,17 +185,34 @@ def backfill_accounts(db: Session, tenant_id: str) -> int:
 # ── Delete ─────────────────────────────────────────────────────────
 
 def delete_contacts(db: Session, prospect_ids: list) -> None:
-    """Delete contacts and every row that references them. Caller commits."""
+    """
+    Permanently delete contacts (purge / GDPR erasure) and every row that references them.
+    Leads belong to their contact and go with it; deals are company records, so they stay
+    but lose the link to the person. Caller commits.
+    """
     if not prospect_ids:
         return
+    from app.models.sales import Lead, Opportunity
+    from app.services.sales import delete_leads
     message_ids = [m[0] for m in db.query(EmailMessage.message_id).filter(
         EmailMessage.prospect_id.in_(prospect_ids)
     ).all()]
     if message_ids:
         db.query(EmailEvent).filter(EmailEvent.message_id.in_(message_ids)).delete(synchronize_session=False)
+    conversation_ids = [c[0] for c in db.query(Conversation.id).filter(
+        Conversation.prospect_id.in_(prospect_ids))]
+    if conversation_ids:  # any message threaded into these conversations must let go first (FK)
+        db.query(EmailMessage).filter(EmailMessage.conversation_id.in_(conversation_ids)).update(
+            {EmailMessage.conversation_id: None}, synchronize_session=False)
+    delete_leads(db, [l[0] for l in db.query(Lead.lead_id).filter(Lead.prospect_id.in_(prospect_ids))])
+    db.query(Opportunity).filter(Opportunity.prospect_id.in_(prospect_ids)).update(
+        {Opportunity.prospect_id: None}, synchronize_session=False)
     for model in (EmailMessage, Conversation, ProspectPersona, CampaignProspect,
                   ProspectListMember, ContactActivity, CrmTask):
         db.query(model).filter(model.prospect_id.in_(prospect_ids)).delete(synchronize_session=False)
+    # Contacts merged into these ones keep no pointer to an erased record
+    db.query(Prospect).filter(Prospect.merged_into_id.in_(prospect_ids)).update(
+        {Prospect.merged_into_id: None}, synchronize_session=False)
     db.query(PropertyChange).filter(PropertyChange.object_type == "CONTACT",
                                     PropertyChange.object_id.in_(prospect_ids)).delete(synchronize_session=False)
     db.query(Prospect).filter(Prospect.prospect_id.in_(prospect_ids)).delete(synchronize_session=False)
@@ -265,6 +282,13 @@ def merge_contacts(db: Session, primary: Prospect, duplicates: list, merged_by: 
             {ContactActivity.prospect_id: primary.prospect_id}, synchronize_session=False)
         db.query(CrmTask).filter(CrmTask.prospect_id == dup.prospect_id).update(
             {CrmTask.prospect_id: primary.prospect_id}, synchronize_session=False)
+        # Sales records follow the person (FKs would otherwise block deleting the duplicate)
+        from app.models.sales import Lead, Opportunity
+        for model in (Lead, Opportunity):
+            db.query(model).filter(model.prospect_id == dup.prospect_id).update(
+                {model.prospect_id: primary.prospect_id}, synchronize_session=False)
+        db.query(Prospect).filter(Prospect.merged_into_id == dup.prospect_id).update(
+            {Prospect.merged_into_id: primary.prospect_id}, synchronize_session=False)
         db.query(PropertyChange).filter(PropertyChange.object_type == "CONTACT",
                                         PropertyChange.object_id == dup.prospect_id).update(
             {PropertyChange.object_id: primary.prospect_id}, synchronize_session=False)

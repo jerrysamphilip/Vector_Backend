@@ -332,10 +332,13 @@ def list_blueprints(
 def create_blueprint(
     request: CreateBlueprintRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER")),
+    current_user: User = Depends(require_role("PLATFORM_ADMIN")),
 ):
     """
     Create a new persona blueprint.
+
+    Blueprints are global (no tenant_id) and used for every tenant's AI
+    generation, so only platform admins may create them.
     """
     try:
         existing = db.query(PersonaBlueprint).filter(

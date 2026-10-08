@@ -26,6 +26,7 @@ from app.models.user import User
 from app.routers.contacts_router import _history_items, _summaries, _user_name
 from app.services import crm
 from app.services.contact_service import can_manage_contacts, can_see_owner, clean_str, scope, sees_everything, visible_user_ids
+from app.services.sales_settings import can_see_amounts, masked_for
 
 router = APIRouter(prefix="/accounts", tags=["Companies"])
 
@@ -66,6 +67,23 @@ def _get_account(db: Session, user: User, account_id: str) -> Account:
     return account
 
 
+def _can_see_account(db: Session, user: User, account: Account) -> bool:
+    """Companies owned by the user's team, or holding at least one contact they can see (BR-SH-02)."""
+    if sees_everything(user) or (account.owner_id and can_see_owner(db, user, account.owner_id)):
+        return True
+    return db.query(Prospect.prospect_id).filter(
+        Prospect.account_id == account.account_id, Prospect.deleted_at.is_(None),
+        Prospect.owner_id.in_(visible_user_ids(db, user) or {"-"})).first() is not None
+
+
+def _can_edit_account(db: Session, user: User, account: Account) -> bool:
+    if not _can_see_account(db, user, account):
+        return False
+    return (can_manage_contacts(user) and (sees_everything(user) or account.owner_id is None
+                                           or can_see_owner(db, user, account.owner_id))) or (
+        account.owner_id is not None and can_see_owner(db, user, account.owner_id))
+
+
 def _visible_contacts(db: Session, user: User):
     query = db.query(Prospect).filter(Prospect.tenant_id == user.tenant_id, Prospect.deleted_at.is_(None))
     return scope(query, db, user, Prospect.owner_id)
@@ -88,6 +106,11 @@ def _apply(db: Session, user: User, account: Account, data: dict):
         if not db.query(User.user_id).filter(User.user_id == data["owner_id"],
                                              User.tenant_id == user.tenant_id).first():
             raise HTTPException(status_code=400, detail="Owner must be a user in your workspace")
+        if not can_see_owner(db, user, data["owner_id"]):
+            raise HTTPException(status_code=403, detail="You can only assign records to yourself or your team")
+    if "annual_revenue" in data and not can_see_amounts(db, user):
+        if data.pop("annual_revenue") not in (None, ""):  # a blank from a masked form leaves it as is
+            raise HTTPException(status_code=403, detail="Your role cannot see or change amounts")
     if "domain" in data:
         domain = crm.clean_domain(data["domain"])
         if domain and db.query(Account.account_id).filter(
@@ -123,6 +146,8 @@ def list_accounts(
     db: Session = Depends(get_db),
     current_user: User = Depends(tenant_user),
 ):
+    if sort_by == "annual_revenue" and not can_see_amounts(db, current_user):
+        sort_by = "name"  # sorting by a hidden amount would reveal it (BR-SF-12)
     counts = _visible_contacts(db, current_user).with_entities(
         Prospect.account_id, func.count(Prospect.prospect_id).label("n")
     ).filter(Prospect.account_id.isnot(None)).group_by(Prospect.account_id).subquery()
@@ -157,8 +182,8 @@ def list_accounts(
 
     owner_ids = {a.owner_id for a, _ in rows if a.owner_id}
     owners = {u.user_id: u for u in db.query(User).filter(User.user_id.in_(owner_ids))} if owner_ids else {}
-    return {"items": [_account_dict(a, owners.get(a.owner_id), n) for a, n in rows],
-            "total": total, "page": page, "page_size": page_size}
+    return masked_for(db, current_user, {"items": [_account_dict(a, owners.get(a.owner_id), n) for a, n in rows],
+                                         "total": total, "page": page, "page_size": page_size})
 
 
 @router.post("", status_code=201)
@@ -184,7 +209,8 @@ def create_account(payload: AccountWrite, db: Session = Depends(get_db), current
     db.add(PropertyChange(tenant_id=current_user.tenant_id, object_type="COMPANY", object_id=account.account_id,
                           field="created", new_value="Company created", source="UI", changed_by=current_user.user_id))
     db.commit()
-    return _account_dict(account, current_user if account.owner_id == current_user.user_id else None)
+    return masked_for(db, current_user,
+                      _account_dict(account, current_user if account.owner_id == current_user.user_id else None))
 
 
 @router.post("/backfill")
@@ -220,8 +246,9 @@ def deleted_accounts(db: Session = Depends(get_db), current_user: User = Depends
     cutoff = datetime.utcnow() - timedelta(days=crm.RESTORE_WINDOW_DAYS)
     rows = db.query(Account).filter(Account.tenant_id == current_user.tenant_id, Account.deleted_at.isnot(None),
                                     Account.deleted_at > cutoff).order_by(Account.deleted_at.desc()).all()
-    return {"items": [{**_account_dict(a), "deleted_at": a.deleted_at,
-                       "purge_at": a.deleted_at + timedelta(days=crm.RESTORE_WINDOW_DAYS)} for a in rows]}
+    rows = [a for a in rows if _can_see_account(db, current_user, a)]
+    return masked_for(db, current_user, {"items": [{**_account_dict(a), "deleted_at": a.deleted_at,
+                       "purge_at": a.deleted_at + timedelta(days=crm.RESTORE_WINDOW_DAYS)} for a in rows]})
 
 
 @router.post("/{account_id}/restore")
@@ -229,7 +256,7 @@ def restore_account(account_id: str, db: Session = Depends(get_db), current_user
     _require_manager(current_user)
     account = db.query(Account).filter(Account.account_id == account_id, Account.tenant_id == current_user.tenant_id,
                                        Account.deleted_at.isnot(None)).first()
-    if not account:
+    if not account or not _can_see_account(db, current_user, account):
         raise HTTPException(status_code=404, detail="Deleted company not found")
     if account.domain and db.query(Account.account_id).filter(
             Account.tenant_id == current_user.tenant_id, Account.domain == account.domain,
@@ -247,8 +274,7 @@ def get_account(account_id: str, db: Session = Depends(get_db), current_user: Us
     account = _get_account(db, current_user, account_id)
     contacts = _visible_contacts(db, current_user).filter(Prospect.account_id == account_id).order_by(
         Prospect.first_name, Prospect.last_name).limit(500).all()
-    if not sees_everything(current_user) and not contacts and not (
-            account.owner_id and can_see_owner(db, current_user, account.owner_id)):
+    if not contacts and not _can_see_account(db, current_user, account):
         raise HTTPException(status_code=404, detail="Company not found")
 
     contact_ids = [c.prospect_id for c in contacts]
@@ -266,21 +292,22 @@ def get_account(account_id: str, db: Session = Depends(get_db), current_user: Us
     result["stats"] = {"contacts": len(contacts), "emails_sent": emails_sent, "replies": replies,
                        "open_tasks": db.query(func.count(CrmTask.task_id)).filter(
                            CrmTask.account_id == account_id, CrmTask.status == "OPEN").scalar() or 0}
-    result["can_edit"] = can_manage_contacts(current_user) or (
-        account.owner_id is not None and can_see_owner(db, current_user, account.owner_id))
-    result["can_delete"] = can_manage_contacts(current_user) and current_user.role != "AGENT"
+    result["can_edit"] = _can_edit_account(db, current_user, account)
+    result["can_delete"] = (can_manage_contacts(current_user) and current_user.role != "AGENT"
+                            and result["can_edit"])
     result["history"] = _history_items(db, current_user, db.query(PropertyChange).filter(
         PropertyChange.object_type == "COMPANY", PropertyChange.object_id == account_id
     ).order_by(PropertyChange.changed_at.desc()).limit(200).all())
-    return result
+    return masked_for(db, current_user, result)
 
 
 @router.patch("/{account_id}")
 def update_account(account_id: str, payload: AccountWrite, db: Session = Depends(get_db),
                    current_user: User = Depends(tenant_user)):
     account = _get_account(db, current_user, account_id)
-    if not (can_manage_contacts(current_user) or (
-            account.owner_id is not None and can_see_owner(db, current_user, account.owner_id))):
+    if not _can_see_account(db, current_user, account):
+        raise HTTPException(status_code=404, detail="Company not found")
+    if not _can_edit_account(db, current_user, account):
         raise HTTPException(status_code=403, detail="You can only edit companies you own")
     data = payload.model_dump(exclude_unset=True)
     if "owner_id" in data and not can_manage_contacts(current_user):
@@ -312,6 +339,10 @@ def delete_account(account_id: str, db: Session = Depends(get_db), current_user:
     if current_user.role == "AGENT":
         raise HTTPException(status_code=403, detail="Agents cannot delete companies")
     account = _get_account(db, current_user, account_id)
+    if not _can_see_account(db, current_user, account):
+        raise HTTPException(status_code=404, detail="Company not found")
+    if not _can_edit_account(db, current_user, account):
+        raise HTTPException(status_code=403, detail="You can only delete companies you or your team own")
     account.deleted_at, account.deleted_by = datetime.utcnow(), current_user.user_id
     db.add(PropertyChange(tenant_id=current_user.tenant_id, object_type="COMPANY", object_id=account_id,
                           field="deleted", new_value="deleted", source="UI", changed_by=current_user.user_id))

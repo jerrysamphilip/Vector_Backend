@@ -181,10 +181,13 @@ def _send_tenant_invite_email(to_email: str, tenant_name: str, magic_login_link:
 </body></html>"""
     text_body = f"Welcome to {tenant_name}. Activate your account: {magic_login_link}"
 
+    sender_email = (settings.SENDER_EMAIL or "").strip()
+    if not sender_email:
+        return {"sent": False, "ses_message_id": None, "error": "SENDER_EMAIL is not configured"}
     try:
         ses = _get_ses_client()
         response = ses.send_email(
-            Source=settings.EMAIL_FROM,
+            Source=f"{settings.SENDER_NAME or settings.APP_NAME} <{sender_email}>",
             Destination={"ToAddresses": [to_email]},
             Message={
                 "Subject": {"Data": subject, "Charset": "UTF-8"},

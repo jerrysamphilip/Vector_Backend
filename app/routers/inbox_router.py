@@ -29,6 +29,7 @@ from app.services.warmup_service import warmup_service
 from app.services.email_sender_service import email_sender
 from app.models.inbox_warmup_metric import InboxWarmupMetric
 from app.models.inbox_warmup_event import InboxWarmupEvent
+from app.models.join_tables import campaign_inboxes
 from datetime import datetime
 import uuid
 
@@ -286,8 +287,18 @@ def update_inbox(
             inbox.warmup_issue_code = "WARMUP_DISABLED"
             inbox.warmup_issue_message = "Warmup is disabled for this inbox."
 
+    for port_field in ("smtp_port", "imap_port"):
+        if port_field in updates and updates[port_field] is not None and not (0 < updates[port_field] < 65536):
+            raise HTTPException(status_code=422, detail=f"{port_field} must be between 1 and 65535")
+    for host_field in ("smtp_host", "imap_host"):
+        if host_field in updates and isinstance(updates[host_field], str):
+            updates[host_field] = updates[host_field].strip() or None
+
     for key, value in updates.items():
         setattr(inbox, key, value)
+    # New receiving credentials: clear the old sync error so the next sync reports fresh status.
+    if any(k.startswith("imap_") for k in updates):
+        inbox.imap_last_error = None
 
     db.commit()
     db.refresh(inbox)
@@ -386,7 +397,7 @@ def test_imap_connection(
 
     try:
         from app.services.ms365_oauth import imap_login, imap_secret
-        mail = imaplib.IMAP4_SSL(inbox.imap_host, inbox.imap_port or 993)
+        mail = imaplib.IMAP4_SSL(inbox.imap_host, inbox.imap_port or 993, timeout=20)
         imap_login(mail, inbox.imap_username or inbox.email_address, imap_secret(db, inbox))
         result["status"] = "connected"
 
@@ -448,6 +459,56 @@ def test_imap_connection(
     return result
 
 
+@router.post("/{inbox_id}/test-smtp")
+def test_smtp_connection(
+    inbox_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
+):
+    """Sign in to the inbox's SMTP server (no email is sent) to check the sending credentials."""
+    import smtplib
+    import socket
+    from app.services.ms365_oauth import smtp_login, smtp_secret
+
+    inbox = db.query(SendingInbox).filter(
+        SendingInbox.inbox_id == inbox_id,
+        SendingInbox.tenant_id == current_user.tenant_id,
+    ).first()
+    if not inbox:
+        raise HTTPException(status_code=404, detail="Inbox not found")
+
+    oauth = (inbox.auth_type or "PASSWORD") == "OAUTH_MS365"
+    if not inbox.smtp_host:
+        return {"status": "not_configured", "error": "SMTP host is not set."}
+    if not inbox.smtp_password and not oauth:
+        return {"status": "not_configured", "error": "SMTP password is not set."}
+
+    host, port = inbox.smtp_host, inbox.smtp_port or 587
+    username = inbox.smtp_username or inbox.email_address
+    try:
+        if inbox.smtp_use_ssl or port == 465:
+            server = smtplib.SMTP_SSL(host, port, timeout=20)
+        else:
+            server = smtplib.SMTP(host, port, timeout=20)
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+        try:
+            smtp_login(server, username, smtp_secret(db, inbox))
+        finally:
+            try:
+                server.quit()
+            except Exception:
+                pass
+    except smtplib.SMTPAuthenticationError as e:
+        return {"status": "auth_failed", "error": f"SMTP sign-in rejected: {e.smtp_code} {e.smtp_error.decode(errors='ignore') if isinstance(e.smtp_error, bytes) else e.smtp_error}"}
+    except (socket.timeout, TimeoutError):
+        return {"status": "connection_failed", "error": f"Timed out connecting to {host}:{port}."}
+    except Exception as e:
+        return {"status": "connection_failed", "error": str(e)}
+    return {"status": "connected", "smtp_host": host, "smtp_port": port, "smtp_username": username}
+
+
 @router.delete("/{inbox_id}", status_code=204, dependencies=[Depends(require_permission("manage_inboxes"))])
 def delete_inbox(
     inbox_id: str,
@@ -492,6 +553,8 @@ def delete_inbox(
         )
     ).delete(synchronize_session=False)
     db.query(InboxWarmupMetric).filter(InboxWarmupMetric.inbox_id == inbox_id).delete(synchronize_session=False)
+    # Unassign it from campaigns (the campaigns keep their other inboxes).
+    db.execute(campaign_inboxes.delete().where(campaign_inboxes.c.inbox_id == inbox_id))
     db.delete(inbox)
     db.commit()
     return None

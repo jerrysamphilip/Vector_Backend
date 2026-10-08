@@ -39,7 +39,7 @@ from app.models.prospect import GlobalUnsubscribe, Prospect
 from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.user import User
 from app.services import crm
-from app.services.contact_service import can_manage_contacts, normalize_tags
+from app.services.contact_service import can_access_contact, can_manage_contacts, can_see_owner, normalize_tags
 
 router = APIRouter(prefix="/imports", tags=["Imports"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -48,6 +48,7 @@ MAX_ROWS = 10_000
 MAX_FILE_MB = 20
 CHUNK = 500
 DEADLOCK_RETRIES = 5
+NOT_VISIBLE = "Contact already exists, owned by someone outside your visibility"
 
 CONTACT_TARGETS = {
     "email": "Email", "first_name": "First name", "last_name": "Last name", "full_name": "Full name",
@@ -228,6 +229,8 @@ def run_import(
     owner_id = opts.get("owner_id") or None
     if owner_id and not db.query(User.user_id).filter(User.user_id == owner_id, User.tenant_id == tenant_id).first():
         raise HTTPException(status_code=400, detail="Owner must be a user in your workspace")
+    if owner_id and not can_see_owner(db, current_user, owner_id):
+        raise HTTPException(status_code=403, detail="You can only assign records to yourself or your team")
     update_existing = opts.get("update_existing", True) is not False
 
     job = ImportJob(tenant_id=tenant_id, created_by=current_user.user_id, file_name=file.filename or "import",
@@ -303,6 +306,8 @@ def run_import(
                     (Account.domain == domain) if domain else (Account.name == new_name)).with_for_update().first()
                 if not account:
                     raise RowError("Company could not be saved (name or domain clash)")
+        if not created and account.owner_id and not can_see_owner(db, current_user, account.owner_id):
+            return account  # link to a company outside the importer's team, but don't edit it (BR-SH-02)
         before = crm.snapshot(account, COMPANY_TARGETS)
         if domain and not account.domain:
             account.domain = domain
@@ -351,6 +356,8 @@ def run_import(
             if owner_email:
                 if owner_email.lower() not in owners_by_email:
                     raise RowError(f"Owner '{owner_email}' is not a user in this workspace")
+                if not can_see_owner(db, current_user, owners_by_email[owner_email.lower()]):
+                    raise RowError(f"Owner '{owner_email}' is outside your team; you can only assign to yourself or your team")
                 vals["owner_id"] = owners_by_email[owner_email.lower()]
         for k in ("phone", "mobile_phone"):
             if vals.get(k):
@@ -430,10 +437,13 @@ def run_import(
         for row_no, row, email, vals, custom in parsed:
             try:
                 with db.begin_nested():
-                    account = company_for_row(row, email)  # from columns, else the email domain (BR-CM-04)
                     p = existing.get(email.lower())
                     if p is not None and p.deleted_at is not None:
                         raise RowError("Matches a deleted contact; restore it first")
+                    if p is not None and not can_access_contact(current_user, p):
+                        # Never overwrite or reassign a colleague's contact outside your team (BR-SH-02)
+                        raise RowError(NOT_VISIBLE)
+                    account = company_for_row(row, email)  # from columns, else the email domain (BR-CM-04)
                     if p is None:
                         p = Prospect(prospect_id=str(uuid.uuid4()), tenant_id=tenant_id, email=email,
                                      email_type="PERSONAL" if crm.is_personal_domain(crm.email_domain(email)) else "BUSINESS",
@@ -459,6 +469,8 @@ def run_import(
                                                           Prospect.email == email).with_for_update().first()
                             if p is None or p.deleted_at is not None:
                                 raise RowError("Could not save contact")
+                            if not can_access_contact(current_user, p):
+                                raise RowError(NOT_VISIBLE)
                             apply_contact(p, vals, custom, account, created=False)
                             stats["contacts_updated"] += 1
                     else:
@@ -558,9 +570,9 @@ def import_errors(import_id: str, db: Session = Depends(get_db), current_user: U
     columns = list(dict.fromkeys(k for e in errors for k in (e.get("values") or {})))
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["Row", "Error"] + columns)
+    writer.writerow(crm.csv_safe_row(["Row", "Error"] + columns))
     for e in errors:
-        writer.writerow([e["row"], e["reason"]] + [(e.get("values") or {}).get(c) for c in columns])
+        writer.writerow(crm.csv_safe_row([e["row"], e["reason"]] + [(e.get("values") or {}).get(c) for c in columns]))
     name = re.sub(r"[^\w.-]+", "_", job.file_name.rsplit(".", 1)[0])
     return StreamingResponse(iter([out.getvalue().encode("utf-8-sig")]), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="{name}-errors.csv"'})

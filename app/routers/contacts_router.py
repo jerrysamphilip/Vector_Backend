@@ -768,7 +768,7 @@ def export_contacts(
             for f in field_defs:
                 v = s["custom_fields"].get(f.field_key)
                 values.append("; ".join(v) if isinstance(v, list) else v)
-            rows.append(values)
+            rows.append(crm.csv_safe_row(values))  # no formula injection in Excel / Sheets
 
     stamp = datetime.utcnow().strftime("%Y%m%d-%H%M")
     if format == "xlsx":
@@ -776,7 +776,7 @@ def export_contacts(
         wb = Workbook()
         ws = wb.active
         ws.title = "Contacts"
-        ws.append(header)
+        ws.append(crm.csv_safe_row(header))
         for r in rows:
             ws.append(r)
         buffer = io.BytesIO()
@@ -786,7 +786,7 @@ def export_contacts(
                                  headers={"Content-Disposition": f'attachment; filename="contacts-{stamp}.xlsx"'})
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(header)
+    writer.writerow(crm.csv_safe_row(header))
     writer.writerows(rows)
     return StreamingResponse(iter([out.getvalue().encode("utf-8-sig")]), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="contacts-{stamp}.csv"'})
@@ -923,6 +923,7 @@ def deleted_contacts(
     query = db.query(Prospect).filter(
         Prospect.tenant_id == current_user.tenant_id, Prospect.deleted_at.isnot(None),
         Prospect.deleted_at > cutoff, Prospect.merged_into_id.is_(None))
+    query = scope(query, db, current_user, Prospect.owner_id)  # own team's contacts only (BR-SH-02)
     if q and q.strip():
         term = f"%{q.strip()}%"
         query = query.filter(or_(Prospect.email.ilike(term), Prospect.first_name.ilike(term),
@@ -941,7 +942,8 @@ def deleted_contacts(
 @router.post("/restore")
 def restore(payload: RestoreRequest, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
     _require_manager(current_user)
-    count = crm.restore_contacts(db, current_user.tenant_id, payload.prospect_ids, current_user.user_id)
+    count = crm.restore_contacts(db, current_user.tenant_id, payload.prospect_ids, current_user.user_id,
+                                 user=current_user)
     db.commit()
     return {"status": "restored", "restored": count}
 

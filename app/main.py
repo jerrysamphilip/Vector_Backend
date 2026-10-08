@@ -5,7 +5,16 @@ Campaign Manager Backend
 """
 
 import asyncio
+import logging
+import os
 from contextlib import asynccontextmanager
+
+# Logging: emit logger.info/warning calls (level from LOG_LEVEL, default INFO)
+logging.basicConfig(
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger("app.main")
  
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -220,12 +229,15 @@ async def lifespan(app: FastAPI):
         )
 
 # Create FastAPI app with lifespan
+# API docs are off in production unless ENABLE_DOCS=true
+_docs_enabled = settings.ENABLE_DOCS or not settings.is_production
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description="AI-powered email outreach platform",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
     lifespan=lifespan,
 )
 
@@ -236,10 +248,13 @@ import json
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    print("="*50)
-    print("422 VALIDATION ERROR:")
-    print("ERRORS:", exc.errors())
-    print("BODY:", exc.body)
+    # Never log the request body (it can carry passwords/tokens); path + error locations only
+    logger.info(
+        "422 validation error on %s %s: %s",
+        request.method,
+        request.url.path,
+        [(".".join(str(p) for p in err.get("loc", ())), err.get("type")) for err in exc.errors()],
+    )
     return JSONResponse(
         status_code=422,
         content={"success": False, "error": "Validation Error", "detail": exc.errors(), "code": "VALIDATION_ERROR"},
@@ -492,6 +507,39 @@ try:
                 print("Added suppression_expires_at column to global_unsubscribes table")
             except Exception as e:
                 print(f"WARNING Failed to add suppression_expires_at column: {e}")
+
+        # ----------------------------------------
+        # AUTO-MIGRATE: company_profiles.tenant_id (tenant isolation)
+        # Legacy rows keep NULL and are invisible to every tenant (not deleted).
+        # ----------------------------------------
+        result = conn.execute(text("""
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'company_profiles'
+            AND COLUMN_NAME = 'tenant_id'
+        """))
+        if not result.fetchall():
+            try:
+                conn.execute(text("ALTER TABLE company_profiles ADD COLUMN tenant_id VARCHAR(36) NULL"))
+                conn.commit()
+                print("Added tenant_id column to company_profiles table")
+            except Exception as e:
+                print(f"WARNING Failed to add company_profiles.tenant_id column: {e}")
+        result = conn.execute(text("""
+            SELECT INDEX_NAME
+            FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'company_profiles'
+            AND INDEX_NAME = 'ix_company_profiles_tenant_id'
+        """))
+        if not result.fetchall():
+            try:
+                conn.execute(text("CREATE INDEX ix_company_profiles_tenant_id ON company_profiles (tenant_id)"))
+                conn.commit()
+                print("Added ix_company_profiles_tenant_id index")
+            except Exception as e:
+                print(f"WARNING Failed to add ix_company_profiles_tenant_id index: {e}")
     
         # ----------------------------------------
         # AUTO-MIGRATE: users table (auth fields)
@@ -635,6 +683,8 @@ try:
 
     from app.db.security_schema import encrypt_mailbox_passwords
     encrypt_mailbox_passwords(engine)
+    from app.db.security_schema import allow_anonymised_audit_logs
+    allow_anonymised_audit_logs(engine)
 
     with SessionLocal() as db:
         total = seed_blueprints(db)
@@ -672,12 +722,24 @@ app.add_middleware(
  
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint."""
+    """Liveness check: the process is up and serving requests (no dependencies checked)."""
     return {
         "status": "healthy",
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
     }
+
+
+@app.get("/health/ready", tags=["Health"])
+def readiness_check():
+    """Readiness check: the database answers SELECT 1, else 503."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as e:
+        logger.warning("Readiness check failed: database unreachable (%s)", type(e).__name__)
+        return JSONResponse(status_code=503, content={"status": "unavailable", "database": "unreachable"})
+    return {"status": "ready", "database": "ok"}
  
  
 # =============================

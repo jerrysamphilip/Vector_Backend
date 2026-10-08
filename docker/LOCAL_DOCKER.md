@@ -117,3 +117,20 @@ API_PROXY_TARGET=http://localhost:8191 npm run dev     # http://localhost:5173
   10 minutes and logs emails / meetings with your contacts on their timelines.
 - Notifications are in-app (the bell) and, when `SENDER_EMAIL` and AWS are configured, also emailed; each user can
   turn email off. `QUOTE_CURRENCY` (default USD) is printed on proposal PDFs.
+
+## Production settings
+
+Set these in the backend secret for each environment (the manifests read them):
+
+| Setting | Production value | What it does |
+|---|---|---|
+| `ENVIRONMENT` | `production` | Turns off self sign-up, `/docs`, dev-only links and seed scripts; the SES webhook refuses calls if `AWS_SNS_TOPIC_ARN` is empty |
+| `ALLOW_SELF_SIGNUP` | `false` (default in production) | `true` lets anyone create a workspace from the login page |
+| `AWS_SNS_TOPIC_ARN` | your SES notifications topic | Only notifications from this topic are accepted |
+| `JWT_SECRET_KEY`, `CREDENTIALS_ENCRYPTION_KEY` | long random values | The app refuses to start with the development defaults |
+| `TRUSTED_PROXY_HOPS` | `1` (one load balancer) | How many proxies append to `X-Forwarded-For`; used for rate limiting |
+| `LOG_LEVEL` | `INFO` | Application log level |
+| `ENABLE_DOCS` | unset | `true` re-enables `/docs` in production |
+
+Health checks: `/health` (process is up) and `/health/ready` (database reachable, 503 otherwise).
+The container runs as user 10001; the uploads directory must be writable by it.

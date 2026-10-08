@@ -69,6 +69,9 @@ def get_hierarchy(db: Session = Depends(get_db), current_user: User = Depends(te
         if u.manager_id:
             reports[u.manager_id] = reports.get(u.manager_id, 0) + 1
     visible = visible_user_ids(db, current_user)
+    if visible is not None and current_user.role not in ("SUPER_ADMIN", "ADMIN"):
+        # Admins and workspace-wide viewers see everyone; others only themselves and their team (BR-SH-02)
+        users = [u for u in users if u.user_id in visible]
     return {
         "levels": [{"level": k, "label": v} for k, v in SALES_LEVELS.items()],
         "can_edit": current_user.role in ("SUPER_ADMIN", "ADMIN"),
@@ -422,7 +425,7 @@ def delete_lead(lead_id: str, db: Session = Depends(get_db), current_user: User 
         raise HTTPException(status_code=400, detail="Converted leads are kept with their opportunity")
     if current_user.role == "AGENT" and lead.owner_id != current_user.user_id:
         raise HTTPException(status_code=403, detail="You can only delete your own leads")
-    db.delete(lead)
+    svc.delete_leads(db, [lead.lead_id])
     db.commit()
     return {"status": "deleted", "lead_id": lead_id}
 
@@ -579,6 +582,8 @@ def list_opps(owner: Optional[str] = None, status: Optional[str] = None, stage_i
                                                                 Opportunity.close_date < date.today()))
     agg = query.with_entities(func.count(Opportunity.opportunity_id),
                               func.coalesce(func.sum(Opportunity.amount), 0)).one()
+    if sort_by == "amount" and not can_see_amounts(db, current_user):
+        sort_by = "close_date"  # sorting by a hidden amount would reveal it (BR-SF-12)
     col = getattr(Opportunity, sort_by)
     rows = query.order_by(col.is_(None), col.asc() if sort_order == "asc" else col.desc(),
                           Opportunity.opportunity_id).offset((page - 1) * page_size).limit(page_size).all()
@@ -723,10 +728,7 @@ def delete_opp(opportunity_id: str, db: Session = Depends(get_db), current_user:
     opp = svc.get_opp(db, current_user, opportunity_id)
     if current_user.role == "AGENT":
         raise HTTPException(status_code=403, detail="Agents cannot delete opportunities")
-    db.query(Proposal).filter(Proposal.opportunity_id == opp.opportunity_id).delete(synchronize_session=False)
-    db.query(Lead).filter(Lead.opportunity_id == opp.opportunity_id).update(
-        {Lead.opportunity_id: None, Lead.stage: "SQL"}, synchronize_session=False)
-    db.delete(opp)
+    svc.delete_opportunities(db, [opp.opportunity_id])  # quotes, lines, tasks, history first (FKs)
     db.commit()
     return {"status": "deleted", "opportunity_id": opportunity_id}
 
@@ -915,7 +917,7 @@ def update_proposal(proposal_id: str, payload: ProposalWrite, db: Session = Depe
 @router.delete("/proposals/{proposal_id}")
 def delete_proposal(proposal_id: str, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
     p = _get_proposal(db, current_user, proposal_id)
-    db.delete(p)
+    svc.delete_proposals(db, [p.proposal_id])  # its quote lines first (FK)
     db.commit()
     return {"status": "deleted", "proposal_id": proposal_id}
 

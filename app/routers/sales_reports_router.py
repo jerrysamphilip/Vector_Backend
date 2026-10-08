@@ -25,7 +25,7 @@ from app.models.user import User
 from app.services import sales as svc
 from app.services.contact_service import (SALES_LEVELS, can_see_owner, sees_everything, team_user_ids,
                                           visible_user_ids)
-from app.services.sales_settings import masked_for
+from app.services.sales_settings import can_see_amounts, masked_for
 
 router = APIRouter(prefix="/sales-reports", tags=["Sales reports"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -280,7 +280,9 @@ def pipeline_report(client_type: Optional[str] = None, member: Optional[str] = N
             o[k] = round(o[k], 2)
     for m in by_month.values():
         m["amount"], m["weighted"] = round(m["amount"], 2), round(m["weighted"], 2)
-    return masked_for(db, current_user, {"by_owner": sorted(by_owner.values(), key=lambda r: -r["open_amount"]),
+    # Ordering by a hidden amount would reveal it (BR-SF-12)
+    owner_key = (lambda r: -r["open_amount"]) if can_see_amounts(db, current_user) else (lambda r: -r["open_count"])
+    return masked_for(db, current_user, {"by_owner": sorted(by_owner.values(), key=owner_key),
                                          "by_close_month": sorted(by_month.values(), key=lambda r: r["month"] or "9999")})
 
 
@@ -517,7 +519,10 @@ def targets_vs_actual(fy: Optional[int] = None, quarter: Optional[int] = Query(N
                      "pipeline": round(a["pipeline"], 2),
                      "attainment": _pct(a["won"], target) if target else None,
                      "gap": round(max(target - a["won"], 0), 2) if target else None})
-    rows.sort(key=lambda r: (-(r["attainment"] or -1), -r["won"]))
+    if can_see_amounts(db, current_user):
+        rows.sort(key=lambda r: (-(r["attainment"] or -1), -r["won"]))
+    else:  # ranking by revenue would reveal it (BR-SF-12)
+        rows.sort(key=lambda r: (-r["won_count"], r["name"]))
     for i, r in enumerate(rows, 1):
         r["rank"] = i
     tot_target = sum(r["target"] or 0 for r in rows)
@@ -534,11 +539,12 @@ def leaderboard(date_from: Optional[date] = None, date_to: Optional[date] = None
                 db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
     """Reps ranked by revenue won in the period, with deals, SQLs and activity (BR-SF-09)."""
     perf = team_performance(date_from, date_to, member, db, current_user)
+    # perf is already masked for viewers who can't see amounts, so won_amount is None there
     rows = sorted(perf["reps"], key=lambda r: (-(r["won_amount"] or 0), -r["won_count"], -r["sqls"], -r["activities"]))
     out = [{"rank": i, "user_id": r["user_id"], "name": r["name"], "level_label": r["level_label"],
             "won_amount": r["won_amount"], "won_count": r["won_count"], "sqls": r["sqls"],
             "activities": r["activities"], "win_rate": r["win_rate"]} for i, r in enumerate(rows, 1)]
-    return {"period": perf["period"], "rows": out}
+    return masked_for(db, current_user, {"period": perf["period"], "rows": out})
 
 
 @router.get("/campaign-roi")
@@ -603,7 +609,10 @@ def campaign_roi(date_from: Optional[date] = None, date_to: Optional[date] = Non
         row["revenue_per_contact"] = round(row["revenue"] / emailed, 2) if emailed else None
         if emailed or row["leads"] or row["opportunities"]:
             rows.append(row)
-    rows.sort(key=lambda r: (-r["revenue"], -r["pipeline"], -r["contacts_emailed"]))
+    if can_see_amounts(db, current_user):
+        rows.sort(key=lambda r: (-r["revenue"], -r["pipeline"], -r["contacts_emailed"]))
+    else:  # ordering by revenue would reveal it (BR-SF-12)
+        rows.sort(key=lambda r: (-r["won_count"], -r["opportunities"], -r["contacts_emailed"]))
     totals = {k: sum(r[k] for r in rows) for k in ("contacts_emailed", "replies", "leads", "sqls", "opportunities",
                                                    "won_count")}
     totals.update({k: round(sum(r[k] for r in rows), 2) for k in ("pipeline", "weighted", "revenue")})

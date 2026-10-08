@@ -68,8 +68,11 @@ class ConversationService:
             page_size=page_size
         )
 
-    def get_conversation_thread(self, conversation_id: str) -> ConversationDetailResponse:
-        conversation = self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    def get_conversation_thread(self, conversation_id: str, tenant_id: str) -> ConversationDetailResponse:
+        conversation = self.db.query(Conversation).filter(
+            Conversation.id == conversation_id,
+            Conversation.tenant_id == tenant_id
+        ).first()
         if not conversation:
             return None
         
@@ -79,8 +82,11 @@ class ConversationService:
         
         return conversation
 
-    def create_reply(self, conversation_id: str, body_text: str, user_id: str) -> EmailMessage:
-        conv = self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    def create_reply(self, conversation_id: str, body_text: str, user_id: str, tenant_id: str) -> EmailMessage:
+        conv = self.db.query(Conversation).filter(
+            Conversation.id == conversation_id,
+            Conversation.tenant_id == tenant_id
+        ).first()
         if not conv:
             return None
             

@@ -21,6 +21,8 @@ from app.models.audit import AuditLog
 
 def seed_database():
     """Seed database with dummy data."""
+    from app.db.seed_guard import require_dev_environment
+    require_dev_environment("seed_data")
     
     with get_db_session() as db:
         print("Seeding database with dummy data...")

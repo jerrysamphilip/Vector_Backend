@@ -1,7 +1,8 @@
 # app/routers/company_profile_router.py
 """
 API routes for Company Profiles.
-Shared across the organization - no tenant filtering.
+Scoped to the current user's tenant. Legacy rows with NULL tenant_id are
+hidden from every tenant (kept, not deleted).
 """
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -57,7 +58,9 @@ def list_company_profiles(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):
     """List all company profiles, default first."""
-    profiles = db.query(CompanyProfile).order_by(
+    profiles = db.query(CompanyProfile).filter(
+        CompanyProfile.tenant_id == current_user.tenant_id
+    ).order_by(
         CompanyProfile.is_default.desc(),
         CompanyProfile.profile_name
     ).all()
@@ -72,7 +75,8 @@ def get_company_profile(
 ):
     """Get a single company profile."""
     profile = db.query(CompanyProfile).filter(
-        CompanyProfile.profile_id == profile_id
+        CompanyProfile.profile_id == profile_id,
+        CompanyProfile.tenant_id == current_user.tenant_id
     ).first()
     
     if not profile:
@@ -91,11 +95,13 @@ def create_company_profile(
     # If this is set as default, unset other defaults
     if data.is_default:
         db.query(CompanyProfile).filter(
+            CompanyProfile.tenant_id == current_user.tenant_id,
             CompanyProfile.is_default == True
         ).update({"is_default": False})
     
     profile = CompanyProfile(
         profile_id=str(uuid.uuid4()),
+        tenant_id=current_user.tenant_id,
         profile_name=data.profile_name,
         company_name=data.company_name,
         company_description=data.company_description,
@@ -120,7 +126,8 @@ def update_company_profile(
 ):
     """Update a company profile."""
     profile = db.query(CompanyProfile).filter(
-        CompanyProfile.profile_id == profile_id
+        CompanyProfile.profile_id == profile_id,
+        CompanyProfile.tenant_id == current_user.tenant_id
     ).first()
     
     if not profile:
@@ -129,6 +136,7 @@ def update_company_profile(
     # If setting as default, unset other defaults
     if data.is_default:
         db.query(CompanyProfile).filter(
+            CompanyProfile.tenant_id == current_user.tenant_id,
             CompanyProfile.is_default == True,
             CompanyProfile.profile_id != profile_id
         ).update({"is_default": False})
@@ -161,7 +169,8 @@ def delete_company_profile(
 ):
     """Delete a company profile."""
     profile = db.query(CompanyProfile).filter(
-        CompanyProfile.profile_id == profile_id
+        CompanyProfile.profile_id == profile_id,
+        CompanyProfile.tenant_id == current_user.tenant_id
     ).first()
     
     if not profile:

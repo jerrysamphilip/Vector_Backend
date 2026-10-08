@@ -1,10 +1,10 @@
 # app/models/company_profile.py
 """
 Company Profile model for reusable sender/company details.
-Shared across the organization.
+Scoped to a tenant (tenant_id). Legacy rows with NULL tenant_id are hidden.
 """
 
-from sqlalchemy import Column, String, Boolean, Text, TIMESTAMP
+from sqlalchemy import Column, String, Boolean, Text, TIMESTAMP, ForeignKey
 from sqlalchemy.sql import func
 import uuid
 
@@ -19,6 +19,9 @@ class CompanyProfile(Base):
     __tablename__ = "company_profiles"
 
     profile_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    # Owning tenant. Nullable only for legacy rows created before tenant
+    # scoping; those are never returned to any tenant.
+    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=True, index=True)
     
     # Profile metadata
     profile_name = Column(String(100), nullable=False)  # e.g., "Neutrino Tech - Main"

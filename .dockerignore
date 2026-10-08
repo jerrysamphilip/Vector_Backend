@@ -9,3 +9,7 @@ uploads/
 docker/
 *.txt
 !requirements.txt
+.gitignore
+*.log
+.claude/
+tests/

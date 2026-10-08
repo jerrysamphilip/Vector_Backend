@@ -19,7 +19,7 @@ class AuditLog(Base):
 
     log_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
-    user_id = Column(String(36), ForeignKey("users.user_id"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)  # NULL once the user is deleted
     
     action = Column(String(255), nullable=False)  # CREATE_CAMPAIGN, LAUNCH_CAMPAIGN, etc
     entity_type = Column(String(100), nullable=False)  # campaign, prospect, template, etc
