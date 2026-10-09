@@ -8,7 +8,9 @@ name: vector
 #   docker compose logs -f api      follow backend logs
 #   docker compose down             stop (add -v to also wipe the MySQL data and uploads)
 #
-# Start-up order: mysql (healthy) → api (creates/patches tables on start) → web
+# Start-up order: mysql (healthy) → migrate (alembic upgrade head, then exits) → api + worker → web
+# The api serves requests only (RUN_BACKGROUND_JOBS=false); the worker runs the background loops
+# (scheduler, IMAP sync, warmup, ...) with its health on :8002 inside the container.
 #
 # Host ports: web 8190, api 8191 (Swagger at /docs), mysql 3316.
 
@@ -78,18 +80,53 @@ services:
       retries: 30
     restart: unless-stopped
 
+  # One-shot: brings the schema to the latest Alembic revision and syncs persona blueprints
+  migrate:
+    build: {context: .}
+    image: vector-api
+    command: ["python", "-m", "app.db.migrate"]
+    environment: *api-env
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
   api:
     build: {context: .}
-    environment: *api-env
+    image: vector-api
+    environment:
+      <<: *api-env
+      RUN_BACKGROUND_JOBS: "false"
     volumes:
       - uploads:/app/uploads
     ports:
       - "${API_PORT:-8191}:8001"
     depends_on:
-      mysql:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    restart: unless-stopped
+
+  # Background loops; every iteration takes a MySQL named lock, so scaling it never double-runs work
+  worker:
+    build: {context: .}
+    image: vector-api
+    command: ["python", "-m", "app.worker"]
+    environment:
+      <<: *api-env
+      RUN_BACKGROUND_JOBS: "true"
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3).status == 200 else 1)"]
       interval: 15s
       timeout: 5s
       start_period: 30s

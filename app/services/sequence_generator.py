@@ -142,7 +142,7 @@ def generate_sequence_with_llm(
 ) -> Optional[Dict[str, Dict]]:
     """
     Generate email sequence using GPT-4o-mini.
-    Uses prompts from app/prompts/llm_system_prompts.py with Neutrino-style examples.
+    Uses prompts from app/prompts/llm_system_prompts.py with house-style examples.
     
     Args:
         num_emails: Number of emails to generate (1-7), based on user sequence config
@@ -162,7 +162,7 @@ def generate_sequence_with_llm(
     persona_intelligence_block = build_persona_intelligence_block(blueprint)
 
     is_conference = (email_context == EMAIL_CONTEXT_CONFERENCE)
-    healthcare_mode = True  # Apply Neutrino outreach style to all industries
+    healthcare_mode = True  # Apply house outreach style to all industries
 
     # Use the centralized prompt from app/prompts/
     system_prompt = get_sequence_generation_system_prompt(
@@ -240,7 +240,7 @@ ADDITIONAL CREATIVE MODE RULES:
 
     if is_conference:
         conf_examples = examples_block or ""
-        user_prompt = f"""Generate a {num_emails}-email Neutrino Tech Systems conference/in-person outreach sequence.
+        user_prompt = f"""Generate a {num_emails}-email <<SENDER_COMPANY>> conference/in-person outreach sequence.
 {context_hint}
 
 CRITICAL: This is a conference/in-person outreach sequence — NOT cold outreach.
@@ -248,7 +248,7 @@ Read the campaign description carefully to identify:
 - Sub-type: Named event (Conference) OR rep visiting a city (In-Person Visit)
 - Event name (ONLY if explicitly mentioned in the description) / visit city and state
 - Event dates / visit date window
-- Neutrino contact person: name and title
+- <<SENDER_COMPANY>> contact person: name and title
 
 NEVER fabricate or invent a conference/event name. If no specific event is named in the description,
 this is an In-Person Visit — use "In-Person Meeting" in subjects and reference the city/dates only.
@@ -257,7 +257,7 @@ Apply the PER-EMAIL TONE GUIDE below exactly for each step's opener, bullet styl
 
 Follow the CONFERENCE EMAIL STRUCTURE from the system prompt for every email:
 1) OPENER — follow the opener style in the PER-EMAIL TONE GUIDE for this step
-2) Company intro — "Neutrino Tech Systems" (NEVER use {{{{our_company}}}})
+2) Company intro — "<<SENDER_COMPANY>>" (NEVER use {{{{our_company}}}})
 3) Capability bullets — follow the bullet style in the tone guide (themes vs service vs technical depth)
 4) DUAL CTA — in-person first, virtual fallback. NEVER single-option.
 
@@ -272,7 +272,7 @@ Rules:
 - 150–250 words per email
 - Subject lines: Lead with a VALUE PROPOSITION + event name. Title Case. Each email MUST have a DIFFERENT topic-specific subject. BANNED in subjects: "quick catch up", "let's catch up", "let's meet"
 {"- Include {{first_name}}, prefix in EVERY subject line." if include_first_name_in_subject else "- Do NOT include {{first_name}} in subject lines."}
-- NEVER use {{{{our_company}}}} — always write "Neutrino Tech Systems"
+- NEVER use {{{{our_company}}}} — always write "<<SENDER_COMPANY>>"
 - "Following up", "would love to", "looping back" are ALLOWED in body
 - Generate EXACTLY {num_emails} emails
 - First line must be exactly: "Hi {{{{first_name}}}},"
@@ -291,17 +291,17 @@ Return JSON:
     {email_json_parts}
 }}"""
     elif creative_email:
-        user_prompt = f"""Generate a {num_emails}-email Neutrino Tech Systems cold outreach sequence.
+        user_prompt = f"""Generate a {num_emails}-email <<SENDER_COMPANY>> cold outreach sequence.
 {context_hint}
 
 CRITICAL: Apply the PER-EMAIL TONE GUIDE below exactly. Each email step has a DIFFERENT opener style:
 - email_1 (intro): Open with a direct pain point question.
 - email_2+ (follow-ups): Do NOT open with a question — use the urgency statement or follow-up phrase from the tone guide.
 
-Follow the NEUTRINO EMAIL STRUCTURE from the system prompt for every email:
+Follow the HOUSE EMAIL STRUCTURE from the system prompt for every email:
 1) OPENER — follow the opener style in the PER-EMAIL TONE GUIDE for this step's position
-2) Company intro — "Neutrino Tech Systems" with credibility markers (NEVER use {{{{our_company}}}})
-3) Capability bullets (4–5 bullets, minimum 4, maximum 5) — use Neutrino's REAL services from the SERVICE REFERENCE below.
+2) Company intro — "<<SENDER_COMPANY>>" with credibility markers (NEVER use {{{{our_company}}}})
+3) Capability bullets (4–5 bullets, minimum 4, maximum 5) — use <<SENDER_COMPANY>>'s REAL services from the SERVICE REFERENCE below.
    DO NOT invent generic bullets like "optimize workflows" or "ensure data integrity".
 4) CTA — follow the CTA style in the PER-EMAIL TONE GUIDE for this step's position
 
@@ -310,7 +310,7 @@ Rules:
 - 150–250 words per email
 - Bullet lists required for capabilities section
 - Use tokens: {{{{first_name}}}}, {{{{company_name}}}}, {{{{designation}}}}, {{{{industry}}}}, {{{{city}}}}, {{{{state}}}}, {{{{linkedin_url}}}}, {{{{your_name}}}}
-- NEVER use {{{{our_company}}}} — always write "Neutrino Tech Systems"
+- NEVER use {{{{our_company}}}} — always write "<<SENDER_COMPANY>>"
 - Include at least THREE tokens naturally: {{{{company_name}}}}, {{{{designation}}}}, {{{{industry}}}}
 - Never write metadata-like lines such as "Prospect context used:".
 - NEVER use: "many teams face", "many {{{{industry}}}} teams", "in today's landscape", "leverage", "synergy", "AI-powered", "cutting-edge", "streamline operations", "I'd love to", "excited to share"
@@ -331,7 +331,7 @@ Return JSON:
     {email_json_parts}
 }}"""
     else:
-        user_prompt = f"""Generate a {num_emails}-email Neutrino Tech Systems cold outreach sequence.
+        user_prompt = f"""Generate a {num_emails}-email <<SENDER_COMPANY>> cold outreach sequence.
 {context_hint}
 
 Target persona: {blueprint.persona_type}
@@ -341,10 +341,10 @@ CRITICAL: Apply the PER-EMAIL TONE GUIDE below exactly. Each email step has a DI
 - email_1 (intro): Open with a direct pain point question.
 - email_2+ (follow-ups): Do NOT open with a question — use the urgency statement or follow-up phrase from the tone guide.
 
-Follow the NEUTRINO EMAIL STRUCTURE from the system prompt for every email:
+Follow the HOUSE EMAIL STRUCTURE from the system prompt for every email:
 1) OPENER — follow the opener style in the PER-EMAIL TONE GUIDE for this step's position
-2) Company intro — "Neutrino Tech Systems" with credibility markers (NEVER use {{{{our_company}}}})
-3) Capability bullets (4–5 bullets, minimum 4, maximum 5) — use Neutrino's REAL services from the SERVICE REFERENCE below.
+2) Company intro — "<<SENDER_COMPANY>>" with credibility markers (NEVER use {{{{our_company}}}})
+3) Capability bullets (4–5 bullets, minimum 4, maximum 5) — use <<SENDER_COMPANY>>'s REAL services from the SERVICE REFERENCE below.
    DO NOT invent generic bullets like "optimize workflows" or "ensure data integrity".
 4) CTA — follow the CTA style in the PER-EMAIL TONE GUIDE for this step's position
 
@@ -355,7 +355,7 @@ Follow the NEUTRINO EMAIL STRUCTURE from the system prompt for every email:
 4. Each email: DIFFERENT opener angle — follow the tone guide, do NOT repeat opening styles.
 5. Generate EXACTLY {num_emails} emails.
 6. {"CTA Link to use: " + cta_link + " — end each email with a direct meeting/call ask." if cta_enabled else "No CTA link. Do NOT include any CTA sentence, meeting ask, booking link, or URL."}
-7. NEVER use {{{{our_company}}}} — always write "Neutrino Tech Systems".
+7. NEVER use {{{{our_company}}}} — always write "<<SENDER_COMPANY>>".
 8. Include tokens naturally: {{{{first_name}}}}, {{{{company_name}}}}, {{{{designation}}}}, {{{{industry}}}}, {{{{city}}}}, {{{{state}}}}, {{{{your_name}}}}
 9. Include at least THREE tokens per email: {{{{company_name}}}}, {{{{designation}}}}, {{{{industry}}}}
 10. Never write metadata-like lines such as "Prospect context used:".
@@ -512,7 +512,7 @@ def generate_sequence_from_blueprint(
 
 Really impressive how {{{{company_name}}}} has been advancing patient access across specialty markets!
 
-I am reaching out as our team will be attending the upcoming event and would love to connect. As a way of introduction — we at Neutrino Tech Systems are an AI-first healthcare tech company based in the U.S., with teams in Costa Rica and India. We help Pharma Hubs and Specialty Pharmacies like {{{{company_name}}}} through Automation, AI, Data Engineering, Cloud, DevOps, Quality Engineering, Custom App Development, and Salesforce solutions.
+I am reaching out as our team will be attending the upcoming event and would love to connect. As a way of introduction — we at {{{{our_company}}}} are an AI-first healthcare tech company based in the U.S., with teams in Costa Rica and India. We help Pharma Hubs and Specialty Pharmacies like {{{{company_name}}}} through Automation, AI, Data Engineering, Cloud, DevOps, Quality Engineering, Custom App Development, and Salesforce solutions.
 
 Would love to catch up at the event or virtually.
 
@@ -529,7 +529,7 @@ Regards,
 
 Just following up to see if your plans have been firmed to be at the event.
 
-Neutrino Tech Systems' US Healthcare Capabilities that could add value for {{{{company_name}}}}:
+{{{{our_company}}}}'s US Healthcare Capabilities that could add value for {{{{company_name}}}}:
     • Patient Enrollment/Intake
     • Benefits Investigation (BI)
     • Prior Authorization (PA)
@@ -549,7 +549,7 @@ Regards,
 
 Just looping back quickly — last chance to catch up at the event.
 
-At Neutrino Tech Systems, we help healthcare teams put AI to work — from improving care and streamlining operations to driving smarter R&D. Our Cloud and Quality Engineering services keep systems secure, audit-ready, and built for healthcare compliance like HIPAA and GDPR.
+At {{{{our_company}}}}, we help healthcare teams put AI to work — from improving care and streamlining operations to driving smarter R&D. Our Cloud and Quality Engineering services keep systems secure, audit-ready, and built for healthcare compliance like HIPAA and GDPR.
 
 {cta_3}
 
@@ -654,6 +654,8 @@ class SequenceGeneratorService:
         prospect = self.db.query(Prospect).filter(Prospect.prospect_id == prospect_id).first()
         if not prospect:
             raise ValueError(f"Prospect {prospect_id} not found")
+        from app.services.sender_identity import bind_tenant
+        bind_tenant(prospect.tenant_id, self.db)
 
         # Classify prospect
         persona_type, confidence = classify_prospect(

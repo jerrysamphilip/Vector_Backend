@@ -1,0 +1,9 @@
+# CI lint gate (.github/workflows/ci.yml): only rules that catch real bugs, not style.
+#   E9   syntax / IO errors          F63  invalid comparisons (is "literal", ...)
+#   F7   misplaced statements        F82  undefined names (F821 undefined, F822/F823)
+# F811 (redefinition) is left out for now: the 4 current hits are harmless shadowed imports.
+target-version = "py312"
+extend-exclude = ["alembic/versions_legacy", "venv", "venv_prod"]
+
+[lint]
+select = ["E9", "F63", "F7", "F82"]

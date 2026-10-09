@@ -1,4 +1,5 @@
 
+import hashlib
 import imaplib
 import email
 from email.header import decode_header
@@ -8,6 +9,8 @@ from datetime import datetime, timedelta, timezone
 import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
+
+from app.core.observability import record_imap_sync
 
 from app.models.sending_inbox import SendingInbox
 from app.models.email_message import EmailMessage, EmailEvent
@@ -31,29 +34,47 @@ class IMAPSyncService:
     def __init__(self, db: Session = None):
         self.db = db
 
+    # Seconds before a stalled IMAP server is given up on, so one dead mailbox
+    # cannot hang the whole sync loop (B11)
+    IMAP_TIMEOUT_SECONDS = 30
+    # Overlap applied to the date window when there is no UID position yet
+    SINCE_OVERLAP = timedelta(days=1)
+    SENT_FOLDERS = ("Sent", "[Gmail]/Sent Mail", "Sent Items", "Sent Messages")
+
     def sync_all_active_inboxes(self, db: Session):
         """Background task to sync all INBOX and SENT folders for active inboxes."""
         self.db = db
         try:
             inboxes = db.query(SendingInbox).filter(SendingInbox.imap_host != None).all()
-            for inbox in inboxes:
+        except Exception as e:
+            logger.error(f"[IMAP] Could not list inboxes to sync: {e}")
+            db.rollback()
+            return
+        for inbox in inboxes:
+            # One bad mailbox must never stop the others (B11)
+            try:
                 # Sync each inbox about every 4 minutes, so replies show within 10 (BR-DF-05)
                 if inbox.last_sync_at and (_utcnow() - inbox.last_sync_at).total_seconds() < 240:
                     continue
 
-                # Use a wider window if inbox was never synced or last sync > 3 days ago,
-                # so replies sent while the server was down are not missed.
+                # Date window used only when a folder has no UID position yet:
+                # back to the last sync (minus an overlap), at most 7 days.
                 if not inbox.last_sync_at:
                     days_back = 7
-                elif (_utcnow() - inbox.last_sync_at).total_seconds() > 259200:  # 3 days
-                    days_back = 7
                 else:
-                    days_back = 3
+                    since = inbox.last_sync_at - self.SINCE_OVERLAP
+                    days_back = min(7, max(1, (_utcnow() - since).days + 1))
 
                 logger.info(f"Background syncing IMAP for {inbox.email_address} (days_back={days_back})")
                 self.sync_inbox(inbox, days_back=days_back)
-        except Exception as e:
-            logger.error(f"[IMAP] Background sync loop error: {e}")
+                record_imap_sync("ok")
+            except Exception as e:
+                record_imap_sync("error")
+                logger.error(f"[IMAP] Sync of {getattr(inbox, 'email_address', '?')} failed: {e}")
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
 
     def sync_inbox(self, inbox_id_or_obj, days_back: int = 30):
         """
@@ -71,29 +92,33 @@ class IMAPSyncService:
             return False
 
         inbox_email_for_log = inbox.email_address if inbox else "Unknown"
+        mail = None
         try:
-            # Connect to IMAP: password, or XOAUTH2 for Microsoft 365 (BR-DF-05)
+            # Connect to IMAP: password, or XOAUTH2 for Microsoft 365 (BR-DF-05).
+            # A socket timeout so a stalled server fails this inbox, not the loop.
             from app.services.ms365_oauth import imap_login, imap_secret
-            mail = imaplib.IMAP4_SSL(inbox.imap_host, inbox.imap_port or 993)
+            mail = imaplib.IMAP4_SSL(inbox.imap_host, inbox.imap_port or 993,
+                                     timeout=self.IMAP_TIMEOUT_SECONDS)
             imap_login(mail, inbox.imap_username or inbox.email_address, imap_secret(self.db, inbox))
-            
+
             # 1. Sync INBOX (Received emails)
             self._sync_folder(mail, inbox, "INBOX", days_back, direction="INBOUND")
-            
-            # 2. Sync SENT (Sent emails) - Folder names vary
-            sent_folders = ["Sent", '"[Gmail]/Sent Mail"', "Sent Items", "Sent Messages"]
-            for folder in sent_folders:
+
+            # 2. Sync SENT (Sent emails) - folder names vary by provider; use the
+            #    first one that exists on this server.
+            for folder in self.SENT_FOLDERS:
                 try:
-                    self._sync_folder(mail, inbox, folder, days_back, direction="OUTBOUND")
-                    break # Success on first found sent folder
-                except:
+                    if self._sync_folder(mail, inbox, folder, days_back, direction="OUTBOUND"):
+                        break
+                except (imaplib.IMAP4.abort, OSError):
+                    raise  # connection is gone: stop this inbox
+                except Exception as exc:
+                    logger.debug(f"[IMAP] Sent folder {folder!r} not usable: {exc}")
                     continue
 
             inbox.last_sync_at = datetime.utcnow()
             inbox.imap_last_error = None
             self.db.commit()
-            
-            mail.logout()
             return True
         except Exception as e:
             logger.error(f"[IMAP] Sync failed for {inbox_email_for_log}: {e}")
@@ -105,47 +130,136 @@ class IMAPSyncService:
             except Exception:
                 self.db.rollback()
             return False
+        finally:
+            # Always release the connection, whatever happened above
+            if mail is not None:
+                try:
+                    mail.logout()
+                except Exception:
+                    try:
+                        mail.shutdown()
+                    except Exception:
+                        pass
 
-    def _sync_folder(self, mail, inbox_model, folder_name, days_back, direction):
-        """Internal helper to sync a specific folder."""
+    @staticmethod
+    def _quote_mailbox(name: str) -> str:
+        if name.startswith('"') or not any(c in name for c in ' []/%*"\\'):
+            return name
+        return '"' + name.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+    def _load_sync_state(self, inbox_model, folder_name):
+        """The stored UID position for this folder, or None (also when the table is missing)."""
+        from app.models.imap_sync_state import ImapSyncState
         try:
-            status, _ = mail.select(folder_name, readonly=True)
+            with self.db.begin_nested():
+                return self.db.query(ImapSyncState).filter(
+                    ImapSyncState.inbox_id == inbox_model.inbox_id,
+                    ImapSyncState.folder == folder_name,
+                ).first()
+        except Exception as exc:
+            logger.warning(f"[IMAP] UID position unavailable ({exc.__class__.__name__}); "
+                           f"using the date window")
+            return False  # table missing: don't try to store either
+
+    def _save_sync_state(self, state, inbox_model, folder_name, uidvalidity, last_uid):
+        from app.models.imap_sync_state import ImapSyncState
+        if state is False:
+            return
+        try:
+            with self.db.begin_nested():
+                if state is None:
+                    state = ImapSyncState(inbox_id=inbox_model.inbox_id, folder=folder_name)
+                    self.db.add(state)
+                state.uidvalidity = uidvalidity
+                state.last_uid = last_uid
+        except Exception as exc:
+            logger.warning(f"[IMAP] Could not store UID position for {folder_name}: {exc}")
+
+    @staticmethod
+    def _synthetic_message_id(from_: str, date_str: str, subject: str, to_: str) -> str:
+        """Stable id for a message with no Message-ID header, so it is stored once (B11)."""
+        digest = hashlib.sha256(
+            "\x1f".join([(from_ or "").strip().lower(), (to_ or "").strip().lower(),
+                          (date_str or "").strip(), (subject or "").strip()]).encode("utf-8", "ignore")
+        ).hexdigest()[:40]
+        return f"<no-message-id-{digest}@imap-sync.invalid>"
+
+    def _sync_folder(self, mail, inbox_model, folder_name, days_back, direction) -> bool:
+        """
+        Sync one folder. Returns False if the folder does not exist on the server.
+
+        Only messages newer than the stored UID position are fetched; without a
+        position (first sync, or the folder's UIDVALIDITY changed) the date
+        window is used once, then the position is recorded.
+        """
+        try:
+            status, _ = mail.select(self._quote_mailbox(folder_name), readonly=True)
             if status != 'OK':
-                return
+                return False
+        except (imaplib.IMAP4.abort, OSError):
+            raise
         except Exception:
-            return
+            return False
 
-        # Search for emails from the last N days
-        # Ensure month is in English for IMAP (RFC3501)
-        # %b depends on locale, so we map manually
-        past_date = datetime.now() - timedelta(days=days_back)
-        months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        date_cutoff = f"{past_date.day}-{months[past_date.month - 1]}-{past_date.year}"
-        
-        logger.info(f"[IMAP] Syncing {folder_name} for {inbox_model.email_address} SINCE {date_cutoff}")
+        uidvalidity = None
+        try:
+            _, uv = mail.response('UIDVALIDITY')
+            if uv and uv[0]:
+                uidvalidity = int(uv[0])
+        except Exception:
+            uidvalidity = None
+
+        state = self._load_sync_state(inbox_model, folder_name)
+        last_uid = 0
+        if state and state.uidvalidity is not None and state.uidvalidity == uidvalidity:
+            last_uid = int(state.last_uid or 0)
+
+        if last_uid:
+            criteria = f'(UID {last_uid + 1}:*)'
+            window = f"UID > {last_uid}"
+        else:
+            # Search for emails from the last N days
+            # Ensure month is in English for IMAP (RFC3501)
+            # %b depends on locale, so we map manually
+            past_date = datetime.now() - timedelta(days=days_back)
+            months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            date_cutoff = f"{past_date.day}-{months[past_date.month - 1]}-{past_date.year}"
+            criteria = f'(SINCE "{date_cutoff}")'
+            window = f"SINCE {date_cutoff}"
+
+        logger.info(f"[IMAP] Syncing {folder_name} for {inbox_model.email_address} ({window})")
 
         try:
-            status, data = mail.search(None, f'(SINCE "{date_cutoff}")')
-            if status != 'OK': 
+            status, data = mail.uid('SEARCH', None, criteria)
+            if status != 'OK':
                 logger.warning(f"[IMAP] Search failed/empty in {folder_name}")
-                return
+                return True
+        except (imaplib.IMAP4.abort, OSError):
+            raise
         except Exception as e:
-             logger.error(f"[IMAP] Search error in {folder_name}: {e}")
-             return
+            logger.error(f"[IMAP] Search error in {folder_name}: {e}")
+            return True
 
-        message_ids = data[0].split()
-        if not message_ids: 
-            logger.info(f"[IMAP] No messages found in {folder_name} since {date_cutoff}")
-            return
-        
-        logger.info(f"[IMAP] Found {len(message_ids)} messages in {folder_name}")
+        uids = sorted({int(u) for u in (data[0] or b"").split() if u.isdigit()})
+        # "UID n:*" always returns the newest message even when it is <= n
+        uids = [u for u in uids if u > last_uid]
+        if not uids:
+            logger.info(f"[IMAP] No new messages in {folder_name}")
+            if uidvalidity is not None and (state is None or (state and state.uidvalidity != uidvalidity)):
+                self._save_sync_state(state, inbox_model, folder_name, uidvalidity, last_uid)
+            return True
 
-        for msg_id in message_ids:
+        logger.info(f"[IMAP] Found {len(uids)} new message(s) in {folder_name}")
+        highest = last_uid
+
+        for uid in uids:
+            msg_id = str(uid)
+            highest = max(highest, uid)
             try:
                 sp = self.db.begin_nested()  # SAVEPOINT per message — failure rolls back only this message
                 # Fetch message
-                status, msg_data = mail.fetch(msg_id, '(RFC822)')
-                if status != 'OK':
+                status, msg_data = mail.uid('FETCH', msg_id, '(BODY.PEEK[])')
+                if status != 'OK' or not msg_data or not isinstance(msg_data[0], tuple):
                     sp.rollback()
                     continue
                 
@@ -209,8 +323,11 @@ class IMAPSyncService:
                 # Store only the newest human-readable reply block.
                 body = extract_latest_message_text(body)
 
-                # Deduplicate by provider_message_id (Message-ID header)
-                provider_msg_id = msg.get("Message-ID")
+                # Deduplicate by provider_message_id (Message-ID header). A message
+                # without one gets a stable id from its headers, so it is still
+                # stored only once (B11).
+                provider_msg_id = (msg.get("Message-ID") or "").strip() or self._synthetic_message_id(
+                    from_, date_str, subject, to_)
                 if provider_msg_id:
                     exists = self.db.query(EmailMessage).filter(
                         EmailMessage.provider_message_id == provider_msg_id,
@@ -461,12 +578,20 @@ class IMAPSyncService:
 
                 sp.commit()  # Release SAVEPOINT — persist this message
 
+            except (imaplib.IMAP4.abort, OSError):
+                sp.rollback()
+                # Connection lost: keep the position at what was fully processed
+                self._save_sync_state(state, inbox_model, folder_name, uidvalidity, max(last_uid, uid - 1))
+                raise
             except Exception as e:
-                logger.warning(f"[IMAP] Failed to process message {msg_id}: {e}")
+                logger.warning(f"[IMAP] Failed to process message UID {msg_id} in {folder_name}: {e}")
                 sp.rollback()  # Roll back only this message; previous messages are safe
                 continue
 
+        # Next sync starts after the newest message seen here
+        self._save_sync_state(state, inbox_model, folder_name, uidvalidity, highest)
         self.db.flush()
+        return True
 
 # Create singleton instance
 imap_sync_service = IMAPSyncService()

@@ -4,7 +4,7 @@
 API Router for Sending Inboxes management.
 """
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
@@ -23,6 +23,7 @@ from app.schemas.inbox_schema import (
     WarmupOverviewResponse,
     InboxWarmupDetailResponse,
 )
+from app.services import oauth_binding
 from app.services.imap_sync_service import IMAPSyncService
 from app.services.deliverability_service import deliverability_service
 from app.services.warmup_service import warmup_service
@@ -36,6 +37,23 @@ import uuid
 router = APIRouter(prefix="/inboxes", tags=["Inboxes"])
 
 
+def _check_mail_host(host):
+    """Mail servers must be public: stops the connection tests probing internal services.
+    Skipped in development so local test servers still work."""
+    if not host or (settings.ENVIRONMENT or "").strip().lower() in ("development", "dev", "local", "test"):
+        return
+    import ipaddress
+    import socket
+    try:
+        addrs = {info[4][0] for info in socket.getaddrinfo(host, None)}
+    except socket.gaierror:
+        raise HTTPException(status_code=422, detail=f"Could not find the mail server {host}")
+    for addr in addrs:
+        ip = ipaddress.ip_address(addr)
+        if not ip.is_global:
+            raise HTTPException(status_code=422, detail=f"{host} is not a public mail server address")
+
+
 # ── Microsoft 365 OAuth (BR-DF-05) ─────────────────────────────
 
 @router.get("/oauth/microsoft/status")
@@ -47,6 +65,7 @@ def ms365_status(current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN
 @router.post("/{inbox_id}/oauth/microsoft/start", dependencies=[Depends(require_permission("manage_inboxes"))])
 def ms365_start(
     inbox_id: str,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
 ):
@@ -60,12 +79,14 @@ def ms365_start(
         SendingInbox.inbox_id == inbox_id, SendingInbox.tenant_id == current_user.tenant_id).first()
     if not inbox:
         raise HTTPException(status_code=404, detail="Inbox not found")
-    state = ms365_oauth.make_state(inbox.inbox_id, current_user.tenant_id, current_user.user_id)
+    state = ms365_oauth.make_state(inbox.inbox_id, current_user.tenant_id, current_user.user_id,
+                                   oauth_binding.issue(response))
     return {"authorize_url": ms365_oauth.authorize_url(inbox, state)}
 
 
 @router.get("/oauth/microsoft/callback", include_in_schema=False)
 def ms365_callback(
+    request: Request,
     state: str = "",
     code: str = "",
     error: str = "",
@@ -85,6 +106,8 @@ def ms365_callback(
         data = ms365_oauth.read_state(state)
     except ms365_oauth.OAuthError as exc:
         return back(ms365="error", message=str(exc))
+    if not oauth_binding.matches(request, data.get("nonce")):
+        return back(ms365="error", message=oauth_binding.MISMATCH)
     if error:
         return back(ms365="error", message=error_description or error)
     inbox = db.query(SendingInbox).filter(
@@ -116,6 +139,8 @@ def create_inbox(
     """
     Add a new sending inbox. Automatically triggers domain verification logic.
     """
+    _check_mail_host(data.smtp_host)
+    _check_mail_host(data.imap_host)
     # Check if exists
     existing = db.query(SendingInbox).filter(
         SendingInbox.email_address == data.email_address,
@@ -293,6 +318,7 @@ def update_inbox(
     for host_field in ("smtp_host", "imap_host"):
         if host_field in updates and isinstance(updates[host_field], str):
             updates[host_field] = updates[host_field].strip() or None
+            _check_mail_host(updates[host_field])
 
     for key, value in updates.items():
         setattr(inbox, key, value)
@@ -384,6 +410,7 @@ def test_imap_connection(
             "error": "imap_password is not set. For Zoho, use an App Password (not your login password).",
         }
 
+    _check_mail_host(inbox.imap_host)
     result = {
         "inbox": inbox.email_address,
         "imap_host": inbox.imap_host,
@@ -483,6 +510,7 @@ def test_smtp_connection(
     if not inbox.smtp_password and not oauth:
         return {"status": "not_configured", "error": "SMTP password is not set."}
 
+    _check_mail_host(inbox.smtp_host)
     host, port = inbox.smtp_host, inbox.smtp_port or 587
     username = inbox.smtp_username or inbox.email_address
     try:

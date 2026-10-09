@@ -45,3 +45,7 @@ openai==3.26.0
 # AWS SES Integration
 boto3==1.43.108
 tenacity==9.2.1  # Retry logic
+
+# Observability (app/core/observability.py): /metrics and optional Sentry (SENTRY_DSN)
+prometheus-client==0.25.0
+sentry-sdk[fastapi]==2.70.0

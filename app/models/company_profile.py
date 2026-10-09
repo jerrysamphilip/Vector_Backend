@@ -24,12 +24,15 @@ class CompanyProfile(Base):
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=True, index=True)
     
     # Profile metadata
-    profile_name = Column(String(100), nullable=False)  # e.g., "Neutrino Tech - Main"
+    profile_name = Column(String(100), nullable=False)  # e.g., "Acme - Main"
     is_default = Column(Boolean, default=False)
     
     # Company details (for AI context and tokens)
     company_name = Column(String(200), nullable=False)  # {{our_company}}
     company_description = Column(Text, nullable=True)  # About the company for AI context
+    # Physical postal address printed in every campaign email footer (CAN-SPAM).
+    # The tenant's default profile is its sender identity (app/services/sender_identity.py).
+    postal_address = Column(Text, nullable=True)
     
     # Sender details
     default_sender_name = Column(String(100), nullable=True)  # {{your_name}}
@@ -53,6 +56,7 @@ class CompanyProfile(Base):
             "is_default": self.is_default,
             "company_name": self.company_name,
             "company_description": self.company_description,
+            "postal_address": self.postal_address,
             "default_sender_name": self.default_sender_name,
             "default_cta_link": self.default_cta_link,
             "created_at": self.created_at.isoformat() if self.created_at else None,

@@ -69,8 +69,8 @@ def _ms_endpoint(path: str) -> str:
     return f"https://login.microsoftonline.com/{settings.MS365_TENANT_ID or 'common'}/oauth2/v2.0/{path}"
 
 
-def make_state(user: User, provider: str) -> str:
-    return jwt.encode({"user_id": user.user_id, "provider": provider, "purpose": "account_sync",
+def make_state(user: User, provider: str, nonce: str = None) -> str:
+    return jwt.encode({"user_id": user.user_id, "provider": provider, "purpose": "account_sync", "nonce": nonce,
                        "exp": datetime.utcnow() + timedelta(minutes=15)},
                       settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
@@ -85,8 +85,8 @@ def read_state(state: str) -> dict:
     return data
 
 
-def authorize_url(provider: str, user: User) -> str:
-    state = make_state(user, provider)
+def authorize_url(provider: str, user: User, nonce: str = None) -> str:
+    state = make_state(user, provider, nonce)
     if provider == "GOOGLE":
         return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({
             "client_id": settings.GOOGLE_CLIENT_ID, "redirect_uri": settings.GOOGLE_SYNC_REDIRECT_URI,

@@ -51,6 +51,10 @@ class CampaignExecutionService:
 
         normalized_cta_link = normalize_cta_link(cta_link)
 
+        # The sending tenant's own company name (never another tenant's)
+        from app.services.sender_identity import get_sender_identity
+        our_company = get_sender_identity(getattr(prospect, "tenant_id", None)).company_name
+
         substitutions = {
             "{{first_name}}": prospect.first_name or "there",
             "{{last_name}}": prospect.last_name or "",
@@ -65,8 +69,8 @@ class CampaignExecutionService:
             "{{city}}": prospect.poc_city or "",
             "{{state}}": prospect.poc_state or "",
             "{{your_name}}": sender_name or settings.SENDER_NAME,
-            "{{signature_block}}": build_signature_block(sender_name, sender_title),
-            "{{our_company}}": "Neutrino Tech Systems",
+            "{{signature_block}}": build_signature_block(sender_name, sender_title, our_company),
+            "{{our_company}}": our_company or "",
             "{{calendar_link}}": normalized_cta_link,
             "{{cta_link}}": normalized_cta_link,
         }

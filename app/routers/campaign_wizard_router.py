@@ -549,7 +549,12 @@ def activate_campaign(
             detail="Campaign not found",
         )
 
-    campaign = step_7_activate_campaign(db, campaign_id, current_user.user_id)
+    from app.services.sender_identity import SenderIdentityMissing
+    try:
+        campaign = step_7_activate_campaign(db, campaign_id, current_user.user_id)
+    except SenderIdentityMissing as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     
     if not campaign:
         raise HTTPException(
@@ -633,6 +638,8 @@ def regenerate_email_part(
     """
     Regenerate a specific email field (subject or body) using LLM.
     """
+    from app.services.sender_identity import bind_tenant
+    bind_tenant(current_user.tenant_id, db)
     from app.services.sequence_generator import openai_client
     from app.core.config import settings
     
@@ -663,8 +670,8 @@ def regenerate_email_part(
     # Generate new content using LLM
     if request.field == 'subject':
         if is_conference:
-            prompt = f"""Generate a new subject line for a Neutrino Tech Systems conference/in-person outreach email.
-Context: {request.campaign_description or 'Conference or in-person outreach at Neutrino Tech Systems'}
+            prompt = f"""Generate a new subject line for a <<SENDER_COMPANY>> conference/in-person outreach email.
+Context: {request.campaign_description or 'Conference or in-person outreach at <<SENDER_COMPANY>>'}
 Target persona: {request.persona_type or 'professional'}
 Email step: {request.step_number}
 
@@ -686,8 +693,8 @@ Rules (conference edition — different from cold outreach):
 
 Return ONLY the new subject line, nothing else."""
         else:
-            prompt = f"""Generate a new subject line for a Neutrino Tech Systems cold outreach email.
-Context: {request.campaign_description or 'B2B sales outreach at Neutrino Tech Systems'}
+            prompt = f"""Generate a new subject line for a <<SENDER_COMPANY>> cold outreach email.
+Context: {request.campaign_description or 'B2B sales outreach at <<SENDER_COMPANY>>'}
 Target persona: {request.persona_type or 'professional'}
 Product: {request.product_name}
 
@@ -723,36 +730,36 @@ Return ONLY the new subject line, nothing else."""
                 "BAD: 'Up for a quick Zoom next week?' (virtual only — banned)"
             ) if cta_enabled else "Close naturally. No meeting ask, no URL."
 
-            prompt = f"""Write a Neutrino Tech Systems conference/in-person outreach email body.
+            prompt = f"""Write a <<SENDER_COMPANY>> conference/in-person outreach email body.
 
-Context: {request.campaign_description or 'In-person outreach at Neutrino Tech Systems'}
+Context: {request.campaign_description or 'In-person outreach at <<SENDER_COMPANY>>'}
 Target persona: {request.persona_type or 'professional'}
 Email step: {request.step_number} ({email_type_for_step})
 
 === CONFERENCE EMAIL STRUCTURE (follow exactly — NOT cold outreach structure) ===
 
-Read the context above to identify: event name (ONLY if explicitly mentioned), event dates/visit window, location, and Neutrino contact person.
+Read the context above to identify: event name (ONLY if explicitly mentioned), event dates/visit window, location, and <<SENDER_COMPANY>> contact person.
 CRITICAL: If no specific conference/event name is in the context, do NOT invent one. Use "In-Person Meeting" and reference the city/dates instead.
 
 Follow the PER-EMAIL TONE GUIDE below for this step's opener and CTA style exactly.
 
 Structure for every email:
 1. OPENER — use the opener style from the tone guide for this step (NOT a cold pain-point question)
-2. COMPANY INTRO — "Neutrino Tech Systems" with credibility markers (NEVER use {{{{our_company}}}})
+2. COMPANY INTRO — "<<SENDER_COMPANY>>" with credibility markers (NEVER use {{{{our_company}}}})
 3. CAPABILITY BULLETS — use services from the reference pool below (follow bullet style from tone guide)
 4. DUAL CTA — {cta_rule}
 
 === FORMAT RULES ===
 - 150–250 words
 - First line: "Hi {{{{first_name}}}},"
-- Write "Neutrino Tech Systems" — never use {{{{our_company}}}} token
+- Write "<<SENDER_COMPANY>>" — never use {{{{our_company}}}} token
 - No signature lines (sender signs off separately)
 - Plain text only (no HTML tags)
 - Tokens: {{{{first_name}}}}, {{{{company_name}}}}, {{{{designation}}}}, {{{{industry}}}}
 
 === ALLOWED IN THIS CONTEXT (different from cold outreach) ===
 - "Following up", "would love to", "looping back" — ALLOWED in body
-- Naming the Neutrino rep from the campaign description — ALLOWED and encouraged in email 1
+- Naming the <<SENDER_COMPANY>> rep from the campaign description — ALLOWED and encouraged in email 1
 - Temporal urgency with event dates — ALLOWED
 
 === HARD BANS ===
@@ -783,14 +790,14 @@ Return ONLY the email body text, nothing else."""
                 "'Happy to jump on a quick call or send a short overview — whichever\\'s easier.'"
             ) if cta_enabled else "Close naturally. No meeting ask, no URL."
 
-            prompt = f"""Write a Neutrino Tech Systems cold outreach email body.
+            prompt = f"""Write a <<SENDER_COMPANY>> cold outreach email body.
 
-Context: {request.campaign_description or 'B2B sales outreach at Neutrino Tech Systems'}
+Context: {request.campaign_description or 'B2B sales outreach at <<SENDER_COMPANY>>'}
 Target persona: {request.persona_type or 'professional'}
 Product: {request.product_name}
 Email step: {request.step_number} ({email_type_for_step})
 
-=== NEUTRINO EMAIL STRUCTURE (follow exactly) ===
+=== HOUSE EMAIL STRUCTURE (follow exactly) ===
 
 1. PAIN POINT HOOK — Open with a direct, UNIQUE question about the prospect's operational challenge.
    Use tokens: {{{{first_name}}}}, {{{{company_name}}}}, {{{{designation}}}}, {{{{industry}}}}
@@ -800,10 +807,10 @@ Email step: {request.step_number} ({email_type_for_step})
    - "Are reconciliation gaps across your pharmacy systems creating downstream billing errors?"
    - "Is your {{{{industry}}}} team still stitching together data from disconnected platforms?"
 
-2. COMPANY INTRO — Introduce Neutrino Tech Systems with credibility markers.
-   REQUIRED: Always write "Neutrino Tech Systems" — do NOT use {{{{our_company}}}} token.
+2. COMPANY INTRO — Introduce <<SENDER_COMPANY>> with credibility markers.
+   REQUIRED: Always write "<<SENDER_COMPANY>>" — do NOT use {{{{our_company}}}} token.
 
-3. CAPABILITY BULLETS (4–5 bullets, minimum 4, maximum 5) — Use Neutrino's REAL services from the reference example below.
+3. CAPABILITY BULLETS (4–5 bullets, minimum 4, maximum 5) — Use <<SENDER_COMPANY>>'s REAL services from the reference example below.
    DO NOT invent generic bullets like "optimize workflows" or "ensure data integrity".
    Format: "    •" (4 spaces + bullet)
 
@@ -813,7 +820,7 @@ Email step: {request.step_number} ({email_type_for_step})
 - 150–250 words
 - Bullet lists required
 - First line: "Hi {{{{first_name}}}},"
-- Write "Neutrino Tech Systems" — never use {{{{our_company}}}} token
+- Write "<<SENDER_COMPANY>>" — never use {{{{our_company}}}} token
 - No signature lines (sender signs off separately)
 - Plain text only (no HTML tags)
 - Include at least THREE tokens: {{{{company_name}}}}, {{{{designation}}}}, {{{{industry}}}}

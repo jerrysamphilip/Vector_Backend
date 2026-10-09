@@ -3,7 +3,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-tests/
+# tests/ is the committed pytest suite (excluded from the image by .dockerignore)
 scripts
 # C extensions
 *.so

@@ -27,7 +27,7 @@ cp .env.example .env      # optional; every value has a default. If you already 
 docker compose up -d --build
 ```
 
-On first start the backend creates all tables in the empty MySQL and seeds persona blueprints.
+On first start the one-shot `migrate` service creates all tables in the empty MySQL (Alembic) and seeds persona blueprints.
 The UI has no sign-up page, so create your first account (a Super Admin with its own workspace) via the API:
 
 ```bash
@@ -134,3 +134,107 @@ Set these in the backend secret for each environment (the manifests read them):
 
 Health checks: `/health` (process is up) and `/health/ready` (database reachable, 503 otherwise).
 The container runs as user 10001; the uploads directory must be writable by it.
+
+## Schema migrations and the background worker
+
+The stack runs four backend pieces:
+
+```
+migrate   one-shot: python -m app.db.migrate (alembic upgrade head + persona blueprint sync), then exits
+api       HTTP only (RUN_BACKGROUND_JOBS=false); starts after migrate completes successfully
+worker    python -m app.worker: scheduler, IMAP sync, deliverability, warmup, CRM purge, send safety,
+          sales jobs; health on :8002 inside the container (/health, /health/ready)
+mysql
+```
+
+- **Alembic is the only place the schema changes.** The API no longer creates or patches tables on start.
+  `alembic/versions/0001_baseline` builds the whole schema idempotently (works on an empty database and on
+  any database from an older build); databases stamped by the old chain (kept for history in
+  `alembic/versions_legacy/`, not loaded) are detected and brought forward through the baseline.
+- `python -m app.db.migrate` takes a MySQL named lock, so concurrent runs (several Kubernetes initContainers,
+  compose + AUTO_MIGRATE) queue up and the later ones find nothing to do. Re-run it any time:
+  `docker compose run --rm migrate`.
+- `AUTO_MIGRATE=true` (default false) also runs the migrations when the API starts, handy for
+  `uvicorn app.main:app` outside Docker.
+- `RUN_BACKGROUND_JOBS` (default true, for a plain `uvicorn` run) starts the background loops inside the API.
+  Compose and Kubernetes set it to false on the API and run the worker instead. Each loop iteration takes a MySQL
+  named lock (`vector:job:<name>:<db>`), so an API with jobs on, a second worker or an overlapping rollout
+  never runs the same iteration twice; the others log "lock held by another process" and skip.
+  `WORKER_HEALTH_PORT` (default 8002) sets the worker's health port.
+
+### Adding a schema change
+
+```bash
+alembic revision -m "add foo to campaigns"     # from the repo root, in your local venv
+```
+
+Write `upgrade()` by hand in the new file under `alembic/versions/` (check `information_schema` before an
+ALTER if the change might already exist somewhere), update the model, then `docker compose run --rm migrate`.
+`alembic revision --autogenerate` can be used as a starting point, but always read and trim its output before
+running it: it does not know about the hand-made indexes (e.g. 0002) and will propose dropping them.
+Never add DDL to application start-up again.
+
+
+## Observability
+
+Implemented in `app/core/observability.py`.
+
+- **Request IDs.** Every response carries `X-Request-ID` (the caller's value when it is a sane
+  token, otherwise a new one). The same id appears in every log line as `[<id>]`, so an error a user
+  reports can be found with `docker compose logs api | grep <id>`. `LOG_FORMAT=json` switches the logs
+  to one JSON object per line (`ts`, `level`, `logger`, `request_id`, `message`).
+- **Metrics.** `GET /metrics` (Prometheus text format) on the API, on by default
+  (`METRICS_ENABLED=false` turns it off). Set `METRICS_TOKEN` in any deployed environment; the scraper
+  then sends `Authorization: Bearer <token>`. Keep `/metrics` off the public ingress either way.
+  - `http_requests_total{method,route,status}` and `http_request_duration_seconds{method,route}`,
+    where `route` is the route template (`/campaigns/{campaign_id}`), never the raw path.
+  - `emails_sent_total{result}`, `ses_webhook_events_total{type}`, `imap_sync_runs_total{result}`,
+    `job_last_success_timestamp{job}`, recorded with `record_email_sent()`, `record_ses_event()`,
+    `record_imap_sync()` and `record_job_heartbeat()`.
+  - Metrics are per process. The worker exposes its own: `start_metrics_server()` (port `METRICS_PORT`,
+    default 9100) or a `/metrics` route on its health server.
+- **Sentry (optional).**
+  - API: `SENTRY_DSN`, with `ENVIRONMENT` as the Sentry environment and `SENTRY_TRACES_SAMPLE_RATE`
+    (default 0, so no performance tracing). PII is never sent. Request bodies, cookies, query strings and
+    auth headers are stripped before an event leaves the process.
+  - Web app: `VITE_SENTRY_DSN` (and optionally `VITE_SENTRY_ENVIRONMENT`) at build time. Without it the SDK
+    is not bundled at all. The CSP allows `https://*.ingest.sentry.io` and `https://*.ingest.us.sentry.io`.
+
+Suggested alerts:
+
+| Alert | PromQL (sketch) | Threshold |
+|---|---|---|
+| Send failures | `sum(rate(emails_sent_total{result!="sent"}[15m])) / sum(rate(emails_sent_total[15m]))` | > 5% for 15 min |
+| Stuck background job | `time() - job_last_success_timestamp` | > 3 x the job's interval (e.g. 15 min for the 60 s loops) |
+| SES complaints | `sum(increase(ses_webhook_events_total{type="Complaint"}[24h])) / sum(increase(ses_webhook_events_total{type="Delivery"}[24h]))` | > 0.1% (SES reviews accounts at 0.1%) |
+| SES bounces | the same, with `type="Bounce"` | > 5% |
+| API errors | `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))` | > 2% for 10 min |
+| IMAP sync failing | `increase(imap_sync_runs_total{result="error"}[30m]) > 0 and increase(imap_sync_runs_total{result="ok"}[30m]) == 0` | any |
+
+## Running tests
+
+The suite in `tests/` drives the API in-process (FastAPI `TestClient`) against a real MySQL
+database. Use an **empty, throwaway** database: the tests register their own tenants and data.
+`tests/conftest.py` runs `app.db.migrate` to build the schema.
+
+```bash
+# One-off test database in the compose MySQL
+docker exec vector-mysql-1 mysql -uroot -proot -e \
+  "CREATE DATABASE vtest; GRANT ALL ON vtest.* TO 'vector'@'%'"
+
+# Run the suite in a throwaway container on the compose network (repo mounted at /src)
+docker run --rm --network vector_default -u 0 -e HOME=/tmp \
+  -e MYSQL_HOST=mysql -e MYSQL_USER=vector -e MYSQL_PASSWORD=vector -e MYSQL_DATABASE=vtest \
+  -e ENVIRONMENT=test -e ALLOW_SELF_SIGNUP=true -e RUN_BACKGROUND_JOBS=false \
+  -e JWT_SECRET_KEY=local-test-only-0123456789abcdef0123456789 \
+  -e CREDENTIALS_ENCRYPTION_KEY=local-test-only-credentials-key \
+  -v "$PWD":/src -w /src vector-api \
+  sh -c "pip install -q -r requirements-dev.txt && ruff check . && python -m pytest -q"
+
+# Clean up
+docker exec vector-mysql-1 mysql -uroot -proot -e "DROP DATABASE vtest"
+```
+
+Outside Docker: `pip install -r requirements.txt -r requirements-dev.txt`, point `MYSQL_*` at an
+empty database and run `python -m pytest -q`. CI (`.github/workflows/ci.yml`) does the same against a
+`mysql:8.4` service container on every pull request. `CICD.yaml` runs CI first and only deploys if it passes.

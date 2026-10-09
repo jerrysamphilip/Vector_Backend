@@ -37,7 +37,11 @@ logger = logging.getLogger(__name__)
 # Initialize OpenAI client
 openai_client = None
 if settings.OPENAI_API_KEY:
-    openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    # Every prompt names the sender company as SENDER_COMPANY_TOKEN; the wrapper
+    # fills in the bound tenant's own company name before the call (no tenant
+    # ever gets another company's identity in its emails).
+    from app.services.sender_identity import branded_openai_client
+    openai_client = branded_openai_client(OpenAI(api_key=settings.OPENAI_API_KEY))
 
 
 # ============================================================
@@ -193,13 +197,13 @@ def generate_email_from_blueprint(
     cta_link: str = ""
 ) -> Dict[str, str]:
     """
-    Generate a Neutrino-style structured email using persona blueprint data.
+    Generate a house-style structured email using persona blueprint data.
     Used as fallback when LLM is unavailable.
 
     Structure:
         Hi {{first_name}},
         [Pain point hook from openers]
-        Neutrino intro sentence
+        <<SENDER_COMPANY>> intro sentence
         Capability bullets from value_angles
         CTA from ctas
     """
@@ -224,7 +228,7 @@ def generate_email_from_blueprint(
 
     tone = blueprint.tone_rules.get("style", "professional") if blueprint.tone_rules else "professional"
 
-    # Build Neutrino-style email body
+    # Build house-style email body
     body_parts = [f"Hi {first_name},", ""]
 
     # Pain point hook
@@ -232,9 +236,9 @@ def generate_email_from_blueprint(
         body_parts.append(f"Teams in the {industry} space often deal with challenges like: {pain_point}.")
         body_parts.append("")
 
-    # Neutrino intro
+    # sender intro
     body_parts.append(
-        f"We at Neutrino Tech Systems have been helping companies like {company} accelerate "
+        f"We at {{{{our_company}}}} have been helping companies like {company} accelerate "
         f"performance and reduce operational overhead with Automation, AI, Data Engineering, "
         f"and Custom Application Development."
     )
@@ -320,6 +324,10 @@ def generate_email_for_prospect(
     """
     Full pipeline: classify prospect and generate email.
     """
+    # Prompts are written for the prospect's tenant (its own company name)
+    from app.services.sender_identity import bind_tenant
+    bind_tenant(prospect.tenant_id, db)
+
     # Get or create persona
     persona = get_or_create_prospect_persona(db, prospect)
     
@@ -391,7 +399,7 @@ def generate_email_with_llm(
             email_type="conference_intro",
             limit=1,
         )
-        conf_user_prompt = f"""Generate 1 conference/in-person outreach email for Neutrino Tech Systems.
+        conf_user_prompt = f"""Generate 1 conference/in-person outreach email for <<SENDER_COMPANY>>.
 
 === CAMPAIGN CONTEXT ===
 {product_description or "Conference/event outreach — generate an appropriate event hook."}
@@ -456,7 +464,7 @@ Return JSON: {{"subject": "...", "body": "..."}}"""
     else:
         in_group_pack = "workflow bottleneck, handoff delay, error rate, compliance risk, cycle-time drag, margin pressure"
 
-    healthcare_mode = True  # Apply Neutrino outreach style to all industries
+    healthcare_mode = True  # Apply house outreach style to all industries
 
     if healthcare_mode:
         svc_word_count_rule = "150–250 words."
@@ -475,10 +483,10 @@ Return JSON: {{"subject": "...", "body": "..."}}"""
             "'Happy to jump on a quick call or send a short overview — whichever's easier.'"
         ) if cta_enabled else "Close naturally. No meeting ask, no URL."
 
-        system_prompt = f"""You are a senior B2B outbound email writer at Neutrino Tech Systems.
-Write a cold outreach email in Neutrino Tech Systems' established brand voice.
+        system_prompt = f"""You are a senior B2B outbound email writer at <<SENDER_COMPANY>>.
+Write a cold outreach email in <<SENDER_COMPANY>>' established brand voice.
 
-=== NEUTRINO EMAIL STRUCTURE (follow this exactly) ===
+=== HOUSE EMAIL STRUCTURE (follow this exactly) ===
 
 1. PAIN POINT HOOK — Open with a direct, UNIQUE question about the prospect's operational challenge.
    Write a question specific to THIS prospect's role and industry. Here are diverse patterns (do NOT copy — write your own):
@@ -489,12 +497,12 @@ Write a cold outreach email in Neutrino Tech Systems' established brand voice.
    BAD: "Many teams face challenges with efficiency."
    BAD: "Many {{{{industry}}}} teams struggle with..."
 
-2. COMPANY INTRO — Introduce Neutrino Tech Systems with credibility markers.
-   REQUIRED: Always write "Neutrino Tech Systems" — NEVER use the {{{{our_company}}}} token.
-   Include what Neutrino Tech Systems does (US-based, AI First, relevant solution area for the prospect's industry).
+2. COMPANY INTRO — Introduce <<SENDER_COMPANY>> with credibility markers.
+   REQUIRED: Always write "<<SENDER_COMPANY>>" — NEVER use the {{{{our_company}}}} token.
+   Include what <<SENDER_COMPANY>> does (US-based, AI First, relevant solution area for the prospect's industry).
 
-3. CAPABILITY BULLETS (4–8 bullets) — Show what Neutrino Tech Systems solves for the prospect.
-   Use the SPECIFIC services from the NEUTRINO SERVICE REFERENCE examples in the user prompt.
+3. CAPABILITY BULLETS (4–8 bullets) — Show what <<SENDER_COMPANY>> solves for the prospect.
+   Use the SPECIFIC services from the SERVICE REFERENCE examples in the user prompt.
    DO NOT invent generic bullets like "optimize workflows" or "ensure data integrity".
    Use "    •" bullet format (4 spaces + bullet).
 
@@ -504,7 +512,7 @@ Write a cold outreach email in Neutrino Tech Systems' established brand voice.
 - 150–250 words total body
 - Bullet lists required for capabilities section
 - First line must be exactly: "Hi {{{{first_name}}}},"
-- Write "Neutrino Tech Systems" — NEVER use {{{{our_company}}}} token
+- Write "<<SENDER_COMPANY>>" — NEVER use {{{{our_company}}}} token
 - No signature (system appends automatically)
 - Plain text only (no HTML)
 - Tone: {tone}
@@ -514,7 +522,7 @@ Never use: "many teams face", "many {{{{industry}}}} teams", "in today's landsca
 "leverage", "synergy", "digital transformation", "AI-powered", "cutting-edge",
 "game-changer", "streamline operations", "enhance efficiency",
 "I'd love to", "excited to share", "we can help you achieve"
-Never use {{{{our_company}}}} — write "Neutrino Tech Systems" instead.
+Never use {{{{our_company}}}} — write "<<SENDER_COMPANY>>" instead.
 SUBJECT: Never use "Transform", "AI", "Improving outcomes", "idea for [name]".
 
 === PERSONALIZATION ===
@@ -715,9 +723,20 @@ RULE: Describe the MECHANISM and RESULT in your own words. Never mention the pro
 
     capability_pool_block = get_capability_pool_block()
     intro_tone_block = get_step_tone_block(1)  # Single email always uses intro tone
+    # Few-shot examples for the non-healthcare prompts below (previously referenced but never
+    # defined, so those paths raised NameError)
+    try:
+        few_shot_block = get_few_shot_examples_block(
+            persona_type=getattr(blueprint, "persona_type", None) or "",
+            industry=prospect_data.get("industry", ""),
+            email_type="intro",
+            limit=2,
+        )
+    except Exception:
+        few_shot_block = ""
 
     if healthcare_mode:
-        user_prompt = f"""Write a Neutrino Tech Systems cold outreach email for:
+        user_prompt = f"""Write a <<SENDER_COMPANY>> cold outreach email for:
 - Name: {prospect_data.get('first_name', 'there')}
 - Role: {prospect_data.get('designation', 'professional')}
 - Company: {prospect_data.get('company_name', 'their company')}
@@ -731,7 +750,7 @@ RULE: Describe the MECHANISM and RESULT in your own words. Never mention the pro
 
 {"CTA Link: " + cta_link if cta_enabled else "No CTA link. Do NOT include a meeting ask, booking link, or URL."}
 
-Follow the NEUTRINO EMAIL STRUCTURE from the system prompt exactly.
+Follow the HOUSE EMAIL STRUCTURE from the system prompt exactly.
 
 Return JSON: {{"subject": "...", "body": "..."}}"""
 
@@ -883,6 +902,10 @@ def generate_email_hybrid(
     Returns:
         Dict with subject, body, and generation metadata
     """
+    # Prompts are written for the prospect's tenant (its own company name)
+    from app.services.sender_identity import bind_tenant
+    bind_tenant(prospect.tenant_id, db)
+
     # Get or create persona
     persona = get_or_create_prospect_persona(db, prospect)
     

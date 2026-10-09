@@ -622,9 +622,12 @@ async def send_campaign_now(
         raise HTTPException(status_code=400, detail="Campaign must be ACTIVE to send emails")
     
     # Get all queued/scheduled emails for this campaign, ordered by sequence step
+    # A contact's follow-up only goes once the step before it was sent (B01):
+    # steps whose previous step is still unsent are left for the scheduler.
     queued_emails = db.query(EmailMessage).join(EmailSequence).filter(
         EmailMessage.campaign_id == campaign_id,
-        EmailMessage.status.in_(["QUEUED", "SCHEDULED"])
+        EmailMessage.status.in_(["QUEUED", "SCHEDULED"]),
+        ~email_scheduler._earlier_step_pending(EmailMessage, EmailSequence),
     ).order_by(EmailSequence.step_number).all()
     
     if not queued_emails:
@@ -739,16 +742,35 @@ async def send_campaign_now(
                                     "reason": "Daily new-contact limit reached; left queued"})
                     continue
 
-            # Send via SES
-            result = await email_sender.send_with_retry(
-                email_message=email_msg,
-                email_template=template,
-                prospect=prospect,
-                max_retries=1,  # Only 1 retry for immediate send
-                sender_name=sender_name,
-                from_email_address=from_email_address,
-            )
-            
+            # Send via SES. Permanent errors fail fast with the reason; a
+            # temporary error leaves the email queued for the scheduler (B06).
+            try:
+                result = await email_sender.send_with_retry(
+                    email_message=email_msg,
+                    email_template=template,
+                    prospect=prospect,
+                    max_retries=1,  # Only 1 retry for immediate send
+                    sender_name=sender_name,
+                    from_email_address=from_email_address,
+                )
+            except (TransientEmailFailure, PermanentEmailFailure) as send_exc:
+                if limit_user:
+                    email_scheduler._daily.release(limit_user)
+                if isinstance(send_exc, TransientEmailFailure):
+                    email_msg.status = "QUEUED"
+                    email_msg.last_error_code = str(send_exc)[:50]
+                    skipped.append({"email": prospect.email,
+                                    "reason": f"Temporary sending error, left queued: {send_exc}"})
+                else:
+                    email_msg.status = "FAILED"
+                    email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+                    email_msg.failure_reason = str(send_exc)[:1000]
+                    failed_count += 1
+                    errors.append(f"{prospect.email}: {send_exc}")
+                db.commit()
+                continue
+
+
             if result["success"]:
                 email_msg.status = "SENT"
                 email_msg.sent_at = datetime.utcnow()
@@ -793,9 +815,12 @@ async def send_campaign_now(
                         ).first()
 
                         if next_step:
-                            # More steps remain — advance to next step
+                            # More steps remain — advance to next step; its gap
+                            # counts from this send (B01)
                             cp.current_step = next_step_number
-                            cp.next_scheduled_at = datetime.utcnow() + timedelta(days=next_step.wait_days)
+                            cp.next_scheduled_at = email_scheduler.schedule_next_step(
+                                db, email_msg, next_step, email_msg.sent_at
+                            ) or datetime.utcnow() + timedelta(days=next_step.wait_days)
                         else:
                             # No more steps — prospect has completed the sequence
                             cp.status = "COMPLETED"
@@ -1572,6 +1597,8 @@ async def regenerate_template(
 
         normalized_cta_link = normalize_cta_link(campaign.cta_link)
 
+        from app.services.sender_identity import bind_tenant
+        bind_tenant(campaign.tenant_id, db)
         result = generate_email_with_llm(
             prospect_data=prospect_data,
             blueprint=blueprint,

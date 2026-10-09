@@ -169,6 +169,10 @@ def generate_template_for_persona(
 
     Returns a single result dict (LLM success or fallback — never None).
     """
+    # Prompts are written for this campaign's tenant (its own company name)
+    from app.services.sender_identity import bind_tenant
+    _tenant_id = db.query(Campaign.tenant_id).filter(Campaign.campaign_id == campaign_id).scalar()
+    bind_tenant(_tenant_id, db)
     # Get blueprint for this persona
     blueprint = db.query(PersonaBlueprint).filter(
         PersonaBlueprint.persona_type == persona_type,

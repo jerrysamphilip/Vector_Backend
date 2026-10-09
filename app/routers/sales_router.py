@@ -463,6 +463,8 @@ def create_stage(payload: StageWrite, db: Session = Depends(get_db), current_use
     if not name:
         raise HTTPException(status_code=400, detail="Give the stage a name")
     existing = svc.stages(db, current_user.tenant_id, True)
+    if any((s.name or "").lower() == name.lower() for s in existing):
+        raise HTTPException(status_code=409, detail=f"A stage called {name} already exists")
     stage = SalesStage(tenant_id=current_user.tenant_id, name=name, probability=data.get("probability") or 0,
                        sort_order=data.get("sort_order", max((s.sort_order for s in existing), default=0) + 1),
                        is_won=bool(data.get("is_won")), is_lost=bool(data.get("is_lost")))
@@ -485,7 +487,11 @@ def update_stage(stage_id: str, payload: StageWrite, db: Session = Depends(get_d
     data = payload.model_dump(exclude_unset=True)
     _check_stage({**svc.stage_dict(stage), **data})
     if "name" in data:
-        stage.name = clean_str(data["name"]) or stage.name
+        new_name = clean_str(data["name"]) or stage.name
+        if any(s.stage_id != stage.stage_id and (s.name or "").lower() == new_name.lower()
+               for s in svc.stages(db, current_user.tenant_id, True)):
+            raise HTTPException(status_code=409, detail=f"A stage called {new_name} already exists")
+        stage.name = new_name
     for f in ("probability", "sort_order", "is_won", "is_lost", "active"):
         if f in data and data[f] is not None:
             setattr(stage, f, data[f])

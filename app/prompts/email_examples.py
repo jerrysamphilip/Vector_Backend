@@ -73,7 +73,7 @@ EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
             "body": (
                 "Hi {{first_name}},\n\n"
                 "Are manual processes, data silos, and compliance hurdles slowing your growth?\n\n"
-                "We at Neutrino Tech Systems — a U.S.-based AI First Healthcare Tech Solutions Company "
+                "We at <<SENDER_COMPANY>> — a U.S.-based AI First Healthcare Tech Solutions Company "
                 "with presence in US, Costa Rica and India — have been helping Pharma Hubs and Specialty "
                 "Pharmacies like yours accelerate innovation and performance with Automation, AI, Data "
                 "Engineering, Cloud, DevOps, Quality Engineering, Custom Application Development, and "
@@ -91,7 +91,7 @@ EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
             ),
             "what_works": (
                 "Opens with a direct pain point question relevant to pharma ops (manual processes, data silos, compliance). "
-                "Introduces Neutrino Tech Systems with credibility markers (US-based, AI First, multi-country presence). "
+                "Introduces <<SENDER_COMPANY>> with credibility markers (US-based, AI First, multi-country presence). "
                 "Uses a focused capability bullet list so the prospect can self-identify their need instantly. "
                 "Closes with a soft, no-pressure call ask."
             ),
@@ -104,7 +104,7 @@ EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
                 "Hi {{first_name}},\n\n"
                 "Workflow gaps and staffing issues are slowing down specialty pharmacies — "
                 "and hitting drug delivery and patient engagement hard.\n\n"
-                "Neutrino Tech Systems' smart automation tools help streamline operations, cut manual work, "
+                "<<SENDER_COMPANY>>' smart automation tools help streamline operations, cut manual work, "
                 "and free up your team for high-impact tasks. We've partnered with top players to drive "
                 "results through AI, cloud, and custom automation.\n\n"
                 "Quick snapshot:\n"
@@ -117,7 +117,7 @@ EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
             ),
             "what_works": (
                 "Opens with a specific operational reality for specialty pharmacy (workflow gaps, staffing). "
-                "Positions Neutrino as an automation partner with proven partnerships. "
+                "Positions <<SENDER_COMPANY>> as an automation partner with proven partnerships. "
                 "Capability bullets are specific and technical (OCR + NLP, BI workflows, PA bots) — "
                 "signals deep domain knowledge to the reader. "
                 "CTA is conversational and low-friction (15-20 min, next week)."
@@ -131,11 +131,11 @@ EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
                 "Hi {{first_name}},\n\n"
                 "Just following up on my earlier note.\n\n"
                 "We often see pharma teams bogged down by manual reconciliation across systems or sluggish "
-                "batch processes. Neutrino Tech Systems' AI automation is built to fix that — cutting errors "
+                "batch processes. <<SENDER_COMPANY>>' AI automation is built to fix that — cutting errors "
                 "and speeding up operations significantly.\n\n"
                 "And when it comes to R&D, our Data Engineering and AI services help break down silos, "
                 "unify research data, and accelerate innovation — reducing time-to-market while improving ROI.\n\n"
-                "What sets Neutrino Tech Systems apart:\n"
+                "What sets <<SENDER_COMPANY>> apart:\n"
                 "• Integrated pharmacy + CRM workflows with order logic\n"
                 "• Patient outreach via SMS nudges & chatbot frameworks\n"
                 "• Seamless CRM integrations: Salesforce Health Cloud, Dynamics, Experience Cloud\n"
@@ -158,7 +158,7 @@ EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
             "body": (
                 "Hi {{first_name}},\n\n"
                 "Just looping back quickly.\n\n"
-                "At Neutrino Tech Systems, we help healthcare teams put AI to work — from improving care and "
+                "At <<SENDER_COMPANY>>, we help healthcare teams put AI to work — from improving care and "
                 "streamlining operations to driving smarter R&D. We're always keeping an eye on the AI space — "
                 "making sure our solutions stay innovative while checking all the boxes for healthcare "
                 "compliance like HIPAA and GDPR.\n\n"
@@ -188,7 +188,7 @@ EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
             "body": (
                 "Hi {{first_name}},\n\n"
                 "Circling back one last time.\n\n"
-                "At Neutrino Tech Systems, we understand how vital patient access and engagement are for "
+                "At <<SENDER_COMPANY>>, we understand how vital patient access and engagement are for "
                 "specialty pharmacy success. Our Salesforce implementations bring it all together — "
                 "streamlining compliance, connecting data, and giving your teams actionable insights "
                 "for better outcomes.\n\n"
@@ -212,7 +212,7 @@ EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
             "subject": "Custom Application Development for Pharma Innovation",
             "body": (
                 "Hi {{first_name}},\n\n"
-                "I've reached out a few times and just wanted to reconnect. At Neutrino Tech Systems, "
+                "I've reached out a few times and just wanted to reconnect. At <<SENDER_COMPANY>>, "
                 "we specialize in helping specialty pharmacy teams like yours improve patient care and "
                 "boost efficiency with custom digital engineering and automation.\n\n"
                 "We know every pharma business is different — that's why our app development services "
@@ -245,7 +245,7 @@ EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
             "body": (
                 "Hi {{first_name}},\n\n"
                 "Are manual processes, data silos, and compliance hurdles slowing your growth?\n\n"
-                "We at Neutrino Tech Systems — a U.S.-based AI First Healthcare Tech Solutions Company — "
+                "We at <<SENDER_COMPANY>> — a U.S.-based AI First Healthcare Tech Solutions Company — "
                 "have been helping Pharma Hubs and Specialty Pharmacies streamline operations and reduce "
                 "manual workload with Automation, AI, Data Engineering, and Custom Application Development.\n\n"
                 "What we're solving for with our US Healthcare Capabilities:\n"
@@ -274,7 +274,7 @@ EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
                 "Hi {{first_name}},\n\n"
                 "Workflow gaps and staffing issues are slowing down specialty pharmacies — "
                 "and hitting drug delivery and patient engagement hard.\n\n"
-                "Neutrino Tech Systems' smart automation tools help streamline operations, cut manual work, "
+                "<<SENDER_COMPANY>>' smart automation tools help streamline operations, cut manual work, "
                 "and free up your team for high-impact tasks.\n\n"
                 "Quick snapshot:\n"
                 "    • Automated PAP Intake: OCR + NLP + validation\n"
@@ -356,8 +356,8 @@ def get_few_shot_examples_block(
     selected = pool[:limit]
 
     lines = [
-        "=== NEUTRINO SERVICE REFERENCE — Use these actual services in every email ===",
-        "The examples below show Neutrino Tech Systems' REAL service offerings and pain points.",
+        "=== SERVICE REFERENCE — Use these actual services in every email ===",
+        "The examples below show <<SENDER_COMPANY>>' REAL service offerings and pain points.",
         "USE the specific services, capabilities, and pain points from these examples.",
         "Adapt the framing and angle to the prospect's context — but the services MUST come from this list.",
         "DO NOT invent generic capabilities like 'optimize workflows' or 'ensure data integrity'.",
@@ -431,7 +431,7 @@ IMPORTANT: The above is context to help you THINK, not text to copy. Every email
 
 
 # ---------------------------------------------------------------------------
-# Capability pool — all Neutrino services extracted from email examples
+# Capability pool — all sender services extracted from email examples
 # Used for shuffled injection across sequence emails
 # ---------------------------------------------------------------------------
 
@@ -476,11 +476,11 @@ NEUTRINO_CAPABILITY_POOL = [
 
 def get_capability_pool_block() -> str:
     """
-    Returns a formatted prompt block listing all Neutrino capabilities.
+    Returns a formatted prompt block listing all <<SENDER_COMPANY>> capabilities.
     The LLM is instructed to pick 4-6 and shuffle them per email.
     """
     cap_lines = "\n".join(f"    • {cap}" for cap in NEUTRINO_CAPABILITY_POOL)
-    return f"""=== NEUTRINO CAPABILITY POOL ===
+    return f"""=== SENDER CAPABILITY POOL ===
 Pick 4–6 capabilities from this list for each email's bullet section.
 Use DIFFERENT capabilities in each email — do NOT repeat the same bullets across emails.
 DO NOT invent capabilities not in this list.
@@ -500,7 +500,7 @@ SEQUENCE_TONE_TABLE = [
         "email_type": "intro",
         "opener_style": "Open with a direct pain point question specific to the prospect's role and industry. Do not copy the example — write a UNIQUE question tailored to this prospect.",
         "opener_example": "Are [specific operational pain point for this role/industry] slowing your growth?",
-        "intro_style": "Full company intro: 'We at Neutrino Tech Systems — a U.S.-based AI First Healthcare Tech Solutions Company with presence in US, Costa Rica and India — have been helping...'",
+        "intro_style": "Full company intro: 'We at <<SENDER_COMPANY>> — a U.S.-based AI First Healthcare Tech Solutions Company with presence in US, Costa Rica and India — have been helping...'",
         "cta_style": "Soft no-pressure call ask.",
         "cta_example": "Let's connect for a quick, no-pressure call to explore how we can help.",
     },
@@ -509,7 +509,7 @@ SEQUENCE_TONE_TABLE = [
         "email_type": "followup_1",
         "opener_style": "Briefly acknowledge the previous outreach (1 short sentence), then follow immediately with a specific operational urgency statement tailored to the prospect's industry (declarative, not a question). Do not copy the example — write your own.",
         "opener_example": "Wanted to follow up on my last note. Workflow gaps and staffing issues are slowing down specialty pharmacies — and hitting drug delivery and patient engagement hard.",
-        "intro_style": "Brief: one sentence connecting the urgency to Neutrino Tech Systems' automation and operational services.",
+        "intro_style": "Brief: one sentence connecting the urgency to <<SENDER_COMPANY>>' automation and operational services.",
         "cta_style": "Direct time-boxed ask.",
         "cta_example": "Up for a quick 15–20 min virtual chat next week to see how we can help?",
     },
@@ -518,7 +518,7 @@ SEQUENCE_TONE_TABLE = [
         "email_type": "followup_2",
         "opener_style": "Briefly acknowledge it's a follow-up (1 short sentence), then surface a new, specific pain angle relevant to the prospect's industry. Do not copy the example — write your own.",
         "opener_example": "Just following up on my earlier note. We often see teams bogged down by manual reconciliation across systems or sluggish batch processes.",
-        "intro_style": "Brief: Connect the new pain angle to Neutrino's automation and data engineering services.",
+        "intro_style": "Brief: Connect the new pain angle to <<SENDER_COMPANY>>'s automation and data engineering services.",
         "cta_style": "Escalate to a demo ask.",
         "cta_example": "Let's show you what it looks like in action. Book a no-obligation demo.",
     },
@@ -526,7 +526,7 @@ SEQUENCE_TONE_TABLE = [
         "step": 4,
         "email_type": "followup_3",
         "opener_style": "Briefly loop back (1 short sentence), then pivot to a compliance or security angle specific to the prospect's industry. Do not copy the example — write your own.",
-        "opener_example": "Just looping back quickly. At Neutrino Tech Systems, we help teams put AI to work while checking all the boxes for compliance like HIPAA and GDPR.",
+        "opener_example": "Just looping back quickly. At <<SENDER_COMPANY>>, we help teams put AI to work while checking all the boxes for compliance like HIPAA and GDPR.",
         "intro_style": "Brief: Focus on Cloud, Quality Engineering, data security angle.",
         "cta_style": "Give two options to reduce friction.",
         "cta_example": "Want to chat next week? Happy to jump on a quick call or send a short overview — whichever's easier for you.",
@@ -535,7 +535,7 @@ SEQUENCE_TONE_TABLE = [
         "step": 5,
         "email_type": "followup_4",
         "opener_style": "Briefly signal this is a final attempt (1 short sentence), then introduce a Salesforce or CRM-specific angle relevant to the prospect. Do not copy the example — write your own.",
-        "opener_example": "Circling back one last time. At Neutrino Tech Systems, we understand how vital patient access and engagement are. Our Salesforce implementations bring it all together.",
+        "opener_example": "Circling back one last time. At <<SENDER_COMPANY>>, we understand how vital patient access and engagement are. Our Salesforce implementations bring it all together.",
         "intro_style": "Brief: Focus specifically on Salesforce Health Cloud, CRM syncing, patient engagement.",
         "cta_style": "Curiosity-based question CTA.",
         "cta_example": "Think Salesforce can do more for your team? Let's connect and explore what that could look like.",
@@ -544,7 +544,7 @@ SEQUENCE_TONE_TABLE = [
         "step": 6,
         "email_type": "followup_5",
         "opener_style": "Acknowledge having reached out before with a warm, non-pushy tone (1 short sentence), then introduce a custom development or tailored-solution angle. Do not copy the example — write your own.",
-        "opener_example": "I've reached out a few times and just wanted to reconnect. At Neutrino Tech Systems, we specialize in custom digital engineering and automation.",
+        "opener_example": "I've reached out a few times and just wanted to reconnect. At <<SENDER_COMPANY>>, we specialize in custom digital engineering and automation.",
         "intro_style": "Brief: Focus on custom app development, tailored solutions, mobile tools, analytics dashboards.",
         "cta_style": "Exploratory low-pressure ask.",
         "cta_example": "Curious about what a tailored solution could look like? Let's hop on a quick intro call and explore some possibilities.",
@@ -595,7 +595,7 @@ def get_step_tone_block(step_number: int) -> str:
 # ---------------------------------------------------------------------------
 # Conference / In-Person Outreach — Few-Shot Examples
 # ---------------------------------------------------------------------------
-# These are drawn from real Neutrino outreach samples for HLTH 25, Asembia AXS26,
+# These are drawn from real sender outreach samples for HLTH 25, Asembia AXS26,
 # and in-person city visits.
 #
 # email_type values for conference emails:
@@ -623,7 +623,7 @@ CONFERENCE_EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
                 "Would be great to catch up — at the event or even beforehand for a quick hello if you are attending. "
                 "If not, please direct to the relevant stakeholder from your team who will be at the {{event_name}} "
                 "to initiate a catch up.\n\n"
-                "As a way of introduction — we at Neutrino Tech Systems are an AI-first healthcare tech company based in "
+                "As a way of introduction — we at <<SENDER_COMPANY>> are an AI-first healthcare tech company based in "
                 "the U.S., with teams in Costa Rica and India. We've been helping Pharma Hubs and Specialty Pharmacies "
                 "like yours speed up innovation and boost performance through Automation, AI, Data Engineering, Cloud, "
                 "DevOps, Quality Engineering, Custom App Development, and Salesforce solutions.\n\n"
@@ -637,7 +637,7 @@ CONFERENCE_EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
             ),
             "what_works": (
                 "Opens with a warm compliment ('Kudos') then immediately establishes the shared event context. "
-                "Names the Neutrino rep (Abhi) and their title — makes the outreach personal and credible. "
+                "Names the <<SENDER_COMPANY>> rep (Abhi) and their title — makes the outreach personal and credible. "
                 "Company intro is framed as 'as a way of introduction' — secondary to the meeting ask. "
                 "Email 1 bullets are DISCUSSION THEMES (not service details) — appropriate for a conference meeting agenda. "
                 "CTA is always dual: in-person first, virtual as fallback. "
@@ -653,7 +653,7 @@ CONFERENCE_EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
                 "Just following up to see if my previous email reached you and if your plans have been firmed "
                 "to be at the {{event_name}}.\n\n"
                 "If not at the event this year, we could always connect virtually at your convenience.\n\n"
-                "Would love to highlight Neutrino's US Healthcare Capabilities that could add value:\n"
+                "Would love to highlight <<SENDER_COMPANY>>'s US Healthcare Capabilities that could add value:\n"
                 "    • Patient Enrollment/Intake\n"
                 "    • Benefits Investigation (BI)\n"
                 "    • Prior Authorization (PA)\n"
@@ -682,11 +682,11 @@ CONFERENCE_EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
                 "Just following up on my earlier note and checking if you would have some time to catch up "
                 "at the {{event_name}} if attending, or direct me to someone from the team who is planning to attend.\n\n"
                 "We often see pharma teams bogged down by manual reconciliation across systems or sluggish batch "
-                "processes. Neutrino's AI automation is built to fix that — cutting errors and speeding up "
+                "processes. <<SENDER_COMPANY>>'s AI automation is built to fix that — cutting errors and speeding up "
                 "operations significantly.\n\n"
                 "And when it comes to R&D, our Data Engineering and AI services help break down silos, unify "
                 "research data, and accelerate innovation — reducing time-to-market while improving ROI.\n\n"
-                "What sets Neutrino apart:\n"
+                "What sets <<SENDER_COMPANY>> apart:\n"
                 "    • Integrated pharmacy + CRM workflows with order logic\n"
                 "    • Patient outreach via SMS nudges & chatbot frameworks\n"
                 "    • Seamless CRM integrations: Salesforce Health Cloud, Dynamics, Experience Cloud\n"
@@ -709,7 +709,7 @@ CONFERENCE_EMAIL_EXAMPLES: Dict[str, List[Dict]] = {
                 "Hi {{first_name}},\n\n"
                 "Just looping back quickly — last chance to catch up for a quick coffee meeting at the {{event_name}}. "
                 "If not planning to attend this year, we could connect virtually.\n\n"
-                "At Neutrino, we help healthcare teams put AI to work — from improving care and streamlining operations "
+                "At <<SENDER_COMPANY>>, we help healthcare teams put AI to work — from improving care and streamlining operations "
                 "to driving smarter R&D. We're always keeping an eye on the AI space — making sure our solutions stay "
                 "innovative while checking all the boxes for healthcare compliance like HIPAA and GDPR.\n\n"
                 "For Biopharma organizations, data security and compliance are key. Our Cloud and Quality Engineering "
@@ -747,7 +747,7 @@ CONFERENCE_SEQUENCE_TONE_TABLE = [
             "Open with a warm, genuine compliment about the prospect's healthcare work. "
             "Do not copy the example opener verbatim — write a UNIQUE compliment relevant to this prospect's role and company. "
             "BANNED OPENER: 'Kudos on the incredible strides' — NEVER use this phrase or close variants. "
-            "Immediately follow with the event hook: name the Neutrino rep (from campaign description) and "
+            "Immediately follow with the event hook: name the <<SENDER_COMPANY>> rep (from campaign description) and "
             "confirm they will be at the event. Ask about the possibility of an in-person meeting."
         ),
         "opener_example": (
@@ -757,7 +757,7 @@ CONFERENCE_SEQUENCE_TONE_TABLE = [
         ),
         "intro_style": (
             "Full company intro framed as 'As a way of introduction': "
-            "'We at Neutrino Tech Systems — an AI-first healthcare tech company based in the U.S., with teams in "
+            "'We at <<SENDER_COMPANY>> — an AI-first healthcare tech company based in the U.S., with teams in "
             "Costa Rica and India — have been helping Pharma Hubs and Specialty Pharmacies like yours...'"
         ),
         "bullet_style": (
@@ -814,7 +814,7 @@ CONFERENCE_SEQUENCE_TONE_TABLE = [
             "Just following up on my earlier note and checking if you would have some time to catch up "
             "at the {{event_name}} if attending, or direct me to someone from the team who is planning to attend."
         ),
-        "intro_style": "Brief: connect the automation/R&D angle to Neutrino's Data Engineering and AI services.",
+        "intro_style": "Brief: connect the automation/R&D angle to <<SENDER_COMPANY>>'s Data Engineering and AI services.",
         "bullet_style": (
             "TECHNICAL DEPTH bullets — CRM integrations, pharmacy-specific automation. "
             "Examples: Integrated pharmacy + CRM workflows with order logic, Patient outreach via SMS nudges & chatbot frameworks, "
@@ -867,7 +867,7 @@ CONFERENCE_SEQUENCE_TONE_TABLE = [
             "Do not copy the example — write your own unique opener."
         ),
         "opener_example": (
-            "Circling back to check if your calendar has opened up for the possibility of meeting with Neutrino's "
+            "Circling back to check if your calendar has opened up for the possibility of meeting with <<SENDER_COMPANY>>'s "
             "HealthTech Solutions — Abhi — in the last week of Oct between 23rd to 29th."
         ),
         "intro_style": "Brief: Focus specifically on Salesforce Health Cloud, CRM syncing, patient access and engagement.",

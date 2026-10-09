@@ -394,6 +394,11 @@ class CampaignCRUDService:
         campaign.paused_reason = None
         campaign.paused_at = None
 
+        # Re-spread whatever fell due during the pause instead of releasing it
+        # all at once, keeping each contact's step spacing (B02)
+        from app.services.email_scheduler_service import rebase_overdue_on_resume
+        rebase_overdue_on_resume(self.db, campaign)
+
         # Restore frozen emails
         self.db.query(EmailMessage).filter(
             EmailMessage.campaign_id == campaign_id,

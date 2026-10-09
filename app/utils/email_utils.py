@@ -378,15 +378,17 @@ def finalize_email_body(body: str) -> str:
     return body
 
 
-def build_signature_block(sender_name: str, sender_title: str = None) -> str:
+def build_signature_block(sender_name: str, sender_title: str = None, company_name: str = None) -> str:
     """
     Build the resolved signature block: name, then title (if set), then the
-    company line — used to resolve the {{signature_block}} token at send time.
+    sending tenant's company name (if known) — used to resolve the
+    {{signature_block}} token at send time.
     """
     from app.core.config import settings
 
     lines = [sender_name or settings.SENDER_NAME]
     if sender_title and sender_title.strip():
         lines.append(sender_title.strip())
-    lines.append("Neutrino Tech Systems")
+    if company_name and company_name.strip():
+        lines.append(company_name.strip())
     return "\n".join(lines)

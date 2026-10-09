@@ -28,6 +28,7 @@ from app.services.suppression import suppress
 from sqlalchemy import func
 from app.core.secrets_guard import is_deployed
 from app.utils.sns_verify import is_sns_url, token_matches, verify_sns_signature
+from app.core.observability import record_ses_event
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +244,7 @@ async def handle_ses_notification(
             notification_type = message.get("notificationType") or message.get("eventType")
 
             logger.info(f"[SES-WEBHOOK] Received {notification_type} notification")
+            record_ses_event(notification_type)
 
             # Idempotency (B09): skip events we've already recorded (SNS retries / redelivery)
             sns_message_id = (body.get("MessageId") if isinstance(body, dict) and "Message" in body else None) \

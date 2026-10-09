@@ -7,7 +7,12 @@ metadata:
   labels:
     app: backend
 spec:
-  replicas: 1
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: backend
@@ -23,6 +28,207 @@ spec:
         fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
+      # Schema migrations (alembic upgrade head). Every replica's initContainer runs it; a MySQL
+      # named lock serialises them and later runs find the schema at head and exit at once.
+      initContainers:
+        - name: migrate
+          image: <ECR_IMAGE_URI>
+          command: ["python", "-m", "app.db.migrate"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            # - name: NODE_ENV
+            #   value: "devlopment"
+            - name: MYSQL_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_HOST
+          
+            - name: MYSQL_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_PORT
+
+
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_USER
+
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_PASSWORD
+
+
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_DATABASE
+          
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: OPENAI_API_KEY
+
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_ACCESS_KEY_ID
+
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_SECRET_ACCESS_KEY
+
+
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_REGION
+
+            - name: AWS_SES_CONFIGURATION_SET
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_SES_CONFIGURATION_SET
+
+            - name: AWS_SNS_TOPIC_ARN
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_SNS_TOPIC_ARN
+
+
+            - name: SENDER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: SENDER_EMAIL
+
+            
+            - name: AWS_SNS_ENABLED
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_SNS_ENABLED
+
+            # Security (BR-DF-09). These keys must exist in sales360-secret before deploying:
+            # the API refuses to start without the first two. Generate each with
+            #   python -c "import secrets; print(secrets.token_urlsafe(48))"
+            # Keep CREDENTIALS_ENCRYPTION_KEY stable: changing it makes saved mailbox passwords
+            # unreadable. Add ?token=<SES_WEBHOOK_TOKEN> to the SNS subscription URL.
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: JWT_SECRET_KEY
+
+            - name: CREDENTIALS_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: CREDENTIALS_ENCRYPTION_KEY
+
+            - name: SES_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: SES_WEBHOOK_TOKEN
+
+            # Platform hardening, optional. ENVIRONMENT=production disables /docs, self sign-up
+            # (override with ALLOW_SELF_SIGNUP) and requires AWS_SNS_TOPIC_ARN for the SES webhook.
+            - name: ENVIRONMENT
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: ENVIRONMENT
+                  optional: true
+            - name: ALLOW_SELF_SIGNUP
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: ALLOW_SELF_SIGNUP
+                  optional: true
+            - name: METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: METRICS_TOKEN
+                  optional: true
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: SENTRY_DSN
+                  optional: true
+            - name: LOG_LEVEL
+              value: "INFO"
+
+            # Microsoft 365 mailboxes (BR-DF-05), from the Azure app registration. Optional:
+            # without them the "Connect Microsoft 365" button explains what is missing.
+            # MS365_REDIRECT_URI = https://<host>/vector/api/inboxes/oauth/microsoft/callback
+            - name: MS365_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MS365_CLIENT_ID
+                  optional: true
+            - name: MS365_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MS365_CLIENT_SECRET
+                  optional: true
+            - name: MS365_REDIRECT_URI
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MS365_REDIRECT_URI
+                  optional: true
+            # Calendar & email sync (BR-SF-16), optional
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: GOOGLE_CLIENT_ID
+                  optional: true
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: GOOGLE_CLIENT_SECRET
+                  optional: true
+            - name: GOOGLE_SYNC_REDIRECT_URI
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: GOOGLE_SYNC_REDIRECT_URI
+                  optional: true
+            - name: GRAPH_REDIRECT_URI
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: GRAPH_REDIRECT_URI
+                  optional: true
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
       containers:
         - name: backend-container
           image: <ECR_IMAGE_URI>
@@ -177,6 +383,18 @@ spec:
                   name: sales360-secret
                   key: ALLOW_SELF_SIGNUP
                   optional: true
+            - name: METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: METRICS_TOKEN
+                  optional: true
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: SENTRY_DSN
+                  optional: true
             - name: LOG_LEVEL
               value: "INFO"
 
@@ -226,7 +444,9 @@ spec:
                   name: sales360-secret
                   key: GRAPH_REDIRECT_URI
                   optional: true
-            
+            # Background loops run in the backend-worker Deployment
+            - name: RUN_BACKGROUND_JOBS
+              value: "false"
 
           resources:
             requests:
@@ -252,3 +472,276 @@ spec:
     - name: http
       port: 8000
       targetPort: 8001
+
+---
+# Background loops (email scheduler, IMAP sync, deliverability, warmup, CRM purge, send safety,
+# sales jobs). Each iteration takes a MySQL named lock, so a second replica or an overlapping
+# rollout never runs the same iteration twice. No Service: it only exposes health on 8002.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-worker
+  namespace: sales360-stage
+  labels:
+    app: backend-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-worker
+  template:
+    metadata:
+      labels:
+        app: backend-worker
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: backend-worker
+          image: <ECR_IMAGE_URI>
+          command: ["python", "-m", "app.worker"]
+          ports:
+            - name: health
+              containerPort: 8002
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          # /health = process is up (liveness); /health/ready = database reachable and every
+          # loop has a heartbeat newer than 3x its interval (readiness)
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8002
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          env:
+            # - name: NODE_ENV
+            #   value: "devlopment"
+            - name: MYSQL_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_HOST
+          
+            - name: MYSQL_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_PORT
+
+
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_USER
+
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_PASSWORD
+
+
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MYSQL_DATABASE
+          
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: OPENAI_API_KEY
+
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_ACCESS_KEY_ID
+
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_SECRET_ACCESS_KEY
+
+
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_REGION
+
+            - name: AWS_SES_CONFIGURATION_SET
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_SES_CONFIGURATION_SET
+
+            - name: AWS_SNS_TOPIC_ARN
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_SNS_TOPIC_ARN
+
+
+            - name: SENDER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: SENDER_EMAIL
+
+            
+            - name: AWS_SNS_ENABLED
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: AWS_SNS_ENABLED
+
+            # Security (BR-DF-09). These keys must exist in sales360-secret before deploying:
+            # the API refuses to start without the first two. Generate each with
+            #   python -c "import secrets; print(secrets.token_urlsafe(48))"
+            # Keep CREDENTIALS_ENCRYPTION_KEY stable: changing it makes saved mailbox passwords
+            # unreadable. Add ?token=<SES_WEBHOOK_TOKEN> to the SNS subscription URL.
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: JWT_SECRET_KEY
+
+            - name: CREDENTIALS_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: CREDENTIALS_ENCRYPTION_KEY
+
+            - name: SES_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: SES_WEBHOOK_TOKEN
+
+            # Platform hardening, optional. ENVIRONMENT=production disables /docs, self sign-up
+            # (override with ALLOW_SELF_SIGNUP) and requires AWS_SNS_TOPIC_ARN for the SES webhook.
+            - name: ENVIRONMENT
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: ENVIRONMENT
+                  optional: true
+            - name: ALLOW_SELF_SIGNUP
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: ALLOW_SELF_SIGNUP
+                  optional: true
+            - name: METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: METRICS_TOKEN
+                  optional: true
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: SENTRY_DSN
+                  optional: true
+            - name: LOG_LEVEL
+              value: "INFO"
+
+            # Microsoft 365 mailboxes (BR-DF-05), from the Azure app registration. Optional:
+            # without them the "Connect Microsoft 365" button explains what is missing.
+            # MS365_REDIRECT_URI = https://<host>/vector/api/inboxes/oauth/microsoft/callback
+            - name: MS365_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MS365_CLIENT_ID
+                  optional: true
+            - name: MS365_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MS365_CLIENT_SECRET
+                  optional: true
+            - name: MS365_REDIRECT_URI
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: MS365_REDIRECT_URI
+                  optional: true
+            # Calendar & email sync (BR-SF-16), optional
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: GOOGLE_CLIENT_ID
+                  optional: true
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: GOOGLE_CLIENT_SECRET
+                  optional: true
+            - name: GOOGLE_SYNC_REDIRECT_URI
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: GOOGLE_SYNC_REDIRECT_URI
+                  optional: true
+            - name: GRAPH_REDIRECT_URI
+              valueFrom:
+                secretKeyRef:
+                  name: sales360-secret
+                  key: GRAPH_REDIRECT_URI
+                  optional: true
+            - name: RUN_BACKGROUND_JOBS
+              value: "true"
+            - name: WORKER_HEALTH_PORT
+              value: "8002"
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend
+  namespace: sales360-stage
+  labels:
+    app: backend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: backend
