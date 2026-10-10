@@ -8,14 +8,12 @@ from typing import List
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
 
 from app.core.database import get_db
 from app.core.auth import require_role
 from app.models.user import User
 from app.models.domain_reputation import SendingDomain, ReputationAlert
 from app.models.provider_reputation import ExternalReputationMetric, ExternalFeedbackEvent
-from app.models.sending_inbox import SendingInbox
 from app.models.email_message import EmailMessage
 from app.models.campaign import Campaign
 from app.schemas.deliverability_schema import (
@@ -33,49 +31,20 @@ from app.schemas.deliverability_schema import (
 from app.services.deliverability_service import deliverability_service
 from app.services.provider_ingestion_service import provider_ingestion_service
 from app.services.alert_center_service import alert_center_service
+from app.services.domain_tenancy import get_tenant_domain, tenant_has_domain, tenant_message_criterion
 
 # Kartik has changed this: Removed prefix to support explicit REST boundaries
 router = APIRouter(tags=["Deliverability"])
 logger = logging.getLogger(__name__)
 
 
-def _tenant_domain_set(db: Session, current_user: User) -> set[str]:
-    """Domains visible to the current tenant (derived from connected inboxes)."""
-    rows = (
-        db.query(SendingInbox.email_address)
-        .filter(SendingInbox.tenant_id == current_user.tenant_id)
-        .all()
-    )
-    domains = set()
-    for (email,) in rows:
-        if email and "@" in email:
-            domains.add(email.split("@", 1)[1].lower())
-    return domains
-
-def _require_exclusive_domain(db: Session, current_user: User, domain_name: str) -> None:
-    """
-    sending_domains rows are global (no tenant_id). Only allow a tenant to mutate
-    one when it has an inbox on that domain and no other tenant does; otherwise
-    the change would affect another tenant. Platform admins may act on any domain.
-    """
-    if current_user.role == "PLATFORM_ADMIN":
-        return
-    domain = domain_name.lower()
-    if domain not in _tenant_domain_set(db, current_user):
+def _require_tenant_domain(db: Session, current_user: User, domain_name: str) -> str:
+    """404 unless the caller's tenant uses this domain. Returns the normalised name."""
+    domain = (domain_name or "").strip().lower()
+    if not domain or not tenant_has_domain(db, current_user.tenant_id, domain):
         raise HTTPException(status_code=404, detail="Domain not found")
-    shared = (
-        db.query(SendingInbox.inbox_id)
-        .filter(
-            SendingInbox.tenant_id != current_user.tenant_id,
-            func.lower(SendingInbox.email_address).like(f"%@{domain}"),
-        )
-        .first()
-    )
-    if shared:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This domain is shared with another workspace and can only be changed by a platform admin",
-        )
+    return domain
+
 
 # Kartik has changed this: Explicit collection path
 @router.get("/deliverability/statistics", response_model=SESStatisticsResponse)
@@ -85,15 +54,22 @@ def get_deliverability_statistics(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):
     """
-    Get sending statistics.
-    If 'domain' is provided, returns LOCAL aggregated stats for that domain.
-    If 'domain' is None, returns GLOBAL AWS SES account stats.
+    Sending statistics for the caller's tenant, from the local database.
+    With 'domain': the tenant's mail from that domain. Without: all of the tenant's mail.
+    (Account-wide AWS SES figures cover every tenant: GET /deliverability/statistics/account,
+    platform admins only.)
     """
     if domain:
-        allowed_domains = _tenant_domain_set(db, current_user)
-        if domain.lower() not in allowed_domains:
-            raise HTTPException(status_code=404, detail="Domain not found")
-        return deliverability_service.get_domain_statistics(db, domain)
+        domain = _require_tenant_domain(db, current_user, domain)
+    return deliverability_service.get_domain_statistics(db, domain=domain or None,
+                                                        tenant_id=current_user.tenant_id)
+
+
+@router.get("/deliverability/statistics/account", response_model=SESStatisticsResponse)
+def get_account_statistics(
+    current_user: User = Depends(require_role("PLATFORM_ADMIN")),
+):
+    """Account-wide AWS SES sending statistics (every tenant's mail): platform admins only."""
     return deliverability_service.get_sending_statistics()
 
 # Kartik has changed this: Explicit collection path
@@ -102,10 +78,8 @@ def list_domains(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):
-    """List all tracked sending domains with detailed associations."""
-    allowed_domains = _tenant_domain_set(db, current_user)
-    all_domains = deliverability_service.get_all_domains_enriched(db)
-    return [d for d in all_domains if d.get("domain_name", "").lower() in allowed_domains]
+    """List the tenant's sending domains with detailed associations."""
+    return deliverability_service.get_all_domains_enriched(db, current_user.tenant_id)
 
 # Kartik has changed this: Explicit collection path
 @router.get("/deliverability/alerts", response_model=List[ReputationAlertResponse])
@@ -114,12 +88,8 @@ def list_alerts(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):
-    """List reputation alerts (default: unresolved only)."""
-    allowed_domains = _tenant_domain_set(db, current_user)
-    if not allowed_domains:
-        return []
-    q = db.query(ReputationAlert)
-    q = q.filter(ReputationAlert.domain_name.in_(allowed_domains))
+    """List the tenant's reputation alerts (default: unresolved only)."""
+    q = db.query(ReputationAlert).filter(ReputationAlert.tenant_id == current_user.tenant_id)
     if not resolved:
         q = q.filter(ReputationAlert.is_resolved == False)
     return q.order_by(ReputationAlert.created_at.desc()).all()
@@ -168,12 +138,10 @@ def scan_domain(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
 ):
-    """Trigger a manual compliance scan (SPF/DKIM)."""
-    allowed_domains = _tenant_domain_set(db, current_user)
-    if domain_name.lower() not in allowed_domains:
-        raise HTTPException(status_code=404, detail="Domain not found")
+    """Trigger a manual compliance scan (SPF/DKIM) of the tenant's domain."""
+    domain_name = _require_tenant_domain(db, current_user, domain_name)
     # Calls async DNS lookup via service (Synchronous for MVP)
-    result = deliverability_service.perform_dns_scan(domain_name, db)
+    result = deliverability_service.perform_dns_scan(domain_name, db, tenant_id=current_user.tenant_id)
     return {"status": "scan_completed", "results": result}
 
 # Kartik has changed this: Explicit collection path
@@ -182,8 +150,8 @@ def trigger_snapshot(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
 ):
-    """Manually trigger a daily health snapshot (for testing)."""
-    deliverability_service.create_snapshot(db)
+    """Manually trigger a health snapshot of the tenant's domains (for testing)."""
+    deliverability_service.create_snapshot(db, tenant_id=current_user.tenant_id)
     return {"status": "snapshot_created"}
 
 # Kartik has changed this: Explicit collection path
@@ -193,14 +161,20 @@ def delete_domain(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
 ):
-    """Delete a domain and its stats from the system."""
-    _require_exclusive_domain(db, current_user, domain_name)
-    # Note: If inboxes still exist for this domain, it might be recreated by sync.
-    domain = db.query(SendingDomain).filter(SendingDomain.domain_name == domain_name).first()
+    """
+    Delete the tenant's record of a domain and the tenant's stats for it.
+    Other tenants' records for the same domain name are untouched. The SES domain
+    identity in AWS is account-level and is never deleted here.
+    """
+    # Note: If inboxes still exist for this domain, it might be recreated by the health check.
+    domain = get_tenant_domain(db, current_user.tenant_id, domain_name)
     if not domain:
         raise HTTPException(status_code=404, detail="Domain not found")
-    
-    db.delete(domain)
+
+    for model in (ExternalReputationMetric, ExternalFeedbackEvent):
+        db.query(model).filter(model.tenant_id == current_user.tenant_id,
+                               model.domain_name == domain.domain_name).delete(synchronize_session=False)
+    db.delete(domain)  # snapshots and alerts go with it
     db.commit()
     return None
 
@@ -216,9 +190,8 @@ def get_domain_sent_log(
     Recent outbound emails sent from this domain, with send timestamps.
     Surfaces EmailMessage.sent_at so users can confirm whether/when a send happened.
     """
-    allowed_domains = _tenant_domain_set(db, current_user)
-    if domain_name.lower() not in allowed_domains:
-        raise HTTPException(status_code=404, detail="Domain not found")
+    domain_name = _require_tenant_domain(db, current_user, domain_name)
+    limit = max(1, min(limit, 500))
 
     rows = (
         db.query(EmailMessage, Campaign.campaign_name)
@@ -226,15 +199,8 @@ def get_domain_sent_log(
         .filter(
             EmailMessage.direction == "OUTBOUND",
             EmailMessage.from_email.ilike(f"%@{domain_name}"),
-            # Only this tenant's messages, even when the domain is shared.
-            or_(
-                EmailMessage.inbox_id.in_(
-                    db.query(SendingInbox.inbox_id).filter(
-                        SendingInbox.tenant_id == current_user.tenant_id
-                    )
-                ),
-                Campaign.tenant_id == current_user.tenant_id,
-            ),
+            # Only this tenant's messages, even when another tenant uses the same domain.
+            tenant_message_criterion(current_user.tenant_id),
         )
         .order_by(EmailMessage.sent_at.desc(), EmailMessage.scheduled_at.desc())
         .limit(limit)
@@ -261,8 +227,8 @@ def get_integration_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):
-    """Get read-only ingestion integration status and last run per provider."""
-    return provider_ingestion_service.get_status(db)
+    """Get read-only ingestion integration status and the tenant's last run per provider."""
+    return provider_ingestion_service.get_status(db, tenant_id=current_user.tenant_id)
 
 
 @router.post("/deliverability/integrations/ingest", status_code=status.HTTP_202_ACCEPTED)
@@ -274,20 +240,34 @@ def ingest_provider_metrics(
     """
     Read-only ingestion endpoint for Google Postmaster / SNDS / JMRP.
     Safe by design: stores metrics/events only, no campaign/send side effects.
-    Metrics are stored per domain (not per tenant), so tenants may only ingest
-    for a domain they own exclusively.
+    Data is stored for the caller's tenant (its own record of the domain). A platform
+    admin ingests for every tenant that has a record of the domain.
     """
-    _require_exclusive_domain(db, current_user, request.domain_name or "")
-    result = provider_ingestion_service.ingest(
-        db=db,
-        provider=request.provider,
-        domain_name=request.domain_name,
-        payload=request.payload,
-        source=request.source,
-        dry_run=request.dry_run,
-    )
-    if result.get("status") == "FAILED":
-        raise HTTPException(status_code=400, detail=result.get("error", "Ingestion failed"))
+    if current_user.role == "PLATFORM_ADMIN":
+        domain_name = (request.domain_name or "").strip().lower()
+        tenant_ids = [t for (t,) in db.query(SendingDomain.tenant_id).filter(
+            SendingDomain.domain_name == domain_name, SendingDomain.tenant_id.isnot(None)).distinct()]
+        if not tenant_ids:
+            raise HTTPException(status_code=404, detail="Domain not found")
+    else:
+        domain_name = _require_tenant_domain(db, current_user, request.domain_name or "")
+        tenant_ids = [current_user.tenant_id]
+
+    result = None
+    for tenant_id in tenant_ids:
+        result = provider_ingestion_service.ingest(
+            db=db,
+            provider=request.provider,
+            domain_name=domain_name,
+            payload=request.payload,
+            source=request.source,
+            dry_run=request.dry_run,
+            tenant_id=tenant_id,
+        )
+        if result.get("status") == "FAILED":
+            raise HTTPException(status_code=400, detail=result.get("error", "Ingestion failed"))
+    if len(tenant_ids) > 1:
+        result = {**result, "tenants": len(tenant_ids)}
     return result
 
 
@@ -300,10 +280,9 @@ def list_external_metrics(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):
     """List ingested external reputation metrics for a provider/domain."""
-    allowed_domains = _tenant_domain_set(db, current_user)
-    if domain_name.lower() not in allowed_domains:
-        raise HTTPException(status_code=404, detail="Domain not found")
+    domain_name = _require_tenant_domain(db, current_user, domain_name)
     q = db.query(ExternalReputationMetric).filter(
+        ExternalReputationMetric.tenant_id == current_user.tenant_id,
         ExternalReputationMetric.provider == provider.upper(),
         ExternalReputationMetric.domain_name == domain_name
     ).order_by(ExternalReputationMetric.ingested_at.desc())
@@ -319,10 +298,9 @@ def list_external_events(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):
     """List ingested external feedback events (mainly JMRP-style complaint data)."""
-    allowed_domains = _tenant_domain_set(db, current_user)
-    if domain_name.lower() not in allowed_domains:
-        raise HTTPException(status_code=404, detail="Domain not found")
+    domain_name = _require_tenant_domain(db, current_user, domain_name)
     q = db.query(ExternalFeedbackEvent).filter(
+        ExternalFeedbackEvent.tenant_id == current_user.tenant_id,
         ExternalFeedbackEvent.provider == provider.upper(),
         ExternalFeedbackEvent.domain_name == domain_name
     ).order_by(ExternalFeedbackEvent.ingested_at.desc())

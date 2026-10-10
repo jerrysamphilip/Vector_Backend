@@ -189,6 +189,20 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""                  # error reporting is off unless set
     SENTRY_TRACES_SAMPLE_RATE: float = 0.0
 
+    # Browser sessions (app/core/auth_cookies.py). The SPA sends "X-Auth-Mode: cookie" and receives
+    # httpOnly access/refresh cookies plus a readable csrf_token cookie instead of tokens in JSON.
+    # COOKIE_SECURE unset = Secure cookies in production only. COOKIE_DOMAIN unset = host-only cookies.
+    # REFRESH_COOKIE_PATH scopes the refresh cookie (the browser-visible path, e.g. "/vector/api/api/auth").
+    COOKIE_SECURE: Optional[bool] = None
+    COOKIE_DOMAIN: Optional[str] = None
+    REFRESH_COOKIE_PATH: str = "/"
+
+    @property
+    def cookie_secure(self) -> bool:
+        if self.COOKIE_SECURE is not None:
+            return self.COOKIE_SECURE
+        return self.is_production
+
     @property
     def is_production(self) -> bool:
         return (self.ENVIRONMENT or "").strip().lower() in ("production", "prod")

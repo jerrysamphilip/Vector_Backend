@@ -34,8 +34,10 @@ class ProviderIngestionService:
         status: str,
         records_ingested: int,
         error_message: Optional[str] = None,
+        tenant_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         run = ExternalIngestionRun(
+            tenant_id=tenant_id,
             provider=provider,
             domain_name=domain_name,
             source=source,
@@ -85,17 +87,19 @@ class ProviderIngestionService:
         payload: Optional[Any] = None,
         source: str = "MANUAL",
         dry_run: bool = False,
+        tenant_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Store provider data for one tenant's record of the domain (tenant_id)."""
         provider = (provider or "").upper()
         if provider not in self.PROVIDERS:
             return {"status": "FAILED", "error": "Unsupported provider", "records_ingested": 0}
 
         if payload is None and source == "FEED_URL":
             if not self._enabled(provider):
-                return self._record_run(db, provider, domain_name, source, "SKIPPED", 0, "Provider ingest disabled")
+                return self._record_run(db, provider, domain_name, source, "SKIPPED", 0, "Provider ingest disabled", tenant_id=tenant_id)
             feed_url = self._feed_url(provider)
             if not feed_url:
-                return self._record_run(db, provider, domain_name, source, "SKIPPED", 0, "Feed URL not configured")
+                return self._record_run(db, provider, domain_name, source, "SKIPPED", 0, "Feed URL not configured", tenant_id=tenant_id)
             try:
                 raw = self._fetch_url(feed_url)
                 if provider == "SNDS":
@@ -103,16 +107,16 @@ class ProviderIngestionService:
                 else:
                     payload = json.loads(raw)
             except Exception as exc:
-                return self._record_run(db, provider, domain_name, source, "FAILED", 0, f"Feed fetch failed: {exc}")
+                return self._record_run(db, provider, domain_name, source, "FAILED", 0, f"Feed fetch failed: {exc}", tenant_id=tenant_id)
 
         try:
             records = 0
             if provider == "GOOGLE_POSTMASTER":
-                records = self._ingest_postmaster(db, domain_name, payload, dry_run)
+                records = self._ingest_postmaster(db, domain_name, payload, dry_run, tenant_id)
             elif provider == "SNDS":
-                records = self._ingest_snds(db, domain_name, payload, dry_run)
+                records = self._ingest_snds(db, domain_name, payload, dry_run, tenant_id)
             elif provider == "JMRP":
-                records = self._ingest_jmrp(db, domain_name, payload, dry_run)
+                records = self._ingest_jmrp(db, domain_name, payload, dry_run, tenant_id)
 
             if dry_run:
                 return {
@@ -121,13 +125,14 @@ class ProviderIngestionService:
                     "records_ingested": records,
                     "dry_run": True,
                 }
-            return self._record_run(db, provider, domain_name, source, "SUCCESS", records, None)
+            return self._record_run(db, provider, domain_name, source, "SUCCESS", records, None, tenant_id=tenant_id)
         except Exception as exc:
             if dry_run:
                 return {"provider": provider, "status": "FAILED", "records_ingested": 0, "error": str(exc), "dry_run": True}
-            return self._record_run(db, provider, domain_name, source, "FAILED", 0, str(exc))
+            return self._record_run(db, provider, domain_name, source, "FAILED", 0, str(exc), tenant_id=tenant_id)
 
-    def _ingest_postmaster(self, db: Session, domain_name: str, payload: Any, dry_run: bool) -> int:
+    def _ingest_postmaster(self, db: Session, domain_name: str, payload: Any, dry_run: bool,
+                           tenant_id: Optional[str] = None) -> int:
         # Expected payload: dict or list of dict with keys like date/spam_rate/reputation_score
         rows = payload if isinstance(payload, list) else [payload or {}]
         count = 0
@@ -135,6 +140,7 @@ class ProviderIngestionService:
             metric_date = str(row.get("date") or datetime.utcnow().date())
             if not dry_run:
                 db.add(ExternalReputationMetric(
+                    tenant_id=tenant_id,
                     provider="GOOGLE_POSTMASTER",
                     domain_name=domain_name,
                     metric_date=metric_date,
@@ -151,7 +157,8 @@ class ProviderIngestionService:
             db.commit()
         return count
 
-    def _ingest_snds(self, db: Session, domain_name: str, payload: Any, dry_run: bool) -> int:
+    def _ingest_snds(self, db: Session, domain_name: str, payload: Any, dry_run: bool,
+                     tenant_id: Optional[str] = None) -> int:
         # Expected payload: CSV string (or list[dict])
         count = 0
         if isinstance(payload, list):
@@ -165,6 +172,7 @@ class ProviderIngestionService:
             metric_date = str(row.get("date") or row.get("Date") or datetime.utcnow().date())
             if not dry_run:
                 db.add(ExternalReputationMetric(
+                    tenant_id=tenant_id,
                     provider="SNDS",
                     domain_name=domain_name,
                     metric_date=metric_date,
@@ -181,7 +189,8 @@ class ProviderIngestionService:
             db.commit()
         return count
 
-    def _ingest_jmrp(self, db: Session, domain_name: str, payload: Any, dry_run: bool) -> int:
+    def _ingest_jmrp(self, db: Session, domain_name: str, payload: Any, dry_run: bool,
+                     tenant_id: Optional[str] = None) -> int:
         # Expected payload: list of feedback events
         rows = payload if isinstance(payload, list) else [payload or {}]
         count = 0
@@ -195,6 +204,7 @@ class ProviderIngestionService:
                     parsed_time = None
             if not dry_run:
                 db.add(ExternalFeedbackEvent(
+                    tenant_id=tenant_id,
                     provider="JMRP",
                     domain_name=domain_name,
                     event_type=str(row.get("event_type") or "COMPLAINT"),
@@ -216,12 +226,14 @@ class ProviderIngestionService:
         except Exception:
             return None
 
-    def get_status(self, db: Session) -> Dict[str, Any]:
+    def get_status(self, db: Session, tenant_id: Optional[str] = None) -> Dict[str, Any]:
+        """Provider settings and the tenant's last ingestion run per provider."""
         latest = {}
         for provider in sorted(self.PROVIDERS):
             row = (
                 db.query(ExternalIngestionRun)
-                .filter(ExternalIngestionRun.provider == provider)
+                .filter(ExternalIngestionRun.provider == provider,
+                        ExternalIngestionRun.tenant_id == tenant_id)
                 .order_by(ExternalIngestionRun.started_at.desc())
                 .first()
             )

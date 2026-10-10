@@ -596,6 +596,7 @@ class WarmupService:
         domain = inbox.email_address.split("@")[-1].lower() if "@" in inbox.email_address else ""
         if domain:
             external_metric = db.query(ExternalReputationMetric).filter(
+                ExternalReputationMetric.tenant_id == inbox.tenant_id,
                 ExternalReputationMetric.domain_name == domain
             ).order_by(desc(ExternalReputationMetric.metric_date)).first()
             if external_metric:

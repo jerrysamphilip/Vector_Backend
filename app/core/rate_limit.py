@@ -64,6 +64,10 @@ EMAIL_REQUESTS_PER_EMAIL = (5, 15 * 60)    # reset links / magic links
 EMAIL_REQUESTS_PER_IP = (30, 15 * 60)
 REGISTER_PER_IP = (10, 60 * 60)
 GLOBAL_PER_IP = (1200, 60)
+# Two-factor codes: attempts per IP; wrong codes per pending sign-in (then sign in again) and per user
+MFA_ATTEMPTS_PER_IP = (30, 5 * 60)
+MFA_FAILURES_PER_TOKEN = (5, 10 * 60)
+MFA_FAILURES_PER_USER = (10, 15 * 60)
 
 
 def client_ip(request: Request) -> str:
@@ -107,6 +111,27 @@ def record_login_failure(email: str):
 
 def record_login_success(email: str):
     limiter.reset(f"login-fail:{email.strip().lower()}")
+
+
+def check_mfa_allowed(user_id: str, mfa_jti: str = None):
+    """429 when this user (or this pending sign-in) has had too many wrong two-factor codes."""
+    if mfa_jti:
+        wait = limiter.blocked(f"mfa-token-fail:{mfa_jti}", *MFA_FAILURES_PER_TOKEN)
+        if wait:
+            _too_many(wait, "Too many incorrect codes. Please sign in again.")
+    wait = limiter.blocked(f"mfa-fail:{user_id}", *MFA_FAILURES_PER_USER)
+    if wait:
+        _too_many(wait, "Too many incorrect codes. Please wait 15 minutes and try again.")
+
+
+def record_mfa_failure(user_id: str, mfa_jti: str = None):
+    if mfa_jti:
+        limiter.hit(f"mfa-token-fail:{mfa_jti}", *MFA_FAILURES_PER_TOKEN)
+    limiter.hit(f"mfa-fail:{user_id}", *MFA_FAILURES_PER_USER)
+
+
+def record_mfa_success(user_id: str):
+    limiter.reset(f"mfa-fail:{user_id}")
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

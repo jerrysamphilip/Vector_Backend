@@ -448,7 +448,7 @@ def _validate_inboxes_for_campaign(db: Session, tenant_id: str, inbox_ids: List[
     if domains:
         domain_rows = (
             db.query(SendingDomain.domain_name, SendingDomain.is_blacklisted)
-            .filter(SendingDomain.domain_name.in_(domains))
+            .filter(SendingDomain.tenant_id == tenant_id, SendingDomain.domain_name.in_(domains))
             .all()
         )
         blocked = [name for name, is_blacklisted in domain_rows if is_blacklisted]

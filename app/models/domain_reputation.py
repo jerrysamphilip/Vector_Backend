@@ -4,7 +4,7 @@
 Models for tracking Sending Domain Health, Reputation, and Deliverability Alerts.
 """
 
-from sqlalchemy import Column, String, Integer, Boolean, Float, Text, TIMESTAMP, ForeignKey, JSON
+from sqlalchemy import Column, String, Integer, Boolean, Float, Text, TIMESTAMP, ForeignKey, JSON, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -13,11 +13,22 @@ from app.models.base import Base
 
 class SendingDomain(Base):
     """
-    Configuration and health status of a sending domain.
+    Configuration and health status of a sending domain, owned by one tenant.
+
+    Two tenants can send from the same domain name: each gets its own row, and every
+    status/health/reputation figure on it is computed from that tenant's sends only.
+    Rows with tenant_id NULL are legacy records no tenant could be matched to; they are
+    kept but never shown to (or acted on for) any tenant.
     """
     __tablename__ = "sending_domains"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "domain_name", name="uq_sending_domains_tenant_domain"),
+        Index("ix_sending_domains_domain_name", "domain_name"),
+    )
 
-    domain_name = Column(String(255), primary_key=True)
+    domain_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=True)
+    domain_name = Column(String(255), nullable=False)
     
     # Authentication Status
     spf_status = Column(String(50), default="UNKNOWN")  # PASS, FAIL, UNKNOWN
@@ -52,7 +63,7 @@ class SendingDomain(Base):
     alerts = relationship("ReputationAlert", back_populates="domain", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<SendingDomain {self.domain_name} (Score: {self.current_reputation_score})>"
+        return f"<SendingDomain {self.domain_name} tenant={self.tenant_id} (Score: {self.current_reputation_score})>"
 
 
 class DomainHealthSnapshot(Base):
@@ -62,7 +73,10 @@ class DomainHealthSnapshot(Base):
     __tablename__ = "domain_health_snapshots"
 
     snapshot_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    domain_name = Column(String(255), ForeignKey("sending_domains.domain_name"), nullable=False)
+    domain_id = Column(String(36), ForeignKey("sending_domains.domain_id", ondelete="CASCADE"),
+                       nullable=False, index=True)
+    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=True, index=True)
+    domain_name = Column(String(255), nullable=False)  # denormalised for display
     
     snapshot_at = Column(TIMESTAMP, server_default=func.now())
     
@@ -89,7 +103,10 @@ class ReputationAlert(Base):
     __tablename__ = "reputation_alerts"
 
     alert_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    domain_name = Column(String(255), ForeignKey("sending_domains.domain_name"), nullable=False)
+    domain_id = Column(String(36), ForeignKey("sending_domains.domain_id", ondelete="CASCADE"),
+                       nullable=False, index=True)
+    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=True, index=True)
+    domain_name = Column(String(255), nullable=False)  # denormalised for display
     
     alert_type = Column(String(50), nullable=False) # BOUNCE_SPIKE, REPUTATION_DROP, BLACKLIST
     severity = Column(String(20), default="WARNING") # INFO, WARNING, CRITICAL

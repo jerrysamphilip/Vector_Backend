@@ -186,7 +186,8 @@ def create_inbox(
     if "@" in new_inbox.email_address:
         domain = new_inbox.email_address.split("@")[-1]
         try:
-            domain_verification = deliverability_service.verify_domain_and_get_tokens(domain, db)
+            domain_verification = deliverability_service.verify_domain_and_get_tokens(
+                domain, db, tenant_id=new_inbox.tenant_id)
         except Exception as e:
             # Don't fail the inbox creation, just log error
             print(f"Domain verification failed: {e}")
@@ -212,11 +213,12 @@ def list_inboxes(
 
 @router.get("/ses/quota")
 def get_ses_quota(
-    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
+    current_user: User = Depends(require_role("PLATFORM_ADMIN")),
 ):
     """
     Live AWS SES account-level sending quota (not per-mailbox — this is a
     single ceiling shared across every sending inbox on this AWS account).
+    Platform admins only: the figures cover every tenant's mail.
 
     Returns Max24HourSend, MaxSendRate and SentLast24Hours straight from
     SES's GetSendQuota API so account-level capacity can be verified

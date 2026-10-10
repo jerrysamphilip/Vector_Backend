@@ -6,10 +6,12 @@ Auto-pause
     check_campaign_health() runs inside the SES webhook the moment a bounce or
     complaint arrives (and at send time for hard rejections), so a campaign
     crossing the limits is paused within seconds, well inside the one-minute
-    target. check_domain_health() does the same for every campaign sending from
-    a domain. run_health_cycle() recomputes rolling 24h rates for all domains
-    every hour and re-checks active campaigns, catching anything a dropped
-    event missed.
+    target. check_domain_health() does the same for a tenant's campaigns sending
+    from a domain, counting only that tenant's mail (sending domains are
+    tenant-owned: another tenant on the same domain is neither counted nor
+    paused). run_health_cycle() recomputes rolling 24h rates for every
+    (tenant, domain) every hour and re-checks active campaigns, catching
+    anything a dropped event missed.
 
 Final status
     reconcile_delivery_status() runs every minute. Any email still waiting for
@@ -21,7 +23,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from sqlalchemy import and_, case, func, or_
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -30,6 +32,8 @@ from app.models.domain_reputation import ReputationAlert, SendingDomain
 from app.models.email_message import EmailMessage
 from app.models.join_tables import campaign_inboxes
 from app.models.sending_inbox import SendingInbox
+from app.services.domain_tenancy import (domain_of, from_domain_criterion, get_or_create_tenant_domain,
+                                         tenant_message_criterion)
 
 logger = logging.getLogger(__name__)
 
@@ -140,32 +144,33 @@ def check_campaign_health(db: Session, campaign_id: Optional[str], trigger: str 
     return paused
 
 
-def campaigns_for_domain(db: Session, domain: str) -> List[Campaign]:
+def campaigns_for_domain(db: Session, domain: str, tenant_id: str) -> List[Campaign]:
+    """The tenant's active campaigns sending from its mailboxes on this domain."""
     return (db.query(Campaign)
             .join(campaign_inboxes, campaign_inboxes.c.campaign_id == Campaign.campaign_id)
             .join(SendingInbox, SendingInbox.inbox_id == campaign_inboxes.c.inbox_id)
-            .filter(Campaign.status == "ACTIVE", SendingInbox.email_address.like(f"%@{domain}"))
+            .filter(Campaign.status == "ACTIVE", Campaign.tenant_id == tenant_id,
+                    SendingInbox.tenant_id == tenant_id, SendingInbox.email_address.like(f"%@{domain}"))
             .distinct().all())
 
 
-def _domain_rates(db: Session, domain: str, since: datetime) -> dict:
-    return _rates(db, EmailMessage.sent_at >= since, EmailMessage.from_email.like(f"%@{domain}"))
+def _domain_rates(db: Session, domain: str, tenant_id: str, since: datetime) -> dict:
+    """24h rates for one tenant's mail from this domain (other tenants on the domain don't count)."""
+    return _rates(db, EmailMessage.sent_at >= since, from_domain_criterion(domain),
+                  tenant_message_criterion(tenant_id))
 
 
-def check_domain_health(db: Session, domain: str, trigger: str = "") -> int:
+def check_domain_health(db: Session, domain: str, trigger: str = "", tenant_id: Optional[str] = None) -> int:
     """
-    Recompute a sending domain's 24h health and, if unsafe, pause every active
-    campaign sending from it. Returns how many campaigns were paused. Commits.
+    Recompute one tenant's 24h health on a sending domain and, if unsafe, pause that
+    tenant's active campaigns sending from it. Returns how many campaigns were paused. Commits.
     """
-    if not domain:
+    if not domain or not tenant_id:
         return 0
     domain = domain.lower()
     now = datetime.utcnow()
-    r = _domain_rates(db, domain, now - timedelta(hours=24))
-    row = db.query(SendingDomain).filter(SendingDomain.domain_name == domain).first()
-    if not row:
-        row = SendingDomain(domain_name=domain)
-        db.add(row)
+    r = _domain_rates(db, domain, tenant_id, now - timedelta(hours=24))
+    row = get_or_create_tenant_domain(db, tenant_id, domain)
     row.sends_24h, row.bounce_rate_24h, row.complaint_rate_24h = r["sends"], r["bounce_rate"], r["complaint_rate"]
     row.health_checked_at = now
     # Score from current rates, so it recovers as rates fall (it used to only ever go down)
@@ -176,7 +181,7 @@ def check_domain_health(db: Session, domain: str, trigger: str = "") -> int:
     reason = risk_reason(r)
     paused = 0
     if reason:
-        for campaign in campaigns_for_domain(db, domain):
+        for campaign in campaigns_for_domain(db, domain, tenant_id):
             # A campaign a user resumed after an auto-pause is judged on its own sends since then
             if campaign.health_baseline_at and campaign.health_baseline_at > now - timedelta(hours=24):
                 own = risk_reason(_rates(db, EmailMessage.campaign_id == campaign.campaign_id,
@@ -186,32 +191,47 @@ def check_domain_health(db: Session, domain: str, trigger: str = "") -> int:
             paused += auto_pause(db, campaign, f"sending domain {domain}: {reason}"
                                  + (f" (after a {trigger})" if trigger else ""))
         if paused:
-            db.add(ReputationAlert(domain_name=domain, alert_type="AUTO_PAUSE", severity="CRITICAL",
+            db.add(ReputationAlert(domain_id=row.domain_id, tenant_id=tenant_id, domain_name=domain,
+                                   alert_type="AUTO_PAUSE", severity="CRITICAL",
                                    details=f"{paused} campaign(s) paused: {reason}"))
     db.commit()
     return paused
 
 
-def on_risk_event(db: Session, campaign_id: Optional[str], sender_domain: Optional[str], trigger: str) -> None:
-    """Called by the webhook for every bounce and complaint."""
+def on_risk_event(db: Session, campaign_id: Optional[str], sender_domain: Optional[str], trigger: str,
+                  tenant_id: Optional[str] = None) -> None:
+    """Called by the webhook for every bounce and complaint. tenant_id: the sending tenant."""
     try:
         check_campaign_health(db, campaign_id, trigger)
         if sender_domain:
-            check_domain_health(db, sender_domain, trigger)
+            if not tenant_id and campaign_id:
+                tenant_id = db.query(Campaign.tenant_id).filter(Campaign.campaign_id == campaign_id).scalar()
+            if tenant_id:
+                check_domain_health(db, sender_domain, trigger, tenant_id=tenant_id)
+            else:
+                # Unattributable: the hourly cycle still covers every tenant on the domain
+                logger.info(f"[AutoPause] {trigger} on {sender_domain} has no sending tenant; domain check skipped")
     except Exception as exc:  # never lose the webhook over the guard
         logger.exception(f"[AutoPause] Health check failed: {exc}")
         db.rollback()
 
 
 def run_health_cycle(db: Session) -> dict:
-    """Hourly: refresh every sending domain's 24h health and re-check active campaigns."""
-    domains = {d for (d,) in db.query(SendingDomain.domain_name)}
+    """Hourly: refresh every (tenant, sending domain) 24h health and re-check active campaigns."""
+    pairs = {(t, d.lower()) for (t, d) in db.query(SendingDomain.tenant_id, SendingDomain.domain_name)
+             .filter(SendingDomain.tenant_id.isnot(None))}
     since = datetime.utcnow() - timedelta(hours=24)
-    for (sender,) in db.query(EmailMessage.from_email).filter(
-            EmailMessage.sent_at >= since, EmailMessage.from_email.isnot(None)).distinct():
-        if "@" in sender:
-            domains.add(sender.split("@", 1)[1].lower())
-    paused = sum(check_domain_health(db, d, "hourly health check") for d in domains)
+    recent = (db.query(EmailMessage.from_email, func.coalesce(SendingInbox.tenant_id, Campaign.tenant_id))
+              .outerjoin(SendingInbox, SendingInbox.inbox_id == EmailMessage.inbox_id)
+              .outerjoin(Campaign, Campaign.campaign_id == EmailMessage.campaign_id)
+              .filter(EmailMessage.sent_at >= since, EmailMessage.from_email.isnot(None),
+                      EmailMessage.direction == "OUTBOUND")
+              .distinct())
+    for sender, tenant_id in recent:
+        domain = domain_of(sender)
+        if domain and tenant_id:
+            pairs.add((tenant_id, domain))
+    paused = sum(check_domain_health(db, d, "hourly health check", tenant_id=t) for t, d in sorted(pairs))
     for (campaign_id,) in db.query(Campaign.campaign_id).filter(Campaign.status == "ACTIVE").all():
         paused += check_campaign_health(db, campaign_id, "hourly health check")
-    return {"domains": len(domains), "paused": paused}
+    return {"domains": len(pairs), "paused": paused}

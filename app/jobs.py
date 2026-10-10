@@ -126,8 +126,13 @@ async def deliverability_iteration() -> None:
     def _sync():
         with SessionLocal() as db:
             deliverability_service.sync_ses_metrics(db)
-            for row in db.execute(text("SELECT domain_name FROM sending_domains")).fetchall():
-                deliverability_service.perform_dns_scan(row[0], db)
+            # Sending domains are tenant-owned (one row per tenant and domain). DNS and the SES
+            # identity are facts about the domain, so each name is scanned once and the result
+            # written to every tenant's row for it; rows without a tenant are skipped.
+            names = sorted({row[0].lower() for row in db.execute(text(
+                "SELECT domain_name FROM sending_domains WHERE tenant_id IS NOT NULL")).fetchall()})
+            for name in names:
+                deliverability_service.perform_dns_scan(name, db)
 
     await _run_in_thread(_sync)
     with SessionLocal() as db:
