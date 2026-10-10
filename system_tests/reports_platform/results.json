@@ -1,0 +1,746 @@
+{
+  "suite": "reports_platform",
+  "counts": {
+    "PASS": 93,
+    "FAIL": 3,
+    "BLOCKED": 9
+  },
+  "seconds": 146.8,
+  "cases": [
+    {
+      "id": "RP-001",
+      "title": "GET /health returns 200 healthy",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-002",
+      "title": "GET /health/ready reports database ok",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-003",
+      "title": "GET /metrics serves Prometheus exposition",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-004",
+      "title": "Every report/platform endpoint rejects anonymous calls with 401",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-005",
+      "title": "A forged/garbage bearer token is rejected (401) on every report",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-010",
+      "title": "Owner dashboard: role view SALES_HEAD and every KPI equals independently computed value",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-011",
+      "title": "Sales-head dashboard breaks down by Business Development teams with exact per-team KPIs",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-012",
+      "title": "Level 1 (Sales Head) dashboard covers all teams (same KPIs as admin)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-013",
+      "title": "Business Development dashboard: role view BUSINESS_DEVELOPMENT, KPIs limited to own team",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-014",
+      "title": "Business Executive dashboard: own+report KPIs and work queue (SQLs, deals closing in 30 days)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-015",
+      "title": "Dashboard member filter narrows to that person and their team",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-016",
+      "title": "Member filter outside the caller's hierarchy is refused (404)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-017",
+      "title": "date_from after date_to is rejected with 400",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-018",
+      "title": "A period before any activity shows zero period counts (open pipeline stays point-in-time)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-020",
+      "title": "Leads & SQL report for owner: totals, stage, source, owner and lead-to-SQL rate exact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-021",
+      "title": "Leads & SQL report for bd1: totals, stage, source, owner and lead-to-SQL rate exact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-160",
+      "title": "KPI Lead-to-SQL conversion = SQLs / leads x 100 (reported value matches formula)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-025",
+      "title": "Pipeline report by owner: open count/amount, weighted, won, lost, win rate exact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-026",
+      "title": "Pipeline report by expected close month (open deals; undated grouped separately) exact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-027",
+      "title": "Pipeline report client-type filter (existing clients) exact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-028",
+      "title": "Pipeline totals reconcile: report = /pipeline/revenue = sum of /opportunities (open)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-030",
+      "title": "Funnel sent>replied>lead>SQL>opportunity>won counts exact (owner)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-031",
+      "title": "Funnel step conversion = count / previous step x 100 (none shown above 100%)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-032",
+      "title": "Funnel 'from first step' percentages stay within 0-100% (same rule as step ratios)",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "from_first above 100%: lead=140.0, opportunity=260.0 (app/routers/sales_reports_router.py funnel(): from_previous is capped at 100 but from_first is not)"
+    },
+    {
+      "id": "RP-033",
+      "title": "Funnel sent>replied>lead>SQL>opportunity>won counts exact (bd1)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-040",
+      "title": "Quarter-wise forecast FY 2026-27: won, open, weighted, lost, forecast per quarter exact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-041",
+      "title": "Fiscal quarters are Apr-Jun, Jul-Sep, Oct-Dec, Jan-Mar with labels 'Qn FY 2026-27'",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-042",
+      "title": "FY boundaries: 31 Mar falls in previous FY Q4, 1 Apr starts the new FY Q1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-043",
+      "title": "Financial-year-wise forecast (FY 2025-26 .. 2028-29) and FY total exact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-044",
+      "title": "Won vs weighted: forecast = won + weighted open; best case = won + full open pipeline",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-045",
+      "title": "Forecast categories: Commit (incl. manual override), Best case, Pipeline; commit = won + commit deals",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-046",
+      "title": "Open deals without a close date are excluded from buckets and reported separately",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-047",
+      "title": "Forecast totals reconcile with GET /opportunities for the same close-date range",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-048",
+      "title": "Forecast filtered to existing clients is exact (and carries no per-rep target)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-049",
+      "title": "Forecast member filter (BD head) = that head's team only",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-050",
+      "title": "Forecast is scoped to the caller's hierarchy (BD, executive, report, L1)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-051",
+      "title": "Forecast carries quarter/FY targets and attainment = won / target x 100",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-052",
+      "title": "Default forecast year is the current FY (2026) for today 2026-10-10",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-053",
+      "title": "Invalid fy parameter is rejected (422)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-060",
+      "title": "Team scorecard per rep: activities, emails, leads, SQLs, deals, won, lost, pipeline exact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-061",
+      "title": "Team totals and stage conversion rates (lead->SQL, SQL->opportunity, win rate) exact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-062",
+      "title": "Team performance for bd1 lists exactly ['bd1', 'ex1', 'ex2', 'mr1']",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-063",
+      "title": "Team performance for ex1 lists exactly ['ex1', 'mr1']",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-064",
+      "title": "Team performance for head lists exactly ['bd1', 'bd2', 'ex1', 'ex2', 'ex3', 'head', 'mr1', 'owner']",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-065",
+      "title": "Manager cannot open another team's (or their manager's) scorecard via member filter (404)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-066",
+      "title": "Logged calls, meetings and completed tasks count as rep activity",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-089",
+      "title": "Target vs actual per rep (FY and quarters 1, 2): won, commit, best case, attainment, gap, rank",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-090",
+      "title": "Leaderboard ranks reps by revenue won, then deals, SQLs, activity",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-092",
+      "title": "Campaign ROI: emailed, replies, leads, SQLs, opportunities, pipeline and revenue per campaign exact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-098",
+      "title": "Custom report (opportunities, sum of amount by stage) equals independently summed values",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-098b",
+      "title": "Custom matrix report (deals by owner x status, close date in FY) exact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-099",
+      "title": "Shared custom report runs within each viewer's hierarchy; executives (L3 agents) cannot build reports",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-099b",
+      "title": "Custom report rejects unknown grouping/object with 400",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-110",
+      "title": "Another tenant's admin cannot report on this tenant's users (member=foreign id -> 404) on every report",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-111",
+      "title": "Other tenant's reports contain only its own data (exact totals; ours excluded) and ours exclude its 99,999",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-112",
+      "title": "Cross-tenant object access (deal, timeline, saved report, target write) returns 404",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-113",
+      "title": "Hierarchy: users cannot widen any report to a peer's or their manager's data (404)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-114",
+      "title": "Campaign analytics (v1 reports) refuse a BD manager reading another team's rep (user_id filter)",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "/reports/dashboard-summary?user_id=<other team rep> -> 200; campaign-comparison -> 200 (app/routers/reports_router.py only forces AGENTs to their own id; MANAGERs may pass any user_id)"
+    },
+    {
+      "id": "RP-115",
+      "title": "Role checks: agents cannot change sales settings, workflow rules, products or their own target; a BD manager can set targets only inside their team",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-088",
+      "title": "Targets per rep per quarter: list is scoped to the caller's team with quarter amounts",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-100",
+      "title": "Quote lines: qty x unit price less line discount; proposal amount = line total (3 x 1,200 -10% + 500)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-101",
+      "title": "Proposal PDF downloads as a valid PDF document",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-101b",
+      "title": "Proposal PDF is not available across tenants (404); negative prices rejected (400)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-093",
+      "title": "Amount/revenue fields are blank on every report and deal API for a role configured to hide them",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-093b",
+      "title": "Hidden-amount viewer still gets counts (open deals) so reports stay usable",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-094",
+      "title": "Hidden-amount viewer cannot change amounts, run a shared money report or download a quote PDF (403)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-093c",
+      "title": "Roles not listed keep seeing amounts",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-095",
+      "title": "Workflow: amount rises above 50,000 -> alert to owner and manager + task for owner",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-096",
+      "title": "Workflow: stage changes to Negotiation -> rule sets next step",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-097",
+      "title": "Workflow: inactive rule never fires; run counts tracked; invalid field/threshold rejected (400)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-120",
+      "title": "Audit: owner, stage, amount and close-date changes are logged with old/new value, user and time",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-083",
+      "title": "Opportunity keeps stage history with time in stage (BR-SF-04)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-121",
+      "title": "Audit: lead owner change logged with user and time",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-084",
+      "title": "Closing a deal as won or lost without a reason is refused (400)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-084b",
+      "title": "Stale deals: no activity for N days or past close date are flagged (list filter + flag)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-086",
+      "title": "In-app notifications: assignment alerts reach the new owner; mark-as-read lowers unread count",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-087",
+      "title": "Email notifications: preference saved and the worker's email loop processes the notification",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-087b",
+      "title": "Email notification actually delivered to the user's mailbox",
+      "status": "BLOCKED",
+      "category": "env",
+      "detail": "SENDER_EMAIL is empty in the worker; local stack has no mail sink - verify in UAT"
+    },
+    {
+      "id": "RP-091",
+      "title": "Template library: merge fields fill from the contact; shared within tenant, 404 across tenants, only owner/admin may edit",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-080",
+      "title": "One-click lead from a campaign reply: lead linked to contact, owner and campaign; duplicate refused",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-081",
+      "title": "Disqualified lead keeps its reason and a recycle date (30 days) and shows in the report",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-082",
+      "title": "Round-robin assignment alternates unowned leads across the pool",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-085",
+      "title": "Opportunity timeline shows logged activities (call, meeting) and its tasks",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-022",
+      "title": "Report periods are inclusive whole days: 1 Sep 00:00 and 30 Sep 23:59:59 in, 31 Aug / 1 Oct out",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-102",
+      "title": "Calendar/email sync API is present: lists connections, refuses unknown provider (404)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-102b",
+      "title": "Connect Google/Microsoft account and sync calendar + email",
+      "status": "BLOCKED",
+      "category": "env",
+      "detail": "start -> 400 {\"detail\": \"Google sync is not set up on the server. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_SYNC_REDIRECT_URI.\"} (OAuth client not configured on local stack; needs real Google/M365 accounts)"
+    },
+    {
+      "id": "RP-070",
+      "title": "BR-AI-01 AI contact discovery / enrichment endpoint exists",
+      "status": "BLOCKED",
+      "category": "not-implemented",
+      "detail": "No discovery/enrichment endpoint in /openapi.json (BRD marks it optional - C)"
+    },
+    {
+      "id": "RP-103",
+      "title": "BR-SF-17 discount above threshold routed for approval",
+      "status": "BLOCKED",
+      "category": "not-implemented",
+      "detail": "Quote lines accept any discount 0-100% with no approval step (quotes_router.set_lines)"
+    },
+    {
+      "id": "RP-104",
+      "title": "BR-SF-18 A/B test of email subject lines",
+      "status": "BLOCKED",
+      "category": "not-implemented",
+      "detail": "No A/B / variant endpoint in /openapi.json"
+    },
+    {
+      "id": "RP-105",
+      "title": "BR-SF-19 single sign-on with Microsoft 365",
+      "status": "BLOCKED",
+      "category": "not-implemented",
+      "detail": "Only /api/auth/google sign-in exists; Microsoft OAuth is for mailboxes/sync, not sign-in"
+    },
+    {
+      "id": "RP-106",
+      "title": "BR-SF-20 REST API documented (OpenAPI)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-106b",
+      "title": "BR-SF-20 outbound webhooks for other systems",
+      "status": "BLOCKED",
+      "category": "not-implemented",
+      "detail": "Only the inbound SES webhook exists; no webhook subscription API"
+    },
+    {
+      "id": "RP-107",
+      "title": "BR-SF-05 stale-deal alert notification raised by hourly job",
+      "status": "BLOCKED",
+      "category": "env",
+      "detail": "Job runs hourly in vector-worker (app/jobs.py); not waited for in an automated run - see manual case"
+    },
+    {
+      "id": "RP-161",
+      "title": "KPI SQL-to-win rate and forecast accuracy (actual / committed per quarter) reported directly",
+      "status": "BLOCKED",
+      "category": "not-implemented",
+      "detail": "No report returns these ratios; derivable from team-performance counts and forecast commit/won"
+    },
+    {
+      "id": "RP-130",
+      "title": "Dashboards and reports load in under 3 s (worst of 3, owner, seeded tenant)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-150",
+      "title": "UI: owner signs in through the login form and lands in the app",
+      "status": "PASS",
+      "category": "",
+      "detail": "http://localhost:8190/vector/app/dashboard"
+    },
+    {
+      "id": "RP-151",
+      "title": "UI: sales dashboard tiles show the same KPIs as the API (pipeline, won, counts)",
+      "status": "PASS",
+      "category": "",
+      "detail": "$139.5K | $45K | 2 deals | 11 deals | 3 became SQL"
+    },
+    {
+      "id": "RP-152",
+      "title": "UI: forecast tab shows quarter and FY figures equal to the API",
+      "status": "PASS",
+      "category": "",
+      "detail": "13 values matched"
+    },
+    {
+      "id": "RP-153",
+      "title": "UI: team performance lists every rep with revenue won as the API",
+      "status": "PASS",
+      "category": "",
+      "detail": "12 values matched"
+    },
+    {
+      "id": "RP-154",
+      "title": "UI: targets & leaderboard tab shows rep targets as the API",
+      "status": "PASS",
+      "category": "",
+      "detail": "5 values matched"
+    },
+    {
+      "id": "RP-155",
+      "title": "UI: dashboard and every report tab render without page errors or 5xx responses",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-131",
+      "title": "25 concurrent users x 60s mixed reads: 0% errors and p95 < 3 s",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-140",
+      "title": "Login: 10 wrong passwords lock the account; even the right password gets 429 with Retry-After (~15 min)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-141",
+      "title": "Login: per-IP limit (60 attempts / 5 min) answers 429 from the 61st attempt",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-142",
+      "title": "Per-IP limits cannot be bypassed by sending a different X-Forwarded-For on the published API port",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "A new X-Forwarded-For value from the same client gets 401 (not 429): client_ip() in app/core/rate_limit.py trusts the right-most X-Forwarded-For hop, which the client controls when it calls :8191 directly (TRUSTED_PROXY_HOPS=1, no proxy in front)"
+    }
+  ]
+}
