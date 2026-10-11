@@ -1367,6 +1367,11 @@ def t_ui():
 
 @safe("RP-140", "Login rate limit")
 def t_rate_limit():
+    if os.environ.get("RP_RATELIMIT") != "1":
+        # Opt-in: this test makes the client IP unable to log in for ~15 minutes
+        for cid, title in (("RP-140", "Login lockout"), ("RP-141", "Per-IP login limit"), ("RP-142", "X-Forwarded-For spoofing")):
+            R.record(cid, title + " (opt-in: set RP_RATELIMIT=1)", None, "skipped: would lock the shared client IP out of logins", "env")
+        return
     ws = CTX["ws"]
     rl = add_user(ws, "AGENT", "Ratelim")
     ip = fake_ip()
