@@ -100,7 +100,7 @@ services:
     volumes:
       - uploads:/app/uploads
     ports:
-      - "${API_PORT:-8191}:8001"
+      - "127.0.0.1:${API_PORT:-8191}:8001"  # local only: clients reach the API through the web/hub proxy
     depends_on:
       migrate:
         condition: service_completed_successfully

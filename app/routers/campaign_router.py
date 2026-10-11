@@ -377,7 +377,8 @@ async def enroll_prospects(
             "rejected_count": len(rejections),
             "rejected_summary": summarize(rejections),
             "rejected": rejections[:MAX_REJECTIONS_RETURNED],
-            "daily_limit_notice": enrollment_notice(db, current_user, count),
+            "daily_limit_notice": enrollment_notice(db, current_user, count, request.prospect_ids, rejections,
+                                                    campaign_id),
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

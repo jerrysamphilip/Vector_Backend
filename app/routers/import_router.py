@@ -93,6 +93,15 @@ class RowError(Exception):
     pass
 
 
+def _delimiter(text: str) -> str:
+    """Comma, semicolon, tab or pipe; a one-column file has none, so default to comma
+    (letting pandas guess from any character split a lone "Email" header on "m")."""
+    try:
+        return csv.Sniffer().sniff(text[:20000], delimiters=",;\t|").delimiter
+    except csv.Error:
+        return ","
+
+
 def _read_file(upload: UploadFile) -> pd.DataFrame:
     raw = upload.file.read()
     if len(raw) > MAX_FILE_MB * 1024 * 1024:
@@ -103,7 +112,7 @@ def _read_file(upload: UploadFile) -> pd.DataFrame:
             df = pd.read_excel(io.BytesIO(raw), dtype=str)
         else:
             text = raw.decode("utf-8-sig", errors="replace")
-            df = pd.read_csv(io.StringIO(text), dtype=str, sep=None, engine="python")
+            df = pd.read_csv(io.StringIO(text), dtype=str, sep=_delimiter(text), engine="python")
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Could not read the file: {exc}")
     df.columns = [str(c).strip() for c in df.columns]
@@ -193,6 +202,7 @@ def run_import(
     # ── Resolve the mapping, creating new properties first (BR-CM-26) ──
     custom_defs = {d.field_key: d for d in db.query(ContactFieldDefinition).filter(
         ContactFieldDefinition.tenant_id == tenant_id)}
+    required_defs = [d for d in custom_defs.values() if d.required]
     resolved: Dict[str, str] = {}
     for column, target in mapping_in.items():
         if column not in df.columns or not target or target == "skip":
@@ -289,6 +299,9 @@ def run_import(
             if account and domain and account.domain and account.domain != domain:
                 account = None
         created = False
+        if not account and domain and db.query(Account.account_id).filter(
+                Account.tenant_id == tenant_id, Account.domain == domain, Account.deleted_at.isnot(None)).first():
+            return None  # the company is in the recycle bin: don't link to it or recreate it
         if not account:
             new_name = name or crm._name_from_domain(domain)
             if db.query(Account.account_id).filter(Account.tenant_id == tenant_id, Account.name == new_name).first():
@@ -306,6 +319,8 @@ def run_import(
                     (Account.domain == domain) if domain else (Account.name == new_name)).with_for_update().first()
                 if not account:
                     raise RowError("Company could not be saved (name or domain clash)")
+                if account.deleted_at is not None:
+                    return None
         if not created and account.owner_id and not can_see_owner(db, current_user, account.owner_id):
             return account  # link to a company outside the importer's team, but don't edit it (BR-SH-02)
         before = crm.snapshot(account, COMPANY_TARGETS)
@@ -453,6 +468,9 @@ def run_import(
                                      owner_id=vals.get("owner_id") or owner_id or current_user.user_id,
                                      lifecycle_stage="LEAD", lead_status="NEW")
                         apply_contact(p, vals, custom, account, created=True)
+                        missing = [d.label for d in required_defs if (p.custom_fields or {}).get(d.field_key) in (None, "", [])]
+                        if missing:  # same rule as creating a contact in the app (BR-CM-08)
+                            raise RowError(f"Missing required field: {', '.join(missing)}")
                         try:
                             with db.begin_nested():
                                 db.add(p)

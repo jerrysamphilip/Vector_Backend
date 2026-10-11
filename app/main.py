@@ -192,12 +192,13 @@ def readiness_check():
 # Campaign Management
 app.include_router(auth_router)
 app.include_router(user_router)
+# Before campaign_router: GET /campaigns/lists would otherwise match GET /campaigns/{campaign_id}
+app.include_router(campaign_wizard_router)
 app.include_router(campaign_router)
 app.include_router(template_router)
 app.include_router(prospect_list_router)
 app.include_router(prospect_upload_router)
 app.include_router(ai_email_router)
-app.include_router(campaign_wizard_router)
 app.include_router(tracking_router)
 app.include_router(ses_webhook_router)
 app.include_router(email_scheduler_router)

@@ -1,5 +1,6 @@
 
 import hashlib
+import re
 import imaplib
 import email
 from email.header import decode_header
@@ -29,6 +30,18 @@ def _utcnow() -> datetime:
     """Return current UTC time as a naive datetime (compatible with DB-stored naive values)."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
+
+_UNSUB_PHRASES = {"unsubscribe", "please unsubscribe", "please unsubscribe me", "unsubscribe me", "remove me",
+                  "please remove me", "remove me from your list", "opt out", "opt-out", "stop"}
+
+
+def _is_unsubscribe_reply(text: str) -> bool:
+    """A short reply whose first line asks to unsubscribe (a signature or quoted mail may follow)."""
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    if not lines:
+        return False
+    first = re.sub(r"[^a-z\- ]", "", lines[0].lower()).strip()
+    return first in _UNSUB_PHRASES and len(lines[0]) <= 60
 
 class IMAPSyncService:
     def __init__(self, db: Session = None):
@@ -522,7 +535,7 @@ class IMAPSyncService:
                     # --- Reply-based unsubscribe detection ---
                     # Check if the reply body is essentially just "unsubscribe"
                     reply_text = extract_latest_message_text(body).strip().lower()
-                    if reply_text in ("unsubscribe", "unsubscribe.", "please unsubscribe", "please unsubscribe me"):
+                    if _is_unsubscribe_reply(reply_text):
                         try:
                             # Every campaign in the workspace, not just this one (BR-DF-08)
                             from app.services.suppression import suppress

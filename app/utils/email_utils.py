@@ -15,6 +15,14 @@ PERSONAL_EMAIL_DOMAINS = {
 
 CTA_PLACEHOLDER_PATTERN = re.compile(r"^\{+\s*(calendar_link|cta_link)\s*\}+$", re.IGNORECASE)
 
+# Practical address check: one @, no spaces, a dot-atom local part and a domain of
+# letter/digit/hyphen labels with a 2+ letter TLD (rejects "broken@", "has space@x.com").
+_EMAIL_RE = re.compile(
+    r"^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
+    r"@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
+)
+
+
 def parse_email(raw_email):
     # Handle None, NaN (float), or other non-string values
     if raw_email is None or not isinstance(raw_email, str):
@@ -24,7 +32,7 @@ def parse_email(raw_email):
         return None
 
     email = raw_email.strip().lower()
-    if "@" not in email:
+    if not _EMAIL_RE.match(email):
         return None
 
     domain = email.split("@")[-1]

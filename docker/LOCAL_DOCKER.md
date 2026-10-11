@@ -128,7 +128,7 @@ Set these in the backend secret for each environment (the manifests read them):
 | `ALLOW_SELF_SIGNUP` | `false` (default in production) | `true` lets anyone create a workspace from the login page |
 | `AWS_SNS_TOPIC_ARN` | your SES notifications topic | Only notifications from this topic are accepted |
 | `JWT_SECRET_KEY`, `CREDENTIALS_ENCRYPTION_KEY` | long random values | The app refuses to start with the development defaults |
-| `TRUSTED_PROXY_HOPS` | `1` (one load balancer) | How many proxies append to `X-Forwarded-For`; used for rate limiting |
+| `TRUSTED_PROXY_HOPS` | `1` (one load balancer) | How many proxies append to `X-Forwarded-For`; used for rate limiting. The API must only be reachable through those proxies (as with the EKS ClusterIP service); a directly reachable API lets clients pick their own X-Forwarded-For and dodge the per-IP limits |
 | `LOG_LEVEL` | `INFO` | Application log level |
 | `ENABLE_DOCS` | unset | `true` re-enables `/docs` in production |
 

@@ -182,6 +182,11 @@ def resolve_company(db: Session, tenant_id: str, email: Optional[str] = None,
             if same_name:
                 same_name.domain = domain
                 return same_name
+        # A company in the recycle bin still owns its domain (unique key): leave the contact
+        # unlinked rather than linking it to the deleted company; restoring the company relinks
+        if db.query(Account.account_id).filter(Account.tenant_id == tenant_id, Account.domain == domain,
+                                               Account.deleted_at.isnot(None)).first():
+            return None
         new_name = name or _name_from_domain(domain)
         if db.query(Account.account_id).filter(Account.tenant_id == tenant_id, Account.name == new_name).first():
             new_name = f"{new_name} ({domain})"[:255]
@@ -197,6 +202,9 @@ def resolve_company(db: Session, tenant_id: str, email: Optional[str] = None,
     account = live.filter(Account.name == name).first()
     if account or not create:
         return account
+    if db.query(Account.account_id).filter(Account.tenant_id == tenant_id, Account.name == name,
+                                           Account.deleted_at.isnot(None)).first():
+        return None  # name held by a company in the recycle bin
     account = Account(tenant_id=tenant_id, name=name, lifecycle_stage="LEAD",
                       **{k: v for k, v in defaults.items() if v})
     db.add(account)
@@ -253,7 +261,7 @@ def purge_expired(db: Session) -> int:
     cutoff = datetime.utcnow() - timedelta(days=RESTORE_WINDOW_DAYS)
     ids = [r[0] for r in db.query(Prospect.prospect_id).filter(
         Prospect.deleted_at.isnot(None), Prospect.deleted_at <= cutoff).limit(5000)]
-    delete_contacts(db, ids)
+    delete_contacts(db, ids, reason="PURGE_CONTACT")  # recycle bin expiry, by the system
     accounts = db.query(Account).filter(Account.deleted_at.isnot(None), Account.deleted_at <= cutoff).all()
     from app.models.crm import CrmTask
     from app.models.sales import Lead, Opportunity

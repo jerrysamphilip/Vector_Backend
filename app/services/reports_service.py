@@ -47,6 +47,15 @@ from app.schemas.reports_schema import (
 logger = logging.getLogger(__name__)
 
 
+
+def _by_owner(column, user_id):
+    """Filter for one user id, a set of ids (a manager's team), or nobody (None = everyone)."""
+    if not user_id:
+        return [] if user_id is None else [column.is_(None) & column.isnot(None)]  # empty team -> nothing
+    if isinstance(user_id, str):
+        return [column == user_id]
+    return [column.in_(list(user_id))]
+
 class ReportsService:
     def __init__(self, db: Session):
         self.db = db
@@ -54,8 +63,7 @@ class ReportsService:
     def _campaign_subquery(self, tenant_id: str, user_id: Optional[str] = None):
         """Return a subquery of campaign_ids scoped to tenant (and optionally a single user)."""
         q = self.db.query(Campaign.campaign_id).filter(Campaign.tenant_id == tenant_id)
-        if user_id:
-            q = q.filter(Campaign.created_by == user_id)
+        q = q.filter(*_by_owner(Campaign.created_by, user_id))
         return q.subquery()
 
     # ------------------------------------------------------------------
@@ -331,7 +339,7 @@ class ReportsService:
             .outerjoin(event_subquery, event_subquery.c.campaign_id == Campaign.campaign_id)
             .filter(
                 Campaign.tenant_id == tenant_id,
-                *([Campaign.created_by == user_id] if user_id else []),
+                *_by_owner(Campaign.created_by, user_id),
             )
         )
 
@@ -584,8 +592,7 @@ class ReportsService:
     def get_campaign_stats(self, tenant_id: str, user_id: Optional[str] = None) -> CampaignStats:
         """Campaign status breakdown."""
         q = self.db.query(Campaign.status, func.count(Campaign.campaign_id)).filter(Campaign.tenant_id == tenant_id)
-        if user_id:
-            q = q.filter(Campaign.created_by == user_id)
+        q = q.filter(*_by_owner(Campaign.created_by, user_id))
         rows = (
             q.group_by(Campaign.status)
             .all()
@@ -782,14 +789,15 @@ class ReportsService:
     # FULL DASHBOARD SUMMARY
     # ------------------------------------------------------------------
 
-    def get_user_breakdown(self, tenant_id: str, start_date: date, end_date: date) -> list:
-        """Per-user campaign performance summary for team analytics."""
+    def get_user_breakdown(self, tenant_id: str, start_date: date, end_date: date, user_ids=None) -> list:
+        """Per-user campaign performance summary for team analytics (user_ids: limit to a team)."""
         users = (
             self.db.query(User)
             .filter(
                 User.tenant_id == tenant_id,
                 User.status == "ACTIVE",
                 User.role != "PLATFORM_ADMIN",
+                *_by_owner(User.user_id, user_ids),
             )
             .order_by(User.first_name)
             .all()
@@ -878,7 +886,7 @@ class ReportsService:
         )
 
         # User breakdown only for org-wide view (not when filtering to one user)
-        user_breakdown = [] if user_id else self.get_user_breakdown(tenant_id, start_date, end_date)
+        user_breakdown = [] if isinstance(user_id, str) else self.get_user_breakdown(tenant_id, start_date, end_date, user_id)
 
         return DashboardSummaryResponse(
             kpis=analytics.kpis,

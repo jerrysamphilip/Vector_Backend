@@ -738,7 +738,9 @@ def export_contacts(
     current_user: User = Depends(tenant_user),
 ):
     """Export a view to CSV / XLSX. Admins and managers only (BR-CM-31)."""
-    if not (can_manage_contacts(current_user) and current_user.role in ("SUPER_ADMIN", "ADMIN", "MANAGER")):
+    # Role right (BR-CM-31); a user with customised permissions also needs export_data
+    custom = current_user.custom_permissions
+    if current_user.role not in ("SUPER_ADMIN", "ADMIN", "MANAGER") or (custom is not None and "export_data" not in custom):
         raise HTTPException(status_code=403, detail="Only admins and managers can export contacts")
     keys = [c for c in (columns or "").split(",") if c in COLUMNS] or list(COLUMNS)
     field_defs = db.query(ContactFieldDefinition).filter(
@@ -894,7 +896,8 @@ def bulk_update(
         result.update(updated=count, enrolled_count=count, rejected_count=len(rejections),
                       rejected_summary=summarize(rejections), rejected=rejections[:MAX_REJECTIONS_RETURNED])
         from app.services.daily_limit import enrollment_notice
-        result["daily_limit_notice"] = enrollment_notice(db, current_user, count)
+        result["daily_limit_notice"] = enrollment_notice(db, current_user, count, [p.prospect_id for p in prospects],
+                                                         rejections, campaign.campaign_id)
     elif action == "delete":
         if current_user.role == "AGENT":
             raise HTTPException(status_code=403, detail="Agents cannot delete contacts")

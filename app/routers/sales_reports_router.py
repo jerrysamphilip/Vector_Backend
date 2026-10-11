@@ -183,9 +183,10 @@ def funnel(date_from: Optional[date] = None, date_to: Optional[date] = None, mem
         # Step counts are period volumes, not one cohort, so a step can exceed the one before
         # (e.g. deals created directly); a ratio over 100% would mislead, so none is shown.
         ratio = _pct(n, prev) if prev is not None else None
+        first = _pct(n, steps[0][2]) if steps[0][2] else None
         out.append({"key": key, "label": label, "count": n,
                     "from_previous": ratio if ratio is not None and ratio <= 100 else None,
-                    "from_first": _pct(n, steps[0][2]) if steps[0][2] else None})
+                    "from_first": first if first is not None and first <= 100 else None})
         prev = n
     return masked_for(db, current_user, {"period": {"from": d0, "to": d1}, "stages": out, "won_amount": m["won_amount"]})
 

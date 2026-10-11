@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, distinct
 from typing import List, Optional
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.core.database import get_db
 from app.models.prospect_list import ProspectList, ProspectListMember
@@ -264,9 +264,22 @@ async def enroll_prospects(
     eligible, screened_out = enrollment_rules.screen(db, current_user.tenant_id, campaign_id, prospects)
     rejections.extend(screened_out)
 
+    if campaign.status not in ("DRAFT", "PAUSED", "ACTIVE"):
+        raise HTTPException(status_code=400, detail="Cannot enroll prospects in current campaign status")
+    from app.models.email_sequence import EmailSequence
+    step1 = db.query(EmailSequence).filter(EmailSequence.campaign_id == campaign_id,
+                                           EmailSequence.step_number == 1).first()
+    now = datetime.utcnow()
+    first_at = now + timedelta(days=step1.wait_days if step1 and step1.wait_days else 0)
     for prospect in eligible:
-        db.add(CampaignProspect(campaign_id=campaign_id, prospect_id=prospect.prospect_id,
-                                current_step=1, status="ACTIVE"))
+        db.add(CampaignProspect(campaign_id=campaign_id, prospect_id=prospect.prospect_id, current_step=1,
+                                status="ACTIVE", enrolled_at=now, next_scheduled_at=first_at))
+    db.flush()
+    if eligible and campaign.status in ("ACTIVE", "PAUSED"):
+        # Already launched: create the new contacts' emails now, as single enrollment does;
+        # the scheduler only sends existing EmailMessage rows (launch made them for the rest)
+        from app.services.campaign_email_service import CampaignEmailService
+        CampaignEmailService(db)._preschedule_all_emails(campaign_id)
     db.commit()
 
     counts = enrollment_rules.summarize(rejections)
@@ -484,7 +497,7 @@ async def delete_prospect(
         raise HTTPException(status_code=404, detail="Prospect not found")
     
     from app.services.contact_service import delete_contacts
-    delete_contacts(db, [prospect_id])
+    delete_contacts(db, [prospect_id], actor_id=current_user.user_id)
     db.commit()
     
     return {"status": "deleted", "prospect_id": prospect_id}

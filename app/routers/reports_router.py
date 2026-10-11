@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from datetime import date, timedelta
+from typing import Optional
 
 from app.core.auth import require_role, require_permission
 from app.core.database import get_db
@@ -31,6 +32,28 @@ def get_reports_service(db: Session = Depends(get_db)) -> ReportsService:
 # DASHBOARD SUMMARY (single call)
 # =============================
 
+
+def _report_scope(db, current_user: User, user_id: Optional[str]):
+    """Whose campaigns a report may cover: agents themselves, admins anyone, managers their
+    own team (a single member on request; another team's member is refused)."""
+    from app.services.contact_service import visible_user_ids
+    if current_user.role == "AGENT":
+        return current_user.user_id
+    visible = visible_user_ids(db, current_user)
+    if visible is None:
+        return user_id
+    if user_id:
+        if user_id not in visible:
+            raise HTTPException(status_code=403, detail="That user is outside your team")
+        return user_id
+    return sorted(visible)
+
+
+def _can_see_owner(db, current_user: User, owner_id: Optional[str]) -> bool:
+    from app.services.contact_service import visible_user_ids
+    visible = visible_user_ids(db, current_user)
+    return visible is None or owner_id in visible
+
 @router.get("/dashboard-summary", response_model=DashboardSummaryResponse, dependencies=[Depends(require_permission("view_analytics"))])
 async def get_dashboard_summary(
     start_date: date = Query(None, description="Start date (defaults to 30 days ago)"),
@@ -51,8 +74,7 @@ async def get_dashboard_summary(
         start_date = end_date - timedelta(days=29)
 
     # AGENTs always see only their own data
-    if current_user.role in ("AGENT", "AGENT"):
-        user_id = current_user.user_id
+    user_id = _report_scope(service.db, current_user, user_id)
 
     return service.get_dashboard_summary(
         tenant_id=current_user.tenant_id,
@@ -85,8 +107,7 @@ async def get_global_analytics(
     if not start_date:
         start_date = end_date - timedelta(days=29)
 
-    if current_user.role in ("AGENT", "AGENT"):
-        user_id = current_user.user_id
+    user_id = _report_scope(service.db, current_user, user_id)
 
     return service.get_global_analytics(
         tenant_id=current_user.tenant_id,
@@ -116,8 +137,7 @@ async def get_campaign_comparison(
     """
     All campaigns side-by-side with metrics, sortable and paginated.
     """
-    if current_user.role in ("AGENT", "AGENT"):
-        user_id = current_user.user_id
+    user_id = _report_scope(service.db, current_user, user_id)
 
     return service.get_campaign_comparison(
         tenant_id=current_user.tenant_id,
@@ -154,6 +174,7 @@ async def get_provider_performance(
         tenant_id=current_user.tenant_id,
         start_date=start_date,
         end_date=end_date,
+        user_id=_report_scope(service.db, current_user, None),
     )
 
 
@@ -174,11 +195,10 @@ async def export_global_analytics_csv(
         end_date = date.today()
     if not start_date:
         start_date = end_date - timedelta(days=29)
-    if current_user.role in ("AGENT", "AGENT"):
-        user_id = current_user.user_id
+    user_id = _report_scope(service.db, current_user, user_id)
 
     buf = service.export_global_analytics_csv(current_user.tenant_id, start_date, end_date, user_id)
-    filename = f"analytics_{start_date}_{end_date}{'_' + user_id[:8] if user_id else ''}.csv"
+    filename = f"analytics_{start_date}_{end_date}{'_' + user_id[:8] if isinstance(user_id, str) else ''}.csv"
     return StreamingResponse(
         buf,
         media_type="text/csv",
@@ -199,11 +219,10 @@ async def export_global_analytics_docx(
         end_date = date.today()
     if not start_date:
         start_date = end_date - timedelta(days=29)
-    if current_user.role in ("AGENT", "AGENT"):
-        user_id = current_user.user_id
+    user_id = _report_scope(service.db, current_user, user_id)
 
     buf = service.export_global_analytics_docx(current_user.tenant_id, start_date, end_date, user_id)
-    filename = f"analytics_report_{start_date}_{end_date}{'_' + user_id[:8] if user_id else ''}.docx"
+    filename = f"analytics_report_{start_date}_{end_date}{'_' + user_id[:8] if isinstance(user_id, str) else ''}.docx"
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -218,10 +237,9 @@ async def export_campaign_comparison_csv(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")),
 ):
     """Download campaign comparison table as CSV (scoped to user if user_id provided)."""
-    if current_user.role == "AGENT":
-        user_id = current_user.user_id
+    user_id = _report_scope(service.db, current_user, user_id)
     buf = service.export_campaign_comparison_csv(current_user.tenant_id, user_id=user_id)
-    filename = f"campaign_comparison{'_' + user_id[:8] if user_id else ''}.csv"
+    filename = f"campaign_comparison{'_' + user_id[:8] if isinstance(user_id, str) else ''}.csv"
     return StreamingResponse(
         buf,
         media_type="text/csv",
@@ -239,7 +257,7 @@ async def export_prospects_csv(
     """Download prospects with engagement data for a campaign as CSV."""
     # Verify campaign belongs to tenant
     campaign = db.query(Campaign).filter(Campaign.campaign_id == campaign_id).first()
-    if not campaign or campaign.tenant_id != current_user.tenant_id:
+    if not campaign or campaign.tenant_id != current_user.tenant_id or not _can_see_owner(db, current_user, campaign.created_by):
         raise HTTPException(status_code=404, detail="Campaign not found")
 
     buf = service.export_prospects_csv(campaign_id)
