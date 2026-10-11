@@ -181,6 +181,10 @@ class Settings(BaseSettings):
     # and set RUN_BACKGROUND_JOBS=false on the API.
     AUTO_MIGRATE: bool = False
     RUN_BACKGROUND_JOBS: bool = True
+
+    # Test/staging aid: let the scheduler send on weekends and holidays (the send window HOURS still apply).
+    # Ignored when ENVIRONMENT=production.
+    SEND_ON_ANY_DAY: bool = False
     WORKER_HEALTH_PORT: int = 8002
 
     # Observability (app/core/observability.py). LOG_FORMAT=json is read from the environment.
