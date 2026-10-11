@@ -1161,7 +1161,7 @@ def _():
     mc2 = seed_campaign("mgr2")[0]
     s2, b2 = req("POST", f"/campaigns/{mc2}/prospects", {"prospect_ids": under}, U["mgr2"]["token"])
     R.check("SP-137", "Enrolling past the remaining quota returns a notice (1 left, 2 wait); within quota → no notice",
-            s == 200 and "Only 1 of today's 500" in note and "other 2" in note and s2 == 200
+            s == 200 and "Only 1 of today's 500" in note and "2 first email" in note and s2 == 200
             and b2.get("enrolled_count") == 2 and b2.get("daily_limit_notice") is None, f"{s} {note!r} | {s2} {b2}")
 
 

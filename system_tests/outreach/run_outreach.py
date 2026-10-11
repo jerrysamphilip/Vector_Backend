@@ -500,7 +500,7 @@ def t_events():
     stamp = datetime.utcnow().isoformat() + "Z"
     ev = ses_delivery(m[2], em("evt2"), sent[m[2]][0], src, stamp=stamp)
     r1, r2 = ses_post(ev), ses_post(ev)
-    n = scalar(f"SELECT COUNT(*) FROM email_events WHERE message_id={q(m[2])} AND event_type='DELIVERED'")
+    n = scalar(f"SELECT COUNT(*) FROM email_events WHERE message_id={q(m[2])} AND event_type=10")
     rec("OUT-042", "A redelivered (duplicate) SES event is processed once",
         r2[1].get("status") == "duplicate" and n == "1", f"first={r1} second={r2} delivered_events={n}")
 
@@ -534,9 +534,9 @@ def t_events():
     rec("OUT-047", "A late delivery event overrides UNCONFIRMED", mstatus(late)[2] == "DELIVERED", f"{mstatus(late)}")
 
     # tracking
-    before = int(scalar(f"SELECT COUNT(*) FROM email_events WHERE message_id={q(m[6])} AND event_type='OPENED'") or 0)
+    before = int(scalar(f"SELECT COUNT(*) FROM email_events WHERE message_id={q(m[6])} AND event_type=2") or 0)
     s, body = req("GET", f"/tracking/open/{m[6]}.png", raw=True)
-    after = int(scalar(f"SELECT COUNT(*) FROM email_events WHERE message_id={q(m[6])} AND event_type='OPENED'") or 0)
+    after = int(scalar(f"SELECT COUNT(*) FROM email_events WHERE message_id={q(m[6])} AND event_type=2") or 0)
     if before == after:  # event type name may differ
         after = int(scalar(f"SELECT COUNT(*) FROM email_events WHERE message_id={q(m[6])}") or 0) - before
     rec("OUT-117", "Open pixel returns an image and records an open event", s == 200 and after > before, f"{s} events {before}->{after}")
@@ -548,7 +548,9 @@ def t_events():
     rec("OUT-118b", "Click on a link that is in the email is recorded and redirected (302)", s == 302, f"{s}")
     s, b = req("GET", f"/campaigns/{cid}/analytics", token=A.token)
     rec("OUT-119", "Campaign analytics reflect sent emails and events",
-        s == 200 and b.get("total_messages_sent", 0) >= 6, f"{s} total_sent={b.get('total_messages_sent') if isinstance(b, dict) else b} "
+        s == 200 and b.get("total_messages_sent", -1) == int(scalar(
+            f"SELECT COUNT(*) FROM email_messages WHERE campaign_id={q(cid)} AND direction='OUTBOUND' AND sent_at IS NOT NULL") or 0),
+        f"{s} db_sent={scalar('SELECT COUNT(*) FROM email_messages WHERE campaign_id=' + q(cid) + ' AND direction=' + q('OUTBOUND') + ' AND sent_at IS NOT NULL')} total_sent={b.get('total_messages_sent') if isinstance(b, dict) else b} "
         f"metrics={json.dumps(b.get('metrics') if isinstance(b, dict) else '')[:200]}")
     s, b = req("GET", f"/reports/export/prospects/{cid}", token=A.token, raw=True)
     rec("OUT-120", "Prospect report export for a campaign returns a file with the campaign's contacts",

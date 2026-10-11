@@ -258,10 +258,12 @@ def normalize_paragraph_spacing(body: str) -> str:
 
 
 
-def extract_latest_message_text(body_content: str) -> str:
+def extract_latest_message_text(body_content: str, strip_boilerplate: bool = True) -> str:
     """
     Extract newest human-written portion of an email body.
-    Removes quoted history, tracking/link noise, and unsubscribe boilerplate.
+    Removes quoted history, tracking/link noise, and (unless strip_boilerplate=False)
+    unsubscribe/footer boilerplate. Detecting a prospect's own "unsubscribe" reply needs
+    strip_boilerplate=False, otherwise the one word they wrote is removed as footer text.
     """
     if not body_content:
         return ""
@@ -306,7 +308,7 @@ def extract_latest_message_text(body_content: str) -> str:
         r"(?im)^\s*(regards|best regards|best|thanks),?\s*$",
         r"(?im)^\s*(head\s*[-–]\s*.+|t:\s*.+|a:\s*.+)\s*$",
     ]
-    for pattern in cleanup_patterns:
+    for pattern in (cleanup_patterns if strip_boilerplate else ()):
         text = re.sub(pattern, "", text)
 
     # Remove URL-only lines and collapse blank lines.
