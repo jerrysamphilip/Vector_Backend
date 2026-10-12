@@ -1,0 +1,95 @@
+{
+  "suite": "UI outreach/admin - inboxdomain",
+  "counts": {
+    "PASS": 10,
+    "FAIL": 2,
+    "BLOCKED": 0
+  },
+  "seconds": 38,
+  "cases": [
+    {
+      "id": "UIO-INBOX-00",
+      "title": "Inbox with existing conversations but no IMAP-configured mailbox still shows the conversations (not only the IMAP setup guide)",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "conversations hidden behind IMAP setup guide although 2 conversations exist (API returns them)"
+    },
+    {
+      "id": "UIO-INBOX-01",
+      "title": "Unified Inbox lists both conversations (unread highlighted) with subject/snippet; no problems",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-INBOX-02",
+      "title": "Search narrows the list; opening a thread shows the message and marks it read (DB is_unread=0)",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "search did not filter"
+    },
+    {
+      "id": "UIO-INBOX-03",
+      "title": "Reply form: empty reply does nothing; Enter sends a reply -> OUTBOUND message stored for that conversation",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-INBOX-04",
+      "title": "Reply failure (API 500) restores the draft text and does not crash",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-INBOX-05",
+      "title": "Sync button without IMAP reports a clear message; Refresh works",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-INBOX-06",
+      "title": "Tenant isolation: conversations of this workspace are not visible to another workspace",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-DOM-01",
+      "title": "Domain Health lists the workspace sending domain with SPF/DKIM/DMARC chips, KPIs consistent with inbox count",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-DOM-02",
+      "title": "Trend filter select: switching All domains <-> single domain re-renders the chart without errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-DOM-03",
+      "title": "Details modal shows DNS/campaign/inbox info; Run Diagnostics gives feedback; Close works",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-DOM-04",
+      "title": "Delete domain: confirm, removes the domain card and DB record (no add-domain UI exists: domains derive from inboxes)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-DOM-05",
+      "title": "AGENT role can open Domain Health without forbidden-API noise",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

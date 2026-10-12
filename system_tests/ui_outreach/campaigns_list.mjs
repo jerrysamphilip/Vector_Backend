@@ -104,11 +104,11 @@ const tid = (await api('POST', '/tasks', { token: ws.token, body: { title: 'Call
   }, page);
   await S.t(`${A}-LIST-04`, 'Row Pause on ACTIVE campaign -> PAUSED (DB + badge), Resume -> ACTIVE', async () => {
     await go(page, '/app/campaigns');
-    await rowOf(page, nameB).getByTitle('Pause').click();
+    await rowOf(page, nameB).locator('button[title="Pause"]').click();
     await sleep(1200);
     if (campStatus(cB) !== 'PAUSED') return 'DB status ' + campStatus(cB);
     if (!/PAUSED/i.test(await rowOf(page, nameB).innerText())) return 'badge not updated';
-    await rowOf(page, nameB).getByTitle('Resume').click();
+    await rowOf(page, nameB).locator('button[title="Resume"]').click();
     await sleep(1200);
     if (campStatus(cB) !== 'ACTIVE') return 'DB status after resume ' + campStatus(cB);
     if (!/ACTIVE/i.test(await rowOf(page, nameB).innerText())) return 'badge not updated after resume';
@@ -116,11 +116,11 @@ const tid = (await api('POST', '/tasks', { token: ws.token, body: { title: 'Call
   }, page);
   await S.t(`${A}-LIST-05`, 'Delete: cancelling the confirm keeps the campaign; accepting removes it (UI + DB)', async () => {
     dlg.stop(); const d2 = dialogs(page, 'dismiss');
-    await rowOf(page, nameX).getByTitle('Delete').click(); await sleep(600);
+    await rowOf(page, nameX).locator('button[title="Delete"]').click(); await sleep(600);
     if (!(await rowOf(page, nameX).count())) return 'row removed despite cancel';
     if (sql(`SELECT COUNT(*) FROM campaigns WHERE campaign_id=${q(cX)}`) !== '1') return 'deleted in DB despite cancel';
     d2.stop(); const d3 = dialogs(page, 'accept');
-    await rowOf(page, nameX).getByTitle('Delete').click(); await sleep(1500);
+    await rowOf(page, nameX).locator('button[title="Delete"]').click(); await sleep(1500);
     if (!d3.some(m => m.includes(nameX))) return 'confirm text missing campaign name: ' + d3.join('|');
     if (await rowOf(page, nameX).count()) return 'row still visible after delete';
     const n = sql(`SELECT COUNT(*) FROM campaigns WHERE campaign_id=${q(cX)}`);
@@ -131,13 +131,13 @@ const tid = (await api('POST', '/tasks', { token: ws.token, body: { title: 'Call
   await S.t(`${A}-LIST-06`, 'Row click: DRAFT opens the wizard in edit mode, ACTIVE opens details; View icon opens details', async () => {
     dialogs(page, 'accept');
     await go(page, '/app/campaigns');
-    await rowOf(page, nameD).locator('td').nth(1).click();
+    await rowOf(page, nameD).locator('p', { hasText: nameD }).click();
     await page.waitForURL(new RegExp('campaigns/new\\?edit=' + cD));
     await go(page, '/app/campaigns');
-    await rowOf(page, nameA).locator('td').nth(1).click();
+    await rowOf(page, nameA).locator('p', { hasText: nameA }).click();
     await page.waitForURL(new RegExp('campaigns/' + cA + '$'));
     await go(page, '/app/campaigns');
-    await rowOf(page, nameA).getByTitle('View').click();
+    await rowOf(page, nameA).locator('button[title="View"]').click();
     await page.waitForURL(new RegExp('campaigns/' + cA + '$'));
   }, page);
   await S.t(`${A}-LIST-07`, 'Select-all + bulk bar: Pause selected (confirm) pauses active campaigns in DB; clear selection', async () => {
@@ -147,7 +147,7 @@ const tid = (await api('POST', '/tasks', { token: ws.token, body: { title: 'Call
     await rowOf(page, nameB).locator('input[type=checkbox]').check();
     await waitText(page, /2 selected|selected/i);
     await page.getByRole('button', { name: /^Pause/ }).first().click();
-    await sleep(2000);
+    await sleep(3000);
     if (campStatus(cA) !== 'PAUSED' || campStatus(cB) !== 'PAUSED') return `statuses ${campStatus(cA)}/${campStatus(cB)}`;
     await rowOf(page, nameA).locator('input[type=checkbox]').check();
     await page.getByRole('button', { name: /^Resume/ }).first().click(); await sleep(1500);
@@ -158,17 +158,17 @@ const tid = (await api('POST', '/tasks', { token: ws.token, body: { title: 'Call
     await go(page, '/app/campaigns');
     await page.route('**/campaigns/*/pause', r => r.fulfill({ status: 409, contentType: 'application/json', body: '{"detail":"Campaign cannot be paused right now"}' }));
     const before = await body(page);
-    await rowOf(page, nameA).getByTitle('Pause').click(); await sleep(1200);
+    await rowOf(page, nameA).locator('button[title="Pause"]').click(); await sleep(1200);
     await page.unroute('**/campaigns/*/pause');
     const after = await body(page);
     w.drain([/.*/]);
     if (!/cannot be paused|failed|error/i.test(after) && !dlg.length) return 'API error on pause shown nowhere (silent failure)';
   }, page);
   await S.t(`${A}-LIST-09`, 'Campaigns list: API 500 shows an explicit error (not the empty state)', async () => {
-    await page.route('**/campaigns?*', r => r.request().method() === 'GET' ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"x"}' }) : r.continue());
-    await page.route('**/campaigns', r => r.request().method() === 'GET' ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"x"}' }) : r.continue());
+    const h = r => (r.request().method() === 'GET' && r.request().resourceType() !== 'document') ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"x"}' }) : r.continue();
+    await page.route(/\/api\/campaigns(\?.*)?$/, h);
     await go(page, '/app/campaigns', { wait: 1800 });
-    await page.unroute('**/campaigns?*'); await page.unroute('**/campaigns');
+    await page.unroute(/\/api\/campaigns(\?.*)?$/, h);
     const t = await body(page); w.drain([/.*/]);
     if (/No campaigns yet/.test(t)) return 'error shown as empty state';
     if (!/Failed to load|error|try again/i.test(t)) return 'no error message: ' + t.slice(-150);
@@ -223,10 +223,10 @@ const tid = (await api('POST', '/tasks', { token: ws.token, body: { title: 'Call
     return await clean(page, w);
   }, page);
   const ag = await S.open(ws, 'agent');
-  await S.t(`${A}-ROLE-agent-dash`, 'AGENT on Campaign analytics: page shows a clear state (no raw 403 errors / crash)', async () => {
+  await S.t(`${A}-ROLE-agent-dash`, 'AGENT without view_analytics: no Campaign analytics link, URL redirects Home, no 403 calls', async () => {
     await go(ag.page, '/app/analytics', { wait: 1500 });
     const probs = ag.w.drain(); const bp = await ag.w.bodyProblems();
-    const t = await body(ag.page);
+    if (!/\/app\/dashboard$/.test(new URL(ag.page.url()).pathname)) return 'not redirected: ' + ag.page.url();
     if (probs.length || bp.length) return [...probs, ...bp].join(' ; ');
   }, ag.page);
 }

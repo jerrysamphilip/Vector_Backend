@@ -1,0 +1,1777 @@
+{
+  "suite": "UI outreach/admin",
+  "counts": {
+    "PASS": 182,
+    "FAIL": 14,
+    "BLOCKED": 0
+  },
+  "failuresByCategory": {
+    "unclassified": 14
+  },
+  "cases": [
+    {
+      "id": "UIO-AUTH-01",
+      "title": "Login page renders email/password fields, Forgot password link, no problems",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-02",
+      "title": "Empty submit shows \"Email and password are required\" and sends no request",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-03",
+      "title": "Wrong password shows \"Invalid email or password\", stays on /login, no cookie session",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-04",
+      "title": "Password show/hide toggle switches input type",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-05",
+      "title": "Forgot password link navigates to /forgot-password",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-06",
+      "title": "Suspended account: login shows \"Account is suspended or inactive\"",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-07",
+      "title": "Locked after 10 failed attempts: UI shows \"Too many failed sign-in attempts\" (429), correct password also refused",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-08",
+      "title": "Login API 500 degrades to a readable message (no crash / [object Object])",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-09",
+      "title": "Successful login lands on Home (/app/dashboard) with session cookies and stored user",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-10",
+      "title": "Authenticated user opening /login is redirected to the app (PublicRoute)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-11",
+      "title": "Logout via profile menu returns to /login, clears stored user + cookies; Back does not reopen the app",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-20",
+      "title": "ForgotPassword renders; empty email shows Email is required and sends nothing",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-21",
+      "title": "Known email: generic success message and a reset-token row is stored (hash only)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-22",
+      "title": "Unknown email shows the same generic message (no enumeration) and stores nothing",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-23",
+      "title": "Forgot password 500 -> readable error, no crash",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-30",
+      "title": "ResetPassword without token: submitting shows \"Invalid or missing reset token\"",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-31",
+      "title": "Short password rejected client-side (<8)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-32",
+      "title": "Mismatched confirmation rejected",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-33",
+      "title": "Valid token: success message, redirect to /login, token marked used, new password works / old does not",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-34",
+      "title": "Reusing the token shows \"Invalid or expired reset token\"",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-35",
+      "title": "Expired token shows \"Reset token has expired\"",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-40",
+      "title": "AcceptInvite without token: \"Invalid or missing invitation token\"",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-41",
+      "title": "Validation: names required, password >= 8, confirmation matches",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-42",
+      "title": "Invalid token -> server message shown (404 \"Invalid or expired invitation\")",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-43",
+      "title": "Expired invitation -> \"Invitation has expired\" and invitation row EXPIRED",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-44",
+      "title": "Valid invitation: account created (role/tenant from invite), redirect to /login, can then log in",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-45",
+      "title": "Re-using the accepted invitation shows an error, no duplicate user",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-50",
+      "title": "MagicLogin without token: \"Missing magic login token\"",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-51",
+      "title": "MagicLogin with unknown token shows error (not blank)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-52",
+      "title": "Expired magic token shows \"has expired\"",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-53",
+      "title": "Valid magic link on INVITED user: signs in, activates user, goes to /set-password; token single use",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-54",
+      "title": "SetPassword validation (short, mismatch) and wrong temporary password error",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-55",
+      "title": "SetPassword success: confirmation then Home; new password works",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-56",
+      "title": "Used magic token cannot be replayed",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-60",
+      "title": "MFA user: correct password shows the second step (no session yet)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-61",
+      "title": "Short code rejected client-side; wrong code shows server message",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-62",
+      "title": "Correct TOTP completes sign-in to Home",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-63",
+      "title": "Recovery code path signs in once; the same recovery code is then refused",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-64",
+      "title": "Cancel on the second step returns to the email/password form",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-65",
+      "title": "MFA user via magic link also gets the second step",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-70",
+      "title": "Deleting only the access cookie: next navigation silently refreshes (stays signed in)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-71",
+      "title": "Deleting all session cookies redirects to /login and clears stored user",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTH-72",
+      "title": "Unauthenticated deep link /app/campaigns redirects to /login, then back to the target after login",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "auth",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-SB-owner",
+      "title": "Sidebar menu for OWNER: role-specific items visible/hidden, role badge, groups accordion",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-SB-admin",
+      "title": "Sidebar menu for ADMIN: role-specific items visible/hidden, role badge, groups accordion",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-SB-manager",
+      "title": "Sidebar menu for MANAGER: role-specific items visible/hidden, role badge, groups accordion",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-SB-agent",
+      "title": "Sidebar menu for AGENT: role-specific items visible/hidden, role badge, groups accordion",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-SB-collapse",
+      "title": "Sidebar group header toggles collapse/expand (aria-expanded)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-NAV-owner",
+      "title": "Every visible sidebar link navigates and its page renders cleanly (OWNER)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-NAV-admin",
+      "title": "Every visible sidebar link navigates and its page renders cleanly (ADMIN)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-NAV-manager",
+      "title": "Every visible sidebar link navigates and its page renders cleanly (MANAGER)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-NAV-agent",
+      "title": "Every visible sidebar link navigates and its page renders cleanly (AGENT)",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "Campaign analytics: link missing",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-GUARD-agent",
+      "title": "AGENT opening restricted URLs is redirected to Home (no flash of forbidden data)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-GUARD-manager",
+      "title": "MANAGER opening restricted URLs is redirected to Home (no flash of forbidden data)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-GUARD-admin-owner",
+      "title": "OWNER opening /vector/admin/... is redirected to Home",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-GUARD-admin-agent",
+      "title": "AGENT opening /vector/admin/... is redirected to Home",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-GUARD-api",
+      "title": "Server also refuses AGENT on team/inbox/campaign management endpoints (403), not just the UI",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-404",
+      "title": "Unknown routes (/app/does-not-exist, /vector/xyz, /app/campaigns/<bad id>) end on a safe page, no crash",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-HELP-01",
+      "title": "Help button opens panel for the current screen; Close button and Esc close it",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-HELP-02",
+      "title": "? and F1 keyboard shortcuts toggle help; ? is ignored while typing in a field",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-HELP-03",
+      "title": "Help panel search finds articles, opens one, Back returns; \"Open in Help Center\" deep-links",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-HELP-04",
+      "title": "Context help: every routed article opens for its own screen (panel title == article title)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-HELP-05",
+      "title": "Help Center: every article id deep link /app/help/<id> resolves to its own article and renders cleanly",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-HELP-06",
+      "title": "Help Center: unknown article falls back gracefully; search + topic navigation + related links + \"Go to this screen\" work",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-SEARCH-01",
+      "title": "Ctrl+K focuses global search; typing 1 char shows nothing, 2+ shows matching contact",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-SEARCH-02",
+      "title": "Clicking a result opens that contact; query cleared",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-SEARCH-03",
+      "title": "No-match query shows \"No matches\"; Enter goes to contacts?q=; Escape closes",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-SEARCH-04",
+      "title": "Search API failure degrades silently (no crash, no [object Object])",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-SEARCH-05",
+      "title": "Tenant isolation: another workspace cannot find this contact via search",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-NOTIF-01",
+      "title": "Bell shows unread count, lists notifications, unread highlighted; empty state for other user",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-NOTIF-02",
+      "title": "Clicking a notification marks it read (DB), closes the list and follows its link",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-NOTIF-03",
+      "title": "Mark all read clears the badge and reads everything in DB",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-NOTIF-04",
+      "title": "Email-copy checkbox persists the preference",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-PROFILE-01",
+      "title": "Profile menu shows name, email, role; entries: Change password, Account security, Calendar sync, Sign out",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-PWD-01",
+      "title": "Change password modal: opens/closes (X, backdrop); validation: min length, mismatch",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "locator.click: Timeout 12000ms exceeded.",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-PWD-02",
+      "title": "Wrong current password shows server error and does not change the password",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "locator.click: Timeout 12000ms exceeded.",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-PWD-03",
+      "title": "Correct change: success state, modal auto-closes, new password logs in, old one fails; user stays signed in",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "locator.click: Timeout 12000ms exceeded.",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-PWD-04",
+      "title": "Forgot-password link inside the modal requests a reset (token row created) and confirms",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "locator.click: Timeout 12000ms exceeded.",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-PROFILE-02",
+      "title": "Sign out: back on /login, stored user cleared, API session invalid; browser Back does not reopen app",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-ERR-01",
+      "title": "A page whose API returns 500 shows an error state instead of crashing the shell (Campaigns list)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SHELL-RESP-01",
+      "title": "Narrow viewport (390px) login + dashboard do not crash",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "shell",
+      "note": ""
+    },
+    {
+      "id": "UIO-SEC-01",
+      "title": "Account security renders for Super Admin: 2FA Off, \"Set up two-factor\", workspace policy card (switch disabled until own 2FA on)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "security",
+      "note": ""
+    },
+    {
+      "id": "UIO-SEC-02",
+      "title": "Enable flow: QR + secret shown; Cancel returns; wrong code shows error; correct TOTP shows 10 recovery codes",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "security",
+      "note": ""
+    },
+    {
+      "id": "UIO-SEC-03",
+      "title": "Recovery codes: Download produces a file, Copy gives feedback, \"I've saved them\" hides them and shows the 2FA On state with remaining count",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "security",
+      "note": ""
+    },
+    {
+      "id": "UIO-SEC-04",
+      "title": "Policy switch now enabled; turning it on requires 2FA for everyone (DB tenants.require_mfa=1); admin is forced to the security screen",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "security",
+      "note": ""
+    },
+    {
+      "id": "UIO-SEC-05",
+      "title": "Turning the policy off releases admins again (require_mfa=0)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "security",
+      "note": ""
+    },
+    {
+      "id": "UIO-SEC-06",
+      "title": "New recovery codes: needs a valid current code; success replaces all codes (old code no longer works)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "security",
+      "note": ""
+    },
+    {
+      "id": "UIO-SEC-07",
+      "title": "Disable: requires password + code; wrong password -> error; correct -> 2FA Off in DB, secret and codes wiped",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "security",
+      "note": ""
+    },
+    {
+      "id": "UIO-SEC-08",
+      "title": "Disable with a recovery code instead of an authenticator code works",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "security",
+      "note": ""
+    },
+    {
+      "id": "UIO-SEC-09",
+      "title": "Security screen API failure shows an error note; Agent can open own security page",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "security",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-HOME-01",
+      "title": "Home (My day rail) renders empty state for a new workspace: \"Nothing due today\", no stale deals",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-EMPTY",
+      "title": "Campaigns list empty state: \"No campaigns yet\" + Create New Campaign button works",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-DASH-EMPTY",
+      "title": "Campaign analytics (Dashboard) empty workspace: zeros not NaN, range buttons render",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-HOME-02",
+      "title": "Home My day rail lists a due task; ticking it marks it DONE in the DB and removes it",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-01",
+      "title": "Campaigns list shows every campaign with correct status badge and prospect count (matches DB)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-02",
+      "title": "Search filters rows (server-side, debounced) and clearing restores; no-match shows empty state",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-03",
+      "title": "Column picker toggles columns, persists in localStorage across reload, Reset restores defaults",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-04",
+      "title": "Row Pause on ACTIVE campaign -> PAUSED (DB + badge), Resume -> ACTIVE",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-05",
+      "title": "Delete: cancelling the confirm keeps the campaign; accepting removes it (UI + DB)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-06",
+      "title": "Row click: DRAFT opens the wizard in edit mode, ACTIVE opens details; View icon opens details",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "locator.click: Timeout 12000ms exceeded.",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-07",
+      "title": "Select-all + bulk bar: Pause selected (confirm) pauses active campaigns in DB; clear selection",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "statuses PAUSED/ACTIVE",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-08",
+      "title": "Pause API failure surfaces feedback to the user (not silent)",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "locator.click: Timeout 12000ms exceeded.",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-09",
+      "title": "Campaigns list: API 500 shows an explicit error (not the empty state)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-DASH-01",
+      "title": "Dashboard shows real totals for the workspace (campaign count, status breakdown) consistent with DB",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-DASH-02",
+      "title": "Dashboard range buttons (Daily/Weekly/Monthly/Yearly) change the chart without errors; alerts bell opens",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-DASH-03",
+      "title": "Dashboard campaign table lists campaigns; rows and \"View Campaigns\" navigate",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-DASH-04",
+      "title": "Dashboard API failure (global-analytics/dashboard-summary 500) degrades without crash",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-ROLE-mgr",
+      "title": "MANAGER sees the campaigns list and can open a campaign (manage_campaigns)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-CAMP-ROLE-agent-dash",
+      "title": "AGENT without view_analytics: no Campaign analytics link, URL redirects Home, no 403 calls",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "campaigns_list",
+      "note": ""
+    },
+    {
+      "id": "UIO-WIZ-01",
+      "title": "Step 1 validation: empty name -> \"Campaign name is required\"; name without inbox -> \"Select at least one inbox\"",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "wizard",
+      "note": ""
+    },
+    {
+      "id": "UIO-WIZ-02",
+      "title": "Step 1 saves identity, sender details, CTA, send window, distribution + start date to the campaign row",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "wizard",
+      "note": ""
+    },
+    {
+      "id": "UIO-WIZ-03",
+      "title": "Step 2 sequence: add follow-up with wait days, saved as 2 steps (wait_days persisted); Back keeps step 1 values",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "wizard",
+      "note": ""
+    },
+    {
+      "id": "UIO-WIZ-04",
+      "title": "Step 3 prospects: list selection, deselect one contact -> \"3 of 4 contacts selected\"",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "wizard",
+      "note": ""
+    },
+    {
+      "id": "UIO-WIZ-05",
+      "title": "Process & Generate (LLM absent): templates generated for EVERY sequence step (2 emails)",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "1 template(s) stored for a 2-step sequence (follow-up step has no content)",
+      "suite": "wizard",
+      "note": ""
+    },
+    {
+      "id": "UIO-WIZ-06",
+      "title": "Edit subject (textarea) persists to DB; Cancel discards; single-brace variable triggers the warning dialog",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "wizard",
+      "note": ""
+    },
+    {
+      "id": "UIO-WIZ-07",
+      "title": "Edit body in the rich-text editor persists to DB",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "wizard",
+      "note": ""
+    },
+    {
+      "id": "UIO-WIZ-08",
+      "title": "Live Preview substitutes real prospect data (name/company), and prospect switcher works",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "wizard",
+      "note": ""
+    },
+    {
+      "id": "UIO-WIZ-09",
+      "title": "Regenerate subject with LLM absent: sensible result or error, no crash / [object Object]",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "wizard",
+      "note": ""
+    },
+    {
+      "id": "UIO-WIZ-10",
+      "title": "Click an undetected persona -> generates or shows a clear error (LLM absent)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "wizard",
+      "note": ""
+    },
+    {
+      "id": "UIO-WIZ-11",
+      "title": "Launch step shows correct specs; Back to Edit returns; EXECUTE launches: ACTIVE, 3 enrolled (excluded contact skipped), redirect to list",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "wizard",
+      "note": ""
+    },
+    {
+      "id": "UIO-WIZ-12",
+      "title": "Launch without sender identity shows a clear message and does not activate the campaign",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "wizard",
+      "note": ""
+    },
+    {
+      "id": "UIO-DET-01",
+      "title": "Details header + Analytics tab: name, ACTIVE badge, enrolled counts and sequence cards match DB",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "details",
+      "note": ""
+    },
+    {
+      "id": "UIO-DET-02",
+      "title": "Prospects tab: lists enrolled prospects, search filters, status pills carry counts, Export works",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "details",
+      "note": ""
+    },
+    {
+      "id": "UIO-DET-03",
+      "title": "Prospects tab: Add Prospects (pick list) enrolls the contact (DB + table); Remove (confirm) cancels enrollment",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "details",
+      "note": ""
+    },
+    {
+      "id": "UIO-DET-04",
+      "title": "Subsequence tab shows both steps with approval state; Approve All works; Edit step opens editor",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "details",
+      "note": ""
+    },
+    {
+      "id": "UIO-DET-05",
+      "title": "Schedule tab shows queued emails per step/day; Trigger logs shows CREATE/LAUNCH audit events",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "details",
+      "note": ""
+    },
+    {
+      "id": "UIO-DET-06",
+      "title": "Sending Accounts tab lists the campaign inbox; Inbox tab renders (empty state) and Sync button reports a clear error with no IMAP",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "details",
+      "note": ""
+    },
+    {
+      "id": "UIO-DET-07",
+      "title": "Pause Campaign / Resume Campaign buttons change status (DB + badge)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "details",
+      "note": ""
+    },
+    {
+      "id": "UIO-DET-08",
+      "title": "Send Now: confirm dialog, then result summary dialog; cancel path sends nothing",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "details",
+      "note": ""
+    },
+    {
+      "id": "UIO-DET-09",
+      "title": "Role AGENT cannot open a campaign by URL (redirect Home)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "details",
+      "note": ""
+    },
+    {
+      "id": "UIO-TPL-01",
+      "title": "Template library empty state renders; New template opens modal; Cancel closes without saving",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-TPL-02",
+      "title": "Create template: merge-field insert, save -> row in list and in DB with subject/body/category/shared",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-TPL-03",
+      "title": "Validation: saving a template with empty name shows a server error inside the modal (no crash)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-TPL-04",
+      "title": "Preview renders with sample values; Edit updates DB; category filter + search narrow the list",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-TPL-05",
+      "title": "Agent sees shared template but only the owner can edit/delete (no edit buttons for agent; API refuses)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-TPL-06",
+      "title": "Delete: dismissing confirm keeps it; accepting removes row and DB record",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTO-01",
+      "title": "Automation empty state; Create rule modal validation (required fields) keeps modal open",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTO-02",
+      "title": "Create Send-AI-Template rule: row appears; DB has trigger/action/template/delay and is active",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTO-02b",
+      "title": "Create \"Pause Campaign\" rule (offered in the Action dropdown) succeeds",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "UI offers Pause Campaign but POST /automation-rules/ rejects action_type PAUSE_CAMPAIGN (422); user only sees \"Failed to create rule. Please check the fields.\"",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTO-03",
+      "title": "Toggle rule off/on (the repaired PUT): DB is_active flips and UI reflects it",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-AUTO-04",
+      "title": "Search filters rules; delete (confirm) removes row and DB record",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-AIGEN-01",
+      "title": "AI generator: Classify disabled until designation entered; classification shows persona + confidence",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-AIGEN-02",
+      "title": "Sequence tab: 3-email sequence is generated, shows compliance check, copy button works",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-AIGEN-03",
+      "title": "Classification failure (500) shows an error message to the user",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "library",
+      "note": ""
+    },
+    {
+      "id": "UIO-PROS-01",
+      "title": "Prospect lists empty state: zero stats, New List button, no errors",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "prospects",
+      "note": ""
+    },
+    {
+      "id": "UIO-PROS-02",
+      "title": "New List validation: missing name, missing file -> inline messages; unsupported file type rejected",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "prospects",
+      "note": ""
+    },
+    {
+      "id": "UIO-PROS-03",
+      "title": "Upload CSV -> preview: 2 accepted / 2 need attention with per-row reasons (invalid email, duplicate)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "prospects",
+      "note": ""
+    },
+    {
+      "id": "UIO-PROS-04",
+      "title": "Opening the preview URL directly (no upload state) redirects back to Prospect lists, no crash",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "prospects",
+      "note": ""
+    },
+    {
+      "id": "UIO-PROS-05",
+      "title": "Confirm Upload creates the list with exactly the accepted rows; list appears in the table without reload",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "new list not shown in table after confirm (stale list cache)",
+      "suite": "prospects",
+      "note": ""
+    },
+    {
+      "id": "UIO-PROS-06",
+      "title": "Search lists, sort by name; View opens the members modal with the 2 contacts",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "prospects",
+      "note": ""
+    },
+    {
+      "id": "UIO-PROS-07",
+      "title": "Stats tiles match DB (total contacts, in campaigns)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "prospects",
+      "note": ""
+    },
+    {
+      "id": "UIO-PROS-08",
+      "title": "Delete list: row trash -> confirm dialog; Cancel keeps, Delete removes list (DB) ",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "prospects",
+      "note": ""
+    },
+    {
+      "id": "UIO-PROS-09",
+      "title": "Revalidate Bounced (admin only): opens modal for owner; agent is redirected away from the screen",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "prospects",
+      "note": ""
+    },
+    {
+      "id": "UIO-PROS-10",
+      "title": "Upload API 500 shows a readable message in the modal",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "prospects",
+      "note": ""
+    },
+    {
+      "id": "UIO-MBX-01",
+      "title": "Email accounts renders: stats tiles, inbox row (SMTP, warmup off), sender-identity card prompting setup",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "mailboxes",
+      "note": ""
+    },
+    {
+      "id": "UIO-MBX-02",
+      "title": "Sender identity: empty save is blocked with a message; valid save persists to the company profile (DB) and shows in the card; Cancel discards",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "mailboxes",
+      "note": ""
+    },
+    {
+      "id": "UIO-MBX-03",
+      "title": "Filters and search: Warmup On hides the (warmup-off) inbox, Warmup Off shows it, search by email narrows, no-match empty state",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "mailboxes",
+      "note": ""
+    },
+    {
+      "id": "UIO-MBX-04",
+      "title": "Warmup toggle on the row flips warmup_enabled in the DB and back",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "mailboxes",
+      "note": ""
+    },
+    {
+      "id": "UIO-MBX-05",
+      "title": "Detail drawer: Overview/Connection/Settings/Activity tabs render; Test sending sign-in against an unreachable SMTP host reports a clear failure",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "mailboxes",
+      "note": ""
+    },
+    {
+      "id": "UIO-MBX-06",
+      "title": "Settings tab: change daily limit / delay and Save Settings persists to DB; invalid value rejected",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "negative limit stored",
+      "suite": "mailboxes",
+      "note": ""
+    },
+    {
+      "id": "UIO-MBX-07",
+      "title": "Connect Mailbox wizard: provider step -> SMTP form; validation for empty / invalid email and missing host",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "mailboxes",
+      "note": ""
+    },
+    {
+      "id": "UIO-MBX-08",
+      "title": "Connect SMTP mailbox with unreachable host: ends in a clear result (connected-unverified or explicit error), row appears iff created; no crash",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "mailboxes",
+      "note": ""
+    },
+    {
+      "id": "UIO-MBX-09",
+      "title": "Microsoft 365 connect button when MS365 is not configured shows a clear message (no redirect to undefined)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "mailboxes",
+      "note": ""
+    },
+    {
+      "id": "UIO-MBX-10",
+      "title": "Alert Preferences modal opens, saves, closes; Run Warmup gives feedback",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "mailboxes",
+      "note": ""
+    },
+    {
+      "id": "UIO-MBX-11",
+      "title": "Delete mailbox: Cancel keeps it; Delete removes it (DB) and the row",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "mailboxes",
+      "note": ""
+    },
+    {
+      "id": "UIO-MBX-12",
+      "title": "Roles: MANAGER and AGENT cannot open Email accounts (redirect Home)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "mailboxes",
+      "note": ""
+    },
+    {
+      "id": "UIO-INBOX-00",
+      "title": "Inbox with existing conversations but no IMAP-configured mailbox still shows the conversations (not only the IMAP setup guide)",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "conversations hidden behind IMAP setup guide although 2 conversations exist (API returns them)",
+      "suite": "inboxdomain",
+      "note": ""
+    },
+    {
+      "id": "UIO-INBOX-01",
+      "title": "Unified Inbox lists both conversations (unread highlighted) with subject/snippet; no problems",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "inboxdomain",
+      "note": ""
+    },
+    {
+      "id": "UIO-INBOX-02",
+      "title": "Search narrows the list; opening a thread shows the message and marks it read (DB is_unread=0)",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "search did not filter",
+      "suite": "inboxdomain",
+      "note": ""
+    },
+    {
+      "id": "UIO-INBOX-03",
+      "title": "Reply form: empty reply does nothing; Enter sends a reply -> OUTBOUND message stored for that conversation",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "inboxdomain",
+      "note": ""
+    },
+    {
+      "id": "UIO-INBOX-04",
+      "title": "Reply failure (API 500) restores the draft text and does not crash",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "inboxdomain",
+      "note": ""
+    },
+    {
+      "id": "UIO-INBOX-05",
+      "title": "Sync button without IMAP reports a clear message; Refresh works",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "inboxdomain",
+      "note": ""
+    },
+    {
+      "id": "UIO-INBOX-06",
+      "title": "Tenant isolation: conversations of this workspace are not visible to another workspace",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "inboxdomain",
+      "note": ""
+    },
+    {
+      "id": "UIO-DOM-01",
+      "title": "Domain Health lists the workspace sending domain with SPF/DKIM/DMARC chips, KPIs consistent with inbox count",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "inboxdomain",
+      "note": ""
+    },
+    {
+      "id": "UIO-DOM-02",
+      "title": "Trend filter select: switching All domains <-> single domain re-renders the chart without errors",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "inboxdomain",
+      "note": ""
+    },
+    {
+      "id": "UIO-DOM-03",
+      "title": "Details modal shows DNS/campaign/inbox info; Run Diagnostics gives feedback; Close works",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "inboxdomain",
+      "note": ""
+    },
+    {
+      "id": "UIO-DOM-04",
+      "title": "Delete domain: confirm, removes the domain card and DB record (no add-domain UI exists: domains derive from inboxes)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "inboxdomain",
+      "note": ""
+    },
+    {
+      "id": "UIO-DOM-05",
+      "title": "AGENT role can open Domain Health without forbidden-API noise",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "inboxdomain",
+      "note": ""
+    },
+    {
+      "id": "UIO-TEAM-01",
+      "title": "Team page lists every workspace member with role/status; KPI tiles match DB counts",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-TEAM-02",
+      "title": "Invite modal: opens/cancels; empty and malformed email are blocked (no request); roles radios incl. Super Admin for owner",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-TEAM-03",
+      "title": "Invite a Manager: modal closes, confirmation banner; DB has INVITED user with role, invitation row and magic-login token",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-TEAM-04",
+      "title": "Inviting an existing member shows the server error in the modal (409), stays open",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-TEAM-05",
+      "title": "Search and status filter narrow the member table",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-TEAM-06",
+      "title": "Change role (owner): Manager -> Admin saved to DB; Save button only after a change",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-TEAM-07",
+      "title": "Deactivate agent -> INACTIVE in DB and cannot log in; Reactivate restores ACTIVE",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-TEAM-08",
+      "title": "Revoke a pending invite: Revoke button marks the invited user INACTIVE/removed; self row has no Deactivate",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-TEAM-09",
+      "title": "Permissions modal: toggling a permission saves custom_permissions (DB) and the user's access changes; Reset restores defaults",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-TEAM-10",
+      "title": "Permanent delete: Cancel keeps user, OK removes the row from DB",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-TEAM-11",
+      "title": "ADMIN view: no role dropdowns, no Permissions buttons; API refuses admin role changes and Super Admin invites (403)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-TEAM-12",
+      "title": "Team API 500 on user list shows an error state, not an empty team",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-REP-01",
+      "title": "Reports renders KPIs and campaign table for a campaign with sends; no NaN/undefined",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-REP-02",
+      "title": "Date range buttons (7d/30d/90d/365d) re-query with the matching start_date",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-REP-03",
+      "title": "Export CSV / Export Word / campaign Export CSV trigger file downloads",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-REP-04",
+      "title": "User filter dropdown (All Users) lists workspace users and filters the report",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-REP-05",
+      "title": "Reports API 500 does not crash (error boundary not shown)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    },
+    {
+      "id": "UIO-REP-06",
+      "title": "MANAGER (view_analytics) can open Reports; AGENT is redirected Home",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
+      "suite": "admin",
+      "note": ""
+    }
+  ]
+}

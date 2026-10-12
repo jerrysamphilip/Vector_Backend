@@ -1,11 +1,11 @@
 {
   "suite": "UI outreach/admin - shell",
   "counts": {
-    "PASS": 29,
-    "FAIL": 9,
+    "PASS": 33,
+    "FAIL": 5,
     "BLOCKED": 0
   },
-  "seconds": 324,
+  "seconds": 272,
   "cases": [
     {
       "id": "UIO-SHELL-SB-owner",
@@ -59,16 +59,16 @@
     {
       "id": "UIO-SHELL-NAV-manager",
       "title": "Every visible sidebar link navigates and its page renders cleanly (MANAGER)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "Inbox: http 403 GET /vector/api/inboxes,console: Failed to load resource: the server responded with a status of 403 (Forbidden)"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-SHELL-NAV-agent",
       "title": "Every visible sidebar link navigates and its page renders cleanly (AGENT)",
       "status": "FAIL",
       "category": "defect",
-      "detail": "Inbox: http 403 GET /vector/api/inboxes,console: Failed to load resource: the server responded with a status of 403 (Forbidden) || Campaign analytics: http 403 GET /vector/api/reports/global-analytics?start_date=2026-05-01&end_date=2026-10-11&granularity=daily,console: Failed to load resource: the server responded with a status of 403 (Forbidden)"
+      "detail": "Campaign analytics: link missing"
     },
     {
       "id": "UIO-SHELL-GUARD-agent",
@@ -122,9 +122,9 @@
     {
       "id": "UIO-SHELL-HELP-02",
       "title": "? and F1 keyboard shortcuts toggle help; ? is ignored while typing in a field",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "locator.waitFor: Timeout 12000ms exceeded."
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-SHELL-HELP-03",
@@ -171,9 +171,9 @@
     {
       "id": "UIO-SHELL-SEARCH-03",
       "title": "No-match query shows \"No matches\"; Enter goes to contacts?q=; Escape closes",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "page.waitForURL: Timeout 12000ms exceeded."
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-SHELL-SEARCH-04",
@@ -262,9 +262,9 @@
     {
       "id": "UIO-SHELL-ERR-01",
       "title": "A page whose API returns 500 shows an error state instead of crashing the shell (Campaigns list)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "page gone"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-SHELL-RESP-01",

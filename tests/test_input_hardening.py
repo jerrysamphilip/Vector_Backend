@@ -32,3 +32,11 @@ def test_campaign_lists_endpoint_works(client, tenant_a):
     assert r.status_code == 200, r.text
     rows = {x["list_name"]: x for x in r.json()}
     assert rows["Wizard picker list"]["prospect_count"] == 0
+
+
+def test_unsubscribe_only_reply_is_recognised():
+    from app.services.imap_sync_service import _is_unsubscribe_reply
+    from app.utils.email_utils import extract_latest_message_text
+    raw = "Unsubscribe\n\nOn Mon, Oct 12, 2026 Outreach wrote:\n> hello"
+    assert _is_unsubscribe_reply(extract_latest_message_text(raw, strip_boilerplate=False).strip().lower())
+    assert not _is_unsubscribe_reply("thanks, sounds good")

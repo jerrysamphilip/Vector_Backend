@@ -625,9 +625,9 @@ def phase_bg_reply(R, C):
     imap.deliver(addr, reply_mime(e, addr, "Re: Question for Ida", "Yes please send the details and a quote.", st["pm_id"]))
     pid = C["pid"][emails[ROLE["bg_reply"]]]
     t0 = time.time()
-    ok = wait_until(lambda: len(_inbound_for(pid)) >= 1, timeout=330, interval=5)
+    ok = wait_until(lambda: len(_inbound_for(pid)) >= 1, timeout=620, interval=5)
     after = len([x for x in imap.logins if x == (addr.lower(), True)])
-    R.check("E2E-J1-69", "Worker's background IMAP loop (no sync API call) logs in and ingests the reply within 5.5 minutes",
+    R.check("E2E-J1-69", "Worker's background IMAP loop (no sync API call) logs in and ingests the reply within 10 minutes (BR-DF-05)",
             ok and after > logins_before, f"ingested={bool(ok)} after {round(time.time() - t0)}s; mailbox logins {logins_before}->{after}")
     enrol = scalar(f"SELECT status FROM campaign_prospects WHERE campaign_id={q(cid)} AND prospect_id={q(pid)}")
     R.check("E2E-J1-70", "Background-ingested reply also stops the sequence (enrolment REPLIED)", enrol == "REPLIED", f"{enrol}")

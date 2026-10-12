@@ -46,7 +46,8 @@ def run(R):
     R.check("E2E-J6-02", "SES Open event fires the 'pause prospect' rule: enrolment becomes PAUSED", p0 == "PAUSED", f"{p0}")
     got = wait_until(lambda: [c for c in captured_for(emails=[em_[1]], domain=f"auto-{rid}.example") if c.subject.startswith("Special offer")], timeout=300, interval=4)
     R.check("E2E-J6-03", "SES Click event fires the 'send email' rule: the worker sends the rule's template to that contact through SES (personalised subject)",
-            bool(got) and "Special offer for Pat1" in got[0].subject, f"{[c.subject for c in captured_for(emails=[em_[1]])]}")
+            bool(got) and "Special offer for Pat1" in got[0].subject, f"subjects mailed to the contact={[c.subject for c in captured_for(emails=[em_[1]])]}; rule message state="
+            f"{rows(f'SELECT status, LEFT(failure_reason,90) FROM email_messages WHERE campaign_id={q(cid)} AND template_id={q(t_extra.get(chr(116)+chr(101)+chr(109)+chr(112)+chr(108)+chr(97)+chr(116)+chr(101)+chr(95)+chr(105)+chr(100)))}')}")
     travel_due(cid, 2)
     time.sleep(75)
     sent2 = {m["email"] for m in msgs(cid, 2, "SENT")}

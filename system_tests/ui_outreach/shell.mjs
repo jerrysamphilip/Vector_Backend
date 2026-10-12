@@ -11,10 +11,10 @@ for (const r of ROLES) P[r] = await S.open(ws, r);
 
 // Expected sidebar by role: [link name, visible?]
 const EXPECT = {
-  owner:   { Campaigns: 1, 'Email accounts': 1, Reports: 1, 'Prospect lists': 1, Team: 1, 'Sales settings': 1, Templates: 1, 'Domain health': 1 },
-  admin:   { Campaigns: 1, 'Email accounts': 1, Reports: 1, 'Prospect lists': 1, Team: 1, 'Sales settings': 1, Templates: 1, 'Domain health': 1 },
-  manager: { Campaigns: 1, 'Email accounts': 0, Reports: 1, 'Prospect lists': 0, Team: 0, 'Sales settings': 0, Templates: 1, 'Domain health': 1 },
-  agent:   { Campaigns: 0, 'Email accounts': 0, Reports: 0, 'Prospect lists': 0, Team: 0, 'Sales settings': 0, Templates: 1, 'Domain health': 1 },
+  owner:   { 'Campaign analytics': 1, Campaigns: 1, 'Email accounts': 1, Reports: 1, 'Prospect lists': 1, Team: 1, 'Sales settings': 1, Templates: 1, 'Domain health': 1 },
+  admin:   { 'Campaign analytics': 1, Campaigns: 1, 'Email accounts': 1, Reports: 1, 'Prospect lists': 1, Team: 1, 'Sales settings': 1, Templates: 1, 'Domain health': 1 },
+  manager: { 'Campaign analytics': 1, Campaigns: 1, 'Email accounts': 0, Reports: 1, 'Prospect lists': 0, Team: 0, 'Sales settings': 0, Templates: 1, 'Domain health': 1 },
+  agent:   { 'Campaign analytics': 0, Campaigns: 0, 'Email accounts': 0, Reports: 0, 'Prospect lists': 0, Team: 0, 'Sales settings': 0, Templates: 1, 'Domain health': 1 },
 };
 const GROUPS = ['OUTREACH', 'CRM', 'SALES', 'WORKSPACE'];
 
@@ -272,14 +272,14 @@ const ids = [...fs.readFileSync('/home/user/Vector_Frontend/src/help/articles.js
     await inp.fill('nomatchxyz' + rid()); await waitText(page, /No matches for/);
     await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     if (/No matches for/.test(await body(page))) return 'Escape did not close dropdown';
-    await inp.focus(); await inp.fill('nomatchabc'); await waitText(page, /No matches for/);
+    await inp.focus(); await inp.fill('nomatchabc'); await waitText(page, /No matches for .nomatchabc/);
     await page.keyboard.press('Enter'); await page.waitForURL(/\/app\/contacts\?q=nomatchabc/);
   }, page);
   await S.t(`${A}-SEARCH-04`, 'Search API failure degrades silently (no crash, no [object Object])', async () => {
     await go(page, '/app/dashboard');
-    await page.route('**/search?*', r => r.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"x"}' }));
+    await page.route(/\/api\/search/, r => r.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"x"}' }));
     await page.getByLabel('Search contacts and companies').fill('something');
-    await page.waitForTimeout(1200); await page.unroute('**/search?*');
+    await page.waitForTimeout(1200); await page.unroute(/\/api\/search/);
     const bp = await w.bodyProblems(); w.drain([/.*/]); return bp.length ? bp.join(',') : undefined;
   }, page);
   await S.t(`${A}-SEARCH-05`, 'Tenant isolation: another workspace cannot find this contact via search', async () => {
@@ -358,10 +358,8 @@ const ids = [...fs.readFileSync('/home/user/Vector_Frontend/src/help/articles.js
     await c.page.getByRole('button', { name: 'Account' }).click();
     await c.page.getByRole('button', { name: /Change password/i }).click();
     const cur = c.page.getByPlaceholder('Enter your current password'); await cur.waitFor();
-    await cur.locator('xpath=ancestor::div[contains(@class,"fixed")]').locator('button').filter({ has: c.page.locator('svg') }).first();
-    await c.page.keyboard.press('Escape');
-    // close with X (first button in header)
-    await c.page.locator('div.fixed h2:has-text("Change Password")').locator('xpath=ancestor::div[contains(@class,"justify-between")]').locator('button').click();
+    await c.page.keyboard.press('Escape'); await c.page.waitForTimeout(300);
+    if (!(await cur.isVisible())) { /* Escape closes: fine */ } else { await c.page.locator('div.fixed .border-b button').first().click(); }
     await cur.waitFor({ state: 'hidden' });
     await c.page.getByRole('button', { name: 'Account' }).click();
     await c.page.getByRole('button', { name: /Change password/i }).click();
@@ -416,10 +414,10 @@ const ids = [...fs.readFileSync('/home/user/Vector_Frontend/src/help/articles.js
 {
   const { page, w } = P.owner;
   await S.t(`${A}-ERR-01`, 'A page whose API returns 500 shows an error state instead of crashing the shell (Campaigns list)', async () => {
-    await page.route('**/campaigns?*', r => r.request().method() === 'GET' ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"boom"}' }) : r.continue());
-    await page.route('**/campaigns', r => r.request().method() === 'GET' ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"boom"}' }) : r.continue());
+    const h = r => (r.request().method() === 'GET' && r.request().resourceType() !== 'document') ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"boom"}' }) : r.continue();
+    await page.route(/\/api\/campaigns(\?.*)?$/, h);
     await go(page, '/app/campaigns', { wait: 1500 });
-    await page.unroute('**/campaigns?*'); await page.unroute('**/campaigns');
+    await page.unroute(/\/api\/campaigns(\?.*)?$/, h);
     const t = await body(page);
     if (/Something went wrong on this screen|Application Error/.test(t)) return 'error boundary shown';
     if (!/Campaigns/.test(t)) return 'page gone';

@@ -92,6 +92,7 @@ class ReportsService:
             .filter(
                 EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
                 EmailMessage.status == "SENT",
+                EmailMessage.direction != "INBOUND",
                 EmailMessage.sent_at >= start_date,
                 EmailMessage.sent_at < end_date + timedelta(days=1),
             )

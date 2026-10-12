@@ -581,7 +581,7 @@ class EmailSchedulerService:
                     CampaignProspect.campaign_id == email_msg.campaign_id,
                     CampaignProspect.prospect_id == email_msg.prospect_id,
                 ).first()
-                if enrollment and enrollment[0] in ("REPLIED", "BOUNCED", "UNSUBSCRIBED"):
+                if enrollment and enrollment[0] in ("REPLIED", "BOUNCED", "UNSUBSCRIBED", "PAUSED"):
                     email_msg.status = "CANCELLED"
                     email_msg.failure_reason = f"Stopped: contact {enrollment[0].lower()}"
                     return "suppressed"

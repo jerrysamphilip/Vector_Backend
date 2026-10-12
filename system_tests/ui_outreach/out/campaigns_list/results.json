@@ -1,11 +1,11 @@
 {
   "suite": "UI outreach/admin - campaigns_list",
   "counts": {
-    "PASS": 13,
-    "FAIL": 6,
+    "PASS": 16,
+    "FAIL": 3,
     "BLOCKED": 0
   },
-  "seconds": 78,
+  "seconds": 87,
   "cases": [
     {
       "id": "UIO-CAMP-HOME-01",
@@ -66,9 +66,9 @@
     {
       "id": "UIO-CAMP-LIST-05",
       "title": "Delete: cancelling the confirm keeps the campaign; accepting removes it (UI + DB)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "locator.click: Error: strict mode violation: locator('tbody tr').filter({ hasText: 'Delta Delete db94ff' }).first().getByTitle('Delete') resolved to 2 elements:"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-CAMP-LIST-06",
@@ -82,21 +82,21 @@
       "title": "Select-all + bulk bar: Pause selected (confirm) pauses active campaigns in DB; clear selection",
       "status": "FAIL",
       "category": "defect",
-      "detail": "statuses ACTIVE/PAUSED"
+      "detail": "statuses PAUSED/ACTIVE"
     },
     {
       "id": "UIO-CAMP-LIST-08",
       "title": "Pause API failure surfaces feedback to the user (not silent)",
       "status": "FAIL",
       "category": "defect",
-      "detail": "API error on pause shown nowhere (silent failure)"
+      "detail": "locator.click: Timeout 12000ms exceeded."
     },
     {
       "id": "UIO-CAMP-LIST-09",
       "title": "Campaigns list: API 500 shows an explicit error (not the empty state)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "no error message: {\"detail\":\"x\"}"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-CAMP-DASH-01",
@@ -135,10 +135,10 @@
     },
     {
       "id": "UIO-CAMP-ROLE-agent-dash",
-      "title": "AGENT on Campaign analytics: page shows a clear state (no raw 403 errors / crash)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "http 403 GET /vector/api/reports/global-analytics?start_date=2026-05-01&end_date=2026-10-11&granularity=daily ; console: Failed to load resource: the server responded with a status of 403 (Forbidden) ; http 403 GET /vector/api/reports/global-analytics?start_date=2026-05-01&end_date=2026-10-11&granularity=daily ; console: Failed to load resource: the server responded with a status of 403 (Forbidden)"
+      "title": "AGENT without view_analytics: no Campaign analytics link, URL redirects Home, no 403 calls",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     }
   ]
 }

@@ -35,6 +35,11 @@ analytics step 1 = `sent: 15` (bounced excluded) vs 16 everywhere else.
 **D5 - Dashboard "emails sent" counts inbound messages** (E2E-J4-12)
 `total_emails_sent` for a tenant with 10 outbound sends and 1 inbound reply is 11 (`reports_service.py:90`, no `direction` filter).
 
+**D10 - Automation "send email" action can be cancelled by the duplicate-send guard** (E2E-J6-03, intermittent: failed 1 of 3 runs)
+`automation_rule_service._action_send_email` (`app/services/automation_rule_service.py`, ~l.100-120) queues the rule's mail on the campaign's *first* sequence step;
+the scheduler's duplicate guard (`email_scheduler_service.py` `_claim`/`_cancel_duplicate`, ~l.425-470) then marks it
+`CANCELLED: Duplicate: this step was already sent to this address`, so the contact never receives the offer. It only works when the rule mail wins the race against the guard.
+
 ### Low
 **D6 - Double / wrong signature** (E2E-J1-31). Every campaign email ends "Regards, Outreach AI <company>" (the `{{signature_block}}` placeholder is
 resolved with the platform `SENDER_NAME`, not the campaign sender) followed by the postal-address footer and then a *second* "Regards, <sender name>"
@@ -55,6 +60,11 @@ The temporary password is e-mailed in clear text (by design of that flow).
 ### Not implemented (expected by the journeys, absent in the product)
 - No automatic reply -> lead: leads are created by the one-click `/leads/from-message`; "positive reply" suggestions need an LLM (no heuristic fallback) (E2E-J1-67).
 - No notification when a deal is won / changes stage, and none to the owner/manager when a campaign is auto-paused (alert only) (E2E-J1-87b, E2E-J2-09). Workflow rules can add them (E2E-J6-07).
+
+### Observations
+- Worker IMAP latency: with ~400 mailboxes on the stack (most pointing at dead hosts) a reply sat unseen for ~5.6 minutes before the worker's loop reached the
+  mailbox (E2E-J1-69 asserts the BR-DF-05 limit of 10 minutes and passes). Each dead mailbox costs a connect attempt in the same loop.
+- Planned follow-up dates (D7) after a weekend launch also pushed step 3 to the following Monday in the last run (Oct 19 00:22) - same root cause.
 
 ### Environment observations (not product verdicts)
 - The shared API container (single uvicorn) spun at 100 % CPU and stopped answering `/health` for minutes right after another agent's `PATCH /sales/stages/<id>` calls

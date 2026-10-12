@@ -334,6 +334,7 @@ class IMAPSyncService:
                     except: pass
 
                 # Store only the newest human-readable reply block.
+                raw_body = body
                 body = extract_latest_message_text(body)
 
                 # Deduplicate by provider_message_id (Message-ID header). A message
@@ -534,7 +535,7 @@ class IMAPSyncService:
 
                     # --- Reply-based unsubscribe detection ---
                     # Check if the reply body is essentially just "unsubscribe"
-                    reply_text = extract_latest_message_text(body, strip_boilerplate=False).strip().lower()
+                    reply_text = extract_latest_message_text(raw_body, strip_boilerplate=False).strip().lower()
                     if _is_unsubscribe_reply(reply_text):
                         try:
                             # Every campaign in the workspace, not just this one (BR-DF-08)

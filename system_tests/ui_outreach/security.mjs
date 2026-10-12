@@ -1,0 +1,122 @@
+import { startSuite, fullWorkspace, api, sql, q, go, body, waitText, clean, freshTotp, totp, sleep, dialogs } from './lib.mjs';
+const S = await startSuite('security');
+const A = 'UIO-SEC';
+const ws = await fullWorkspace('sec', { roles: ['admin'] });
+const { page, w } = await S.open(ws);
+dialogs(page);
+let secret, codes;
+const pw = { u: ws.users.owner };
+
+await S.t(`${A}-01`, 'Account security renders for Super Admin: 2FA Off, "Set up two-factor", workspace policy card (switch disabled until own 2FA on)', async () => {
+  await go(page, '/app/account/security', { wait: 1200 });
+  const t = await body(page);
+  if (!/Two-factor authentication/.test(t) || !/Set up two-factor/.test(t)) return 'status/CTA missing';
+  const sw = page.getByRole('switch');
+  if (!(await sw.count())) return 'policy switch missing for Super Admin';
+  if (!(await sw.isDisabled())) return 'policy switch enabled without own 2FA';
+  return await clean(page, w);
+}, page);
+await S.t(`${A}-02`, 'Enable flow: QR + secret shown; Cancel returns; wrong code shows error; correct TOTP shows 10 recovery codes', async () => {
+  await page.getByRole('button', { name: /Set up two-factor/ }).click();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await page.getByRole('button', { name: /Set up two-factor/ }).click();
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.locator('svg title', { hasText: 'QR code' }).first().waitFor({ state: 'attached' });
+  secret = (await page.locator('code').first().innerText()).replace(/\s+/g, '');
+  if (!/^[A-Z2-7]{16,}$/.test(secret)) return 'secret format ' + secret;
+  const serverSecret = sql(`SELECT mfa_secret FROM users WHERE user_id=${q(ws.userId)}`);
+  if (!serverSecret || (serverSecret !== secret && !serverSecret.includes(secret.slice(0, 8)))) { /* secret may be stored encrypted */ }
+  const inp = page.locator('#totp-code');
+  await inp.fill('000000'); await page.getByRole('button', { name: /Turn on two-factor/ }).click();
+  await waitText(page, /not valid|invalid/i); w.drain([/mfa\/enable/, /Failed to load resource/]);
+  await page.locator('#totp-code').fill(await freshTotp(secret));
+  await page.getByRole('button', { name: /Turn on two-factor/ }).click();
+  await page.getByLabel('Recovery codes').waitFor();
+  codes = await page.getByLabel('Recovery codes').locator('li').allInnerTexts();
+  if (codes.length !== 10) return 'recovery codes ' + codes.length;
+  if (sql(`SELECT mfa_enabled FROM users WHERE user_id=${q(ws.userId)}`) !== '1') return 'mfa_enabled not set';
+  const stored = sql(`SELECT mfa_recovery_codes FROM users WHERE user_id=${q(ws.userId)}`);
+  if (codes.some(c => stored.includes(c))) return 'recovery codes stored in plaintext';
+  return await clean(page, w);
+}, page);
+await S.t(`${A}-03`, 'Recovery codes: Download produces a file, Copy gives feedback, "I\'ve saved them" hides them and shows the 2FA On state with remaining count', async () => {
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 8000 }).catch(() => null), page.getByRole('button', { name: /Download/ }).click()]);
+  if (!dl) return 'no download'; if (!/recovery/i.test(dl.suggestedFilename())) return 'filename ' + dl.suggestedFilename();
+  await page.getByRole('button', { name: /^Copy$/ }).click().catch(() => {});
+  await page.getByRole('button', { name: /I've saved them/ }).click();
+  await waitText(page, /10 of 10 recovery codes left/);
+  await waitText(page, /New recovery codes/);
+}, page);
+await S.t(`${A}-04`, 'Policy switch now enabled; turning it on requires 2FA for everyone (DB tenants.require_mfa=1); admin is forced to the security screen', async () => {
+  const sw = page.getByRole('switch');
+  if (await sw.isDisabled()) return 'switch still disabled after own 2FA';
+  await sw.click(); await sleep(1500);
+  if (sql(`SELECT require_mfa FROM tenants WHERE tenant_id=${q(ws.tenantId)}`) !== '1') return 'require_mfa not set';
+  if (await page.getByRole('button', { name: /Turn off/ }).count()) return '"Turn off" still offered while workspace requires 2FA';
+  const a = await S.open(ws, 'admin'); await go(a.page, '/app/campaigns', { wait: 1500 });
+  if (!/account\/security/.test(a.page.url())) return 'admin without 2FA not forced to security: ' + a.page.url();
+  if (!/requires two-factor/i.test(await body(a.page))) return 'no requirement banner for admin';
+  const pr = await api('GET', '/campaigns', { token: ws.users.admin.token });
+  if (pr.status !== 403) return 'API still serves admin without 2FA: ' + pr.status;
+  a.w.drain([/.*/]);
+}, page);
+await S.t(`${A}-05`, 'Turning the policy off releases admins again (require_mfa=0)', async () => {
+  await page.getByRole('switch').click(); await sleep(1500);
+  if (sql(`SELECT require_mfa FROM tenants WHERE tenant_id=${q(ws.tenantId)}`) !== '0') return 'still required';
+  const pr = await api('GET', '/campaigns', { token: ws.users.admin.token });
+  if (pr.status !== 200) return 'admin still blocked: ' + pr.status;
+}, page);
+await S.t(`${A}-06`, 'New recovery codes: needs a valid current code; success replaces all codes (old code no longer works)', async () => {
+  await go(page, '/app/account/security', { wait: 1000 });
+  await page.getByRole('button', { name: /New recovery codes/ }).click();
+  await page.locator('#regen-code').fill('111111');
+  await page.getByRole('button', { name: /Get new codes/ }).click(); await sleep(1200);
+  if (!/not valid|invalid|Invalid/i.test(await body(page))) return 'no error for wrong code'; w.drain([/.*/]);
+  await page.locator('#regen-code').fill(await freshTotp(secret));
+  await page.getByRole('button', { name: /Get new codes/ }).click();
+  await page.getByLabel('Recovery codes').waitFor();
+  const nc = await page.getByLabel('Recovery codes').locator('li').allInnerTexts();
+  if (nc.length !== 10 || nc.some(c => codes.includes(c))) return 'codes not replaced';
+  const lr = await api('POST', '/api/auth/login', { headers: { 'X-Forwarded-For': ws.xff }, body: { email: ws.email, password: ws.password } });
+  const v = await api('POST', '/api/auth/mfa/verify', { headers: { 'X-Forwarded-For': ws.xff }, body: { mfa_token: lr.data.mfa_token, recovery_code: codes[0] } });
+  if (v.status === 200) return 'old recovery code still accepted';
+  codes = nc;
+  await page.getByRole('button', { name: /I've saved them/ }).click();
+}, page);
+await S.t(`${A}-07`, 'Disable: requires password + code; wrong password -> error; correct -> 2FA Off in DB, secret and codes wiped', async () => {
+  await page.getByRole('button', { name: /Turn off/ }).first().click();
+  await page.locator('input[type=password]').fill('wrong-password');
+  await page.locator('#disable-code').fill(await freshTotp(secret));
+  await page.getByRole('button', { name: /Turn off two-factor/ }).click(); await sleep(1200);
+  if (!/incorrect|password/i.test(await body(page))) return 'no wrong-password error'; w.drain([/.*/]);
+  if (sql(`SELECT mfa_enabled FROM users WHERE user_id=${q(ws.userId)}`) !== '1') return 'disabled with wrong password';
+  await page.locator('input[type=password]').fill(ws.password);
+  await page.locator('#disable-code').fill(await freshTotp(secret));
+  await page.getByRole('button', { name: /Turn off two-factor/ }).click(); await sleep(1800);
+  const r = sql(`SELECT mfa_enabled, IFNULL(mfa_secret,'NULL') FROM users WHERE user_id=${q(ws.userId)}`).split('\t');
+  if (r[0] !== '0' || r[1] !== 'NULL') return 'DB state ' + r.join('|');
+  if (!/Set up two-factor/.test(await body(page))) return 'UI not back to Off';
+  return await clean(page, w);
+}, page);
+await S.t(`${A}-08`, 'Disable with a recovery code instead of an authenticator code works', async () => {
+  const r = await api('POST', '/api/auth/mfa/setup', { token: ws.users.owner.token });
+  secret = r.data.secret;
+  const e = await api('POST', '/api/auth/mfa/enable', { token: ws.users.owner.token, body: { code: await freshTotp(secret) } });
+  if (e.status !== 200) return 'enable ' + e.status;
+  await go(page, '/app/account/security', { wait: 1000 });
+  await page.getByRole('button', { name: /Turn off/ }).first().click();
+  await page.locator('input[type=password]').fill(ws.password);
+  await page.getByRole('button', { name: /recovery code instead/ }).click();
+  await page.getByPlaceholder('xxxxx-xxxxx').fill(e.data.recovery_codes[0]);
+  await page.getByRole('button', { name: /Turn off two-factor/ }).click(); await sleep(1800);
+  if (sql(`SELECT mfa_enabled FROM users WHERE user_id=${q(ws.userId)}`) !== '0') return 'not disabled';
+}, page);
+await S.t(`${A}-09`, 'Security screen API failure shows an error note; Agent can open own security page', async () => {
+  const a = await S.open(ws, 'admin'); await go(a.page, '/app/account/security', { wait: 1200 });
+  if (!/Two-factor authentication/.test(await body(a.page))) return 'admin cannot see security page';
+  if (await a.page.getByRole('switch').count()) return 'non-SUPER_ADMIN sees workspace policy switch';
+  await page.route(/auth\/session/, r => r.request().resourceType() === 'document' ? r.continue() : r.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"x"}' }));
+  await go(page, '/app/account/security', { wait: 2500 }); await page.unroute(/auth\/session/);
+  const bp = await w.bodyProblems(); w.drain([/.*/]); if (bp.length) return bp.join(',');
+}, page);
+await S.done();

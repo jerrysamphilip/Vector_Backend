@@ -1,11 +1,11 @@
 {
   "suite": "E2E journeys (real worker + SES stand-in + fake IMAP)",
   "counts": {
-    "PASS": 172,
-    "FAIL": 15,
+    "PASS": 174,
+    "FAIL": 13,
     "BLOCKED": 1
   },
-  "seconds": 1752.0,
+  "seconds": 1383.3,
   "cases": [
     {
       "id": "E2E-J1-01",
@@ -166,7 +166,7 @@
       "title": "Planned follow-ups are spaced by the configured wait days (step2 >= step1+2d, step3 >= step2+3d)",
       "status": "FAIL",
       "category": "defect",
-      "detail": "[('ann.adler@alpha-aa7564.example', {1: datetime.datetime(2026, 10, 13, 0, 12), 2: datetime.datetime(2026, 10, 13, 14, 18), 3: datetime.datetime(2026, 10, 16, 14, 18)}), ('bo.brandt@alpha-aa7564.example', {1: datetime.datetime(2026, 10, 13, 0, 4), 2: datetime.datetime(2026, 10, 13, 14, 10), 3: datetime.datetime(2026, 10, 16, 14, 10)})]"
+      "detail": "[('ann.adler@alpha-78a82e.example', {1: datetime.datetime(2026, 10, 13, 0, 22), 2: datetime.datetime(2026, 10, 14, 10, 55), 3: datetime.datetime(2026, 10, 19, 0, 22)}), ('bo.brandt@alpha-78a82e.example', {1: datetime.datetime(2026, 10, 13, 0, 16), 2: datetime.datetime(2026, 10, 14, 10, 49), 3: datetime.datetime(2026, 10, 19, 0, 16)})]"
     },
     {
       "id": "E2E-J1-24",
@@ -222,7 +222,7 @@
       "title": "Signature: single sign-off using the campaign's sender name; footer not followed by a second signature",
       "status": "FAIL",
       "category": "defect",
-      "detail": "'Regards,' count per email=[2]; campaign sender 'Priya Sharma' present=16/16; sample:\nHi Di,\n\nI noticed your role at Charlie Corp and thought you might be interested in Vector CRM.\n\nRegards,\n\nPriya Sharma\nAccount Executive\nSystest Co aa7564\n\nSystest Co aa7564, 1 Test Street, Austin, TX 78701, USA\nPlease reply 'unsubscribe' in case you do not wish to receive such business communication emails in the future.\n\nRegards,\nPriya Sharma\nAccount Executive\nSystest Co aa7564"
+      "detail": "'Regards,' count per email=[2]; campaign sender 'Priya Sharma' present=16/16; sample:\nHi Max,\n\nI noticed your role at Lima Corp and thought you might be interested in Vector CRM.\n\nRegards,\n\nPriya Sharma\nAccount Executive\nSystest Co 78a82e\n\nSystest Co 78a82e, 1 Test Street, Austin, TX 78701, USA\nPlease reply 'unsubscribe' in case you do not wish to receive such business communication emails in the future.\n\nRegards,\nPriya Sharma\nAccount Executive\nSystest Co 78a82e"
     },
     {
       "id": "E2E-J1-32",
@@ -327,14 +327,14 @@
       "title": "Campaign comparison row agrees (sent 16, opened 10, bounced 1)",
       "status": "FAIL",
       "category": "defect",
-      "detail": "{'campaign_id': 'b0eac475-1d5e-4518-8b7a-7d61af122afc', 'campaign_name': 'J1 Outreach aa7564', 'status': 'ACTIVE', 'sent_count': 16, 'opened_count': 11, 'replied_count': 0, 'bounced_count': 1, 'open_rate': 68.75, 'reply_rate': 0.0, 'bounce_rate': 6.25, 'created_at': '2026-10-11T14:05:26'}"
+      "detail": "{'campaign_id': '66eda06c-bcf6-4819-ac9c-381322da2e26', 'campaign_name': 'J1 Outreach 78a82e', 'status': 'ACTIVE', 'sent_count': 16, 'opened_count': 11, 'replied_count': 0, 'bounced_count': 1, 'open_rate': 68.75, 'reply_rate': 0.0, 'bounce_rate': 6.25, 'created_at': '2026-10-12T10:32:55'}"
     },
     {
       "id": "E2E-J1-47",
       "title": "Analytics time-series for today: sent 16 / opened 10 / bounced 1",
       "status": "FAIL",
       "category": "defect",
-      "detail": "[{'date': '2026-10-11', 'sent': 16, 'opened': 11, 'replied': 0, 'bounced': 1, 'sender_bounced': 0, 'positive_replied': 0, 'ooo': 0}]"
+      "detail": "[{'date': '2026-10-12', 'sent': 16, 'opened': 11, 'replied': 0, 'bounced': 1, 'sender_bounced': 0, 'positive_replied': 0, 'ooo': 0}]"
     },
     {
       "id": "E2E-J1-48",
@@ -485,7 +485,7 @@
     },
     {
       "id": "E2E-J1-69",
-      "title": "Worker's background IMAP loop (no sync API call) logs in and ingests the reply within 5.5 minutes",
+      "title": "Worker's background IMAP loop (no sync API call) logs in and ingests the reply within 10 minutes (BR-DF-05)",
       "status": "PASS",
       "category": "",
       "detail": ""
@@ -731,16 +731,16 @@
     {
       "id": "E2E-J1-102",
       "title": "Resume does not burst: overdue step-3 messages are re-spread from now, one per slot per mailbox lane (>= campaign min gap of 120 s apart)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "resume=200 n=10 lanes={'341b05': 5, '8d0a1d': 5} min_gap_in_lane=67.0"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J1-103",
       "title": "After resume every step-3 email goes out exactly once, spread over time (not a burst)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "sent=9/10 span=470.0s"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J1-104",

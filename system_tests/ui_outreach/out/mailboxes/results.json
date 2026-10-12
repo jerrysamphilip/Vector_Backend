@@ -1,0 +1,95 @@
+{
+  "suite": "UI outreach/admin - mailboxes",
+  "counts": {
+    "PASS": 11,
+    "FAIL": 1,
+    "BLOCKED": 0
+  },
+  "seconds": 62,
+  "cases": [
+    {
+      "id": "UIO-MBX-01",
+      "title": "Email accounts renders: stats tiles, inbox row (SMTP, warmup off), sender-identity card prompting setup",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-MBX-02",
+      "title": "Sender identity: empty save is blocked with a message; valid save persists to the company profile (DB) and shows in the card; Cancel discards",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-MBX-03",
+      "title": "Filters and search: Warmup On hides the (warmup-off) inbox, Warmup Off shows it, search by email narrows, no-match empty state",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-MBX-04",
+      "title": "Warmup toggle on the row flips warmup_enabled in the DB and back",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-MBX-05",
+      "title": "Detail drawer: Overview/Connection/Settings/Activity tabs render; Test sending sign-in against an unreachable SMTP host reports a clear failure",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-MBX-06",
+      "title": "Settings tab: change daily limit / delay and Save Settings persists to DB; invalid value rejected",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "negative limit stored"
+    },
+    {
+      "id": "UIO-MBX-07",
+      "title": "Connect Mailbox wizard: provider step -> SMTP form; validation for empty / invalid email and missing host",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-MBX-08",
+      "title": "Connect SMTP mailbox with unreachable host: ends in a clear result (connected-unverified or explicit error), row appears iff created; no crash",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-MBX-09",
+      "title": "Microsoft 365 connect button when MS365 is not configured shows a clear message (no redirect to undefined)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-MBX-10",
+      "title": "Alert Preferences modal opens, saves, closes; Run Warmup gives feedback",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-MBX-11",
+      "title": "Delete mailbox: Cancel keeps it; Delete removes it (DB) and the row",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-MBX-12",
+      "title": "Roles: MANAGER and AGENT cannot open Email accounts (redirect Home)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

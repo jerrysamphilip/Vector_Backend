@@ -5,7 +5,7 @@
     "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 106,
+  "seconds": 104,
   "cases": [
     {
       "id": "UIO-AUTH-01",

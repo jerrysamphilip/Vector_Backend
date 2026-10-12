@@ -261,7 +261,7 @@ def _build_reset_link_for_origin(token: str, request: Request | None) -> str:
 
     reset_url = (settings.RESET_PASSWORD_URL or "").strip()
     backend_base = settings.BASE_URL.rstrip("/")
-    frontend_base = (settings.FRONTEND_URL or "").strip().rstrip("/")
+    frontend_base = (settings.FRONTEND_URL or "").split(",")[0].strip().rstrip("/")
     profile = (os.getenv("APP_PROFILE", "") or "").strip().lower()
 
     def _is_local(url: str) -> bool:

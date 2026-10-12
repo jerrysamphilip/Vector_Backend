@@ -1,0 +1,5 @@
+First Name,Last Name,email,Company Name,Designation
+Ann,One,ann.one@co1.example,Co1,CEO
+Bob,Two,bob.two@co2.example,Co2,VP Sales
+Bad,Row,not-an-email,Co3,CTO
+Ann,Dup,ann.one@co1.example,Co1,CEO

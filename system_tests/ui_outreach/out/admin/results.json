@@ -1,0 +1,137 @@
+{
+  "suite": "UI outreach/admin - admin",
+  "counts": {
+    "PASS": 18,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 62,
+  "cases": [
+    {
+      "id": "UIO-TEAM-01",
+      "title": "Team page lists every workspace member with role/status; KPI tiles match DB counts",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TEAM-02",
+      "title": "Invite modal: opens/cancels; empty and malformed email are blocked (no request); roles radios incl. Super Admin for owner",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TEAM-03",
+      "title": "Invite a Manager: modal closes, confirmation banner; DB has INVITED user with role, invitation row and magic-login token",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TEAM-04",
+      "title": "Inviting an existing member shows the server error in the modal (409), stays open",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TEAM-05",
+      "title": "Search and status filter narrow the member table",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TEAM-06",
+      "title": "Change role (owner): Manager -> Admin saved to DB; Save button only after a change",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TEAM-07",
+      "title": "Deactivate agent -> INACTIVE in DB and cannot log in; Reactivate restores ACTIVE",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TEAM-08",
+      "title": "Revoke a pending invite: Revoke button marks the invited user INACTIVE/removed; self row has no Deactivate",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TEAM-09",
+      "title": "Permissions modal: toggling a permission saves custom_permissions (DB) and the user's access changes; Reset restores defaults",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TEAM-10",
+      "title": "Permanent delete: Cancel keeps user, OK removes the row from DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TEAM-11",
+      "title": "ADMIN view: no role dropdowns, no Permissions buttons; API refuses admin role changes and Super Admin invites (403)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TEAM-12",
+      "title": "Team API 500 on user list shows an error state, not an empty team",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-REP-01",
+      "title": "Reports renders KPIs and campaign table for a campaign with sends; no NaN/undefined",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-REP-02",
+      "title": "Date range buttons (7d/30d/90d/365d) re-query with the matching start_date",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-REP-03",
+      "title": "Export CSV / Export Word / campaign Export CSV trigger file downloads",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-REP-04",
+      "title": "User filter dropdown (All Users) lists workspace users and filters the report",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-REP-05",
+      "title": "Reports API 500 does not crash (error boundary not shown)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-REP-06",
+      "title": "MANAGER (view_analytics) can open Reports; AGENT is redirected Home",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}
