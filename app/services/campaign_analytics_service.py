@@ -11,6 +11,35 @@ from app.models.campaign import CampaignProspect
 from app.models.email_message import EmailMessage, EmailEvent
 
 
+# One definition of the campaign counters, shared by every screen (campaign
+# list/detail, step analytics, /metrics, dashboard, global analytics,
+# comparison):
+#   sent   = outbound campaign messages that actually left (status SENT, or
+#            BOUNCED / COMPLAINED after a send), inbound replies excluded;
+#   opened = UNIQUE prospects with an open event in the campaign.
+SENT_STATUSES = ("SENT", "BOUNCED", "COMPLAINED")
+
+
+def sent_message_filters():
+    """SQL conditions selecting the EmailMessage rows that count as 'sent'."""
+    return [
+        EmailMessage.status.in_(SENT_STATUSES),
+        EmailMessage.sent_at.isnot(None),
+        func.coalesce(EmailMessage.direction, "OUTBOUND") != "INBOUND",
+    ]
+
+
+def unique_openers_expr():
+    """Unique (campaign, prospect) pairs over EmailEvent x EmailMessage open rows.
+
+    Within one campaign this is the number of distinct prospects who opened;
+    across campaigns it is the sum of those per-campaign numbers.
+    """
+    return func.count(func.distinct(
+        func.concat(EmailMessage.campaign_id, ":", EmailMessage.prospect_id)
+    ))
+
+
 class CampaignAnalyticsService:
     """Handles aggregating email event metrics for campaigns."""
 
@@ -22,11 +51,16 @@ class CampaignAnalyticsService:
         Calculate metrics dynamically from events.
         Optimized to use fewer queries for remote database performance.
         """
-        sent_count = self.db.query(func.count(func.distinct(EmailEvent.message_id))).join(
-            EmailMessage, EmailEvent.message_id == EmailMessage.message_id
+        sent_count = self.db.query(func.count(EmailMessage.message_id)).filter(
+            EmailMessage.campaign_id == campaign_id,
+            *sent_message_filters(),
+        ).scalar() or 0
+
+        unique_openers = self.db.query(unique_openers_expr()).join(
+            EmailEvent, EmailEvent.message_id == EmailMessage.message_id
         ).filter(
             EmailMessage.campaign_id == campaign_id,
-            EmailEvent.event_type == EmailEvent.EVENT_SENT
+            EmailEvent.event_type == EmailEvent.EVENT_OPEN,
         ).scalar() or 0
 
         # Get counts of unique message_ids for Open, Reply, Bounce events in one query
@@ -50,7 +84,7 @@ class CampaignAnalyticsService:
 
         event_counts = {r[0]: r[1] for r in results}
 
-        opened_count = event_counts.get(EmailEvent.EVENT_OPEN, 0)
+        opened_count = unique_openers
         replied_count = event_counts.get(EmailEvent.EVENT_REPLY, 0)
         bounced_count = event_counts.get(EmailEvent.EVENT_BOUNCE, 0)
         sender_bounced_count = event_counts.get(EmailEvent.EVENT_SENDER_BOUNCE, 0)
@@ -92,18 +126,26 @@ class CampaignAnalyticsService:
         if not campaign_ids:
             return {}
 
-        # 1. Bulk Sent Counts based on EVENT_SENT
+        # 1. Bulk Sent Counts (see sent_message_filters)
         sent_results = self.db.query(
             EmailMessage.campaign_id,
-            func.count(func.distinct(EmailEvent.message_id))
+            func.count(EmailMessage.message_id)
+        ).filter(
+            EmailMessage.campaign_id.in_(campaign_ids),
+            *sent_message_filters(),
+        ).group_by(EmailMessage.campaign_id).all()
+
+        sent_map = {r[0]: r[1] for r in sent_results}
+
+        openers_map = dict(self.db.query(
+            EmailMessage.campaign_id,
+            unique_openers_expr()
         ).join(
             EmailEvent, EmailEvent.message_id == EmailMessage.message_id
         ).filter(
             EmailMessage.campaign_id.in_(campaign_ids),
-            EmailEvent.event_type == EmailEvent.EVENT_SENT
-        ).group_by(EmailMessage.campaign_id).all()
-
-        sent_map = {r[0]: r[1] for r in sent_results}
+            EmailEvent.event_type == EmailEvent.EVENT_OPEN
+        ).group_by(EmailMessage.campaign_id).all())
 
         # 2. Bulk Event Counts (Open, Reply, Bounce etc)
         event_results = self.db.query(
@@ -128,7 +170,7 @@ class CampaignAnalyticsService:
         # Initialize map with 0s for all requested IDs
         metrics_map = {cid: {
             "sent_count": sent_map.get(cid, 0),
-            "opened_count": 0,
+            "opened_count": openers_map.get(cid, 0),
             "replied_count": 0,
             "bounced_count": 0,
             "sender_bounced_count": 0,
@@ -141,9 +183,7 @@ class CampaignAnalyticsService:
         # Fill in event counts
         for cid, etype, count in event_results:
             if cid in metrics_map:
-                if etype == EmailEvent.EVENT_OPEN:
-                    metrics_map[cid]["opened_count"] = count
-                elif etype == EmailEvent.EVENT_REPLY:
+                if etype == EmailEvent.EVENT_REPLY:
                     metrics_map[cid]["replied_count"] = count
                 elif etype == EmailEvent.EVENT_BOUNCE:
                     metrics_map[cid]["bounced_count"] = count

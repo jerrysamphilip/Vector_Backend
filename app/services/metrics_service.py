@@ -131,20 +131,32 @@ class MetricsService:
         return self.get_or_create_metrics(campaign_id)
 
     def get_metrics_dict(self, campaign_id: str) -> dict:
-        """Get metrics as a dictionary for API response."""
-        metrics = self.get_or_create_metrics(campaign_id)
+        """Get metrics as a dictionary for API response.
+
+        Computed from messages/events with the same definitions as the campaign
+        detail page (CampaignAnalyticsService) so every screen agrees; the
+        realtime counter table is not kept up to date by every event source
+        (e.g. open tracking), so it is not read here.
+        """
+        from app.services.campaign_analytics_service import CampaignAnalyticsService
+
+        m = CampaignAnalyticsService(self.db).get_dynamic_metrics(campaign_id)
+        sent = m["sent_count"]
+
+        def rate(n):
+            return (n / sent) * 100 if sent else 0.0
 
         return {
-            "sent_count": metrics.sent_count,
-            "opened_count": metrics.opened_count,
-            "replied_count": metrics.replied_count,
-            "bounced_count": metrics.bounced_count,
-            "sender_bounced_count": metrics.sender_bounced_count,
-            "positive_replied_count": metrics.positive_replied_count,
-            "ooo_count": metrics.ooo_count,
-            "open_rate": metrics.open_rate,
-            "reply_rate": metrics.reply_rate,
-            "bounce_rate": metrics.bounce_rate,
+            "sent_count": sent,
+            "opened_count": m["opened_count"],
+            "replied_count": m["replied_count"],
+            "bounced_count": m["bounced_count"],
+            "sender_bounced_count": m["sender_bounced_count"],
+            "positive_replied_count": m["positive_replied_count"],
+            "ooo_count": m["ooo_count"],
+            "open_rate": rate(m["opened_count"]),
+            "reply_rate": rate(m["replied_count"]),
+            "bounce_rate": rate(m["bounced_count"]),
         }
 
     def sync_campaign_metrics(self, campaign_id: str):

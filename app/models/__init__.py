@@ -15,10 +15,10 @@ from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.account import Account
 from app.models.contact_activity import ContactActivity
 from app.models.contact_field import ContactFieldDefinition
-from app.models.crm import PropertyChange, CrmTask, SavedView, ImportJob
+from app.models.crm import PropertyChange, CrmTask, SavedView, ImportJob, ContactCompany, NoteMention
 from app.models.sales import Lead, SalesStage, Opportunity, Proposal
 from app.models.sales_extra import (Notification, WorkflowRule, SalesSetting, SalesTarget, MessageTemplate,
-                                    SavedReport, Product, ProposalLine, UserConnection)
+                                    SavedReport, Product, ProposalLine, UserConnection, ForecastSnapshot)
 from app.models.campaign import Campaign, CampaignStateEvent, CampaignProspect
 from app.models.email_sequence import EmailSequence
 from app.models.email_template import AIPrompt, EmailTemplate, EmailTemplateVersion
@@ -70,6 +70,8 @@ __all__ = [
     "CrmTask",
     "SavedView",
     "ImportJob",
+    "ContactCompany",
+    "NoteMention",
     "Campaign",
     "CampaignStateEvent",
     "CampaignProspect",

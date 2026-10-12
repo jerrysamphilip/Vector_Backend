@@ -11,10 +11,10 @@ Phase 2 sales API (BRD v2.0):
 Everything is limited to the records of the user and their team.
 """
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -749,6 +749,8 @@ class DealActivity(BaseModel):
     duration_minutes: Optional[int] = None
     occurred_at: Optional[datetime] = None
     add_to_calendar: bool = False
+    # Colleagues @mentioned in a note (BR-CM-16)
+    mentioned_user_ids: Optional[List[Annotated[str, Field(min_length=1, max_length=36)]]] = Field(None, max_length=20)
 
 
 @router.post("/opportunities/{opportunity_id}/activities", status_code=201)
@@ -760,12 +762,19 @@ def log_deal_activity(opportunity_id: str, payload: DealActivity, db: Session = 
         raise HTTPException(status_code=400, detail=f"activity_type must be one of {list(ACTIVITY_TYPES)}")
     if not (clean_str(payload.subject) or clean_str(payload.body)):
         raise HTTPException(status_code=400, detail="Add a subject or some notes")
+    from app.services import mentions
+    if payload.mentioned_user_ids and payload.activity_type != "NOTE":
+        raise HTTPException(status_code=400, detail="You can only mention people in notes")
+    mentioned_users = mentions.validate(db, current_user, payload.mentioned_user_ids)
     a = ContactActivity(tenant_id=current_user.tenant_id, prospect_id=opp.prospect_id, opportunity_id=opp.opportunity_id,
                         activity_type=payload.activity_type, subject=clean_str(payload.subject), body=payload.body,
                         outcome=clean_str(payload.outcome), duration_minutes=payload.duration_minutes,
                         occurred_at=_naive(payload.occurred_at) or datetime.utcnow(), created_by=current_user.user_id,
                         source="MANUAL")
     db.add(a)
+    if mentioned_users:
+        db.flush()
+        mentions.save(db, current_user, a, mentioned_users, opp.name, f"/app/deals/{opp.opportunity_id}")
     opp.updated_at = datetime.utcnow()
     db.commit()
     if payload.add_to_calendar and payload.activity_type == "MEETING":
@@ -789,8 +798,11 @@ def deal_timeline(opportunity_id: str, db: Session = Depends(get_db), current_us
     acts = acts.filter(ContactActivity.occurred_at >= (opp.created_at or datetime.utcnow()) - timedelta(days=30)) \
         .order_by(ContactActivity.occurred_at.desc()).limit(200).all()
     names.update(svc.user_names(db, [a.created_by for a in acts]))
+    from app.services import mentions
+    mentioned = mentions.for_activities(db, [a.activity_id for a in acts if a.activity_type == "NOTE"])
     for a in acts:
         items.append({"kind": a.activity_type, "at": a.occurred_at, "activity": {
+            "mentions": mentioned.get(a.activity_id, []),
             "activity_id": a.activity_id, "activity_type": a.activity_type, "subject": a.subject, "body": a.body,
             "outcome": a.outcome, "duration_minutes": a.duration_minutes, "source": a.source,
             "created_by_name": names.get(a.created_by), "on_deal": a.opportunity_id == opp.opportunity_id}})

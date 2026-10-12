@@ -423,6 +423,18 @@ class UpdatePermissionsRequest(BaseModel):
 
 # ── Endpoints ────────────────────────────────────────────
 
+def _revoke_pending_invitations(db: Session, user: User) -> None:
+    """The invited account is deactivated: close its open invitation and unused sign-in links."""
+    db.query(Invitation).filter(
+        Invitation.tenant_id == user.tenant_id,
+        Invitation.email == user.email,
+        Invitation.status == "PENDING",
+    ).update({Invitation.status: "REVOKED"}, synchronize_session=False)
+    db.query(MagicLoginToken).filter(
+        MagicLoginToken.user_id == user.user_id, MagicLoginToken.used_at.is_(None)
+    ).update({MagicLoginToken.used_at: datetime.utcnow()}, synchronize_session=False)
+
+
 @router.get("", response_model=list[UserOut])
 def list_users(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
@@ -523,14 +535,16 @@ def invite_user(
     )
     db.add(magic_token)
 
-    # Keep invitation row for audit/history.
+    # The invitation stays PENDING until the invitee first signs in (or uses
+    # /accept-invite with the emailed link's token); revoking it while pending
+    # deactivates the invited account.
     invitation = Invitation(
         tenant_id=current_user.tenant_id,
         invited_by=current_user.user_id,
         email=body.email,
         role=body.role,
-        token=hash_token(secrets.token_urlsafe(48)),
-        status="ACCEPTED",
+        token=hash_token(raw_magic_token),
+        status="PENDING",
         expires_at=datetime.utcnow() + timedelta(days=7),
     )
     db.add(invitation)
@@ -621,6 +635,24 @@ def accept_invite(body: AcceptInviteRequest, db: Session = Depends(get_db)):
         .filter(User.tenant_id == invitation.tenant_id, User.email == invitation.email)
         .first()
     )
+    if existing and existing.status == "INVITED":
+        # The account was created with the invitation: set the chosen name and password
+        existing.first_name = body.first_name
+        existing.last_name = body.last_name
+        existing.password_hash = hash_password(body.password)
+        existing.status = "ACTIVE"
+        db.query(MagicLoginToken).filter(
+            MagicLoginToken.user_id == existing.user_id, MagicLoginToken.used_at.is_(None)
+        ).update({MagicLoginToken.used_at: datetime.utcnow()}, synchronize_session=False)
+        invitation.status = "ACCEPTED"
+        db.commit()
+        logger.info(f"Invitation accepted: {invitation.email} joined as {existing.role}")
+        return {
+            "message": "Account created successfully",
+            "user_id": existing.user_id,
+            "email": existing.email,
+            "role": existing.role,
+        }
     if existing:
         invitation.status = "ACCEPTED"
         db.commit()
@@ -711,10 +743,13 @@ def deactivate_user(
         raise HTTPException(status_code=403, detail="Admins cannot deactivate other admins")
 
     if target.status == "INACTIVE":
-        raise HTTPException(status_code=400, detail="User is already inactive")
+        # Already deactivated: a repeated DELETE finds nothing to delete
+        raise HTTPException(status_code=404, detail="User not found")
 
     prev_status = target.status
     target.status = "INACTIVE"
+    if prev_status == "INVITED":
+        _revoke_pending_invitations(db, target)
     db.commit()
 
     action = "revoked invite for" if prev_status == "INVITED" else "deactivated"
@@ -977,13 +1012,21 @@ def revoke_invitation(
         )
         .first()
     )
-    if not invitation:
+    if not invitation or invitation.status == "REVOKED":
+        # A revoked invitation is gone: a repeated DELETE is a 404
         raise HTTPException(status_code=404, detail="Invitation not found")
 
     if invitation.status != "PENDING":
         raise HTTPException(status_code=400, detail=f"Cannot revoke invitation with status: {invitation.status}")
 
     invitation.status = "REVOKED"
+    # The invited account was created up front: it must not be usable once the invite is revoked
+    invited = db.query(User).filter(
+        User.tenant_id == invitation.tenant_id, User.email == invitation.email, User.status == "INVITED"
+    ).first()
+    if invited:
+        invited.status = "INACTIVE"
+        _revoke_pending_invitations(db, invited)
     db.commit()
 
     logger.info(f"Invitation revoked: {invitation.email} by {current_user.email}")

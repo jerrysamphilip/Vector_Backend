@@ -86,6 +86,12 @@ _ALIASES = {
     "company.phone": ["company phone"], "company.street": ["address", "street", "street address"],
     "company.postal_code": ["postal code", "zip", "zip code", "postcode"],
 }
+# Contact property -> company field of the same meaning, used when a file has no Email column
+_CONTACT_TO_COMPANY = {
+    "contact.full_name": "company.name", "contact.phone": "company.phone", "contact.industry": "company.industry",
+    "contact.emp_band": "company.emp_band", "contact.poc_city": "company.city", "contact.poc_state": "company.state",
+    "contact.poc_country": "company.country",
+}
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -133,6 +139,18 @@ def _suggest(headers: List[str], custom: Dict[str, str]) -> Dict[str, str]:
         mapping[h] = target or "skip"
         if target:
             taken.add(target)
+    if "contact.email" not in taken:
+        # No Email column: a company-only file. Contact properties can't be imported without
+        # an email to match on, so suggest the company field of the same meaning, else skip.
+        for h, target in mapping.items():
+            if not target.startswith(("contact.", "custom.")):
+                continue
+            company_target = _CONTACT_TO_COMPANY.get(target)
+            if company_target and company_target not in taken:
+                mapping[h] = company_target
+                taken.add(company_target)
+            else:
+                mapping[h] = "skip"
     return mapping
 
 

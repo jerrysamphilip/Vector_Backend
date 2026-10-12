@@ -45,6 +45,7 @@ from app.core.security import (
     hash_token,
     verify_password,
 )
+from app.models.invitation import Invitation
 from app.models.magic_login_token import MagicLoginToken
 from app.models.password_reset_token import PasswordResetToken
 from app.models.refresh_token import RefreshToken
@@ -208,10 +209,21 @@ def _deliver_tokens(result: dict, request: Request, response: Response) -> dict:
     return result
 
 
+def mark_invitation_accepted(db: Session, user: User) -> None:
+    """An invited user has joined (first sign-in or accept-invite): their open invitation is accepted."""
+    db.query(Invitation).filter(
+        Invitation.tenant_id == user.tenant_id,
+        Invitation.email == user.email,
+        Invitation.status.in_(("PENDING", "EXPIRED")),
+    ).update({Invitation.status: "ACCEPTED"}, synchronize_session=False)
+
+
 def _complete_sign_in(user: User, db: Session, request: Request, response: Response,
                       first_login: bool = False) -> dict:
     """First factor passed (password, magic link, Google, sign-up). Users with two-factor on get a
     short-lived mfa_token to exchange at /api/auth/mfa/verify; everyone else gets a session."""
+    if first_login:
+        mark_invitation_accepted(db, user)
     if user.mfa_enabled:
         db.commit()  # keep what the first step changed (e.g. magic link marked used)
         return {"mfa_required": True, "mfa_token": create_mfa_token(user.user_id, first_login),

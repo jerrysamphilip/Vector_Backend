@@ -6,7 +6,7 @@ property change history, tasks, saved views and import jobs.
 
 import uuid
 
-from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, JSON, String, Text, TIMESTAMP, text
+from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, JSON, String, Text, TIMESTAMP, UniqueConstraint, text
 from sqlalchemy.dialects import mysql
 from sqlalchemy.sql import func
 
@@ -102,3 +102,48 @@ class ImportJob(Base):
     finished_at = Column(TIMESTAMP, nullable=True)
 
     __table_args__ = (MYSQL_OPTS,)
+
+
+class ContactCompany(Base):
+    """A contact's association with a company, with a label (BR-CM, CM-014).
+
+    prospects.account_id stays the contact's primary company; its link row has is_primary set
+    and mirrors it. Other rows are secondary associations ("Billing", "Decision maker", ...).
+    """
+    __tablename__ = "contact_companies"
+
+    link_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
+    prospect_id = Column(String(36), ForeignKey("prospects.prospect_id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(String(36), ForeignKey("accounts.account_id", ondelete="CASCADE"), nullable=False)
+    label = Column(String(100), nullable=True)
+    is_primary = Column(Boolean, nullable=False, default=False)
+    created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("prospect_id", "account_id", name="uq_contact_companies_contact_account"),
+        Index("ix_contact_companies_account", "account_id"),
+        Index("ix_contact_companies_tenant", "tenant_id"),
+        MYSQL_OPTS,
+    )
+
+
+class NoteMention(Base):
+    """A colleague @mentioned in a note (BR-CM-16, CM-033); they get an in-app notification."""
+    __tablename__ = "note_mentions"
+
+    mention_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
+    activity_id = Column(String(36), ForeignKey("contact_activities.activity_id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
+    created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("activity_id", "user_id", name="uq_note_mentions_activity_user"),
+        Index("ix_note_mentions_user", "user_id"),
+        Index("ix_note_mentions_tenant", "tenant_id"),
+        MYSQL_OPTS,
+    )

@@ -156,7 +156,8 @@ class CampaignExecutionService:
 
                 # Full placeholder substitution
                 cta_link = normalize_cta_link(cp.campaign.cta_link)
-                sender_name = cp.campaign.sender_name if hasattr(cp.campaign, 'sender_name') else None
+                from app.services.sender_identity import campaign_sender_name
+                sender_name = campaign_sender_name(self.db, cp.campaign)
                 sender_title = getattr(cp.campaign, 'sender_title', None)
                 final_subject = self._substitute_placeholders(
                     template.subject or "", prospect, sender_name, cta_link, sender_title

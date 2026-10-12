@@ -131,7 +131,7 @@ class Schemas:
             return probs
         t = s.get("type")
         if inst is None:
-            if t is None or s.get("nullable"):
+            if t is None or t == "null" or s.get("nullable"):
                 return []
             return [f"{path}: null not allowed (declared {t})"]
         if "enum" in s and inst not in s["enum"]:

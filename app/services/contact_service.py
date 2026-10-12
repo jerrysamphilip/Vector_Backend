@@ -293,6 +293,8 @@ def merge_contacts(db: Session, primary: Prospect, duplicates: list, merged_by: 
         for model in (Lead, Opportunity):
             db.query(model).filter(model.prospect_id == dup.prospect_id).update(
                 {model.prospect_id: primary.prospect_id}, synchronize_session=False)
+        from app.services.contact_companies import move_links
+        move_links(db, dup, primary)
         db.query(Prospect).filter(Prospect.merged_into_id == dup.prospect_id).update(
             {Prospect.merged_into_id: primary.prospect_id}, synchronize_session=False)
         db.query(PropertyChange).filter(PropertyChange.object_type == "CONTACT",

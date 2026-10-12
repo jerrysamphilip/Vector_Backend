@@ -188,7 +188,7 @@ _last_sync = 0.0
 
 
 async def sales_jobs_iteration() -> None:
-    # Notification emails every minute; lead recycling and stale-deal alerts hourly
+    # Notification emails every minute; lead recycling, stale-deal alerts and forecast snapshots hourly
     # (BR-SF-02, 05, 07); calendar / email sync every 10 minutes (BR-SF-16)
     global _last_hourly, _last_sync
     from app.services import account_sync, sales_jobs
@@ -199,7 +199,9 @@ async def sales_jobs_iteration() -> None:
     if not _last_hourly or time.monotonic() - _last_hourly >= 3600:
         def _hourly():
             with SessionLocal() as db:
-                return sales_jobs.recycle_leads(db), sales_jobs.stale_deals(db)
+                # Forecast snapshot at the start of each month / quarter (forecast accuracy, BRD 8)
+                from app.services.forecast_snapshots import run_due
+                return sales_jobs.recycle_leads(db), sales_jobs.stale_deals(db), run_due(db)
         await _run_in_thread(_hourly)
         _last_hourly = time.monotonic()
     if not _last_sync or time.monotonic() - _last_sync >= 600:

@@ -27,6 +27,7 @@ from app.models.sending_inbox import SendingInbox
 from app.models.prospect import Prospect
 from app.models.domain_reputation import SendingDomain, DomainHealthSnapshot
 from app.models.user import User
+from app.services.campaign_analytics_service import sent_message_filters, unique_openers_expr
 from app.schemas.reports_schema import (
     GlobalKPIs,
     TimeSeriesPoint,
@@ -66,6 +67,16 @@ class ReportsService:
         q = q.filter(*_by_owner(Campaign.created_by, user_id))
         return q.subquery()
 
+    def _unique_openers(self, *filters) -> int:
+        """Opened = unique prospects (per campaign) with an open event."""
+        return (
+            self.db.query(unique_openers_expr())
+            .select_from(EmailEvent)
+            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
+            .filter(EmailEvent.event_type == EmailEvent.EVENT_OPEN, *filters)
+            .scalar()
+        ) or 0
+
     # ------------------------------------------------------------------
     # GLOBAL ANALYTICS
     # ------------------------------------------------------------------
@@ -91,8 +102,7 @@ class ReportsService:
             self.db.query(func.count(EmailMessage.message_id))
             .filter(
                 EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailMessage.status == "SENT",
-                EmailMessage.direction != "INBOUND",
+                *sent_message_filters(),
                 EmailMessage.sent_at >= start_date,
                 EmailMessage.sent_at < end_date + timedelta(days=1),
             )
@@ -115,7 +125,11 @@ class ReportsService:
             .first()
         )
 
-        opened = event_row.opened or 0
+        opened = self._unique_openers(
+            EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
+            EmailEvent.event_time >= start_date,
+            EmailEvent.event_time < end_date + timedelta(days=1),
+        )
         replied = event_row.replied or 0
         bounced = event_row.bounced or 0
         clicked = event_row.clicked or 0
@@ -147,7 +161,7 @@ class ReportsService:
             self.db.query(func.count(func.distinct(EmailMessage.prospect_id)))
             .filter(
                 EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailMessage.status == "SENT",
+                *sent_message_filters(),
                 EmailMessage.sent_at >= start_date,
                 EmailMessage.sent_at < end_date + timedelta(days=1),
             )
@@ -197,7 +211,7 @@ class ReportsService:
             )
             .filter(
                 EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailMessage.status == "SENT",
+                *sent_message_filters(),
                 EmailMessage.sent_at >= start_date,
                 EmailMessage.sent_at < end_date + timedelta(days=1),
             )
@@ -228,12 +242,27 @@ class ReportsService:
             .all()
         )
 
-        open_map = {}
+        # Opens per day = unique prospects (per campaign) who opened that day
+        open_map = {row.d: row.cnt for row in (
+            self.db.query(
+                func.date(EmailEvent.event_time).label("d"),
+                unique_openers_expr().label("cnt"),
+            )
+            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
+            .filter(
+                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
+                EmailEvent.event_time >= start_date,
+                EmailEvent.event_time < end_date + timedelta(days=1),
+                EmailEvent.event_type == EmailEvent.EVENT_OPEN,
+            )
+            .group_by(func.date(EmailEvent.event_time))
+            .all()
+        )}
         reply_map = {}
         bounce_map = {}
         for row in event_results:
             if row.t == EmailEvent.EVENT_OPEN:
-                open_map[row.d] = row.cnt
+                continue
             elif row.t == EmailEvent.EVENT_REPLY:
                 reply_map[row.d] = row.cnt
             elif row.t == EmailEvent.EVENT_BOUNCE:
@@ -285,7 +314,7 @@ class ReportsService:
     ) -> CampaignComparisonResponse:
         """All campaigns with metrics, sortable and paginated."""
 
-        sent_filters = [EmailMessage.status == "SENT"]
+        sent_filters = list(sent_message_filters())
         if start_date:
             sent_filters.append(EmailMessage.sent_at >= start_date)
         if end_date:
@@ -310,7 +339,9 @@ class ReportsService:
         event_subquery = (
             self.db.query(
                 EmailMessage.campaign_id.label("campaign_id"),
-                func.sum(case((EmailEvent.event_type == EmailEvent.EVENT_OPEN, 1), else_=0)).label("opened_count"),
+                func.count(func.distinct(case(
+                    (EmailEvent.event_type == EmailEvent.EVENT_OPEN, EmailMessage.prospect_id)
+                ))).label("opened_count"),
                 func.sum(case((EmailEvent.event_type == EmailEvent.EVENT_REPLY, 1), else_=0)).label("replied_count"),
                 func.sum(case((EmailEvent.event_type == EmailEvent.EVENT_BOUNCE, 1), else_=0)).label("bounced_count"),
             )
@@ -462,7 +493,7 @@ class ReportsService:
             .join(SendingInbox, SendingInbox.inbox_id == EmailMessage.inbox_id)
             .filter(
                 EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailMessage.status == "SENT",
+                *sent_message_filters(),
                 EmailMessage.sent_at >= start_date,
                 EmailMessage.sent_at < end_date + timedelta(days=1),
             )
@@ -502,13 +533,28 @@ class ReportsService:
                 provider_events[r.provider] = {}
             provider_events[r.provider][r.etype] = r.cnt
 
+        provider_openers = dict(
+            self.db.query(func.coalesce(SendingInbox.provider, "unknown"), unique_openers_expr())
+            .select_from(EmailEvent)
+            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
+            .join(SendingInbox, SendingInbox.inbox_id == EmailMessage.inbox_id)
+            .filter(
+                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
+                EmailEvent.event_time >= start_date,
+                EmailEvent.event_time < end_date + timedelta(days=1),
+                EmailEvent.event_type == EmailEvent.EVENT_OPEN,
+            )
+            .group_by(func.coalesce(SendingInbox.provider, "unknown"))
+            .all()
+        )
+
         all_providers = set(providers_sent.keys()) | set(provider_events.keys())
 
         items = []
         for prov in sorted(all_providers):
             sent = providers_sent.get(prov, 0)
             events = provider_events.get(prov, {})
-            opened = events.get(EmailEvent.EVENT_OPEN, 0)
+            opened = provider_openers.get(prov, 0)
             replied = events.get(EmailEvent.EVENT_REPLY, 0)
             bounced = events.get(EmailEvent.EVENT_BOUNCE, 0)
 
@@ -627,7 +673,7 @@ class ReportsService:
             .join(SendingInbox, SendingInbox.inbox_id == EmailMessage.inbox_id)
             .filter(
                 EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailMessage.status == "SENT",
+                *sent_message_filters(),
             )
             .group_by(SendingInbox.email_address)
             .all()
@@ -661,11 +707,24 @@ class ReportsService:
                 mailbox_events[r.mailbox] = {}
             mailbox_events[r.mailbox][r.etype] = r.cnt
 
+        mailbox_openers = dict(
+            self.db.query(SendingInbox.email_address, unique_openers_expr())
+            .select_from(EmailEvent)
+            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
+            .join(SendingInbox, SendingInbox.inbox_id == EmailMessage.inbox_id)
+            .filter(
+                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
+                EmailEvent.event_type == EmailEvent.EVENT_OPEN,
+            )
+            .group_by(SendingInbox.email_address)
+            .all()
+        )
+
         items = []
         for r in sent_rows:
             events = mailbox_events.get(r.mailbox, {})
             sent = r.sent or 0
-            opened = events.get(EmailEvent.EVENT_OPEN, 0)
+            opened = mailbox_openers.get(r.mailbox, 0)
             replied = events.get(EmailEvent.EVENT_REPLY, 0)
             bounced = events.get(EmailEvent.EVENT_BOUNCE, 0)
 
@@ -730,7 +789,7 @@ class ReportsService:
                 EmailMessage.prospect_id.in_(
                     self.db.query(follow_up_prospects.c.prospect_id)
                 ),
-                EmailMessage.status == "SENT",
+                *sent_message_filters(),
             )
             .scalar()
         ) or 0
@@ -821,7 +880,7 @@ class ReportsService:
                 self.db.query(func.count(EmailMessage.message_id))
                 .filter(
                     EmailMessage.campaign_id.in_(self.db.query(campaigns_q.c.campaign_id)),
-                    EmailMessage.status == "SENT",
+                    *sent_message_filters(),
                     EmailMessage.sent_at >= start_date,
                     EmailMessage.sent_at < end_date + timedelta(days=1),
                 )
@@ -843,7 +902,11 @@ class ReportsService:
                 .first()
             )
 
-            opened = event_row.opened or 0
+            opened = self._unique_openers(
+                EmailMessage.campaign_id.in_(self.db.query(campaigns_q.c.campaign_id)),
+                EmailEvent.event_time >= start_date,
+                EmailEvent.event_time < end_date + timedelta(days=1),
+            )
             replied = event_row.replied or 0
             bounced = event_row.bounced or 0
 
@@ -1022,7 +1085,9 @@ class ReportsService:
         engagement = (
             self.db.query(
                 EmailMessage.prospect_id,
-                func.count(EmailMessage.message_id).label("sent"),
+                func.sum(case(
+                    (and_(*sent_message_filters()), 1), else_=0
+                )).label("sent"),
                 func.sum(case(
                     (EmailMessage.status == "SENT", 1), else_=0
                 )).label("delivered"),

@@ -258,6 +258,8 @@ from app.routers.sales_router import router as sales_router
 from app.routers.sales_reports_router import router as sales_reports_router
 app.include_router(sales_router)
 app.include_router(sales_reports_router)
+from app.routers.sales_kpi_router import router as sales_kpi_router
+app.include_router(sales_kpi_router)
 from app.routers.sales_admin_router import router as sales_admin_router
 app.include_router(sales_admin_router)
 from app.routers.quotes_router import router as quotes_router

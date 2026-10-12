@@ -37,6 +37,7 @@ from app.schemas.sequence_schema import (
     SequenceResponse,
 )
 from app.services.campaign_service import CampaignService
+from app.services.campaign_analytics_service import sent_message_filters, unique_openers_expr
 from app.services.sequence_service import SequenceService
 from app.services.audit_service import AuditService
 from app.utils.email_utils import normalize_unsubscribe_footer
@@ -1199,7 +1200,7 @@ def get_campaign_analytics(
     ).filter(
         EmailMessage.campaign_id == campaign_id,
         EmailMessage.sent_at >= start_date,
-        EmailMessage.status == "SENT"
+        *sent_message_filters(),
     ).group_by(func.date(EmailMessage.sent_at)).all()
 
     sent_map = {row.date: row.count for row in sent_results}
@@ -1230,9 +1231,21 @@ def get_campaign_analytics(
     positive_map = {}
     ooo_map = {}
 
+    # Opens per day = unique prospects who opened that day
+    open_map = {row.date: row.count for row in db.query(
+        func.date(EmailEvent.event_time).label('date'),
+        unique_openers_expr().label('count')
+    ).join(
+        EmailMessage, EmailMessage.message_id == EmailEvent.message_id
+    ).filter(
+        EmailMessage.campaign_id == campaign_id,
+        EmailEvent.event_time >= start_date,
+        EmailEvent.event_type == EmailEvent.EVENT_OPEN,
+    ).group_by(func.date(EmailEvent.event_time)).all()}
+
     for row in event_results:
         if row.type == EmailEvent.EVENT_OPEN:
-            open_map[row.date] = row.count
+            continue
         elif row.type == EmailEvent.EVENT_REPLY:
             reply_map[row.date] = row.count
         elif row.type == EmailEvent.EVENT_BOUNCE:
@@ -1288,11 +1301,22 @@ def get_campaign_analytics(
         func.count(EmailMessage.message_id)
     ).filter(
         EmailMessage.campaign_id == campaign_id,
-        EmailMessage.status == "SENT",
+        *sent_message_filters(),
         EmailMessage.sequence_id.in_(sequence_ids)
     ).group_by(EmailMessage.sequence_id).all()
 
     seq_sent_map = {row[0]: row[1] for row in sent_counts}
+
+    seq_openers_map = dict(db.query(
+        EmailMessage.sequence_id,
+        unique_openers_expr()
+    ).join(
+        EmailEvent, EmailEvent.message_id == EmailMessage.message_id
+    ).filter(
+        EmailMessage.campaign_id == campaign_id,
+        EmailMessage.sequence_id.in_(sequence_ids),
+        EmailEvent.event_type == EmailEvent.EVENT_OPEN
+    ).group_by(EmailMessage.sequence_id).all())
 
     event_types = [
         EmailEvent.EVENT_OPEN,
@@ -1334,7 +1358,7 @@ def get_campaign_analytics(
         sent_count = seq_sent_map.get(s_id, 0)
 
         e_counts = event_map.get(s_id, {})
-        opened_count = e_counts.get(EmailEvent.EVENT_OPEN, 0)
+        opened_count = seq_openers_map.get(s_id, 0)
         clicked_count = e_counts.get(EmailEvent.EVENT_CLICK, 0)
         replied_count = e_counts.get(EmailEvent.EVENT_REPLY, 0)
         bounced_count = e_counts.get(EmailEvent.EVENT_BOUNCE, 0)
@@ -1407,15 +1431,17 @@ def get_campaign_analytics(
     # Lifetime aggregate metrics
     total_sent = db.query(func.count(EmailMessage.message_id)).filter(
         EmailMessage.campaign_id == campaign_id,
-        EmailMessage.status == "SENT"
+        *sent_message_filters(),
     ).scalar() or 0
 
     all_msg_ids = db.query(EmailMessage.message_id).filter(
         EmailMessage.campaign_id == campaign_id
     )
 
-    total_opened = db.query(func.count(func.distinct(EmailEvent.message_id))).filter(
-        EmailEvent.message_id.in_(all_msg_ids),
+    total_opened = db.query(unique_openers_expr()).join(
+        EmailEvent, EmailEvent.message_id == EmailMessage.message_id
+    ).filter(
+        EmailMessage.campaign_id == campaign_id,
         EmailEvent.event_type == EmailEvent.EVENT_OPEN
     ).scalar() or 0
 
