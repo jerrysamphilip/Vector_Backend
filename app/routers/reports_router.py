@@ -239,7 +239,8 @@ async def export_campaign_comparison_csv(
     """Download campaign comparison table as CSV (scoped to user if user_id provided)."""
     user_id = _report_scope(service.db, current_user, user_id)
     buf = service.export_campaign_comparison_csv(current_user.tenant_id, user_id=user_id)
-    filename = f"campaign_comparison{'_' + user_id[:8] if isinstance(user_id, str) else ''}.csv"
+    suffix = "".join(c for c in user_id[:8] if c.isalnum() or c in "-_") if isinstance(user_id, str) else ""
+    filename = f"campaign_comparison{'_' + suffix if suffix else ''}.csv"
     return StreamingResponse(
         buf,
         media_type="text/csv",

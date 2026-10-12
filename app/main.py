@@ -130,6 +130,27 @@ app.add_exception_handler(ResourceNotFoundError, global_exception_handler)
 app.add_exception_handler(ExternalServiceError, global_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
 
+from sqlalchemy.exc import DataError, IntegrityError
+
+
+@app.exception_handler(DataError)
+async def db_data_error_handler(request: Request, exc: DataError):
+    # Value too long / out of range for its column: the caller's input, not a server fault
+    logger.info("422 database rejected a value on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=422, content={
+        "success": False, "error": "A value is too long or out of range", "code": "VALIDATION_ERROR"})
+
+
+@app.exception_handler(IntegrityError)
+async def db_integrity_error_handler(request: Request, exc: IntegrityError):
+    logger.info("409 database constraint on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=409, content={
+        "success": False, "error": "The request conflicts with existing data", "code": "CONFLICT"})
+
+
+from app.core.nul_guard import RejectNulMiddleware
+app.add_middleware(RejectNulMiddleware)
+
 from app.core.database import engine
 from sqlalchemy import text
  

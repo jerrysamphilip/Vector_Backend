@@ -360,7 +360,7 @@ def sync_inbox_history(
     success = service.sync_inbox(inbox, days_back=days)
     if not success:
         raise HTTPException(
-            status_code=500,
+            status_code=502,
             detail=(
                 f"IMAP sync failed for {inbox.email_address}. "
                 f"Check that imap_host={inbox.imap_host} is reachable and credentials are correct."

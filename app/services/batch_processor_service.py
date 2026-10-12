@@ -371,6 +371,15 @@ def generate_templates_per_persona(
     # Clear any existing templates for this campaign to prevent duplicates on re-generation.
     # Do not commit here — the caller owns the transaction and will roll back everything
     # if generation fails later in the flow.
+    old_ids = [t for (t,) in db.query(EmailTemplate.template_id).filter(
+        EmailTemplate.campaign_id == campaign_id).all()]
+    if old_ids:
+        from app.models.email_template import EmailTemplateVersion
+        from app.models.email_attachment import EmailAttachment
+        db.query(EmailTemplateVersion).filter(
+            EmailTemplateVersion.template_id.in_(old_ids)).delete(synchronize_session=False)
+        db.query(EmailAttachment).filter(
+            EmailAttachment.template_id.in_(old_ids)).delete(synchronize_session=False)
     db.query(EmailTemplate).filter(
         EmailTemplate.campaign_id == campaign_id
     ).delete(synchronize_session=False)

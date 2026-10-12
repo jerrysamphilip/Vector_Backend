@@ -222,15 +222,22 @@ def get_schedule_preview(
 @router.get("/campaigns/lists")
 def get_available_lists(db: Session = Depends(get_db), current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT"))):
     """Get all prospect lists available for campaign creation."""
+    from sqlalchemy import func
+    from app.models.prospect_list import ProspectListMember
     lists = db.query(ProspectList).filter(
         ProspectList.tenant_id == current_user.tenant_id
     ).all()
-    
+    counts = dict(
+        db.query(ProspectListMember.list_id, func.count(ProspectListMember.id))
+        .filter(ProspectListMember.list_id.in_([l.list_id for l in lists] or [""]))
+        .group_by(ProspectListMember.list_id).all()
+    )
+
     return [
         {
             "list_id": l.list_id,
             "list_name": l.list_name,
-            "prospect_count": l.prospect_count,
+            "prospect_count": counts.get(l.list_id, 0),
             "created_at": l.created_at,
         }
         for l in lists
@@ -555,7 +562,10 @@ def activate_campaign(
     except SenderIdentityMissing as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
     if not campaign:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

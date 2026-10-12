@@ -400,11 +400,9 @@ def _log_campaign_event(
 ):
     """Log a campaign state change event."""
     event = CampaignStateEvent(
-        event_id=str(uuid.uuid4()),
         campaign_id=campaign_id,
-        changed_by=user_id,
-        old_status=old_status,
-        new_status=new_status,
+        from_state=old_status,
+        to_state=new_status,
         reason=reason,
     )
     db.add(event)

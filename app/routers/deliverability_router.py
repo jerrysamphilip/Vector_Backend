@@ -6,7 +6,7 @@ API Router for Deliverability and Reputation Monitoring.
 
 from typing import List
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -275,7 +275,7 @@ def ingest_provider_metrics(
 def list_external_metrics(
     provider: str,
     domain_name: str,
-    limit: int = 100,
+    limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):
@@ -293,7 +293,7 @@ def list_external_metrics(
 def list_external_events(
     provider: str,
     domain_name: str,
-    limit: int = 100,
+    limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
 ):

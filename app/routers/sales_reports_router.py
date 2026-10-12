@@ -288,7 +288,7 @@ def pipeline_report(client_type: Optional[str] = None, member: Optional[str] = N
 
 
 @router.get("/forecast")
-def forecast(fy: Optional[int] = None, member: Optional[str] = None, client_type: Optional[str] = None,
+def forecast(fy: Optional[int] = Query(None, ge=1970, le=2100), member: Optional[str] = None, client_type: Optional[str] = None,
              db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
     """Revenue forecast by quarter for one financial year, and by financial year (BR-FC-01/02).
     Each bucket counts opportunities by expected close date; totals reconcile with
