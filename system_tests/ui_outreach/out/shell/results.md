@@ -1,6 +1,6 @@
 # UI outreach/admin - shell results
 
-PASS 34 · FAIL 4 · BLOCKED 0
+PASS 38 · FAIL 0 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -35,10 +35,10 @@ PASS 34 · FAIL 4 · BLOCKED 0
 | UIO-SHELL-NOTIF-03 | Mark all read clears the badge and reads everything in DB | PASS |  |  |
 | UIO-SHELL-NOTIF-04 | Email-copy checkbox persists the preference | PASS |  |  |
 | UIO-SHELL-PROFILE-01 | Profile menu shows name, email, role; entries: Change password, Account security, Calendar sync, Sign out | PASS |  |  |
-| UIO-SHELL-PWD-01 | Change password modal: opens/closes (X, backdrop); validation: min length, mismatch | FAIL | defect | locator.click: Timeout 12000ms exceeded. |
-| UIO-SHELL-PWD-02 | Wrong current password shows server error and does not change the password | FAIL | defect | locator.click: Timeout 12000ms exceeded. |
-| UIO-SHELL-PWD-03 | Correct change: success state, modal auto-closes, new password logs in, old one fails; user stays signed in | FAIL | defect | locator.click: Timeout 12000ms exceeded. |
-| UIO-SHELL-PWD-04 | Forgot-password link inside the modal requests a reset (token row created) and confirms | FAIL | defect | locator.click: Timeout 12000ms exceeded. |
+| UIO-SHELL-PWD-01 | Change password modal: opens/closes (X, backdrop); validation: min length, mismatch | PASS |  |  |
+| UIO-SHELL-PWD-02 | Wrong current password shows server error and does not change the password | PASS |  |  |
+| UIO-SHELL-PWD-03 | Correct change: success state, modal auto-closes, new password logs in, old one fails; user stays signed in | PASS |  |  |
+| UIO-SHELL-PWD-04 | Forgot-password link inside the modal requests a reset (token row created) and confirms | PASS |  |  |
 | UIO-SHELL-PROFILE-02 | Sign out: back on /login, stored user cleared, API session invalid; browser Back does not reopen app | PASS |  |  |
 | UIO-SHELL-ERR-01 | A page whose API returns 500 shows an error state instead of crashing the shell (Campaigns list) | PASS |  |  |
 | UIO-SHELL-RESP-01 | Narrow viewport (390px) login + dashboard do not crash | PASS |  |  |

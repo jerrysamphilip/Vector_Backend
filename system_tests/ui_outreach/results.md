@@ -1,8 +1,8 @@
 # UI outreach/admin functional results
 
-PASS 187 | FAIL 9 | BLOCKED 0
+PASS 193 | FAIL 3 | BLOCKED 0
 
-Failures by category: {"unclassified":9}
+Failures by category: {"defect-backend":3}
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -80,10 +80,10 @@ Failures by category: {"unclassified":9}
 | UIO-SHELL-NOTIF-03 | Mark all read clears the badge and reads everything in DB | PASS |  |  |
 | UIO-SHELL-NOTIF-04 | Email-copy checkbox persists the preference | PASS |  |  |
 | UIO-SHELL-PROFILE-01 | Profile menu shows name, email, role; entries: Change password, Account security, Calendar sync, Sign out | PASS |  |  |
-| UIO-SHELL-PWD-01 | Change password modal: opens/closes (X, backdrop); validation: min length, mismatch | FAIL | unclassified | locator.click: Timeout 12000ms exceeded. |
-| UIO-SHELL-PWD-02 | Wrong current password shows server error and does not change the password | FAIL | unclassified | locator.click: Timeout 12000ms exceeded. |
-| UIO-SHELL-PWD-03 | Correct change: success state, modal auto-closes, new password logs in, old one fails; user stays signed in | FAIL | unclassified | locator.click: Timeout 12000ms exceeded. |
-| UIO-SHELL-PWD-04 | Forgot-password link inside the modal requests a reset (token row created) and confirms | FAIL | unclassified | locator.click: Timeout 12000ms exceeded. |
+| UIO-SHELL-PWD-01 | Change password modal: opens/closes (X, backdrop); validation: min length, mismatch | PASS |  |  |
+| UIO-SHELL-PWD-02 | Wrong current password shows server error and does not change the password | PASS |  |  |
+| UIO-SHELL-PWD-03 | Correct change: success state, modal auto-closes, new password logs in, old one fails; user stays signed in | PASS |  |  |
+| UIO-SHELL-PWD-04 | Forgot-password link inside the modal requests a reset (token row created) and confirms | PASS |  |  |
 | UIO-SHELL-PROFILE-02 | Sign out: back on /login, stored user cleared, API session invalid; browser Back does not reopen app | PASS |  |  |
 | UIO-SHELL-ERR-01 | A page whose API returns 500 shows an error state instead of crashing the shell (Campaigns list) | PASS |  |  |
 | UIO-SHELL-RESP-01 | Narrow viewport (390px) login + dashboard do not crash | PASS |  |  |
@@ -119,7 +119,7 @@ Failures by category: {"unclassified":9}
 | UIO-WIZ-02 | Step 1 saves identity, sender details, CTA, send window, distribution + start date to the campaign row | PASS |  |  |
 | UIO-WIZ-03 | Step 2 sequence: add follow-up with wait days, saved as 2 steps (wait_days persisted); Back keeps step 1 values | PASS |  |  |
 | UIO-WIZ-04 | Step 3 prospects: list selection, deselect one contact -> "3 of 4 contacts selected" | PASS |  |  |
-| UIO-WIZ-05 | Process & Generate (LLM absent): templates generated for EVERY sequence step (2 emails) | FAIL | unclassified | 1 template(s) stored for a 2-step sequence (follow-up step has no content) |
+| UIO-WIZ-05 | Process & Generate (LLM absent): templates generated for EVERY sequence step (2 emails) | FAIL | defect-backend | POST /campaigns/{id}/generations with a 2-step sequence stores 1 template (follow-up step has no content) when the LLM is absent; launch then proceeds. app/routers/campaign_wizard_router.py:~300-330 -> services (generate |
 | UIO-WIZ-06 | Edit subject (textarea) persists to DB; Cancel discards; single-brace variable triggers the warning dialog | PASS |  |  |
 | UIO-WIZ-07 | Edit body in the rich-text editor persists to DB | PASS |  |  |
 | UIO-WIZ-08 | Live Preview substitutes real prospect data (name/company), and prospect switcher works | PASS |  |  |
@@ -144,7 +144,7 @@ Failures by category: {"unclassified":9}
 | UIO-TPL-06 | Delete: dismissing confirm keeps it; accepting removes row and DB record | PASS |  |  |
 | UIO-AUTO-01 | Automation empty state; Create rule modal validation (required fields) keeps modal open | PASS |  |  |
 | UIO-AUTO-02 | Create Send-AI-Template rule: row appears; DB has trigger/action/template/delay and is active | PASS |  |  |
-| UIO-AUTO-02b | Create "Pause Campaign" rule (offered in the Action dropdown) succeeds | FAIL | unclassified | UI offers Pause Campaign but POST /automation-rules/ rejects action_type PAUSE_CAMPAIGN (422); user only sees "Failed to create rule. Please check the fields." |
+| UIO-AUTO-02b | Create "Pause Campaign" rule (offered in the Action dropdown) succeeds | FAIL | defect-backend | UI Action dropdown offers PAUSE_CAMPAIGN but ActionType enum (app/models/automation_rule.py:21-25) has only SEND_EMAIL/CHANGE_CAMPAIGN_STEP/PAUSE_PROSPECT/MARK_INTERESTED -> POST /automation-rules/ 422; UI shows only 'Fa |
 | UIO-AUTO-03 | Toggle rule off/on (the repaired PUT): DB is_active flips and UI reflects it | PASS |  |  |
 | UIO-AUTO-04 | Search filters rules; delete (confirm) removes row and DB record | PASS |  |  |
 | UIO-AIGEN-01 | AI generator: Classify disabled until designation entered; classification shows persona + confidence | PASS |  |  |
@@ -165,7 +165,7 @@ Failures by category: {"unclassified":9}
 | UIO-MBX-03 | Filters and search: Warmup On hides the (warmup-off) inbox, Warmup Off shows it, search by email narrows, no-match empty state | PASS |  |  |
 | UIO-MBX-04 | Warmup toggle on the row flips warmup_enabled in the DB and back | PASS |  |  |
 | UIO-MBX-05 | Detail drawer: Overview/Connection/Settings/Activity tabs render; Test sending sign-in against an unreachable SMTP host reports a clear failure | PASS |  |  |
-| UIO-MBX-06 | Settings tab: change daily limit / delay and Save Settings persists to DB; invalid value rejected | FAIL | unclassified | negative limit stored |
+| UIO-MBX-06 | Settings tab: change daily limit / delay and Save Settings persists to DB; invalid value rejected | FAIL | defect-backend | PUT /inboxes/{id} accepts negative max_emails_per_day/daily_limit (200, stored -5/-3); app/routers/inbox_router.py update + schemas/inbox_schema.py lack ge=0/1 validation; UI number input has no min either. |
 | UIO-MBX-07 | Connect Mailbox wizard: provider step -> SMTP form; validation for empty / invalid email and missing host | PASS |  |  |
 | UIO-MBX-08 | Connect SMTP mailbox with unreachable host: ends in a clear result (connected-unverified or explicit error), row appears iff created; no crash | PASS |  |  |
 | UIO-MBX-09 | Microsoft 365 connect button when MS365 is not configured shows a clear message (no redirect to undefined) | PASS |  |  |
@@ -174,8 +174,8 @@ Failures by category: {"unclassified":9}
 | UIO-MBX-12 | Roles: MANAGER and AGENT cannot open Email accounts (redirect Home) | PASS |  |  |
 | UIO-INBOX-00 | Inbox with existing conversations but no IMAP-configured mailbox still shows the conversations (not only the IMAP setup guide) | PASS |  |  |
 | UIO-INBOX-01 | Unified Inbox lists both conversations (unread highlighted) with subject/snippet; no problems | PASS |  |  |
-| UIO-INBOX-02 | Search narrows the list; opening a thread shows the message and marks it read (DB is_unread=0) | FAIL | unclassified | search did not filter |
-| UIO-INBOX-03 | Reply form: empty reply does nothing; Enter sends a reply -> OUTBOUND message stored for that conversation | FAIL | unclassified | reply not stored (0) |
+| UIO-INBOX-02 | Search narrows the list; opening a thread shows the message and marks it read (DB is_unread=0) | PASS |  |  |
+| UIO-INBOX-03 | Reply form: empty reply does nothing; Enter sends a reply -> OUTBOUND message stored for that conversation | PASS |  |  |
 | UIO-INBOX-04 | Reply failure (API 500) restores the draft text and does not crash | PASS |  |  |
 | UIO-INBOX-05 | Sync button without IMAP reports a clear message; Refresh works | PASS |  |  |
 | UIO-INBOX-06 | Tenant isolation: conversations of this workspace are not visible to another workspace | PASS |  |  |

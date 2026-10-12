@@ -1,11 +1,11 @@
 {
   "suite": "UI outreach/admin - inboxdomain",
   "counts": {
-    "PASS": 10,
-    "FAIL": 2,
+    "PASS": 12,
+    "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 39,
+  "seconds": 41,
   "cases": [
     {
       "id": "UIO-INBOX-00",
@@ -24,16 +24,16 @@
     {
       "id": "UIO-INBOX-02",
       "title": "Search narrows the list; opening a thread shows the message and marks it read (DB is_unread=0)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "search did not filter"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-INBOX-03",
       "title": "Reply form: empty reply does nothing; Enter sends a reply -> OUTBOUND message stored for that conversation",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "reply not stored (0)"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-INBOX-04",

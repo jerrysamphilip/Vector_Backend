@@ -30,7 +30,7 @@ export async function run(rec, browser) {
     await p.getByRole('button', { name: 'Changes' }).click(); await settle(A, 600);
     const txt = await p.locator('ul').filter({ hasText: 'Lifecycle stage changed' }).first().innerText();
     ok(/Lead/.test(txt) && /Marketing qualified lead/.test(txt), 'history old -> new: ' + txt.slice(0, 200));
-    eq(dbn(`SELECT COUNT(*) FROM property_changes WHERE entity_id='${id}' AND field='lifecycle_stage'`) >= 1, true, 'history row in DB');
+    eq(dbn(`SELECT COUNT(*) FROM property_changes WHERE object_id='${id}' AND field='lifecycle_stage'`) >= 1, true, 'history row in DB');
   }, { u: A });
 
   await tc(rec, 'UIC-CD-03', 'Change lead status inline persisted', async () => {
@@ -89,12 +89,12 @@ export async function run(rec, browser) {
 
   await tc(rec, 'UIC-CD-08', 'Unsubscribe then resubscribe (with confirm) updates consent + global unsubscribe list', async () => {
     await go(A, `contacts/${id}`);
-    await p.getByRole('button', { name: 'Unsubscribe', exact: true }).click(); await settle(A, 800);
+    await p.locator('button:text-is("Unsubscribe")').click(); await settle(A, 800);
     ok(/Unsubscribe this contact/.test(A.lastDialog || ''), 'confirm text');
     eq(row('consent_status'), 'UNSUBSCRIBED');
     ok(dbn(`SELECT COUNT(*) FROM global_unsubscribes WHERE tenant_id='${t.tenantId}' AND email='${c.email}'`) >= 1, 'on global unsubscribe list');
     ok(await p.getByText('Unsubscribed').first().isVisible(), 'badge');
-    await p.getByRole('button', { name: 'Resubscribe', exact: true }).click(); await settle(A, 800);
+    await p.locator('button:text-is("Resubscribe")').click(); await settle(A, 800);
     eq(row('consent_status'), 'OPT_IN');
     eq(dbn(`SELECT COUNT(*) FROM global_unsubscribes WHERE tenant_id='${t.tenantId}' AND email='${c.email}'`), 0, 'removed from global list');
   }, { u: A });
@@ -141,12 +141,12 @@ export async function run(rec, browser) {
   await tc(rec, 'UIC-CD-12', 'Edit a logged activity then delete it (confirm)', async () => {
     await go(A, `contacts/${id}`);
     const item = p.locator('li').filter({ hasText: 'Spoke about renewal pricing.' }).first();
-    await item.getByRole('button', { name: 'Edit' }).click();
+    await item.locator('button:has-text("Edit")').click();
     await item.locator('textarea').fill('Spoke about renewal pricing and discounts.');
-    await item.getByRole('button', { name: 'Save' }).click(); await settle(A, 700);
+    await item.locator('button:has-text("Save")').click(); await settle(A, 700);
     ok(await p.getByText('renewal pricing and discounts').first().isVisible(), 'edited text shown');
     ok(dbn(`SELECT COUNT(*) FROM contact_activities WHERE prospect_id='${id}' AND body LIKE '%and discounts%'`) === 1, 'edit persisted');
-    await p.locator('li').filter({ hasText: 'and discounts' }).first().getByRole('button', { name: 'Delete' }).click(); await settle(A, 700);
+    await p.locator('li').filter({ hasText: 'and discounts' }).first().locator('button:has-text("Delete")').click(); await settle(A, 700);
     eq(dbn(`SELECT COUNT(*) FROM contact_activities WHERE prospect_id='${id}' AND body LIKE '%renewal pricing%'`), 0, 'deleted');
   }, { u: A });
 
@@ -186,7 +186,7 @@ export async function run(rec, browser) {
     await modalLoc(p).getByLabel('Lead source').fill('Referral');
     await modalLoc(p).getByRole('button', { name: 'Create lead' }).click();
     await p.waitForURL(/\/app\/leads\/[0-9a-f-]{36}/, { timeout: 10000 });
-    eq(sql(`SELECT CONCAT_WS('|',stage,source,owner_id) FROM leads WHERE prospect_id='${id}'`), `NEW|Referral|${t.owner.userId}`);
+    eq(sql(`SELECT CONCAT_WS('|',stage,source,owner_id) FROM leads WHERE prospect_id='${id}'`), `NEW|Referral|${bob.userId}`);
     await go(A, `contacts/${id}`);
     ok(await p.getByText(/Lead ·/).first().isVisible(), 'sales card shows the lead');
     eq(await p.getByRole('button', { name: '+ Create lead' }).count(), 0, 'no second create while open lead exists');
@@ -203,7 +203,7 @@ export async function run(rec, browser) {
     await must(t.token, 'POST', '/contacts/bulk', { prospect_ids: [id], action: 'enroll', campaign_id: camp });
     await go(A, `contacts/${id}`);
     ok(await p.getByRole('link', { name: 'Assoc list' }).isVisible(), 'list link');
-    ok(await p.getByRole('link', { name: 'Assoc Campaign' }).isVisible(), 'campaign link');
+    ok(await p.getByRole('link', { name: 'Assoc Campaign' }).first().isVisible(), 'campaign link');
     await p.getByRole('heading', { name: 'Company' }).locator('xpath=ancestor::div[1]').getByRole('link').first().click();
     await p.waitForURL(/\/app\/accounts\//, { timeout: 8000 });
     ok(await p.getByRole('heading', { name: 'Renamed Detail Co' }).isVisible(), 'company page');

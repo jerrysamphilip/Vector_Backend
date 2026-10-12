@@ -1,11 +1,11 @@
 {
   "suite": "ui_crm sales",
   "counts": {
-    "PASS": 16,
-    "FAIL": 11,
+    "PASS": 20,
+    "FAIL": 7,
     "BLOCKED": 0
   },
-  "seconds": 179,
+  "seconds": 164,
   "cases": [
     {
       "id": "UIC-SAL-01",
@@ -38,9 +38,9 @@
     {
       "id": "UIC-SAL-05",
       "title": "LeadDetail: stage steps, BANT qualification, next step persisted",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "locator.check: Clicking the checkbox did not change its state"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIC-SAL-06",
@@ -75,42 +75,42 @@
       "title": "Deals board: drag to next stage persists; drag to Closed won asks for reason (required)",
       "status": "FAIL",
       "category": "unclassified",
-      "detail": "locator.click: Timeout 15000ms exceeded."
+      "detail": "locator.check: Error: strict mode violation: locator('div.fixed.inset-0').last().getByLabel('Price') resolved to 2 elements:"
     },
     {
       "id": "UIC-SAL-11",
       "title": "DealDetail: stage buttons, inline edits (amount/close/next step), forecast category",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "locator.fill: Error: strict mode violation: getByLabel('Amount') resolved to 3 elements:"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIC-SAL-12",
       "title": "DealDetail: log note/call, task, timeline; mark lost requires reason",
       "status": "FAIL",
       "category": "unclassified",
-      "detail": "locator.click: Timeout 15000ms exceeded."
+      "detail": "locator.check: Error: strict mode violation: locator('div.fixed.inset-0').last().getByLabel('Timing') resolved to 2 elements:"
     },
     {
       "id": "UIC-SAL-13",
       "title": "Quote: add product + custom line with discount -> totals, proposal amount, PDF download",
       "status": "FAIL",
       "category": "unclassified",
-      "detail": "locator.fill: Error: strict mode violation: getByLabel('Proposal title') resolved to 2 elements:"
+      "detail": "locator.click: Error: strict mode violation: getByTitle('Quote lines and PDF') resolved to 2 elements:"
     },
     {
       "id": "UIC-SAL-14",
       "title": "Pipeline revenue tab: open/weighted/won tiles equal independently computed DB sums; proposals tab renders",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "open $145.0K"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIC-SAL-15",
       "title": "Sales dashboard: tiles match DB (won amount/count, open pipeline); period selector changes numbers",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "won $90.0K (12 months)"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIC-SAL-16",
@@ -124,7 +124,7 @@
       "title": "Forecast: FY April-March quarters; won per quarter equals DB",
       "status": "FAIL",
       "category": "unclassified",
-      "detail": "Q1 Apr-Jun"
+      "detail": "Q1 Apr-Jun (FY start 2026-04-01 in header)"
     },
     {
       "id": "UIC-SAL-18",

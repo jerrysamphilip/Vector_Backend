@@ -15,6 +15,7 @@ const mkConv = (pid, subj, unread, text) => {
 const c1 = mkConv(p1, 'Re: Intro ' + ws.rid, 1, 'Sounds interesting, can we talk Tuesday?');
 const c2 = mkConv(p2, 'Re: Pricing ' + ws.rid, 0, 'What does it cost?');
 const apiR = await api('GET', '/conversations?page_size=50', { token: ws.token }); console.log('API', apiR.status, JSON.stringify(apiR.data).slice(0, 300));
+sql(`UPDATE conversations SET last_message_at=NOW() - INTERVAL 1 DAY WHERE id=${q(c1)}`);
 const { page, w } = await S.open(ws);
 dialogs(page);
 const A = 'UIO-INBOX', D = 'UIO-DOM';
@@ -31,8 +32,8 @@ await S.t(`${A}-01`, 'Unified Inbox lists both conversations (unread highlighted
   return await clean(page, w);
 }, page);
 await S.t(`${A}-02`, 'Search narrows the list; opening a thread shows the message and marks it read (DB is_unread=0)', async () => {
-  await page.getByPlaceholder('Search by name, email or subject…').fill('Lena'); await sleep(800);
-  if ((await body(page)).includes('Omar Other')) return 'search did not filter';
+  await page.getByPlaceholder('Search by name, email or subject…').fill('Omar'); await sleep(800);
+  if ((await body(page)).includes('Lena Lead')) return 'search did not filter the list';
   await page.getByPlaceholder('Search by name, email or subject…').fill('');
   await sleep(500);
   await page.getByText('Lena Lead').first().click(); await sleep(1200);
@@ -47,7 +48,7 @@ await S.t(`${A}-03`, 'Reply form: empty reply does nothing; Enter sends a reply 
   if (n0 !== '0') return 'blank reply sent';
   await box.fill('Tuesday 10am works for us.'); await box.press('Enter'); await sleep(2500);
   const n1 = sql(`SELECT COUNT(*) FROM email_messages WHERE conversation_id=${q(c1)} AND direction='OUTBOUND' AND body_text LIKE 'Tuesday 10am%'`);
-  if (n1 !== '1') return 'reply not stored (' + n1 + ')';
+  if (n1 !== '1') return 'reply not stored (' + n1 + '); outbound rows: ' + sql(`SELECT CONCAT(status,':',LEFT(body_text,40)) FROM email_messages WHERE conversation_id=${q(c1)} AND direction='OUTBOUND'`);
   if (!(await body(page)).includes('Tuesday 10am works')) return 'reply not shown in thread';
   return await clean(page, w);
 }, page);

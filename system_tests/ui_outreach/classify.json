@@ -1,0 +1,5 @@
+{
+ "UIO-WIZ-05": {"category": "defect-backend", "note": "POST /campaigns/{id}/generations with a 2-step sequence stores 1 template (follow-up step has no content) when the LLM is absent; launch then proceeds. app/routers/campaign_wizard_router.py:~300-330 -> services (generate for list). Evidence: email_sequences=2, email_templates=1 for the campaign."},
+ "UIO-AUTO-02b": {"category": "defect-backend", "note": "UI Action dropdown offers PAUSE_CAMPAIGN but ActionType enum (app/models/automation_rule.py:21-25) has only SEND_EMAIL/CHANGE_CAMPAIGN_STEP/PAUSE_PROSPECT/MARK_INTERESTED -> POST /automation-rules/ 422; UI shows only 'Failed to create rule' (UI/API contract mismatch; fix either side)."},
+ "UIO-MBX-06": {"category": "defect-backend", "note": "PUT /inboxes/{id} accepts negative max_emails_per_day/daily_limit (200, stored -5/-3); app/routers/inbox_router.py update + schemas/inbox_schema.py lack ge=0/1 validation; UI number input has no min either."}
+}

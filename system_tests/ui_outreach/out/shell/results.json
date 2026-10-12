@@ -1,11 +1,11 @@
 {
   "suite": "UI outreach/admin - shell",
   "counts": {
-    "PASS": 34,
-    "FAIL": 4,
+    "PASS": 38,
+    "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 270,
+  "seconds": 239,
   "cases": [
     {
       "id": "UIO-SHELL-SB-owner",
@@ -227,30 +227,30 @@
     {
       "id": "UIO-SHELL-PWD-01",
       "title": "Change password modal: opens/closes (X, backdrop); validation: min length, mismatch",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "locator.click: Timeout 12000ms exceeded."
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-SHELL-PWD-02",
       "title": "Wrong current password shows server error and does not change the password",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "locator.click: Timeout 12000ms exceeded."
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-SHELL-PWD-03",
       "title": "Correct change: success state, modal auto-closes, new password logs in, old one fails; user stays signed in",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "locator.click: Timeout 12000ms exceeded."
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-SHELL-PWD-04",
       "title": "Forgot-password link inside the modal requests a reset (token row created) and confirms",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "locator.click: Timeout 12000ms exceeded."
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-SHELL-PROFILE-02",

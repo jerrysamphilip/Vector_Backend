@@ -1,12 +1,12 @@
 {
   "suite": "UI outreach/admin",
   "counts": {
-    "PASS": 187,
-    "FAIL": 9,
+    "PASS": 193,
+    "FAIL": 3,
     "BLOCKED": 0
   },
   "failuresByCategory": {
-    "unclassified": 9
+    "defect-backend": 3
   },
   "cases": [
     {
@@ -678,36 +678,36 @@
     {
       "id": "UIO-SHELL-PWD-01",
       "title": "Change password modal: opens/closes (X, backdrop); validation: min length, mismatch",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "locator.click: Timeout 12000ms exceeded.",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "shell",
       "note": ""
     },
     {
       "id": "UIO-SHELL-PWD-02",
       "title": "Wrong current password shows server error and does not change the password",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "locator.click: Timeout 12000ms exceeded.",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "shell",
       "note": ""
     },
     {
       "id": "UIO-SHELL-PWD-03",
       "title": "Correct change: success state, modal auto-closes, new password logs in, old one fails; user stays signed in",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "locator.click: Timeout 12000ms exceeded.",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "shell",
       "note": ""
     },
     {
       "id": "UIO-SHELL-PWD-04",
       "title": "Forgot-password link inside the modal requests a reset (token row created) and confirms",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "locator.click: Timeout 12000ms exceeded.",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "shell",
       "note": ""
     },
@@ -1030,10 +1030,10 @@
       "id": "UIO-WIZ-05",
       "title": "Process & Generate (LLM absent): templates generated for EVERY sequence step (2 emails)",
       "status": "FAIL",
-      "category": "unclassified",
+      "category": "defect-backend",
       "detail": "1 template(s) stored for a 2-step sequence (follow-up step has no content)",
       "suite": "wizard",
-      "note": ""
+      "note": "POST /campaigns/{id}/generations with a 2-step sequence stores 1 template (follow-up step has no content) when the LLM is absent; launch then proceeds. app/routers/campaign_wizard_router.py:~300-330 -> services (generate for list). Evidence: email_sequences=2, email_templates=1 for the campaign."
     },
     {
       "id": "UIO-WIZ-06",
@@ -1255,10 +1255,10 @@
       "id": "UIO-AUTO-02b",
       "title": "Create \"Pause Campaign\" rule (offered in the Action dropdown) succeeds",
       "status": "FAIL",
-      "category": "unclassified",
+      "category": "defect-backend",
       "detail": "UI offers Pause Campaign but POST /automation-rules/ rejects action_type PAUSE_CAMPAIGN (422); user only sees \"Failed to create rule. Please check the fields.\"",
       "suite": "library",
-      "note": ""
+      "note": "UI Action dropdown offers PAUSE_CAMPAIGN but ActionType enum (app/models/automation_rule.py:21-25) has only SEND_EMAIL/CHANGE_CAMPAIGN_STEP/PAUSE_PROSPECT/MARK_INTERESTED -> POST /automation-rules/ 422; UI shows only 'Failed to create rule' (UI/API contract mismatch; fix either side)."
     },
     {
       "id": "UIO-AUTO-03",
@@ -1444,10 +1444,10 @@
       "id": "UIO-MBX-06",
       "title": "Settings tab: change daily limit / delay and Save Settings persists to DB; invalid value rejected",
       "status": "FAIL",
-      "category": "unclassified",
+      "category": "defect-backend",
       "detail": "negative limit stored",
       "suite": "mailboxes",
-      "note": ""
+      "note": "PUT /inboxes/{id} accepts negative max_emails_per_day/daily_limit (200, stored -5/-3); app/routers/inbox_router.py update + schemas/inbox_schema.py lack ge=0/1 validation; UI number input has no min either."
     },
     {
       "id": "UIO-MBX-07",
@@ -1524,18 +1524,18 @@
     {
       "id": "UIO-INBOX-02",
       "title": "Search narrows the list; opening a thread shows the message and marks it read (DB is_unread=0)",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "search did not filter",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "inboxdomain",
       "note": ""
     },
     {
       "id": "UIO-INBOX-03",
       "title": "Reply form: empty reply does nothing; Enter sends a reply -> OUTBOUND message stored for that conversation",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "reply not stored (0)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "inboxdomain",
       "note": ""
     },
