@@ -5,7 +5,7 @@
     "FAIL": 4,
     "BLOCKED": 0
   },
-  "seconds": 285,
+  "seconds": 270,
   "cases": [
     {
       "id": "UIO-SHELL-SB-owner",

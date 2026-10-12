@@ -7,6 +7,16 @@
    "userId": "434d28ff-16aa-4782-a0f6-24ad29a17d12",
    "email": "owner-a87a2c@uitest.example",
    "first": "Owner"
+  },
+  "alice": {
+   "userId": "493e026e-526e-4abb-b812-462e13c81767",
+   "email": "alice-a87a2c@uitest.example",
+   "first": "Alice"
+  },
+  "bob": {
+   "userId": "5eb78b7e-b0db-4c14-aefe-9a7843d373af",
+   "email": "bob-a87a2c@uitest.example",
+   "first": "Bob"
   }
  }
 }

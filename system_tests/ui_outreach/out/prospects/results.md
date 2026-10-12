@@ -1,6 +1,6 @@
 # UI outreach/admin - prospects results
 
-PASS 9 · FAIL 1 · BLOCKED 0
+PASS 10 · FAIL 0 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -8,7 +8,7 @@ PASS 9 · FAIL 1 · BLOCKED 0
 | UIO-PROS-02 | New List validation: missing name, missing file -> inline messages; unsupported file type rejected | PASS |  |  |
 | UIO-PROS-03 | Upload CSV -> preview: 2 accepted / 2 need attention with per-row reasons (invalid email, duplicate) | PASS |  |  |
 | UIO-PROS-04 | Opening the preview URL directly (no upload state) redirects back to Prospect lists, no crash | PASS |  |  |
-| UIO-PROS-05 | Confirm Upload creates the list with exactly the accepted rows; list appears in the table without reload | FAIL | defect | new list not shown in table after confirm (stale list cache) |
+| UIO-PROS-05 | Confirm Upload creates the list with exactly the accepted rows; list appears in the table without reload | PASS |  |  |
 | UIO-PROS-06 | Search lists, sort by name; View opens the members modal with the 2 contacts | PASS |  |  |
 | UIO-PROS-07 | Stats tiles match DB (total contacts, in campaigns) | PASS |  |  |
 | UIO-PROS-08 | Delete list: row trash -> confirm dialog; Cancel keeps, Delete removes list (DB)  | PASS |  |  |

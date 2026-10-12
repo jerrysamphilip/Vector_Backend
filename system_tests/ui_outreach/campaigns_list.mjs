@@ -128,16 +128,13 @@ const tid = (await api('POST', '/tasks', { token: ws.token, body: { title: 'Call
     d3.stop();
     return await clean(page, w);
   }, page);
-  await S.t(`${A}-LIST-06`, 'Row click: DRAFT opens the wizard in edit mode, ACTIVE opens details; View icon opens details', async () => {
+  await S.t(`${A}-LIST-06`, 'Row click: DRAFT opens the wizard in edit mode, ACTIVE opens details (View icon is lg:hidden)', async () => {
     dialogs(page, 'accept');
     await go(page, '/app/campaigns');
     await rowOf(page, nameD).locator('p', { hasText: nameD }).click();
     await page.waitForURL(new RegExp('campaigns/new\\?edit=' + cD));
     await go(page, '/app/campaigns');
     await rowOf(page, nameA).locator('p', { hasText: nameA }).click();
-    await page.waitForURL(new RegExp('campaigns/' + cA + '$'));
-    await go(page, '/app/campaigns');
-    await rowOf(page, nameA).locator('button[title="View"]').click();
     await page.waitForURL(new RegExp('campaigns/' + cA + '$'));
   }, page);
   await S.t(`${A}-LIST-07`, 'Select-all + bulk bar: Pause selected (confirm) pauses active campaigns in DB; clear selection', async () => {
@@ -146,11 +143,11 @@ const tid = (await api('POST', '/tasks', { token: ws.token, body: { title: 'Call
     await rowOf(page, nameA).locator('input[type=checkbox]').check();
     await rowOf(page, nameB).locator('input[type=checkbox]').check();
     await waitText(page, /2 selected|selected/i);
-    await page.getByRole('button', { name: /^Pause/ }).first().click();
+    await page.getByRole('button', { name: 'Pause', exact: true }).last().click();
     await sleep(3000);
     if (campStatus(cA) !== 'PAUSED' || campStatus(cB) !== 'PAUSED') return `statuses ${campStatus(cA)}/${campStatus(cB)}`;
     await rowOf(page, nameA).locator('input[type=checkbox]').check();
-    await page.getByRole('button', { name: /^Resume/ }).first().click(); await sleep(1500);
+    await page.getByRole('button', { name: 'Resume', exact: true }).last().click(); await sleep(1500);
     if (campStatus(cA) !== 'ACTIVE') return 'bulk resume failed ' + campStatus(cA);
     return await clean(page, w);
   }, page);

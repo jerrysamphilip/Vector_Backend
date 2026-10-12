@@ -4,10 +4,10 @@ PASS 10 · FAIL 2 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
-| UIO-INBOX-00 | Inbox with existing conversations but no IMAP-configured mailbox still shows the conversations (not only the IMAP setup guide) | FAIL | defect | conversations hidden behind IMAP setup guide although 2 conversations exist (API returns them) |
+| UIO-INBOX-00 | Inbox with existing conversations but no IMAP-configured mailbox still shows the conversations (not only the IMAP setup guide) | PASS |  |  |
 | UIO-INBOX-01 | Unified Inbox lists both conversations (unread highlighted) with subject/snippet; no problems | PASS |  |  |
 | UIO-INBOX-02 | Search narrows the list; opening a thread shows the message and marks it read (DB is_unread=0) | FAIL | defect | search did not filter |
-| UIO-INBOX-03 | Reply form: empty reply does nothing; Enter sends a reply -> OUTBOUND message stored for that conversation | PASS |  |  |
+| UIO-INBOX-03 | Reply form: empty reply does nothing; Enter sends a reply -> OUTBOUND message stored for that conversation | FAIL | defect | reply not stored (0) |
 | UIO-INBOX-04 | Reply failure (API 500) restores the draft text and does not crash | PASS |  |  |
 | UIO-INBOX-05 | Sync button without IMAP reports a clear message; Refresh works | PASS |  |  |
 | UIO-INBOX-06 | Tenant isolation: conversations of this workspace are not visible to another workspace | PASS |  |  |

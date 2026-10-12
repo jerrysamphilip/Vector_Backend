@@ -1,0 +1,4 @@
+﻿Row,Error,Email,Last Name,First Name
+3,Invalid email 'not-an-email',not-an-email,Email,Bad
+4,Missing or invalid email,,Email,No
+6,Duplicate of row 5 in this file,dup.52ee94@bad.example,B,Dup

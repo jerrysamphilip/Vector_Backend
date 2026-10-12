@@ -1,11 +1,11 @@
 {
   "suite": "UI outreach/admin - prospects",
   "counts": {
-    "PASS": 9,
-    "FAIL": 1,
+    "PASS": 10,
+    "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 27,
+  "seconds": 29,
   "cases": [
     {
       "id": "UIO-PROS-01",
@@ -38,9 +38,9 @@
     {
       "id": "UIO-PROS-05",
       "title": "Confirm Upload creates the list with exactly the accepted rows; list appears in the table without reload",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "new list not shown in table after confirm (stale list cache)"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-PROS-06",

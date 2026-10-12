@@ -1,8 +1,8 @@
 # UI outreach/admin functional results
 
-PASS 182 | FAIL 14 | BLOCKED 0
+PASS 187 | FAIL 9 | BLOCKED 0
 
-Failures by category: {"unclassified":14}
+Failures by category: {"unclassified":9}
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -57,7 +57,7 @@ Failures by category: {"unclassified":14}
 | UIO-SHELL-NAV-owner | Every visible sidebar link navigates and its page renders cleanly (OWNER) | PASS |  |  |
 | UIO-SHELL-NAV-admin | Every visible sidebar link navigates and its page renders cleanly (ADMIN) | PASS |  |  |
 | UIO-SHELL-NAV-manager | Every visible sidebar link navigates and its page renders cleanly (MANAGER) | PASS |  |  |
-| UIO-SHELL-NAV-agent | Every visible sidebar link navigates and its page renders cleanly (AGENT) | FAIL | unclassified | Campaign analytics: link missing |
+| UIO-SHELL-NAV-agent | Every visible sidebar link navigates and its page renders cleanly (AGENT) | PASS |  |  |
 | UIO-SHELL-GUARD-agent | AGENT opening restricted URLs is redirected to Home (no flash of forbidden data) | PASS |  |  |
 | UIO-SHELL-GUARD-manager | MANAGER opening restricted URLs is redirected to Home (no flash of forbidden data) | PASS |  |  |
 | UIO-SHELL-GUARD-admin-owner | OWNER opening /vector/admin/... is redirected to Home | PASS |  |  |
@@ -105,9 +105,9 @@ Failures by category: {"unclassified":14}
 | UIO-CAMP-LIST-03 | Column picker toggles columns, persists in localStorage across reload, Reset restores defaults | PASS |  |  |
 | UIO-CAMP-LIST-04 | Row Pause on ACTIVE campaign -> PAUSED (DB + badge), Resume -> ACTIVE | PASS |  |  |
 | UIO-CAMP-LIST-05 | Delete: cancelling the confirm keeps the campaign; accepting removes it (UI + DB) | PASS |  |  |
-| UIO-CAMP-LIST-06 | Row click: DRAFT opens the wizard in edit mode, ACTIVE opens details; View icon opens details | FAIL | unclassified | locator.click: Timeout 12000ms exceeded. |
-| UIO-CAMP-LIST-07 | Select-all + bulk bar: Pause selected (confirm) pauses active campaigns in DB; clear selection | FAIL | unclassified | statuses PAUSED/ACTIVE |
-| UIO-CAMP-LIST-08 | Pause API failure surfaces feedback to the user (not silent) | FAIL | unclassified | locator.click: Timeout 12000ms exceeded. |
+| UIO-CAMP-LIST-06 | Row click: DRAFT opens the wizard in edit mode, ACTIVE opens details (View icon is lg:hidden) | PASS |  |  |
+| UIO-CAMP-LIST-07 | Select-all + bulk bar: Pause selected (confirm) pauses active campaigns in DB; clear selection | PASS |  |  |
+| UIO-CAMP-LIST-08 | Pause API failure surfaces feedback to the user (not silent) | PASS |  |  |
 | UIO-CAMP-LIST-09 | Campaigns list: API 500 shows an explicit error (not the empty state) | PASS |  |  |
 | UIO-CAMP-DASH-01 | Dashboard shows real totals for the workspace (campaign count, status breakdown) consistent with DB | PASS |  |  |
 | UIO-CAMP-DASH-02 | Dashboard range buttons (Daily/Weekly/Monthly/Yearly) change the chart without errors; alerts bell opens | PASS |  |  |
@@ -154,7 +154,7 @@ Failures by category: {"unclassified":14}
 | UIO-PROS-02 | New List validation: missing name, missing file -> inline messages; unsupported file type rejected | PASS |  |  |
 | UIO-PROS-03 | Upload CSV -> preview: 2 accepted / 2 need attention with per-row reasons (invalid email, duplicate) | PASS |  |  |
 | UIO-PROS-04 | Opening the preview URL directly (no upload state) redirects back to Prospect lists, no crash | PASS |  |  |
-| UIO-PROS-05 | Confirm Upload creates the list with exactly the accepted rows; list appears in the table without reload | FAIL | unclassified | new list not shown in table after confirm (stale list cache) |
+| UIO-PROS-05 | Confirm Upload creates the list with exactly the accepted rows; list appears in the table without reload | PASS |  |  |
 | UIO-PROS-06 | Search lists, sort by name; View opens the members modal with the 2 contacts | PASS |  |  |
 | UIO-PROS-07 | Stats tiles match DB (total contacts, in campaigns) | PASS |  |  |
 | UIO-PROS-08 | Delete list: row trash -> confirm dialog; Cancel keeps, Delete removes list (DB)  | PASS |  |  |
@@ -172,10 +172,10 @@ Failures by category: {"unclassified":14}
 | UIO-MBX-10 | Alert Preferences modal opens, saves, closes; Run Warmup gives feedback | PASS |  |  |
 | UIO-MBX-11 | Delete mailbox: Cancel keeps it; Delete removes it (DB) and the row | PASS |  |  |
 | UIO-MBX-12 | Roles: MANAGER and AGENT cannot open Email accounts (redirect Home) | PASS |  |  |
-| UIO-INBOX-00 | Inbox with existing conversations but no IMAP-configured mailbox still shows the conversations (not only the IMAP setup guide) | FAIL | unclassified | conversations hidden behind IMAP setup guide although 2 conversations exist (API returns them) |
+| UIO-INBOX-00 | Inbox with existing conversations but no IMAP-configured mailbox still shows the conversations (not only the IMAP setup guide) | PASS |  |  |
 | UIO-INBOX-01 | Unified Inbox lists both conversations (unread highlighted) with subject/snippet; no problems | PASS |  |  |
 | UIO-INBOX-02 | Search narrows the list; opening a thread shows the message and marks it read (DB is_unread=0) | FAIL | unclassified | search did not filter |
-| UIO-INBOX-03 | Reply form: empty reply does nothing; Enter sends a reply -> OUTBOUND message stored for that conversation | PASS |  |  |
+| UIO-INBOX-03 | Reply form: empty reply does nothing; Enter sends a reply -> OUTBOUND message stored for that conversation | FAIL | unclassified | reply not stored (0) |
 | UIO-INBOX-04 | Reply failure (API 500) restores the draft text and does not crash | PASS |  |  |
 | UIO-INBOX-05 | Sync button without IMAP reports a clear message; Refresh works | PASS |  |  |
 | UIO-INBOX-06 | Tenant isolation: conversations of this workspace are not visible to another workspace | PASS |  |  |

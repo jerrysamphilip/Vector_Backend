@@ -1,6 +1,6 @@
 # UI outreach/admin - campaigns_list results
 
-PASS 16 · FAIL 3 · BLOCKED 0
+PASS 19 · FAIL 0 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -13,9 +13,9 @@ PASS 16 · FAIL 3 · BLOCKED 0
 | UIO-CAMP-LIST-03 | Column picker toggles columns, persists in localStorage across reload, Reset restores defaults | PASS |  |  |
 | UIO-CAMP-LIST-04 | Row Pause on ACTIVE campaign -> PAUSED (DB + badge), Resume -> ACTIVE | PASS |  |  |
 | UIO-CAMP-LIST-05 | Delete: cancelling the confirm keeps the campaign; accepting removes it (UI + DB) | PASS |  |  |
-| UIO-CAMP-LIST-06 | Row click: DRAFT opens the wizard in edit mode, ACTIVE opens details; View icon opens details | FAIL | defect | locator.click: Timeout 12000ms exceeded. |
-| UIO-CAMP-LIST-07 | Select-all + bulk bar: Pause selected (confirm) pauses active campaigns in DB; clear selection | FAIL | defect | statuses PAUSED/ACTIVE |
-| UIO-CAMP-LIST-08 | Pause API failure surfaces feedback to the user (not silent) | FAIL | defect | locator.click: Timeout 12000ms exceeded. |
+| UIO-CAMP-LIST-06 | Row click: DRAFT opens the wizard in edit mode, ACTIVE opens details (View icon is lg:hidden) | PASS |  |  |
+| UIO-CAMP-LIST-07 | Select-all + bulk bar: Pause selected (confirm) pauses active campaigns in DB; clear selection | PASS |  |  |
+| UIO-CAMP-LIST-08 | Pause API failure surfaces feedback to the user (not silent) | PASS |  |  |
 | UIO-CAMP-LIST-09 | Campaigns list: API 500 shows an explicit error (not the empty state) | PASS |  |  |
 | UIO-CAMP-DASH-01 | Dashboard shows real totals for the workspace (campaign count, status breakdown) consistent with DB | PASS |  |  |
 | UIO-CAMP-DASH-02 | Dashboard range buttons (Daily/Weekly/Monthly/Yearly) change the chart without errors; alerts bell opens | PASS |  |  |

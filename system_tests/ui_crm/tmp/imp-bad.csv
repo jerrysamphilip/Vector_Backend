@@ -1,0 +1,7 @@
+Email,First Name,Last Name
+good1.52ee94@bad.example,Good,One
+not-an-email,Bad,Email
+,No,Email
+dup.52ee94@bad.example,Dup,A
+dup.52ee94@bad.example,Dup,B
+good2.52ee94@bad.example,Good,Two

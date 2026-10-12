@@ -358,8 +358,11 @@ const ids = [...fs.readFileSync('/home/user/Vector_Frontend/src/help/articles.js
     await c.page.getByRole('button', { name: 'Account' }).click();
     await c.page.getByRole('button', { name: /Change password/i }).click();
     const cur = c.page.getByPlaceholder('Enter your current password'); await cur.waitFor();
-    await c.page.keyboard.press('Escape'); await c.page.waitForTimeout(300);
-    if (!(await cur.isVisible())) { /* Escape closes: fine */ } else { await c.page.locator('div.fixed .border-b button').first().click(); }
+    await c.page.locator('div.fixed.z-\\[60\\] button').first().click();
+    await cur.waitFor({ state: 'hidden' });
+    await c.page.getByRole('button', { name: 'Account' }).click();
+    await c.page.getByRole('button', { name: /Change password/i }).click();
+    await cur.waitFor(); await c.page.mouse.click(8, 8);
     await cur.waitFor({ state: 'hidden' });
     await c.page.getByRole('button', { name: 'Account' }).click();
     await c.page.getByRole('button', { name: /Change password/i }).click();

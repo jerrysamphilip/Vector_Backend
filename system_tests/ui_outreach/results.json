@@ -1,12 +1,12 @@
 {
   "suite": "UI outreach/admin",
   "counts": {
-    "PASS": 182,
-    "FAIL": 14,
+    "PASS": 187,
+    "FAIL": 9,
     "BLOCKED": 0
   },
   "failuresByCategory": {
-    "unclassified": 14
+    "unclassified": 9
   },
   "cases": [
     {
@@ -471,9 +471,9 @@
     {
       "id": "UIO-SHELL-NAV-agent",
       "title": "Every visible sidebar link navigates and its page renders cleanly (AGENT)",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "Campaign analytics: link missing",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "shell",
       "note": ""
     },
@@ -902,28 +902,28 @@
     },
     {
       "id": "UIO-CAMP-LIST-06",
-      "title": "Row click: DRAFT opens the wizard in edit mode, ACTIVE opens details; View icon opens details",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "locator.click: Timeout 12000ms exceeded.",
+      "title": "Row click: DRAFT opens the wizard in edit mode, ACTIVE opens details (View icon is lg:hidden)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "campaigns_list",
       "note": ""
     },
     {
       "id": "UIO-CAMP-LIST-07",
       "title": "Select-all + bulk bar: Pause selected (confirm) pauses active campaigns in DB; clear selection",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "statuses PAUSED/ACTIVE",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "campaigns_list",
       "note": ""
     },
     {
       "id": "UIO-CAMP-LIST-08",
       "title": "Pause API failure surfaces feedback to the user (not silent)",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "locator.click: Timeout 12000ms exceeded.",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "campaigns_list",
       "note": ""
     },
@@ -1344,9 +1344,9 @@
     {
       "id": "UIO-PROS-05",
       "title": "Confirm Upload creates the list with exactly the accepted rows; list appears in the table without reload",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "new list not shown in table after confirm (stale list cache)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "prospects",
       "note": ""
     },
@@ -1506,9 +1506,9 @@
     {
       "id": "UIO-INBOX-00",
       "title": "Inbox with existing conversations but no IMAP-configured mailbox still shows the conversations (not only the IMAP setup guide)",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "conversations hidden behind IMAP setup guide although 2 conversations exist (API returns them)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "inboxdomain",
       "note": ""
     },
@@ -1533,9 +1533,9 @@
     {
       "id": "UIO-INBOX-03",
       "title": "Reply form: empty reply does nothing; Enter sends a reply -> OUTBOUND message stored for that conversation",
-      "status": "PASS",
-      "category": "",
-      "detail": "",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "reply not stored (0)",
       "suite": "inboxdomain",
       "note": ""
     },

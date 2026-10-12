@@ -5,14 +5,14 @@
     "FAIL": 2,
     "BLOCKED": 0
   },
-  "seconds": 38,
+  "seconds": 39,
   "cases": [
     {
       "id": "UIO-INBOX-00",
       "title": "Inbox with existing conversations but no IMAP-configured mailbox still shows the conversations (not only the IMAP setup guide)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "conversations hidden behind IMAP setup guide although 2 conversations exist (API returns them)"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-INBOX-01",
@@ -31,9 +31,9 @@
     {
       "id": "UIO-INBOX-03",
       "title": "Reply form: empty reply does nothing; Enter sends a reply -> OUTBOUND message stored for that conversation",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "reply not stored (0)"
     },
     {
       "id": "UIO-INBOX-04",

@@ -1,11 +1,11 @@
 {
   "suite": "UI outreach/admin - campaigns_list",
   "counts": {
-    "PASS": 16,
-    "FAIL": 3,
+    "PASS": 19,
+    "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 87,
+  "seconds": 66,
   "cases": [
     {
       "id": "UIO-CAMP-HOME-01",
@@ -72,24 +72,24 @@
     },
     {
       "id": "UIO-CAMP-LIST-06",
-      "title": "Row click: DRAFT opens the wizard in edit mode, ACTIVE opens details; View icon opens details",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "locator.click: Timeout 12000ms exceeded."
+      "title": "Row click: DRAFT opens the wizard in edit mode, ACTIVE opens details (View icon is lg:hidden)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-CAMP-LIST-07",
       "title": "Select-all + bulk bar: Pause selected (confirm) pauses active campaigns in DB; clear selection",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "statuses PAUSED/ACTIVE"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-CAMP-LIST-08",
       "title": "Pause API failure surfaces feedback to the user (not silent)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "locator.click: Timeout 12000ms exceeded."
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-CAMP-LIST-09",

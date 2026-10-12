@@ -1,0 +1,732 @@
+{
+  "suite": "ui_crm (CRM + Sales functional UI)",
+  "counts": {
+    "PASS": 83,
+    "FAIL": 18,
+    "BLOCKED": 2
+  },
+  "seconds": 509,
+  "cases": [
+    {
+      "id": "UIC-CON-01",
+      "title": "Contacts list renders 25/60 with pager text and header",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-02",
+      "title": "Pagination next/prev/last page counts and disabled state",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-03",
+      "title": "Sort by name asc/desc matches API order",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-04",
+      "title": "Sort by Email and Company headers",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-05",
+      "title": "Search box filters by name/email/company; empty-state; clear",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-06",
+      "title": "Column chooser hides/shows columns, persists, Reset restores",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-07",
+      "title": "Filter builder: enum (lifecycle stage is Lead) equals DB count",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-08",
+      "title": "Filter builder: AND of two conditions (stage + country text)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-09",
+      "title": "Filter builder: toggle AND->OR changes result to union",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-10",
+      "title": "Filter builder: tag has tag \"hot\"; \"has no tags\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-11",
+      "title": "Filter builder: text contains / starts with / is empty",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-12",
+      "title": "Filter builder: date \"in the last N days\" and owner \"Me\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-13",
+      "title": "Filter builder: nested group  stage=Lead AND (country=US OR tag=hot)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-14",
+      "title": "Filter builder: remove condition / Clear all resets to 60",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-15",
+      "title": "Built-in views from sidebar: My contacts / Unassigned / Recently created",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-16",
+      "title": "Save filtered view -> appears in sidebar & DB; reopening applies filter",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-17",
+      "title": "Rename saved view (Update this view) and persisted",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-18",
+      "title": "Save-view modal: empty name disables Save; Cancel closes",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-19",
+      "title": "Delete saved view removes it from sidebar and DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-20",
+      "title": "Board view: lane totals equal DB; drag card to another stage persists",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-21",
+      "title": "Board: admin drags a card backwards (allowed for admins, BR-CM-08) and it persists",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-22",
+      "title": "Board: group by lead status and switch back to table",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-23",
+      "title": "Add contact: empty email -> validation message, nothing created",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-24",
+      "title": "Add contact: invalid email format -> clear error, nothing created",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-25",
+      "title": "Add contact: full form creates contact, company account linked, tags, redirect to detail",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-26",
+      "title": "Add contact: duplicate email -> error + \"Open the existing contact\" link works",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-27",
+      "title": "Add contact: email of a deleted contact -> restore hint (Recently deleted)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-28",
+      "title": "Add contact modal: Cancel / X close paths, no row created",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-29",
+      "title": "Properties modal: create NUMBER and SELECT custom fields; appear in DB and Add form",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-30",
+      "title": "Properties modal: blank label disables Add; duplicate label error",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "duplicate property label should be rejected with a message (found 2 'Budget' properties)"
+    },
+    {
+      "id": "UIC-CON-31",
+      "title": "Create contact with custom property values; shown in table column + detail; filterable",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "detail shows values"
+    },
+    {
+      "id": "UIC-CON-32",
+      "title": "Properties modal: delete a custom field",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-33",
+      "title": "Bulk: select-all-on-page shows \"25 selected\", Clear selection works",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-34",
+      "title": "Bulk: Edit property (lead status) updates DB for selected only",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-35",
+      "title": "Bulk: Add to new list -> notice and list membership in DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-36",
+      "title": "Bulk: Assign owner persists",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-37",
+      "title": "Bulk: Add tag / Remove tag",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-38",
+      "title": "Bulk: Enroll in campaign shows enrolled count + rejection reasons (unsubscribed, invalid)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-39",
+      "title": "Bulk: Delete (confirm) soft-deletes and notice; appears in Recently deleted",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-40",
+      "title": "Export CSV downloads file whose rows equal the visible filtered set",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-41",
+      "title": "Export XLSX downloads a valid workbook with the same row count",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-42",
+      "title": "Duplicates modal: no duplicates state, then merge with per-property choices",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-43",
+      "title": "AGENT (no manage_prospects): sees only own contacts; no Import/Export/Properties/Duplicates/checkboxes",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-44",
+      "title": "AGENT: direct API refused for bulk/export/merge; own-contact create works without owner field",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-45",
+      "title": "AGENT: cannot open someone else's contact by URL (\"Contact not found\")",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-46",
+      "title": "List API 500 -> page does not crash (graceful state)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-01",
+      "title": "Record page renders header, stats, 3 columns of cards",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-02",
+      "title": "Change lifecycle stage inline -> persisted, appears as property change with old/new",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "Command failed: docker exec vector-mysql-1 mysql -uvector -pvector outreach_ai -N -e SELECT COUNT(*) FROM property_changes WHERE entity_id='d91cfee3-d0c3-4093-80a9-8761d2b96281' AND field='lifecycle_stage'"
+    },
+    {
+      "id": "UIC-CD-03",
+      "title": "Change lead status inline persisted",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-04",
+      "title": "Edit details: save changes (name, phone, title, company, location) -> DB; Cancel discards",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-05",
+      "title": "Edit details: invalid email shows an error and saves nothing",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-06",
+      "title": "Tags: add and remove in header persists",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-07",
+      "title": "Owner change inline persists and is recorded in history",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-08",
+      "title": "Unsubscribe then resubscribe (with confirm) updates consent + global unsubscribe list",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "locator.click: Timeout 15000ms exceeded."
+    },
+    {
+      "id": "UIC-CD-09",
+      "title": "Log a note -> timeline entry + DB activity",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-10",
+      "title": "Log a call (subject, outcome, duration) -> timeline + Calls stat",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-11",
+      "title": "Log an email and a meeting",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-12",
+      "title": "Edit a logged activity then delete it (confirm)",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "locator.click: Timeout 15000ms exceeded."
+    },
+    {
+      "id": "UIC-CD-13",
+      "title": "Create task from record (overdue due date) -> card + Open tasks stat + DB; complete it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-14",
+      "title": "Timeline filters: Notes / Calls / Changes / All and user filter",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-15",
+      "title": "Create lead from the record -> redirected to lead, lead in DB, Sales card lists it",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "not equal: got \"NEW|Referral|aaf790a9-4e4b-4f99-8e76-f0c4b796034f\" expected \"NEW|Referral|37d1adee-ff26-461c-8860-066b4e91d80d\""
+    },
+    {
+      "id": "UIC-CD-16",
+      "title": "Create a deal directly from the contact record",
+      "status": "BLOCKED",
+      "category": "not-implemented",
+      "detail": "Record page only offers \"+ Create lead\"; deals are created from a lead conversion or the Deals page"
+    },
+    {
+      "id": "UIC-CD-17",
+      "title": "@mention in notes",
+      "status": "BLOCKED",
+      "category": "not-implemented",
+      "detail": "Composer has no @mention support"
+    },
+    {
+      "id": "UIC-CD-18",
+      "title": "Associations: company link opens the company page; list + campaign cards link out",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "locator.isVisible: Error: strict mode violation: getByRole('link', { name: 'Assoc Campaign' }) resolved to 2 elements:"
+    },
+    {
+      "id": "UIC-CD-19",
+      "title": "Unknown contact id shows \"Contact not found\" with back link",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-20",
+      "title": "Property save API failure shows the error and keeps the old value",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-21",
+      "title": "AGENT on own contact: can edit/log note, owner shown read-only, no Delete",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-22",
+      "title": "Non-admin manager cannot move lifecycle stage backwards (forward only message)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CD-23",
+      "title": "Delete contact (confirm) -> back to list; listed in Recently deleted; restore brings it back",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-ACCOUNTS-CRASH",
+      "title": "area accounts crashed",
+      "status": "FAIL",
+      "category": "test-issue",
+      "detail": "POST /accounts -> 422 {\"success\":false,\"error\":\"Validation Error\",\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"annual_revenue\"],\"msg\":\"Input should be a valid string\",\"input\":500000}],\"code\":\"VALIDATION_ERROR\"}"
+    },
+    {
+      "id": "UIC-LST-01",
+      "title": "Lists page empty state, then headings/filters render",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-LST-02",
+      "title": "New list: name required; create static list -> DB + opens Contacts filtered by it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-LST-03",
+      "title": "New list modal: cancel closes without creating",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-LST-04",
+      "title": "Active list: needs a criterion; live preview count equals DB; saved list has the same members",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "preview count: got null expected 7"
+    },
+    {
+      "id": "UIC-LST-05",
+      "title": "Active list membership follows data: changing a contact moves it in/out automatically",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "locator.innerText: Timeout 15000ms exceeded."
+    },
+    {
+      "id": "UIC-LST-06",
+      "title": "Static list: add members from Contacts bulk bar, remove from this list, counts match DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-LST-07",
+      "title": "Add contact modal can add the new contact to a static list",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "list card on record page"
+    },
+    {
+      "id": "UIC-LST-08",
+      "title": "Edit list: rename + description persisted; active list criteria edit changes membership",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "locator.click: Timeout 15000ms exceeded."
+    },
+    {
+      "id": "UIC-LST-09",
+      "title": "Type tabs and search filter the lists",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "active only"
+    },
+    {
+      "id": "UIC-LST-10",
+      "title": "AGENT: can see lists but cannot create/edit/delete (buttons hidden, API refuses)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-LST-11",
+      "title": "Delete list (confirm) removes it, contacts are kept",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-LST-12",
+      "title": "Lists API failure keeps page shell",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-01",
+      "title": "Import page renders drop zone + options hidden until a file is chosen",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-02",
+      "title": "CSV preview: row/column count, suggested mapping, sample values",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-03",
+      "title": "Run import with defaults: result counts, DB rows, owner = me, company linked",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-04",
+      "title": "Re-import same file: update_existing ON updates (no duplicates); OFF leaves records untouched",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "none updated when OFF: got 12 expected 0"
+    },
+    {
+      "id": "UIC-IMP-05",
+      "title": "Blank cells never overwrite existing values",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "values preserved: got 0 expected 1"
+    },
+    {
+      "id": "UIC-IMP-06",
+      "title": "Mapping: create a new custom property from a column (type Number) -> property + values stored",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-07",
+      "title": "Options: add to a new list, set owner to Alice",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-08",
+      "title": "Options: existing list requires choosing one; imports into it",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "locator.selectOption: Timeout 15000ms exceeded."
+    },
+    {
+      "id": "UIC-IMP-09",
+      "title": "Bad rows (invalid email, missing email, duplicate in file): counts, reasons list, error file download",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-10",
+      "title": "Past imports table lists runs with error counts and downloadable error file",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-11",
+      "title": "Bad files: .txt / binary / empty / header-only show a clear message and no crash",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-12",
+      "title": "One-column CSV (email only) imports",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-13",
+      "title": "File without an Email/Company column: warning shown and Import disabled",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-14",
+      "title": "Two columns mapped to the same property show the \"last one wins\" warning",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-15",
+      "title": "Company-only import (no email column) creates companies",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "locator.waitFor: Timeout 90000ms exceeded."
+    },
+    {
+      "id": "UIC-IMP-16",
+      "title": "Excel (.xlsx) file imports",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-17",
+      "title": "Cancel resets the wizard",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-18",
+      "title": "\"Import another file\" after a run starts over",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-19",
+      "title": "1,000-row CSV imports in one run (DB count + time)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-20",
+      "title": "AGENT without manage_prospects cannot use import (route redirected, API 403)",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "API list imports 403: got 200 expected 403"
+    },
+    {
+      "id": "UIC-IMP-21",
+      "title": "Preview API failure shows an error message",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}
