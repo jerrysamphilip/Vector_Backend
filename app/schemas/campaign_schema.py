@@ -37,12 +37,12 @@ class CampaignCreate(BaseModel):
 
     # Sending Schedule
     sending_mode: str = Field("spread", description="spread | random | batch")
-    min_gap_minutes: int = Field(2, ge=0, description="Min gap between emails (random mode)")
-    batch_size: Optional[int] = Field(None, ge=1, description="Emails per batch (batch mode)")
-    batch_gap_minutes: int = Field(30, ge=1, description="Minutes between batch starts (batch mode)")
+    min_gap_minutes: int = Field(2, ge=0, le=10080, description="Min gap between emails (random mode)")
+    batch_size: Optional[int] = Field(None, ge=1, le=100000, description="Emails per batch (batch mode)")
+    batch_gap_minutes: int = Field(30, ge=1, le=10080, description="Minutes between batch starts (batch mode)")
 
     # Daily batch throttle (optional)
-    daily_batch_size: Optional[int] = Field(None, ge=1, description="Max new prospects to email per day (e.g. 100 → day 1: 1-100, day 2: 101-200)")
+    daily_batch_size: Optional[int] = Field(None, ge=1, le=1000000, description="Max new prospects to email per day (e.g. 100 → day 1: 1-100, day 2: 101-200)")
 
     # Campaign Duration (optional)
     start_date: Optional[date] = Field(None, description="Campaign start date")
@@ -80,11 +80,11 @@ class CampaignUpdate(BaseModel):
     respect_timezone: Optional[bool] = None
     campaign_timezone: Optional[str] = None
     sending_mode: Optional[str] = None
-    min_gap_minutes: Optional[int] = None
-    batch_size: Optional[int] = None
-    batch_gap_minutes: Optional[int] = None
+    min_gap_minutes: Optional[int] = Field(None, ge=0, le=10080)
+    batch_size: Optional[int] = Field(None, ge=1, le=100000)
+    batch_gap_minutes: Optional[int] = Field(None, ge=1, le=10080)
     unsubscribe_mode: Optional[str] = Field(None, description="'plain' or 'html' — controls unsubscribe footer style")
-    daily_batch_size: Optional[int] = Field(None, ge=1, description="Max new prospects to email per day")
+    daily_batch_size: Optional[int] = Field(None, ge=1, le=1000000, description="Max new prospects to email per day")
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     inbox_ids: Optional[List[str]] = Field(None, description="Update list of Sending Inboxes")

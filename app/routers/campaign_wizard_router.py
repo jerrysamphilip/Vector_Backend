@@ -9,7 +9,7 @@ from tempfile import template
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import logging
 
 from app.core.database import get_db
@@ -65,8 +65,8 @@ from app.models.user import User
 
 class CreateCampaignRequest(BaseModel):
     campaign_name: str
-    send_start_hour: int = 9
-    send_end_hour: int = 17
+    send_start_hour: int = Field(9, ge=0, le=23)
+    send_end_hour: int = Field(17, ge=0, le=23)
     timezone: str = "Asia/Kolkata"
     cta_link: Optional[str] = None
     inbox_ids: List[str] = []
@@ -111,7 +111,7 @@ class EnrollRequest(BaseModel):
     list_id: str
     persona_types: Optional[List[str]] = None
     exclude_personal_emails: bool = True
-    cool_off_days: int = 7
+    cool_off_days: int = Field(7, ge=0, le=3650)
     excluded_prospect_ids: Optional[List[str]] = None
 
 
@@ -124,7 +124,7 @@ class WizardRequest(BaseModel):
     list_id: str
     persona_types: Optional[List[str]] = None
     exclude_personal_emails: bool = True
-    cool_off_days: int = 7
+    cool_off_days: int = Field(7, ge=0, le=3650)
 
 
 class RegenerateRequest(BaseModel):
@@ -238,7 +238,7 @@ def get_available_lists(db: Session = Depends(get_db), current_user: User = Depe
             "list_id": l.list_id,
             "list_name": l.list_name,
             "prospect_count": counts.get(l.list_id, 0),
-            "created_at": l.created_at,
+            "created_at": l.uploaded_at,
         }
         for l in lists
     ]
@@ -249,17 +249,21 @@ def get_available_lists(db: Session = Depends(get_db), current_user: User = Depe
 def create_campaign(request: CreateCampaignRequest, db: Session = Depends(get_db), current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT"))):
     """Step 1: Create a new campaign with basic settings."""
     normalized_cta_link = normalize_cta_link(request.cta_link)
-    campaign = step_1_create_campaign(
-        db=db,
-        tenant_id=current_user.tenant_id,
-        user_id=current_user.user_id,
-        campaign_name=request.campaign_name,
-        send_start_hour=request.send_start_hour,
-        send_end_hour=request.send_end_hour,
-        timezone=request.timezone,
-        cta_link=normalized_cta_link,
-        inbox_ids=request.inbox_ids,
-    )
+    try:
+        campaign = step_1_create_campaign(
+            db=db,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            campaign_name=request.campaign_name,
+            send_start_hour=request.send_start_hour,
+            send_end_hour=request.send_end_hour,
+            timezone=request.timezone,
+            cta_link=normalized_cta_link,
+            inbox_ids=request.inbox_ids,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     return {
         "campaign_id": campaign.campaign_id,
         "campaign_name": campaign.campaign_name,
@@ -610,15 +614,19 @@ def run_complete_wizard(
             detail="Prospect list not found",
         )
 
-    result = run_campaign_wizard(
-        db=db,
-        tenant_id=current_user.tenant_id,
-        user_id=current_user.user_id,
-        campaign_name=request.campaign_name,
-        list_id=request.list_id,
-        rules=rules,
-        cool_off_days=request.cool_off_days,
-    )
+    try:
+        result = run_campaign_wizard(
+            db=db,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            campaign_name=request.campaign_name,
+            list_id=request.list_id,
+            rules=rules,
+            cool_off_days=request.cool_off_days,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     
     return {
         "campaign_id": result["campaign"].campaign_id,

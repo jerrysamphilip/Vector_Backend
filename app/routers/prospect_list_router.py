@@ -748,9 +748,8 @@ def upload_dry_run(
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+        db.rollback()
+        handle_route_error(e, context="upload")
 
 
 # Kartik has changed this: Modeled upload as a root resource rather than a verb
@@ -773,9 +772,8 @@ def upload_revalidate(
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+        db.rollback()
+        handle_route_error(e, context="upload")
 
 
 # Kartik has changed this: Converted action endpoint into RESTful bulk creation
@@ -807,9 +805,8 @@ def upload_confirm(
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+        db.rollback()
+        handle_route_error(e, context="upload")
 
 
 # Kartik has changed this: Use proper top-level collection endpoint

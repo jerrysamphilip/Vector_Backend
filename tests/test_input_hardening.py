@@ -26,6 +26,9 @@ def test_forecast_fiscal_year_bounded(client, tenant_a):
 
 
 def test_campaign_lists_endpoint_works(client, tenant_a):
+    made = client.post("/lists", headers=tenant_a["headers"], json={"list_name": "Wizard picker list"})
+    assert made.status_code == 201, made.text
     r = client.get("/campaigns/lists", headers=tenant_a["headers"])
-    assert r.status_code == 200
-    assert isinstance(r.json(), list)
+    assert r.status_code == 200, r.text
+    rows = {x["list_name"]: x for x in r.json()}
+    assert rows["Wizard picker list"]["prospect_count"] == 0

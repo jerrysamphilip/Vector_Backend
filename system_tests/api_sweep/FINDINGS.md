@@ -247,3 +247,7 @@ persona-blueprints (falls back), uploads revalidations.
 - `POST /uploads/validations` x1 probes ['val-mp-bigfile'] -> 598; example body `null` ; server: 
 - `GET /reports/dashboard-summary` x1 probes ['iso-list'] -> 598; example body `null` ; server: 
 - `GET /reports/export/global-analytics/docx` x1 probes ['iso-list'] -> 500; example body `null` ; server: File "/app/app/routers/reports_router.py", line 224, in export_global_analytics_docx; File "/app/app/services/reports_service.py", line 1291, in export_global_analytics_docx; File "/app/app/services/reports_service.py", line 1182, in _add_data_table; ValueError: All strings must be XML compatible: Unicode or ASCII, no NULL bytes or control characters
+
+## Status after fixes (re-run, 12 Oct)
+Fixed and verified by a full re-run: campaigns/lists, wizard creation/execution, template regeneration FK, activation of an ACTIVE campaign (409), all "Data too long / out of range" 500s (now 422), integrity errors (409), NUL characters (422), negative/huge `limit`/`fy`, upload row cap (20,000, 413), foreign `sequence_id` on `POST /templates`, `/inboxes/{id}/sync` unreachable IMAP (502), campaign-comparison filename.
+Left as is: repeated DELETE returns 400 (user/invite) or 200 (enrollment) rather than 404, invite stores the row as ACCEPTED (the endpoint creates the user directly), 33 response-schema nullability mismatches (documentation only), `POST /templates/{id}/regenerations` 500 when no LLM key is configured (environment).
