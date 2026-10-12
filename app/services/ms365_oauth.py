@@ -56,8 +56,9 @@ def _endpoint(path: str) -> str:
     return f"https://login.microsoftonline.com/{settings.MS365_TENANT_ID or 'common'}/oauth2/v2.0/{path}"
 
 
-def make_state(inbox_id: str, tenant_id: str, user_id: str) -> str:
+def make_state(inbox_id: str, tenant_id: str, user_id: str, nonce: str = None) -> str:
     payload = {"inbox_id": inbox_id, "tenant_id": tenant_id, "user_id": user_id, "purpose": "ms365_oauth",
+               "nonce": nonce,
                "exp": datetime.utcnow() + timedelta(minutes=STATE_TTL_MINUTES)}
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 

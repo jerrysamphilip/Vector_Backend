@@ -184,14 +184,20 @@ def backfill_accounts(db: Session, tenant_id: str) -> int:
 
 # ── Delete ─────────────────────────────────────────────────────────
 
-def delete_contacts(db: Session, prospect_ids: list) -> None:
+def delete_contacts(db: Session, prospect_ids: list, actor_id: Optional[str] = None,
+                    reason: str = "ERASE_CONTACT") -> None:
     """
     Permanently delete contacts (purge / GDPR erasure) and every row that references them.
     Leads belong to their contact and go with it; deals are company records, so they stay
-    but lose the link to the person. Caller commits.
+    but lose the link to the person. Each erasure leaves an audit row (who, when, which
+    record id; no personal data). actor_id None = the system (scheduled purge). Caller commits.
     """
     if not prospect_ids:
         return
+    from app.models.audit import AuditLog
+    for pid, tenant_id in db.query(Prospect.prospect_id, Prospect.tenant_id).filter(
+            Prospect.prospect_id.in_(prospect_ids)).all():
+        db.add(AuditLog(tenant_id=tenant_id, user_id=actor_id, action=reason, entity_type="contact", entity_id=pid))
     from app.models.sales import Lead, Opportunity
     from app.services.sales import delete_leads
     message_ids = [m[0] for m in db.query(EmailMessage.message_id).filter(

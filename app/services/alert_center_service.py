@@ -58,18 +58,6 @@ class AlertCenterService:
         # Keep scope_id within varchar(36) by storing a deterministic UUID.
         return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{user_id}:{inbox_id}"))
 
-    def _tenant_domain_set(self, db: Session, tenant_id: str) -> set[str]:
-        rows = (
-            db.query(SendingInbox.email_address)
-            .filter(SendingInbox.tenant_id == tenant_id)
-            .all()
-        )
-        domains = set()
-        for (email,) in rows:
-            if email and "@" in email:
-                domains.add(email.split("@", 1)[1].lower())
-        return domains
-
     def _scope_key(self, scope_type: str, scope_id: Optional[str], alert_type: str) -> str:
         return f"{scope_type}:{scope_id or ''}:{alert_type}"
 
@@ -126,13 +114,11 @@ class AlertCenterService:
 
     def collect_dashboard_alerts(self, db: Session, tenant_id: str, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         alerts: List[Dict[str, Any]] = []
-        allowed_domains = self._tenant_domain_set(db, tenant_id)
-
-        if allowed_domains:
+        if tenant_id:
             reputation_alerts = (
                 db.query(ReputationAlert)
                 .filter(
-                    ReputationAlert.domain_name.in_(allowed_domains),
+                    ReputationAlert.tenant_id == tenant_id,
                     ReputationAlert.is_resolved == False,  # noqa: E712
                 )
                 .order_by(ReputationAlert.created_at.desc())

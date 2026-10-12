@@ -201,9 +201,10 @@ def lead_dicts(db: Session, leads: List[Lead]) -> List[dict]:
             "disqualified_reason": l.disqualified_reason, "recycle_at": l.recycle_at, "opportunity_id": l.opportunity_id,
             "campaign_id": l.campaign_id, "created_at": l.created_at, "stage_changed_at": l.stage_changed_at,
             "qualified_at": l.qualified_at, "converted_at": l.converted_at,
-            "age_days": (now - l.created_at).days if l.created_at else 0,
-            "days_in_stage": (now - l.stage_changed_at).days if l.stage_changed_at else 0,
-            "sql_age_days": (now - l.qualified_at).days if l.qualified_at else None,
+            "age_days": max(0, (now - l.created_at).days) if l.created_at else 0,
+            "days_in_stage": max(0, (now - l.stage_changed_at).days) if l.stage_changed_at else 0,
+            # clock skew between writers can put a timestamp a moment in the future; ages never go below 0
+            "sql_age_days": max(0, (now - l.qualified_at).days) if l.qualified_at else None,
         })
     return out
 

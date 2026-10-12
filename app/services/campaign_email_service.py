@@ -61,6 +61,10 @@ class CampaignEmailService:
 
         normalized_cta_link = normalize_cta_link(cta_link)
 
+        # The sending tenant's own company name (never another tenant's)
+        from app.services.sender_identity import get_sender_identity
+        our_company = get_sender_identity(getattr(prospect, "tenant_id", None)).company_name
+
         substitutions = {
             "{{first_name}}": prospect.first_name or "there",
             "{{last_name}}": prospect.last_name or "",
@@ -75,8 +79,8 @@ class CampaignEmailService:
             "{{city}}": prospect.poc_city or "",
             "{{state}}": prospect.poc_state or "",
             "{{your_name}}": sender_name or settings.SENDER_NAME,
-            "{{signature_block}}": build_signature_block(sender_name, sender_title),
-            "{{our_company}}": "Neutrino Tech Systems",
+            "{{signature_block}}": build_signature_block(sender_name, sender_title, our_company),
+            "{{our_company}}": our_company or "",
             "{{calendar_link}}": normalized_cta_link,
             "{{cta_link}}": normalized_cta_link,
         }
@@ -367,6 +371,11 @@ class CampaignEmailService:
 
         if campaign.status != CampaignStatus.DRAFT.value:
             raise ValueError(f"Cannot launch campaign with status: {campaign.status}")
+
+        # CAN-SPAM: every email must carry the sender's own postal address, so a
+        # tenant without one cannot start new sending (400 with the reason)
+        from app.services.sender_identity import require_postal_address
+        require_postal_address(self.db, campaign.tenant_id)
 
         # Validation Gates
         step_count = self.db.query(func.count(EmailSequence.sequence_id)).filter(

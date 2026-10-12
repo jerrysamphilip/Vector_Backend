@@ -1,0 +1,25 @@
+{
+  "suite": "ui_crm accounts",
+  "counts": {
+    "PASS": 1,
+    "FAIL": 0,
+    "BLOCKED": 1
+  },
+  "seconds": 7,
+  "cases": [
+    {
+      "id": "UIC-ACC-04",
+      "title": "New company: name required (button disabled), full create -> detail page + DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-ACC-12",
+      "title": "AccountDetail lists the company's deals",
+      "status": "BLOCKED",
+      "category": "not-implemented",
+      "detail": "AccountDetail shows contacts and history only; deals appear on the Deals screen"
+    }
+  ]
+}

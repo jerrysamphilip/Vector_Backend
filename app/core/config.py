@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     # CAN-SPAM / GDPR compliance
     # Physical mailing address appended to every outbound email footer (CAN-SPAM §5(a)(5))
-    COMPANY_PHYSICAL_ADDRESS: str = "Neutrino Tech Systems, 12301 West Parmer Lane, Unit 707, Cedar Park, TX 78613, USA"
+    COMPANY_PHYSICAL_ADDRESS: str = ""  # unused: each tenant sets its address (Settings > sender identity)
     # Spam score threshold above which the email is BLOCKED from being sent (0–100).
     # Set to 0 to disable the gate entirely (not recommended for production).
     SPAM_SCORE_BLOCK_THRESHOLD: int = 25
@@ -175,7 +175,38 @@ class Settings(BaseSettings):
     WARMUP_MAX_SENDS_PER_CYCLE: int = 3
     WARMUP_REPLY_RATE_DEFAULT: int = 35
     WARMUP_RANDOMIZE_VARIANCE: int = 15
-    
+
+    # Schema & background jobs. Migrations run via `python -m app.db.migrate`; AUTO_MIGRATE runs
+    # them at API start-up (local convenience). Deployments run the loops in `python -m app.worker`
+    # and set RUN_BACKGROUND_JOBS=false on the API.
+    AUTO_MIGRATE: bool = False
+    RUN_BACKGROUND_JOBS: bool = True
+
+    # Test/staging aid: let the scheduler send on weekends and holidays (the send window HOURS still apply).
+    # Ignored when ENVIRONMENT=production.
+    SEND_ON_ANY_DAY: bool = False
+    WORKER_HEALTH_PORT: int = 8002
+
+    # Observability (app/core/observability.py). LOG_FORMAT=json is read from the environment.
+    METRICS_ENABLED: bool = True          # GET /metrics (Prometheus)
+    METRICS_TOKEN: str = ""               # when set, /metrics requires "Authorization: Bearer <token>"
+    SENTRY_DSN: str = ""                  # error reporting is off unless set
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.0
+
+    # Browser sessions (app/core/auth_cookies.py). The SPA sends "X-Auth-Mode: cookie" and receives
+    # httpOnly access/refresh cookies plus a readable csrf_token cookie instead of tokens in JSON.
+    # COOKIE_SECURE unset = Secure cookies in production only. COOKIE_DOMAIN unset = host-only cookies.
+    # REFRESH_COOKIE_PATH scopes the refresh cookie (the browser-visible path, e.g. "/vector/api/api/auth").
+    COOKIE_SECURE: Optional[bool] = None
+    COOKIE_DOMAIN: Optional[str] = None
+    REFRESH_COOKIE_PATH: str = "/"
+
+    @property
+    def cookie_secure(self) -> bool:
+        if self.COOKIE_SECURE is not None:
+            return self.COOKIE_SECURE
+        return self.is_production
+
     @property
     def is_production(self) -> bool:
         return (self.ENVIRONMENT or "").strip().lower() in ("production", "prod")

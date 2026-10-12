@@ -1,0 +1,8 @@
+# Local run state (contains throwaway test-workspace credentials)
+.state.json
+ui_fixture.json
+run.log
+__pycache__/
+results_prev.json
+node_modules
+.auth/

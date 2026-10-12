@@ -15,6 +15,14 @@ PERSONAL_EMAIL_DOMAINS = {
 
 CTA_PLACEHOLDER_PATTERN = re.compile(r"^\{+\s*(calendar_link|cta_link)\s*\}+$", re.IGNORECASE)
 
+# Practical address check: one @, no spaces, a dot-atom local part and a domain of
+# letter/digit/hyphen labels with a 2+ letter TLD (rejects "broken@", "has space@x.com").
+_EMAIL_RE = re.compile(
+    r"^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
+    r"@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
+)
+
+
 def parse_email(raw_email):
     # Handle None, NaN (float), or other non-string values
     if raw_email is None or not isinstance(raw_email, str):
@@ -24,7 +32,7 @@ def parse_email(raw_email):
         return None
 
     email = raw_email.strip().lower()
-    if "@" not in email:
+    if not _EMAIL_RE.match(email):
         return None
 
     domain = email.split("@")[-1]
@@ -250,10 +258,12 @@ def normalize_paragraph_spacing(body: str) -> str:
 
 
 
-def extract_latest_message_text(body_content: str) -> str:
+def extract_latest_message_text(body_content: str, strip_boilerplate: bool = True) -> str:
     """
     Extract newest human-written portion of an email body.
-    Removes quoted history, tracking/link noise, and unsubscribe boilerplate.
+    Removes quoted history, tracking/link noise, and (unless strip_boilerplate=False)
+    unsubscribe/footer boilerplate. Detecting a prospect's own "unsubscribe" reply needs
+    strip_boilerplate=False, otherwise the one word they wrote is removed as footer text.
     """
     if not body_content:
         return ""
@@ -298,7 +308,7 @@ def extract_latest_message_text(body_content: str) -> str:
         r"(?im)^\s*(regards|best regards|best|thanks),?\s*$",
         r"(?im)^\s*(head\s*[-–]\s*.+|t:\s*.+|a:\s*.+)\s*$",
     ]
-    for pattern in cleanup_patterns:
+    for pattern in (cleanup_patterns if strip_boilerplate else ()):
         text = re.sub(pattern, "", text)
 
     # Remove URL-only lines and collapse blank lines.
@@ -378,15 +388,17 @@ def finalize_email_body(body: str) -> str:
     return body
 
 
-def build_signature_block(sender_name: str, sender_title: str = None) -> str:
+def build_signature_block(sender_name: str, sender_title: str = None, company_name: str = None) -> str:
     """
     Build the resolved signature block: name, then title (if set), then the
-    company line — used to resolve the {{signature_block}} token at send time.
+    sending tenant's company name (if known) — used to resolve the
+    {{signature_block}} token at send time.
     """
     from app.core.config import settings
 
     lines = [sender_name or settings.SENDER_NAME]
     if sender_title and sender_title.strip():
         lines.append(sender_title.strip())
-    lines.append("Neutrino Tech Systems")
+    if company_name and company_name.strip():
+        lines.append(company_name.strip())
     return "\n".join(lines)

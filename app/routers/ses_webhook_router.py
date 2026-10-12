@@ -24,10 +24,12 @@ from app.services.metrics_service import MetricsService
 from app.services.deliverability_service import deliverability_service
 from app.utils.campaign_prospect_status import set_prospect_status
 from app.services.send_safety import on_risk_event, set_final_status
+from app.services.domain_tenancy import tenant_for_message, tenant_for_sender
 from app.services.suppression import suppress
 from sqlalchemy import func
 from app.core.secrets_guard import is_deployed
 from app.utils.sns_verify import is_sns_url, token_matches, verify_sns_signature
+from app.core.observability import record_ses_event
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +245,7 @@ async def handle_ses_notification(
             notification_type = message.get("notificationType") or message.get("eventType")
 
             logger.info(f"[SES-WEBHOOK] Received {notification_type} notification")
+            record_ses_event(notification_type)
 
             # Idempotency (B09): skip events we've already recorded (SNS retries / redelivery)
             sns_message_id = (body.get("MessageId") if isinstance(body, dict) and "Message" in body else None) \
@@ -443,7 +446,8 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
 
     # Auto-pause within seconds if this pushes the campaign or domain over the limits (BR-DF-07)
     if bounce_type == "Permanent":
-        on_risk_event(db, email_message.campaign_id if email_message else None, sender_domain, "hard bounce")
+        on_risk_event(db, email_message.campaign_id if email_message else None, sender_domain, "hard bounce",
+                      tenant_id=tenant_for_message(db, email_message) or tenant_for_sender(db, source_email))
     
     logger.info(f"[SES-WEBHOOK] Processed {bounce_type} bounce for {len(processed_emails)} recipients")
     
@@ -516,8 +520,9 @@ async def _handle_complaint(message: dict, db: Session) -> dict:
             suppress(db, tenant_id, email, f"Spam complaint: {complaint_type or 'unknown'}", kind="COMPLAINT")
     
     db.commit()
-    on_risk_event(db, email_message.campaign_id if internal_message_id and email_message else None,
-                  sender_domain, "spam complaint")
+    sent = email_message if internal_message_id else None
+    on_risk_event(db, sent.campaign_id if sent else None, sender_domain, "spam complaint",
+                  tenant_id=tenant_for_message(db, sent) or tenant_for_sender(db, source_email))
     logger.warning(f"[SES-WEBHOOK] Processed complaint for {len(processed_emails)} recipients")
     return {"status": "processed", "type": "complaint", "emails": processed_emails}
 

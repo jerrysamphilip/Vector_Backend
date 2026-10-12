@@ -123,7 +123,7 @@ def _build_magic_login_link_for_origin(token: str, request: Request | None) -> s
 
     magic_login_url = (getattr(settings, "MAGIC_LOGIN_URL", None) or "").strip()
     backend_base = settings.BASE_URL.rstrip("/")
-    frontend_base = (settings.FRONTEND_URL or "").strip().rstrip("/")
+    frontend_base = (settings.FRONTEND_URL or "").split(",")[0].strip().rstrip("/")
     profile = (os.getenv("APP_PROFILE", "") or "").strip().lower()
 
     def _is_local(url: str) -> bool:

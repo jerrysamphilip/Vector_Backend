@@ -1,0 +1,10 @@
+{
+  "suite": "UI outreach/admin - dbg",
+  "counts": {
+    "PASS": 0,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 8,
+  "cases": []
+}

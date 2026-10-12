@@ -31,7 +31,7 @@ def get_email_generation_system_prompt(
 
     from app.prompts.email_examples import is_healthcare_pharma
     avoid_str = ", ".join(avoid_list) if avoid_list else "generic language, spam phrases"
-    healthcare_mode = True  # Apply Neutrino outreach style to all industries
+    healthcare_mode = True  # Apply house outreach style to all industries
 
     if healthcare_mode:
         word_count_rule = "150–250 words."
@@ -168,9 +168,9 @@ def get_sequence_generation_system_prompt(
 
     from app.prompts.email_examples import is_healthcare_pharma
     avoid_str = ", ".join(avoid_list) if avoid_list else "generic language, spam phrases"
-    healthcare_mode = True  # Apply Neutrino outreach style to all industries
+    healthcare_mode = True  # Apply house outreach style to all industries
 
-    # Neutrino outreach style rules
+    # house outreach style rules
     if healthcare_mode:
         seq_word_count_rule = "150–250 words per email."
         seq_bullet_rule = "Bullet lists are allowed and encouraged to highlight capabilities."
@@ -236,8 +236,8 @@ End with a neutral close. No meeting ask, no booking link, no URL.
             "'Happy to jump on a quick call or send a short overview — whichever\\'s easier.'"
         ) if cta_enabled else "Close naturally. No meeting ask, no URL."
 
-        return f"""You are a senior B2B outbound email writer at Neutrino Tech Systems.
-Write a cold email sequence in Neutrino Tech Systems' established brand voice.
+        return f"""You are a senior B2B outbound email writer at <<SENDER_COMPANY>>.
+Write a cold email sequence in <<SENDER_COMPANY>>' established brand voice.
 
 {creative_context}
 
@@ -246,7 +246,7 @@ Role: {prospect_data.get('designation', 'professional')}
 Industry: {prospect_data.get('industry', 'technology')}
 Company: {prospect_data.get('company_name', 'their company')}
 
-=== NEUTRINO EMAIL STRUCTURE (apply to every email in the sequence) ===
+=== HOUSE EMAIL STRUCTURE (apply to every email in the sequence) ===
 
 1. OPENER — Use the opener style defined in the PER-EMAIL TONE GUIDE (in the user prompt) for each step.
    - email_1 (intro): Open with a direct pain point question specific to their role and industry.
@@ -260,13 +260,13 @@ Company: {prospect_data.get('company_name', 'their company')}
      specified in the tone guide for that step (e.g. "Just following up on my earlier note.", urgency statements).
    BAD for any email: "Many {{{{industry}}}} teams struggle with..." / "Many teams face challenges."
 
-2. COMPANY INTRO — Introduce Neutrino Tech Systems with credibility markers.
-   REQUIRED: Always write "Neutrino Tech Systems" — NEVER use the {{{{our_company}}}} token.
+2. COMPANY INTRO — Introduce <<SENDER_COMPANY>> with credibility markers.
+   REQUIRED: Always write "<<SENDER_COMPANY>>" — NEVER use the {{{{our_company}}}} token.
    Vary the intro angle per email (automation, AI, compliance, Salesforce, custom dev, etc.).
    email_1: Full intro sentence. email_2+: Brief one-sentence connector (see tone guide).
 
-3. CAPABILITY BULLETS (4–5 bullets, minimum 4, maximum 5) — Show what Neutrino Tech Systems solves for this prospect.
-   Use the SPECIFIC services from the NEUTRINO SERVICE REFERENCE in the user prompt.
+3. CAPABILITY BULLETS (4–5 bullets, minimum 4, maximum 5) — Show what <<SENDER_COMPANY>> solves for this prospect.
+   Use the SPECIFIC services from the SERVICE REFERENCE in the user prompt.
    DO NOT invent generic bullets like "optimize workflows" or "ensure data integrity".
    Format: "    •" (4 spaces + bullet).
 
@@ -277,7 +277,7 @@ Company: {prospect_data.get('company_name', 'their company')}
 - {seq_word_count_rule}
 - Bullet lists required for capabilities section
 - First line of each email must be exactly: "Hi {{{{first_name}}}},"
-- Always write "Neutrino Tech Systems" — NEVER use {{{{our_company}}}} token
+- Always write "<<SENDER_COMPANY>>" — NEVER use {{{{our_company}}}} token
 - No signature in body (system appends automatically)
 - Plain text only (no HTML)
 - CRITICAL: Follow the PER-EMAIL TONE GUIDE in the user prompt exactly — opener style, intro brevity, and CTA pressure differ per step.
@@ -289,7 +289,7 @@ Never use: "many teams face", "many {{{{industry}}}} teams", "in today's landsca
 "streamline operations", "enhance efficiency",
 "I'd love to", "excited to share", "we can help you achieve",
 bracket CTAs like "[Book a demo: ...]"
-NEVER use {{{{our_company}}}} token — always write "Neutrino Tech Systems" instead.
+NEVER use {{{{our_company}}}} token — always write "<<SENDER_COMPANY>>" instead.
 SUBJECT BANS: Never use "Transform", "AI", "Improving outcomes", "idea for [name]".
 SUBJECT BANS (follow-up language): Never use "following up", "checking in", "looping back", "circling back", "just wanted to", "reconnecting", or any re-reach phrase in a subject line — subject lines must always be descriptive and topic-focused regardless of email step.{seq_fup_ban}
 
@@ -308,11 +308,11 @@ Return JSON:
 Campaign Description: {product_description}
 
 You must anchor each email in this context. No generic filler.
-IMPORTANT: NEVER use the internal product/campaign name "{product_name}" in the subject line or email body. Always write "Neutrino Tech Systems" — never use the {{{{our_company}}}} token."""
+IMPORTANT: NEVER use the internal product/campaign name "{product_name}" in the subject line or email body. Always write "<<SENDER_COMPANY>>" — never use the {{{{our_company}}}} token."""
     else:
         context_section = f"""=== CAMPAIGN CONTEXT ===
 Write with concrete use-case language, not abstract claims.
-IMPORTANT: NEVER use the internal product/campaign name "{product_name}" in the subject line or email body. Always write "Neutrino Tech Systems" — never use the {{{{our_company}}}} token."""
+IMPORTANT: NEVER use the internal product/campaign name "{product_name}" in the subject line or email body. Always write "<<SENDER_COMPANY>>" — never use the {{{{our_company}}}} token."""
 
     seq_step4_rule_std = (
         "End with a direct meeting or call ask. "
@@ -321,8 +321,8 @@ IMPORTANT: NEVER use the internal product/campaign name "{product_name}" in the 
         "'Happy to jump on a quick call or send a short overview — whichever\\'s easier.'"
     ) if cta_enabled else "Close naturally. No meeting ask, no URL."
 
-    return f"""You are a senior B2B outbound email writer at Neutrino Tech Systems.
-Write a cold email sequence in Neutrino Tech Systems' established brand voice.
+    return f"""You are a senior B2B outbound email writer at <<SENDER_COMPANY>>.
+Write a cold email sequence in <<SENDER_COMPANY>>' established brand voice.
 
 {context_section}
 
@@ -331,7 +331,7 @@ Role: {prospect_data.get('designation', 'professional')}
 Industry: {prospect_data.get('industry', 'technology')}
 Company: {prospect_data.get('company_name', 'their company')}
 
-=== NEUTRINO EMAIL STRUCTURE (apply to every email in the sequence) ===
+=== HOUSE EMAIL STRUCTURE (apply to every email in the sequence) ===
 
 1. OPENER — Use the opener style defined in the PER-EMAIL TONE GUIDE (in the user prompt) for each step.
    - email_1 (intro): Open with a direct pain point question specific to their role and industry.
@@ -345,13 +345,13 @@ Company: {prospect_data.get('company_name', 'their company')}
      specified in the tone guide for that step (e.g. "Just following up on my earlier note.", urgency statements).
    BAD for any email: "Many {{{{industry}}}} teams struggle with..." / "Many teams face challenges."
 
-2. COMPANY INTRO — Introduce Neutrino Tech Systems with credibility markers.
-   REQUIRED: Always write "Neutrino Tech Systems" — NEVER use the {{{{our_company}}}} token.
+2. COMPANY INTRO — Introduce <<SENDER_COMPANY>> with credibility markers.
+   REQUIRED: Always write "<<SENDER_COMPANY>>" — NEVER use the {{{{our_company}}}} token.
    Vary the intro angle per email (automation, AI, compliance, Salesforce, custom dev, etc.).
    email_1: Full intro sentence. email_2+: Brief one-sentence connector (see tone guide).
 
-3. CAPABILITY BULLETS (4–5 bullets, minimum 4, maximum 5) — Show what Neutrino Tech Systems solves for this prospect.
-   Use the SPECIFIC services from the NEUTRINO SERVICE REFERENCE in the user prompt.
+3. CAPABILITY BULLETS (4–5 bullets, minimum 4, maximum 5) — Show what <<SENDER_COMPANY>> solves for this prospect.
+   Use the SPECIFIC services from the SERVICE REFERENCE in the user prompt.
    DO NOT invent generic bullets like "optimize workflows" or "ensure data integrity".
    Format: "    •" (4 spaces + bullet).
 
@@ -362,7 +362,7 @@ Company: {prospect_data.get('company_name', 'their company')}
 - {seq_word_count_rule}
 - Bullet lists required for capabilities section
 - First line of each email must be exactly: "Hi {{{{first_name}}}},"
-- Always write "Neutrino Tech Systems" — NEVER use {{{{our_company}}}} token
+- Always write "<<SENDER_COMPANY>>" — NEVER use {{{{our_company}}}} token
 - No signature in body (system appends automatically)
 - Plain text only (no HTML)
 - CRITICAL: Follow the PER-EMAIL TONE GUIDE in the user prompt exactly — opener style, intro brevity, and CTA pressure differ per step.
@@ -374,7 +374,7 @@ Never use: "many teams face", "many {{{{industry}}}} teams", "in today's landsca
 "streamline operations", "enhance efficiency",
 "I'd love to", "excited to share", "we can help you achieve",
 bracket CTAs like "[Book a demo: ...]"
-NEVER use {{{{our_company}}}} token — always write "Neutrino Tech Systems" instead.
+NEVER use {{{{our_company}}}} token — always write "<<SENDER_COMPANY>>" instead.
 SUBJECT BANS: Never use "Transform", "AI", "Improving outcomes", "idea for [name]".
 SUBJECT BANS (follow-up language): Never use "following up", "checking in", "looping back", "circling back", "just wanted to", "reconnecting", or any re-reach phrase in a subject line — subject lines must always be descriptive and topic-focused regardless of email step.{seq_fup_ban}
 - {avoid_str}
@@ -497,7 +497,7 @@ Return JSON:
 # Auto-triggered when campaign description contains conference keywords.
 # Two sub-types handled by the LLM reading the campaign description:
 #   A) Conference — both parties attending the same named event
-#   B) In-Person Visit — Neutrino rep traveling to prospect's city
+#   B) In-Person Visit — sender rep traveling to prospect's city
 # ============================================================
 
 def get_conference_email_system_prompt(
@@ -511,7 +511,7 @@ def get_conference_email_system_prompt(
 
     Key differences from cold outreach:
     - Subject: {{first_name}}, prefix + event name + Title Case (not lowercase)
-    - Opener: Warm prospect-specific compliment + event hook naming the Neutrino rep
+    - Opener: Warm prospect-specific compliment + event hook naming the <<SENDER_COMPANY>> rep
     - Company intro: Secondary to meeting hook, framed as "As a way of introduction"
     - Email 1 bullets: THEME/agenda bullets, not service bullets
     - CTA: Always dual — in-person first, virtual fallback
@@ -519,14 +519,14 @@ def get_conference_email_system_prompt(
     """
     avoid_str = ", ".join(avoid_list) if avoid_list else "generic language, spam phrases"
 
-    return f"""You are a senior B2B outbound strategist at Neutrino Tech Systems writing a pre-event conference outreach email.
-Both Neutrino and the prospect may be attending the same industry conference or event.
+    return f"""You are a senior B2B outbound strategist at <<SENDER_COMPANY>> writing a pre-event conference outreach email.
+Both <<SENDER_COMPANY>> and the prospect may be attending the same industry conference or event.
 You write like a peer reaching out before a shared event — warm, direct, and credible — not like a cold vendor.
 
 Read the campaign description in the user prompt carefully. It tells you:
 - Whether this is a NAMED EVENT (e.g. "HLTH 25", "Asembia AXS26") or just an in-person visit (rep traveling to a city)
 - The event dates/visit window and location
-- The Neutrino rep who will be attending (name and title)
+- The <<SENDER_COMPANY>> rep who will be attending (name and title)
 
 CRITICAL: If the campaign description does NOT mention a specific named conference/event,
 do NOT invent or fabricate an event name. Use "In-Person Meeting" in subjects and body instead.
@@ -559,14 +559,14 @@ A warm, genuine compliment about the prospect's work — NEVER copy these exampl
 OR (for event buzz opener): "Hope you are all geared up for the [EVENT NAME] happening in [CITY]."
 
 Part 2 — EVENT HOOK + REP INTRO:
-Name the Neutrino rep (from campaign description) and confirm they will be at the event.
+Name the <<SENDER_COMPANY>> rep (from campaign description) and confirm they will be at the event.
 Invite a meeting at the event. Include a stakeholder redirect for conference sub-type.
   GOOD: "Understanding {{{{company_name}}}}'s presence at [EVENT], and since our [REP TITLE], [REP NAME], will be there too, I thought of checking for the possibility for a meeting."
-  GOOD: "I am reaching out on behalf of [REP NAME] — [REP TITLE] at Neutrino — as he will be in your area [DATE RANGE] and would love to catch up at your office or over coffee."
+  GOOD: "I am reaching out on behalf of [REP NAME] — [REP TITLE] at <<SENDER_COMPANY>> — as he will be in your area [DATE RANGE] and would love to catch up at your office or over coffee."
 
 Part 3 — COMPANY INTRO (secondary to meeting hook):
-Frame as "As a way of introduction" or use the standard Neutrino intro sentence.
-  REQUIRED: "We at Neutrino Tech Systems — an AI-first healthcare tech company based in the U.S., with teams in Costa Rica and India — have been helping Pharma Hubs and Specialty Pharmacies..."
+Frame as "As a way of introduction" or use the standard <<SENDER_COMPANY>> intro sentence.
+  REQUIRED: "We at <<SENDER_COMPANY>> — an AI-first healthcare tech company based in the U.S., with teams in Costa Rica and India — have been helping Pharma Hubs and Specialty Pharmacies..."
 
 Part 4 — BULLETS:
 For conference sub-type email 1: Use DISCUSSION THEME bullets (agenda topics for a conference conversation):
@@ -586,7 +586,7 @@ In-person visit: "Let's chat in [MONTH] in [CITY] to explore how we can help. Pl
 - "Following up", "just following up to see if" — ALLOWED
 - "Would love to", "would love to catch up" — ALLOWED
 - Temporal urgency with dates — ALLOWED and REQUIRED (event dates, visit window)
-- Naming Neutrino rep by first name — REQUIRED in email 1
+- Naming <<SENDER_COMPANY>> rep by first name — REQUIRED in email 1
 - Stakeholder redirect ("please direct to the relevant stakeholder who will be at the event") — ALLOWED for conference sub-type
 
 === UNIQUENESS REQUIREMENT ===
@@ -651,23 +651,23 @@ CRITICAL: If the description does NOT mention a specific named conference/event,
 do NOT invent or fabricate an event name. For in-person visits, use "In-Person Meeting"
 in subjects and reference the city/dates — never create a fictional conference name.
 3. Event dates / visit date window
-4. Neutrino contact person: name and title
+4. <<SENDER_COMPANY>> contact person: name and title
 5. Any specific products or metrics mentioned (use them if present; do not fabricate)
 
-IMPORTANT: NEVER use the internal campaign name "{product_name}" in email bodies. Always write "Neutrino Tech Systems"."""
+IMPORTANT: NEVER use the internal campaign name "{product_name}" in email bodies. Always write "<<SENDER_COMPANY>>"."""
     else:
         context_section = f"""=== CAMPAIGN CONTEXT ===
 Write a conference/in-person outreach sequence. Infer the event context from available prospect data.
-IMPORTANT: Always write "Neutrino Tech Systems" — never use the campaign name "{product_name}"."""
+IMPORTANT: Always write "<<SENDER_COMPANY>>" — never use the campaign name "{product_name}"."""
 
     cta_rule = (
         "End each email with a DUAL CTA — in-person meeting/event first, virtual fallback second. "
         "NEVER use a single-option CTA. See per-email tone guide for exact wording per step."
     ) if cta_enabled else "Close naturally. No calendar link or booking URL."
 
-    return f"""You are a senior B2B outbound email writer at Neutrino Tech Systems.
-Write a conference/in-person outreach email sequence in Neutrino Tech Systems' established brand voice.
-This is NOT cold outreach — the Neutrino rep will be at the event or visiting the prospect's area.
+    return f"""You are a senior B2B outbound email writer at <<SENDER_COMPANY>>.
+Write a conference/in-person outreach email sequence in <<SENDER_COMPANY>>' established brand voice.
+This is NOT cold outreach — the <<SENDER_COMPANY>> rep will be at the event or visiting the prospect's area.
 Write like a peer reaching out before a shared event — warm, credible, never a cold vendor pitch.
 
 {context_section}
@@ -683,7 +683,7 @@ Company: {prospect_data.get('company_name', 'their company')}
    email_1: Warm, prospect-specific compliment + event hook naming the rep. NEVER use "Kudos on the incredible strides" — write a unique compliment about their company's work.
    email_2+: Brief follow-up acknowledgment + new capability angle.
 
-2. COMPANY INTRO — Always write "Neutrino Tech Systems" — NEVER use {{{{our_company}}}} token.
+2. COMPANY INTRO — Always write "<<SENDER_COMPANY>>" — NEVER use {{{{our_company}}}} token.
    email_1: Full intro sentence framed as "As a way of introduction."
    email_2+: Brief one-sentence connector with a new angle.
 
@@ -691,7 +691,7 @@ Company: {prospect_data.get('company_name', 'their company')}
    email_1 Conference sub-type: THEME/agenda bullets (discussion topics, not service details).
    email_1 In-Person Visit sub-type: SERVICE-LEVEL capability bullets.
    email_2+: Rotate capability angle per email (hub services → automation/R&D → compliance → Salesforce → custom dev).
-   Use services from the NEUTRINO CAPABILITY REFERENCE in the user prompt.
+   Use services from the CAPABILITY REFERENCE in the user prompt.
    Format: "    •" (4 spaces + bullet). 3–6 bullets per email.
 
 4. DUAL CTA — MANDATORY for all emails:
@@ -721,7 +721,7 @@ Company: {prospect_data.get('company_name', 'their company')}
 === RULES: WHAT IS ALLOWED HERE ===
 - "Following up", "just following up", "would love to", "looping back" — ALLOWED in body
 - Temporal urgency with specific dates/dates window — ALLOWED and REQUIRED
-- Naming the Neutrino rep by name and title — REQUIRED in email 1
+- Naming the <<SENDER_COMPANY>> rep by name and title — REQUIRED in email 1
 - Stakeholder redirect ("please direct to the relevant stakeholder who will be at the event") — ALLOWED for conference sub-type follow-ups
 
 === UNIQUENESS REQUIREMENT ===
@@ -733,7 +733,7 @@ adapt the actual wording to this specific prospect, their company, and their ind
 - 150–250 words per email
 - Bullet lists required for capabilities section
 - First line of each email must be exactly: "Hi {{{{first_name}}}},"
-- Always write "Neutrino Tech Systems" — NEVER use {{{{our_company}}}} token
+- Always write "<<SENDER_COMPANY>>" — NEVER use {{{{our_company}}}} token
 - No signature (system appends automatically). No unsubscribe footer (system appends automatically).
 - Plain text only (no HTML)
 

@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Run the E2E journeys against the live stack with the SES stand-in.
+
+    python3 -m system_tests.e2e.run_journeys                 # all journeys
+    python3 -m system_tests.e2e.run_journeys --only J2,J3    # a subset
+Writes results.md / results.json next to this file. See README.md for bringing the stand-ins up.
+"""
+import argparse
+import os
+import sys
+import traceback
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
+
+INSTRUCTIONS = """
+The E2E stand-ins are not ready. Bring them up (see system_tests/e2e/README.md):
+
+  cd <Vector_Backend>
+  docker build -f <sandbox Dockerfile> --build-context certs=<dir with ca.crt> -t vector-api:e2e .
+  docker build -f system_tests/e2e/Dockerfile.ses-mock --build-context certs=<dir with ca.crt> -t vector-ses-mock system_tests/e2e
+  FRONTEND_DIR=../Vector_Frontend docker compose -f docker-compose.yml -f <sandbox override> \\
+      -f system_tests/e2e/docker-compose.e2e.yml up -d --no-build ses-mock api worker
+"""
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", default="", help="comma list of J1..J6")
+    ap.add_argument("--merge", action="store_true", help="keep results of journeys not re-run from the previous results.json")
+    args = ap.parse_args()
+    from system_tests.e2e import helpers as H
+    problems = H.preflight()
+    if problems:
+        print("PRE-FLIGHT FAILED:")
+        for p in problems:
+            print("  -", p)
+        print(INSTRUCTIONS)
+        sys.exit(2)
+    H.ses_verify(H.PLATFORM_SENDER)
+    from system_tests.common import Results
+    R = Results("E2E journeys (real worker + SES stand-in + fake IMAP)", HERE)
+    only = {x.strip().upper() for x in args.only.split(",") if x.strip()}
+    if args.merge and only:
+        import json
+        try:
+            old = json.load(open(os.path.join(HERE, "results.json")))["cases"]
+            R.rows = [r for r in old if not any(r["id"].startswith(f"E2E-{k}-") for k in only)]
+        except Exception:  # noqa: BLE001
+            pass
+
+    def guard(prefix, fn, *a):
+        try:
+            return fn(*a)
+        except Exception as exc:  # noqa: BLE001
+            traceback.print_exc()
+            R.record(f"E2E-{prefix}-EXC", f"{prefix} aborted: {fn.__name__}", False, f"exception: {exc!r}", "test-issue")
+
+    if not only or "J1" in only:
+        from system_tests.e2e import j1_outreach_to_revenue as J1
+        C = {}
+        try:
+            for ph in ("setup", "upload", "campaign", "send", "events", "unsub", "replies", "bg_reply", "sales", "reports",
+                       "followups", "gdpr"):
+                if guard("J1", getattr(J1, "phase_" + ph), R, C) is None and "w" not in C:
+                    break
+        finally:
+            if "w" in C:
+                from system_tests.e2e.flows import detach_imap
+                detach_imap(C["w"])
+    for key, mod, fn in (("J2", "j2_deliverability", "run"), ("J3", "j3_accounts_access", "run"), ("J4", "j4_cross_tenant", "run"),
+                         ("J5", "j5_crm_chain", "run"), ("J6", "j6_automation", "run")):
+        if only and key not in only:
+            continue
+        m = __import__(f"system_tests.e2e.{mod}", fromlist=["run"])
+        guard(key, getattr(m, fn), R)
+    import re as _re
+
+    def _key(r):
+        m = _re.match(r"E2E-J(\d+)-(\d+)([a-z]*)", r["id"])
+        return (int(m.group(1)), int(m.group(2)), m.group(3)) if m else (99, 0, r["id"])
+    R.rows.sort(key=_key)
+    counts = R.write()
+    print(counts)
+
+
+if __name__ == "__main__":
+    main()

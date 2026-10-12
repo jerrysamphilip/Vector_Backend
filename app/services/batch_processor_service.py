@@ -169,6 +169,10 @@ def generate_template_for_persona(
 
     Returns a single result dict (LLM success or fallback — never None).
     """
+    # Prompts are written for this campaign's tenant (its own company name)
+    from app.services.sender_identity import bind_tenant
+    _tenant_id = db.query(Campaign.tenant_id).filter(Campaign.campaign_id == campaign_id).scalar()
+    bind_tenant(_tenant_id, db)
     # Get blueprint for this persona
     blueprint = db.query(PersonaBlueprint).filter(
         PersonaBlueprint.persona_type == persona_type,
@@ -367,6 +371,15 @@ def generate_templates_per_persona(
     # Clear any existing templates for this campaign to prevent duplicates on re-generation.
     # Do not commit here — the caller owns the transaction and will roll back everything
     # if generation fails later in the flow.
+    old_ids = [t for (t,) in db.query(EmailTemplate.template_id).filter(
+        EmailTemplate.campaign_id == campaign_id).all()]
+    if old_ids:
+        from app.models.email_template import EmailTemplateVersion
+        from app.models.email_attachment import EmailAttachment
+        db.query(EmailTemplateVersion).filter(
+            EmailTemplateVersion.template_id.in_(old_ids)).delete(synchronize_session=False)
+        db.query(EmailAttachment).filter(
+            EmailAttachment.template_id.in_(old_ids)).delete(synchronize_session=False)
     db.query(EmailTemplate).filter(
         EmailTemplate.campaign_id == campaign_id
     ).delete(synchronize_session=False)

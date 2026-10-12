@@ -1,0 +1,95 @@
+{
+  "suite": "UI outreach/admin - wizard",
+  "counts": {
+    "PASS": 11,
+    "FAIL": 1,
+    "BLOCKED": 0
+  },
+  "seconds": 36,
+  "cases": [
+    {
+      "id": "UIO-WIZ-01",
+      "title": "Step 1 validation: empty name -> \"Campaign name is required\"; name without inbox -> \"Select at least one inbox\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-WIZ-02",
+      "title": "Step 1 saves identity, sender details, CTA, send window, distribution + start date to the campaign row",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-WIZ-03",
+      "title": "Step 2 sequence: add follow-up with wait days, saved as 2 steps (wait_days persisted); Back keeps step 1 values",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-WIZ-04",
+      "title": "Step 3 prospects: list selection, deselect one contact -> \"3 of 4 contacts selected\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-WIZ-05",
+      "title": "Process & Generate (LLM absent): templates generated for EVERY sequence step (2 emails)",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "1 template(s) stored for a 2-step sequence (follow-up step has no content)"
+    },
+    {
+      "id": "UIO-WIZ-06",
+      "title": "Edit subject (textarea) persists to DB; Cancel discards; single-brace variable triggers the warning dialog",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-WIZ-07",
+      "title": "Edit body in the rich-text editor persists to DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-WIZ-08",
+      "title": "Live Preview substitutes real prospect data (name/company), and prospect switcher works",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-WIZ-09",
+      "title": "Regenerate subject with LLM absent: sensible result or error, no crash / [object Object]",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-WIZ-10",
+      "title": "Click an undetected persona -> generates or shows a clear error (LLM absent)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-WIZ-11",
+      "title": "Launch step shows correct specs; Back to Edit returns; EXECUTE launches: ACTIVE, 3 enrolled (excluded contact skipped), redirect to list",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-WIZ-12",
+      "title": "Launch without sender identity shows a clear message and does not activate the campaign",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

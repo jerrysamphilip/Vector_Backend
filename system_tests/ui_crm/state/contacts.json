@@ -1,0 +1,22 @@
+{
+ "tenantId": "15afffc9-2d84-498d-b3b1-bb7f5f4abb12",
+ "rid": "cae9c7",
+ "label": "contacts",
+ "users": {
+  "owner": {
+   "userId": "4dd5697b-c7b0-42f7-aeb5-387b4f7bd2ac",
+   "email": "owner-cae9c7@uitest.example",
+   "first": "Owner"
+  },
+  "alice": {
+   "userId": "5d2762b0-66b1-4e9e-83d4-b10b0e28a534",
+   "email": "alice-cae9c7@uitest.example",
+   "first": "Alice"
+  },
+  "bob": {
+   "userId": "1d97e338-ef0e-406d-b29a-9f67dcfa1441",
+   "email": "bob-cae9c7@uitest.example",
+   "first": "Bob"
+  }
+ }
+}

@@ -64,6 +64,31 @@ def decode_access_token(token: str) -> dict:
     return payload
 
 
+# ── Two-factor pending sign-in token ───────────────────
+
+MFA_TOKEN_MINUTES = 5
+
+
+def create_mfa_token(user_id: str, first_login: bool = False) -> str:
+    """Short-lived token proving the password (or magic link / Google) step passed. Grants no API
+    access (decode_access_token refuses its type); only POST /api/auth/mfa/verify accepts it."""
+    payload = {
+        "sub": user_id,
+        "type": "mfa",
+        "jti": secrets.token_urlsafe(16),
+        "fl": bool(first_login),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=MFA_TOKEN_MINUTES),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def decode_mfa_token(token: str) -> dict:
+    payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+    if payload.get("type") != "mfa" or not payload.get("sub") or not payload.get("jti"):
+        raise JWTError("Invalid token type")
+    return payload
+
+
 # ── Refresh Tokens ────────────────────────────────────────
 
 def generate_refresh_token() -> str:

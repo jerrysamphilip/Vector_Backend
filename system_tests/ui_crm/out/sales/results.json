@@ -1,0 +1,39 @@
+{
+  "suite": "ui_crm sales",
+  "counts": {
+    "PASS": 4,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 23,
+  "cases": [
+    {
+      "id": "UIC-SAL-13",
+      "title": "Quote: add product + custom line with discount -> totals, proposal amount, PDF download",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-SAL-17",
+      "title": "Forecast: FY April-March quarters; won per quarter equals DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-SAL-19",
+      "title": "Targets: edit quarterly cell persists, totals row, attainment on reports",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-SAL-22",
+      "title": "Sales settings: add reason, product and workflow rule",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

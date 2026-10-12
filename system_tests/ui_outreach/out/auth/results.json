@@ -1,0 +1,312 @@
+{
+  "suite": "UI outreach/admin - auth",
+  "counts": {
+    "PASS": 43,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 104,
+  "cases": [
+    {
+      "id": "UIO-AUTH-01",
+      "title": "Login page renders email/password fields, Forgot password link, no problems",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-02",
+      "title": "Empty submit shows \"Email and password are required\" and sends no request",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-03",
+      "title": "Wrong password shows \"Invalid email or password\", stays on /login, no cookie session",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-04",
+      "title": "Password show/hide toggle switches input type",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-05",
+      "title": "Forgot password link navigates to /forgot-password",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-06",
+      "title": "Suspended account: login shows \"Account is suspended or inactive\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-07",
+      "title": "Locked after 10 failed attempts: UI shows \"Too many failed sign-in attempts\" (429), correct password also refused",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-08",
+      "title": "Login API 500 degrades to a readable message (no crash / [object Object])",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-09",
+      "title": "Successful login lands on Home (/app/dashboard) with session cookies and stored user",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-10",
+      "title": "Authenticated user opening /login is redirected to the app (PublicRoute)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-11",
+      "title": "Logout via profile menu returns to /login, clears stored user + cookies; Back does not reopen the app",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-20",
+      "title": "ForgotPassword renders; empty email shows Email is required and sends nothing",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-21",
+      "title": "Known email: generic success message and a reset-token row is stored (hash only)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-22",
+      "title": "Unknown email shows the same generic message (no enumeration) and stores nothing",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-23",
+      "title": "Forgot password 500 -> readable error, no crash",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-30",
+      "title": "ResetPassword without token: submitting shows \"Invalid or missing reset token\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-31",
+      "title": "Short password rejected client-side (<8)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-32",
+      "title": "Mismatched confirmation rejected",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-33",
+      "title": "Valid token: success message, redirect to /login, token marked used, new password works / old does not",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-34",
+      "title": "Reusing the token shows \"Invalid or expired reset token\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-35",
+      "title": "Expired token shows \"Reset token has expired\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-40",
+      "title": "AcceptInvite without token: \"Invalid or missing invitation token\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-41",
+      "title": "Validation: names required, password >= 8, confirmation matches",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-42",
+      "title": "Invalid token -> server message shown (404 \"Invalid or expired invitation\")",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-43",
+      "title": "Expired invitation -> \"Invitation has expired\" and invitation row EXPIRED",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-44",
+      "title": "Valid invitation: account created (role/tenant from invite), redirect to /login, can then log in",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-45",
+      "title": "Re-using the accepted invitation shows an error, no duplicate user",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-50",
+      "title": "MagicLogin without token: \"Missing magic login token\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-51",
+      "title": "MagicLogin with unknown token shows error (not blank)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-52",
+      "title": "Expired magic token shows \"has expired\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-53",
+      "title": "Valid magic link on INVITED user: signs in, activates user, goes to /set-password; token single use",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-54",
+      "title": "SetPassword validation (short, mismatch) and wrong temporary password error",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-55",
+      "title": "SetPassword success: confirmation then Home; new password works",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-56",
+      "title": "Used magic token cannot be replayed",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-60",
+      "title": "MFA user: correct password shows the second step (no session yet)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-61",
+      "title": "Short code rejected client-side; wrong code shows server message",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-62",
+      "title": "Correct TOTP completes sign-in to Home",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-63",
+      "title": "Recovery code path signs in once; the same recovery code is then refused",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-64",
+      "title": "Cancel on the second step returns to the email/password form",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-65",
+      "title": "MFA user via magic link also gets the second step",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-70",
+      "title": "Deleting only the access cookie: next navigation silently refreshes (stays signed in)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-71",
+      "title": "Deleting all session cookies redirects to /login and clears stored user",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTH-72",
+      "title": "Unauthenticated deep link /app/campaigns redirects to /login, then back to the target after login",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

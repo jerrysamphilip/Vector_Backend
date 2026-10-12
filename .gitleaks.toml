@@ -1,0 +1,12 @@
+# gitleaks configuration (.github/workflows/ci.yml, job "secrets").
+# Default rules plus one historical allowlist entry.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Historical findings already removed from the tree"
+# kill_locks.py (added in b49a60d "Baseline", deleted in ea3f380) contained a database
+# credential. It is still in git history, so that credential MUST be treated as leaked and
+# rotated; this entry only stops every scan of old history from failing on it.
+paths = ['''(^|/)kill_locks\.py$''']

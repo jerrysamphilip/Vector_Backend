@@ -44,8 +44,47 @@ class TransientEmailFailure(Exception):
 
 
 class PermanentEmailFailure(Exception):
-    """Non-retryable SES error (rejected, invalid email)"""
-    pass
+    """
+    Non-retryable SES error (rejected, invalid email). `recipient_fault` is True
+    when the recipient address itself was refused (invalid / blacklisted), which
+    is when the address should be suppressed; account or configuration errors
+    are permanent for this attempt but say nothing about the contact.
+    """
+
+    def __init__(self, message: str, code: Optional[str] = None, recipient_fault: bool = False):
+        super().__init__(message)
+        self.code = code
+        self.recipient_fault = recipient_fault
+
+
+# SES error codes that will fail the same way on every retry
+PERMANENT_SES_ERRORS = {
+    "MessageRejected",
+    "MailFromDomainNotVerified",
+    "MailFromDomainNotVerifiedException",
+    "ConfigurationSetDoesNotExist",
+    "ConfigurationSetDoesNotExistException",
+    "AccountSendingPausedException",
+    "InvalidParameterValue",   # malformed message (e.g. duplicate headers, bad address)
+    "ValidationError",
+}
+
+_RECIPIENT_FAULT = re.compile(
+    r"blacklist|illegal address|invalid (recipient|address|email)|missing final '@domain'"
+    r"|address (is )?(invalid|malformed)|local address contains|domain contains|suppression list",
+    re.IGNORECASE,
+)
+
+
+def classify_client_error(error_code: str, error_message: str) -> Exception:
+    """Map an SES ClientError to a permanent or transient failure (B06)."""
+    text = f"{error_code}: {error_message}"
+    if error_code in PERMANENT_SES_ERRORS:
+        recipient = (error_code in ("MessageRejected", "InvalidParameterValue", "ValidationError")
+                     and bool(_RECIPIENT_FAULT.search(error_message or ""))
+                     and "not verified" not in (error_message or "").lower())
+        return PermanentEmailFailure(text, code=error_code, recipient_fault=recipient)
+    return TransientEmailFailure(text)
 
 
 class AmbiguousEmailFailure(Exception):
@@ -137,6 +176,10 @@ class EmailSenderService:
         if not template:
             return template
 
+        # The sending tenant's own company name (never another tenant's)
+        from app.services.sender_identity import get_sender_identity
+        our_company = get_sender_identity(getattr(prospect, "tenant_id", None)).company_name
+
         substitutions = {
             "{{first_name}}": prospect.first_name or "there",
             "{{last_name}}": prospect.last_name or "",
@@ -151,8 +194,8 @@ class EmailSenderService:
             "{{city}}": prospect.poc_city or "",
             "{{state}}": prospect.poc_state or "",
             "{{your_name}}": sender_name or settings.SENDER_NAME,
-            "{{signature_block}}": build_signature_block(sender_name, sender_title),
-            "{{our_company}}": "Neutrino Tech Systems",
+            "{{signature_block}}": build_signature_block(sender_name, sender_title, our_company),
+            "{{our_company}}": our_company or "",
             "{{calendar_link}}": cta_link or "",
             "{{cta_link}}": cta_link or "",
         }
@@ -600,10 +643,24 @@ class EmailSenderService:
 
             unsubscribe_url = f"{settings.BASE_URL}/api/tracking/unsubscribe/{email_message.message_id}"
 
+            from sqlalchemy.orm import object_session
+            from app.services.sender_identity import get_sender_identity
+            identity = get_sender_identity(prospect.tenant_id, object_session(email_message))
+
             if not is_internal:
-                # CAN-SPAM §5(a)(5): physical postal address must appear in every email.
-                if settings.COMPANY_PHYSICAL_ADDRESS not in body_content:
-                    body_content += f"\n\n{settings.COMPANY_PHYSICAL_ADDRESS}"
+                # CAN-SPAM §5(a)(5): the SENDER's physical postal address must appear
+                # in every email: the tenant's own, never a platform default.
+                footer_line = identity.footer_line
+                if footer_line:
+                    if identity.postal_address not in body_content and footer_line not in body_content:
+                        body_content += f"\n\n{footer_line}"
+                else:
+                    # New launches are blocked without an address; mail already in
+                    # flight goes out without the line rather than with another company's.
+                    logger.warning(
+                        f"[SES] Tenant {prospect.tenant_id} has no postal address set; footer address "
+                        f"omitted for MessageId={email_message.message_id}. Set it in Settings."
+                    )
 
                 # Append unsubscribe footer (only if not already present).
                 if "/api/tracking/unsubscribe/" not in body_content:
@@ -626,7 +683,7 @@ class EmailSenderService:
             # physical address and unsubscribe footer are appended AFTER the body.
             signature_pattern = r"(?i)(Best(\s+Regards)?|Regards|Thanks|Cheers|Sincerely)[,]?\s*\n\s*[A-Za-z0-9 ]+"
             if not re.search(signature_pattern, body_content):
-                body_content = body_content.rstrip() + f"\n\nRegards,\n{build_signature_block(sender_name, campaign_sender_title)}"
+                body_content = body_content.rstrip() + f"\n\nRegards,\n{build_signature_block(sender_name, campaign_sender_title, identity.company_name)}"
 
             # body_content = normalize_paragraph_spacing(body_content)
             # SES automatically inserts tracking pixels and wraps links when:
@@ -720,21 +777,9 @@ class EmailSenderService:
                 f"Recipient: {prospect.email}"
             )
             
-            # Permanent failures - do NOT retry
-            permanent_errors = {
-                "MessageRejected",
-                "MailFromDomainNotVerified", 
-                "ConfigurationSetDoesNotExist",
-                "AccountSendingPausedException",
-                "InvalidParameterValue",   # malformed message (e.g. duplicate headers)
-            }
-            
-            if error_code in permanent_errors:
-                raise PermanentEmailFailure(f"{error_code}: {error_message}")
-            
-            # Transient failures - retryable
-            raise TransientEmailFailure(f"{error_code}: {error_message}")
-            
+            # Permanent failures are not retried; everything else is (B06)
+            raise classify_client_error(error_code, error_message)
+
         except BotoCoreError as exc:
             logger.error(f"[SES] BotoCoreError: {str(exc)}")
             raise classify_botocore_error(exc)
@@ -820,50 +865,45 @@ class EmailSenderService:
             from_email_address: Specific sender email logic
             
         Returns:
-            Send result dict
+            Send result dict (success, or a pre-send block such as a personal
+            address or the spam lint gate, with success=False)
+
+        Raises:
+            PermanentEmailFailure: SES refused the message for good; not retried.
+            AmbiguousEmailFailure: SES may have accepted it; never retried.
+            TransientEmailFailure: still failing temporarily after max_retries
+                quick attempts; the caller decides whether to try again later.
         """
-        last_error = None
-        
-        for attempt in range(max_retries):
+        attempts = max(1, int(max_retries or 1))
+        for attempt in range(attempts):
             try:
                 return await self.send_email(
-                    email_message, 
-                    email_template, 
-                    prospect, 
-                    True, 
+                    email_message,
+                    email_template,
+                    prospect,
+                    True,
                     sender_name,
                     from_email_address
                 )
-                
             except TransientEmailFailure as exc:
-                last_error = exc
+                if attempt + 1 >= attempts:
+                    logger.warning(
+                        f"[SES] Temporary failure persisted after {attempts} attempt(s) "
+                        f"for message {email_message.message_id}: {exc}"
+                    )
+                    raise
                 wait_time = 2 ** attempt  # Exponential backoff: 1, 2, 4 seconds
-                
                 logger.warning(
-                    f"[SES] Retry {attempt + 1}/{max_retries} for message {email_message.message_id}. "
+                    f"[SES] Retry {attempt + 1}/{attempts} for message {email_message.message_id}. "
                     f"Waiting {wait_time}s. Error: {exc}"
                 )
-                
                 await asyncio.sleep(wait_time)
-                
             except PermanentEmailFailure as exc:
-                # Don't retry permanent failures
+                # Never retried, and surfaced to the caller so it can mark the
+                # message FAILED with the reason (and suppress a bad address)
                 logger.error(f"[SES] Permanent failure, not retrying: {exc}")
-                return {
-                    "success": False,
-                    "message_id": email_message.message_id,
-                    "status": "FAILED",
-                    "error": str(exc)
-                }
-        
-        # All retries exhausted
-        return {
-            "success": False,
-            "message_id": email_message.message_id,
-            "status": "FAILED",
-            "error": str(last_error) if last_error else "Max retries exceeded"
-        }
-    
+                raise
+
     def verify_email(self, email: str) -> bool:
         """
         Send verification email (for SES sandbox mode).

@@ -3,7 +3,7 @@
 from typing import Optional
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.sales_extra import UserConnection
 from app.models.user import User
-from app.services import account_sync
+from app.services import account_sync, oauth_binding
 
 router = APIRouter(prefix="/connections", tags=["Calendar & email sync"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -34,7 +34,7 @@ def my_connections(db: Session = Depends(get_db), current_user: User = Depends(t
 
 
 @router.post("/{provider}/start")
-def start(provider: str, current_user: User = Depends(tenant_user)):
+def start(provider: str, response: Response, current_user: User = Depends(tenant_user)):
     p = PROVIDER.get(provider)
     if not p:
         raise HTTPException(status_code=404, detail="Unknown provider")
@@ -42,12 +42,12 @@ def start(provider: str, current_user: User = Depends(tenant_user)):
         names = ("GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_SYNC_REDIRECT_URI" if p == "GOOGLE"
                  else "MS365_CLIENT_ID, MS365_CLIENT_SECRET and GRAPH_REDIRECT_URI")
         raise HTTPException(status_code=400, detail=f"{provider.title()} sync is not set up on the server. Set {names}.")
-    return {"authorize_url": account_sync.authorize_url(p, current_user)}
+    return {"authorize_url": account_sync.authorize_url(p, current_user, oauth_binding.issue(response))}
 
 
 @router.get("/{provider}/callback", include_in_schema=False)
-def callback(provider: str, state: str = "", code: str = "", error: str = "", error_description: str = "",
-             db: Session = Depends(get_db)):
+def callback(provider: str, request: Request, state: str = "", code: str = "", error: str = "",
+             error_description: str = "", db: Session = Depends(get_db)):
     def back(**params):
         url = settings.CONNECTIONS_POST_CONNECT_URL or "/"
         return RedirectResponse(f"{url}{'&' if '?' in url else '?'}{urlencode(params)}", status_code=302)
@@ -55,6 +55,8 @@ def callback(provider: str, state: str = "", code: str = "", error: str = "", er
         data = account_sync.read_state(state)
     except account_sync.SyncError as exc:
         return back(sync="error", message=str(exc))
+    if not oauth_binding.matches(request, data.get("nonce")):
+        return back(sync="error", message=oauth_binding.MISMATCH)
     if error:
         return back(sync="error", message=error_description or error)
     if PROVIDER.get(provider) != data["provider"]:

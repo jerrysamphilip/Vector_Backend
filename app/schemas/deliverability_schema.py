@@ -10,6 +10,7 @@ from datetime import datetime
 # Domain Schemas
 class SendingDomainBase(BaseModel):
     domain_name: str
+    domain_id: Optional[str] = None  # the tenant's record; the same name can exist for other tenants
     spf_status: str = "UNKNOWN"
     dkim_status: str = "UNKNOWN"
     dmarc_status: str = "UNKNOWN"

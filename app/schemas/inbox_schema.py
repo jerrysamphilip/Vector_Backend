@@ -3,7 +3,7 @@
 """
 Pydantic schemas for Sending Inboxes.
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -76,11 +76,11 @@ class SendingInboxUpdate(BaseModel):
     imap_port: Optional[int] = None
     imap_username: Optional[str] = None
     imap_password: Optional[str] = None
-    daily_limit: Optional[int] = None
+    daily_limit: Optional[int] = Field(None, ge=0, le=100000)
     status: Optional[str] = None
     # Warm-up & Throttle settings
     warmup_enabled: Optional[bool] = None
-    max_emails_per_day: Optional[int] = None
+    max_emails_per_day: Optional[int] = Field(None, ge=0, le=100000)
     delay_between_emails: Optional[int] = None
     warmup_auto_adjust: Optional[bool] = None
     warmup_randomize: Optional[bool] = None
@@ -92,7 +92,7 @@ class SendingInboxUpdate(BaseModel):
 class SendingInboxCreate(BaseModel):
     email_address: str
     provider: Optional[str] = "SMTP"
-    daily_limit: Optional[int] = 500
+    daily_limit: Optional[int] = Field(500, ge=0, le=100000)
     # SMTP credentials
     smtp_host: Optional[str] = None
     smtp_port: Optional[int] = 587
@@ -106,7 +106,7 @@ class SendingInboxCreate(BaseModel):
     imap_password: Optional[str] = None
     # Warm-up & Throttle settings
     warmup_enabled: Optional[bool] = False
-    max_emails_per_day: Optional[int] = None      # null = use warmup schedule
+    max_emails_per_day: Optional[int] = Field(None, ge=0, le=100000)      # null = use warmup schedule
     delay_between_emails: Optional[int] = 60       # seconds between emails
     warmup_auto_adjust: Optional[bool] = True
     warmup_randomize: Optional[bool] = True

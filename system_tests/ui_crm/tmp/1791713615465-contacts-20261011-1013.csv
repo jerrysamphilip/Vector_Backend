@@ -1,0 +1,13 @@
+﻿Name,Email,Company,Owner,Lifecycle stage,Lead status,Tags,Last activity,Create date,Budget,Budget
+Brand New,brand.new.e09db7@newco.example,Newco Industries,Ui contacts,Lead,New,vip,,2026-10-11 10:12,,
+Seed54 Person54,seed54.e09db7@acme-6.example,Wayne,,Lead,Connected,,,2026-10-11 10:10,,
+Seed55 Person55,seed55.e09db7@acme-7.example,Wonka,,Lead,New,,,2026-10-11 10:10,,
+Seed43 Person43,seed43.e09db7@acme-3.example,Umbrella,Alice Test,Lead,Attempted to contact,,,2026-10-11 10:10,,
+Seed49 Person49,seed49.e09db7@acme-1.example,Globex,,Lead,Connected,warm,,2026-10-11 10:10,,
+Seed37 Person37,seed37.e09db7@acme-5.example,Stark,Alice Test,Lead,In progress,warm,,2026-10-11 10:10,,
+Seed31 Person31,seed31.e09db7@acme-7.example,Wonka,Bob Test,Lead,Open,,,2026-10-11 10:10,,
+Seed19 Person19,seed19.e09db7@acme-3.example,Umbrella,Alice Test,Lead,Connected,,,2026-10-11 10:10,,
+Seed25 Person25,seed25.e09db7@acme-1.example,Globex,Alice Test,Lead,New,warm,,2026-10-11 10:10,,
+Seed13 Person13,seed13.e09db7@acme-5.example,Stark,Alice Test,Lead,Attempted to contact,warm,,2026-10-11 10:10,,
+Seed1 Person01,seed1.e09db7@acme-1.example,Globex,Alice Test,Lead,Connected,warm,,2026-10-11 10:10,,
+Seed7 Person07,seed7.e09db7@acme-7.example,Wonka,Alice Test,Lead,In progress,,,2026-10-11 10:10,,

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.auth import require_role
 from app.models.user import User
+from app.services import platform_flags
 from app.services.email_scheduler_service import email_scheduler, trigger_email_processing
 
 logger = logging.getLogger(__name__)
@@ -66,53 +67,30 @@ async def process_emails_sync(
 async def get_scheduler_status(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "PLATFORM_ADMIN")),
 ):
-    """Get current scheduler status."""
+    """Get current scheduler status (the pause switch is shared by the API and the worker)."""
     return {
-        "running": email_scheduler.is_running,
+        "running": not platform_flags.scheduler_paused(),
         "batch_size": email_scheduler.batch_size
     }
 
 
 @router.post("/start")
 async def start_scheduler(
-    background_tasks: BackgroundTasks,
-    interval: int = 30,
     current_user: User = Depends(require_role("PLATFORM_ADMIN")),
 ):
-    """
-    Start continuous email scheduler in background.
-    
-    Args:
-        interval: Seconds between processing batches (default: 30)
-    """
-    if email_scheduler.is_running:
-        return {
-            "status": "already_running",
-            "message": "Scheduler is already running"
-        }
-    
-    background_tasks.add_task(email_scheduler.run_continuous, interval)
-    
-    return {
-        "status": "started",
-        "interval_seconds": interval
-    }
+    """Resume sending. The worker's scheduler loop picks this up on its next cycle."""
+    if not platform_flags.scheduler_paused():
+        return {"status": "already_running", "message": "Scheduler is already running"}
+    platform_flags.set_flag(platform_flags.SCHEDULER_PAUSED, None)
+    return {"status": "started"}
 
 
 @router.post("/stop")
 async def stop_scheduler(
     current_user: User = Depends(require_role("PLATFORM_ADMIN")),
 ):
-    """Stop the continuous email scheduler."""
-    if not email_scheduler.is_running:
-        return {
-            "status": "not_running",
-            "message": "Scheduler is not running"
-        }
-    
-    email_scheduler.stop()
-    
-    return {
-        "status": "stopped",
-        "message": "Scheduler stop requested"
-    }
+    """Pause sending for every tenant until /scheduler/start."""
+    if platform_flags.scheduler_paused():
+        return {"status": "not_running", "message": "Scheduler is already paused"}
+    platform_flags.set_flag(platform_flags.SCHEDULER_PAUSED, current_user.email or current_user.user_id)
+    return {"status": "stopped", "message": "Scheduler paused"}

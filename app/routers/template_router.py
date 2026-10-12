@@ -102,6 +102,11 @@ async def create_template(
     ).first()
     if not owns_campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
+    if data.sequence_id and not db.query(EmailSequence.sequence_id).filter(
+        EmailSequence.sequence_id == data.sequence_id,
+        EmailSequence.campaign_id == data.campaign_id,
+    ).first():
+        raise HTTPException(status_code=404, detail="Sequence not found")
 
     template = EmailTemplate(
         template_id=str(uuid.uuid4()),

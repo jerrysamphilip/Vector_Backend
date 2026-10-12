@@ -1,0 +1,17 @@
+{
+ "tenantId": "cc2ee603-c014-449d-ae24-fe96b78983a5",
+ "rid": "52ee94",
+ "label": "imports",
+ "users": {
+  "owner": {
+   "userId": "0f4c72bc-4cfb-4bde-88f6-e1f949086fc2",
+   "email": "owner-52ee94@uitest.example",
+   "first": "Owner"
+  },
+  "alice": {
+   "userId": "53cecbc1-b5d0-414d-a03e-2d4554642a0a",
+   "email": "alice-52ee94@uitest.example",
+   "first": "Alice"
+  }
+ }
+}

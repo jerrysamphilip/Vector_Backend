@@ -24,6 +24,7 @@ from app.models.email_sequence import EmailSequence
 from app.models.email_template import AIPrompt, EmailTemplate, EmailTemplateVersion
 from app.models.email_attachment import EmailAttachment
 from app.models.sending_inbox import SendingInbox
+from app.models.imap_sync_state import ImapSyncState
 from app.models.inbox_warmup_metric import InboxWarmupMetric
 from app.models.inbox_warmup_event import InboxWarmupEvent
 from app.models.email_message import EmailMessage, EmailEvent
@@ -78,6 +79,7 @@ __all__ = [
     "EmailTemplateVersion",
     "EmailAttachment",
     "SendingInbox",
+    "ImapSyncState",
     "InboxWarmupMetric",
     "InboxWarmupEvent",
     "EmailMessage",

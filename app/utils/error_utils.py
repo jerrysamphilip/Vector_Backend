@@ -15,7 +15,7 @@ Usage:
 
 import logging
 from fastapi import HTTPException
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import DataError, IntegrityError, OperationalError
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,9 @@ _EXCEPTION_MAP: list[tuple[type, int, str]] = [
 
     # DB constraint violations → 409 Conflict
     (IntegrityError,         409, "A database constraint was violated."),
+
+    # Value too long / out of range for its column → 422
+    (DataError,              422, "A value is too long or out of range."),
 
     # DB connection / timeout → 503
     (OperationalError,       503, "Database unavailable. Please try again."),

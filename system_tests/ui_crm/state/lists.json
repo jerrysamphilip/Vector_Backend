@@ -1,0 +1,17 @@
+{
+ "tenantId": "68178219-962b-4682-8005-1e3018bc7a09",
+ "rid": "f787f5",
+ "label": "lists",
+ "users": {
+  "owner": {
+   "userId": "46a58ca4-7fae-4109-a5f1-6d4edb4ebb77",
+   "email": "owner-f787f5@uitest.example",
+   "first": "Owner"
+  },
+  "alice": {
+   "userId": "24f2903b-0aec-45b2-be7d-e0107d93f3bd",
+   "email": "alice-f787f5@uitest.example",
+   "first": "Alice"
+  }
+ }
+}

@@ -12,8 +12,14 @@ env:
   ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
 
 jobs:
+  # Same gates as pull requests (lint, tests, secret scan): nothing deploys unless they pass
+  ci:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
   build-and-deploy:
     name: Build, Push Docker Image, and Deploy to EKS
+    needs: ci
     runs-on: ubuntu-latest
 
     steps:
@@ -74,8 +80,8 @@ jobs:
 
       - name: Verify rollout
         run: |
-          kubectl rollout status deployment \
-            -n $NAMESPACE --timeout=600s
+          kubectl rollout status deployment/backend -n $NAMESPACE --timeout=600s
+          kubectl rollout status deployment/backend-worker -n $NAMESPACE --timeout=600s
 
       - name: Success
         run: |

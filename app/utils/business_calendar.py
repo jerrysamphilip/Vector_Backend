@@ -552,8 +552,9 @@ def is_within_send_window(
     # Convert UTC time to Target Timezone
     local_time = current_utc.astimezone(tz)
     
-    # Check if it is a valid business day in local time
-    if not is_business_day(local_time):
+    # Check if it is a valid business day in local time (SEND_ON_ANY_DAY: test/staging aid, never in production)
+    from app.core.config import settings
+    if not (settings.SEND_ON_ANY_DAY and not settings.is_production) and not is_business_day(local_time):
         return False
         
     # Check time window

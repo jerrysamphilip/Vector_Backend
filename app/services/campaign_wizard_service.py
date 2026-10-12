@@ -400,11 +400,9 @@ def _log_campaign_event(
 ):
     """Log a campaign state change event."""
     event = CampaignStateEvent(
-        event_id=str(uuid.uuid4()),
         campaign_id=campaign_id,
-        changed_by=user_id,
-        old_status=old_status,
-        new_status=new_status,
+        from_state=old_status,
+        to_state=new_status,
         reason=reason,
     )
     db.add(event)
@@ -448,7 +446,7 @@ def _validate_inboxes_for_campaign(db: Session, tenant_id: str, inbox_ids: List[
     if domains:
         domain_rows = (
             db.query(SendingDomain.domain_name, SendingDomain.is_blacklisted)
-            .filter(SendingDomain.domain_name.in_(domains))
+            .filter(SendingDomain.tenant_id == tenant_id, SendingDomain.domain_name.in_(domains))
             .all()
         )
         blocked = [name for name, is_blacklisted in domain_rows if is_blacklisted]

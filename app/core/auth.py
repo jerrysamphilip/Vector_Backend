@@ -11,27 +11,47 @@ Role hierarchy (highest → lowest):
   AGENT          — Works assigned campaigns.
 """
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
 
+from app.core.auth_cookies import ACCESS_COOKIE, require_csrf
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models.user import User
 
-bearer_scheme = HTTPBearer(auto_error=True)
+# auto_error=False: the access token may come from the httpOnly cookie instead (app/core/auth_cookies.py)
+bearer_scheme = HTTPBearer(auto_error=False)
 
 # Tenants in these states cannot sign in or call the API (PLATFORM_ADMIN has no tenant and is unaffected)
 BLOCKED_TENANT_STATUSES = frozenset({"SUSPENDED", "INACTIVE", "DELETED"})
 
+# While a user must still set up two-factor (tenant requires it), only these routes are allowed:
+# (method or None for any, route path). Everything else answers 403 {"code": "MFA_SETUP_REQUIRED"}.
+MFA_SETUP_ALLOWED_ROUTES = frozenset({
+    (None, "/api/auth/mfa/setup"),
+    (None, "/api/auth/mfa/enable"),
+    (None, "/api/auth/session"),
+    ("GET", "/api/auth/me"),
+    (None, "/api/auth/logout"),
+})
+
+
+def _tenant_flags(db: Session, user: User):
+    """(status, require_mfa) of the user's tenant; (None, False) for PLATFORM_ADMIN / no tenant."""
+    if user.role == "PLATFORM_ADMIN" or not user.tenant_id:
+        return None, False
+    from app.models.tenant import Tenant
+    row = db.query(Tenant.status, Tenant.require_mfa).filter(Tenant.tenant_id == user.tenant_id).first()
+    if not row:
+        return None, False
+    return row[0], bool(row[1])
+
 
 def ensure_tenant_active(db: Session, user: User) -> None:
     """Raise 403 "Tenant suspended" when the user's tenant is suspended/inactive."""
-    if user.role == "PLATFORM_ADMIN" or not user.tenant_id:
-        return
-    from app.models.tenant import Tenant
-    tenant_status = db.query(Tenant.status).filter(Tenant.tenant_id == user.tenant_id).scalar()
+    tenant_status, _ = _tenant_flags(db, user)
     if (tenant_status or "ACTIVE").upper() in BLOCKED_TENANT_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -39,16 +59,39 @@ def ensure_tenant_active(db: Session, user: User) -> None:
         )
 
 
+def _route_allowed_during_mfa_setup(request: Request) -> bool:
+    route = request.scope.get("route")
+    path = getattr(route, "path", None) or request.url.path
+    method = request.method.upper()
+    return any(path == p and (m is None or m == method) for m, p in MFA_SETUP_ALLOWED_ROUTES)
+
+
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
     """
-    Extract and validate the Bearer JWT, then load the user from DB.
+    Validate the access JWT, then load the user from DB.
+
+    The token comes from "Authorization: Bearer" when present (API clients, tests), otherwise from
+    the httpOnly access_token cookie (the web app). Cookie-authenticated state-changing requests
+    must carry a matching X-CSRF-Token header (403 otherwise).
     Raises 401 if the token is missing, expired, or the user doesn't exist.
     PLATFORM_ADMIN users have tenant_id = NULL — this is allowed.
     """
-    token = credentials.credentials
+    via_cookie = False
+    if credentials and credentials.credentials:
+        token = credentials.credentials
+    else:
+        token = request.cookies.get(ACCESS_COOKIE)
+        via_cookie = True
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     try:
         payload = decode_access_token(token)
     except JWTError:
@@ -65,6 +108,9 @@ async def get_current_user(
             detail="Invalid token payload",
         )
 
+    if via_cookie:
+        require_csrf(request)
+
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user or user.status != "ACTIVE":
         raise HTTPException(
@@ -72,7 +118,16 @@ async def get_current_user(
             detail="User not found or inactive",
         )
 
-    ensure_tenant_active(db, user)
+    tenant_status, require_mfa = _tenant_flags(db, user)
+    if (tenant_status or "ACTIVE").upper() in BLOCKED_TENANT_STATUSES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant suspended")
+
+    if require_mfa and not user.mfa_enabled and not _route_allowed_during_mfa_setup(request):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "MFA_SETUP_REQUIRED",
+                    "message": "Your workspace requires two-factor authentication. Set it up to continue."},
+        )
     return user
 
 

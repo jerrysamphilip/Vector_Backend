@@ -1,0 +1,277 @@
+{
+  "suite": "UI outreach/admin - shell",
+  "counts": {
+    "PASS": 38,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 239,
+  "cases": [
+    {
+      "id": "UIO-SHELL-SB-owner",
+      "title": "Sidebar menu for OWNER: role-specific items visible/hidden, role badge, groups accordion",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-SB-admin",
+      "title": "Sidebar menu for ADMIN: role-specific items visible/hidden, role badge, groups accordion",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-SB-manager",
+      "title": "Sidebar menu for MANAGER: role-specific items visible/hidden, role badge, groups accordion",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-SB-agent",
+      "title": "Sidebar menu for AGENT: role-specific items visible/hidden, role badge, groups accordion",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-SB-collapse",
+      "title": "Sidebar group header toggles collapse/expand (aria-expanded)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-NAV-owner",
+      "title": "Every visible sidebar link navigates and its page renders cleanly (OWNER)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-NAV-admin",
+      "title": "Every visible sidebar link navigates and its page renders cleanly (ADMIN)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-NAV-manager",
+      "title": "Every visible sidebar link navigates and its page renders cleanly (MANAGER)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-NAV-agent",
+      "title": "Every visible sidebar link navigates and its page renders cleanly (AGENT)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-GUARD-agent",
+      "title": "AGENT opening restricted URLs is redirected to Home (no flash of forbidden data)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-GUARD-manager",
+      "title": "MANAGER opening restricted URLs is redirected to Home (no flash of forbidden data)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-GUARD-admin-owner",
+      "title": "OWNER opening /vector/admin/... is redirected to Home",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-GUARD-admin-agent",
+      "title": "AGENT opening /vector/admin/... is redirected to Home",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-GUARD-api",
+      "title": "Server also refuses AGENT on team/inbox/campaign management endpoints (403), not just the UI",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-404",
+      "title": "Unknown routes (/app/does-not-exist, /vector/xyz, /app/campaigns/<bad id>) end on a safe page, no crash",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-HELP-01",
+      "title": "Help button opens panel for the current screen; Close button and Esc close it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-HELP-02",
+      "title": "? and F1 keyboard shortcuts toggle help; ? is ignored while typing in a field",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-HELP-03",
+      "title": "Help panel search finds articles, opens one, Back returns; \"Open in Help Center\" deep-links",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-HELP-04",
+      "title": "Context help: every routed article opens for its own screen (panel title == article title)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-HELP-05",
+      "title": "Help Center: every article id deep link /app/help/<id> resolves to its own article and renders cleanly",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-HELP-06",
+      "title": "Help Center: unknown article falls back gracefully; search + topic navigation + related links + \"Go to this screen\" work",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-SEARCH-01",
+      "title": "Ctrl+K focuses global search; typing 1 char shows nothing, 2+ shows matching contact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-SEARCH-02",
+      "title": "Clicking a result opens that contact; query cleared",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-SEARCH-03",
+      "title": "No-match query shows \"No matches\"; Enter goes to contacts?q=; Escape closes",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-SEARCH-04",
+      "title": "Search API failure degrades silently (no crash, no [object Object])",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-SEARCH-05",
+      "title": "Tenant isolation: another workspace cannot find this contact via search",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-NOTIF-01",
+      "title": "Bell shows unread count, lists notifications, unread highlighted; empty state for other user",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-NOTIF-02",
+      "title": "Clicking a notification marks it read (DB), closes the list and follows its link",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-NOTIF-03",
+      "title": "Mark all read clears the badge and reads everything in DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-NOTIF-04",
+      "title": "Email-copy checkbox persists the preference",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-PROFILE-01",
+      "title": "Profile menu shows name, email, role; entries: Change password, Account security, Calendar sync, Sign out",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-PWD-01",
+      "title": "Change password modal: opens/closes (X, backdrop); validation: min length, mismatch",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-PWD-02",
+      "title": "Wrong current password shows server error and does not change the password",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-PWD-03",
+      "title": "Correct change: success state, modal auto-closes, new password logs in, old one fails; user stays signed in",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-PWD-04",
+      "title": "Forgot-password link inside the modal requests a reset (token row created) and confirms",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-PROFILE-02",
+      "title": "Sign out: back on /login, stored user cleared, API session invalid; browser Back does not reopen app",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-ERR-01",
+      "title": "A page whose API returns 500 shows an error state instead of crashing the shell (Campaigns list)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-SHELL-RESP-01",
+      "title": "Narrow viewport (390px) login + dashboard do not crash",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

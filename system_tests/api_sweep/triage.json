@@ -1,0 +1,179 @@
+{
+ "rules": [
+  {
+   "match": "campaigns-lists-",
+   "category": "defect",
+   "severity": "High",
+   "title": "GET /campaigns/lists always 500 (AttributeError ProspectList.prospect_count)",
+   "note": "Suspected location: app/routers/campaign_wizard_router.py:233 get_available_lists reads ProspectList.prospect_count which the model does not have. The campaign wizard list picker is broken for every role."
+  },
+  {
+   "match": "campaigns-wizard-creations",
+   "category": "defect",
+   "severity": "High",
+   "title": "POST /campaigns/wizard-creations (and wizard-executions) always 500: CampaignStateEvent(event_id=...) TypeError",
+   "note": "Suspected location: app/services/campaign_wizard_service.py:402 _log_campaign_event passes an invalid keyword 'event_id' to CampaignStateEvent (called from step_1_create_campaign, line 154). Wizard campaign creation and one-shot wizard execution are unusable."
+  },
+  {
+   "match": "campaigns-wizard-executions",
+   "category": "defect",
+   "severity": "High",
+   "title": "POST /campaigns/wizard-creations (and wizard-executions) always 500: CampaignStateEvent(event_id=...) TypeError",
+   "note": ""
+  },
+  {
+   "match": "campaign-id-activations",
+   "category": "defect",
+   "severity": "Medium",
+   "title": "POST /campaigns/{id}/activations on an already ACTIVE campaign -> uncaught ValueError -> 500",
+   "note": "Suspected location: app/services/campaign_email_service.py:373 launch() raises ValueError('Cannot launch campaign with status: ACTIVE'); router app/routers/campaign_wizard_router.py:554 (activate_campaign) does not translate it to 409/400."
+  },
+  {
+   "match": "campaign-id-generations",
+   "category": "defect",
+   "severity": "High",
+   "title": "POST /campaigns/{id}/generations 500: FK violation when regenerating templates that have versions/attachments",
+   "note": "Suspected location: app/services/batch_processor_service.py:376 generate_templates_per_persona deletes existing EmailTemplate rows that are still referenced by email_template_versions / email_attachments (IntegrityError 1451). Reached from campaign_wizard_router.py:306 process_list_auto."
+  },
+  {
+   "match": "imap-configured",
+   "category": "defect",
+   "severity": "Medium",
+   "title": "Unreachable external dependency reported as bare HTTP 500 (POST /inboxes/{id}/sync)",
+   "note": "app/routers/inbox_router.py sync_inbox_history raises HTTPException(500) when IMAP is unreachable; should be 502/504."
+  },
+  {
+   "match": "templates-template-id-regenerations",
+   "category": "defect",
+   "severity": "Medium",
+   "title": "LLM unavailable -> 500 with leaked internals ('NoneType' object has no attribute 'chat')",
+   "note": "POST /templates/{id}/regenerations: error should be 502/503 with a clean message. Environment trigger (no OpenAI key) but the failure is an unhandled None client."
+  },
+  {
+   "match": "VAL-body-oversize",
+   "category": "defect",
+   "severity": "Medium",
+   "title": "Strings longer than the DB column -> 500 'Data too long' (no max_length validation) on many create/update endpoints",
+   "note": "Affects company-profiles, campaign-drafts, automation-rules, wizard, products, stages, template-library, reports/custom, inboxes, prospects, conversations reply, auth/register, uploads confirmations, campaigns/templates regenerate, revalidate. Pydantic models need max_length / handlers need to map DataError 1406 to 422."
+  },
+  {
+   "match": "VAL-body-special",
+   "category": "defect",
+   "severity": "Medium",
+   "title": "Free text sent to short/enum-like columns (sending_mode, unsubscribe_mode, provider, status, warmup_status, unit, object_type) -> 500",
+   "note": "Values are not validated against the allowed set; the DB rejects them (data too long / enum) and the request ends in 500 instead of 422."
+  },
+  {
+   "match": "VAL-body-ints",
+   "category": "defect",
+   "severity": "Medium",
+   "title": "Out-of-range integers (-1 / 10^15) -> 500 (DB out of range / negative hour)",
+   "note": "campaign-drafts current_step, campaigns min_gap_minutes/batch_size, wizard hours/cool_off_days, contacts/fields sort_order, opportunity activities duration_minutes. Add ge/le bounds."
+  },
+  {
+   "match": "VAL-body-malformed-id-fields",
+   "category": "defect",
+   "severity": "Medium",
+   "title": "POST /campaigns/wizard-creations 500 on malformed/unknown inbox ids",
+   "note": "Same root cause as wizard-creations 500."
+  },
+  {
+   "match": "VAL-body-unknown-id-fields",
+   "category": "defect",
+   "severity": "Medium",
+   "title": "POST /campaigns/wizard-creations 500 on malformed/unknown inbox ids",
+   "note": ""
+  },
+  {
+   "match": "VAL-query-int",
+   "category": "defect",
+   "severity": "Low",
+   "title": "Negative / huge integer query parameters -> 500 (limit, fy)",
+   "note": "deliverability_router.py:307 (list_external_events/metrics) passes negative limit into SQL LIMIT -> MySQL syntax error; sales_reports_router.py:346 -> services/sales.py:119 fiscal_year_bounds ValueError/OverflowError for fy=-1 or 10^30. Add ge/le bounds."
+  },
+  {
+   "match": "VAL-query-str-special",
+   "category": "defect",
+   "severity": "Low",
+   "title": "reports/export/campaign-comparison 500 on special-character user_id",
+   "note": "reports_router.py:243 export_campaign_comparison_csv puts the user-supplied user_id into a header/filename -> UnicodeEncodeError (latin-1) -> 500."
+  },
+  {
+   "match": "multipart-bigfile",
+   "category": "defect",
+   "severity": "Medium",
+   "title": "POST /uploads/validations: 2.4 MB / 600k-row CSV is processed synchronously >40 s (no row/size cap)",
+   "note": "Client timed out after 40 s; availability/DoS risk."
+  },
+  {
+   "match": "ISO-body-foreign-sequence_id",
+   "category": "defect",
+   "severity": "Medium",
+   "title": "Cross-tenant reference accepted: POST /templates with another tenant's sequence_id -> 201",
+   "note": "POST /templates (app/routers/template_router.py) does not check that sequence_id belongs to the caller's campaign/tenant; the template is created pointing at tenant B's sequence."
+  },
+  {
+   "match": "ISO-body-foreign-inbox_ids",
+   "category": "defect",
+   "severity": "High",
+   "title": "POST /campaigns/wizard-creations 500 on malformed/unknown inbox ids",
+   "note": "Cross-tenant inbox id causes the same 500 (cannot assess isolation until the wizard bug is fixed)."
+  },
+  {
+   "match": "uploads-upload-id-revalidations-ISO",
+   "category": "by-design",
+   "severity": "",
+   "title": "Upload id is not server state (stateless revalidation)",
+   "note": "/uploads/{id}/revalidations works on the records in the body; the id is not looked up, so there is nothing to isolate."
+  },
+  {
+   "match": "VAL-path-nonexistent-id",
+   "category": "by-design",
+   "severity": "",
+   "title": "Unknown id answered 200 where the endpoint is stateless/reference data",
+   "note": "persona-blueprints (falls back), uploads revalidations."
+  },
+  {
+   "match": "reports-export-global-analytics-docx-ISO",
+   "category": "defect",
+   "severity": "Medium",
+   "title": "GET /reports/export/global-analytics/docx 500 when stored data contains control characters (NUL bytes accepted on input)",
+   "note": "Server: app/services/reports_service.py:1182 _add_data_table -> python-docx ValueError 'All strings must be XML compatible'. Control characters (\\u0000) sent by the special-string probes are accepted and stored by some endpoints, then break the export for the whole tenant. Fix: reject/strip control chars on input and sanitise on export."
+  },
+  {
+   "match": "daily-limit-ISO",
+   "category": "defect",
+   "severity": "Low",
+   "title": "GET /sales-reports/daily-limit hung >40 s once",
+   "note": "Intermittent; see run_meta.json slow list."
+  },
+  {
+   "match": "IDEM-second-enrolled",
+   "category": "defect",
+   "severity": "Low",
+   "title": "Repeated DELETE is not 404 (idempotent success or 400 instead)",
+   "note": "DELETE /campaigns/{id}/prospects/{pid} returns 200 {removed:true} twice; DELETE /api/users/{id} and DELETE /api/users/invitations/{id} return 400 'already inactive/REVOKED'. Spec expects 404 for the second delete."
+  },
+  {
+   "match": "IDEM-second-user",
+   "category": "defect",
+   "severity": "Low",
+   "title": "Repeated DELETE is not 404 (idempotent success or 400 instead)",
+   "note": ""
+  },
+  {
+   "match": "IDEM-second-invite",
+   "category": "defect",
+   "severity": "Low",
+   "title": "Repeated DELETE is not 404 (idempotent success or 400 instead)",
+   "note": ""
+  },
+  {
+   "match": "sales-reports-dashboard-ISO",
+   "category": "defect",
+   "severity": "Low",
+   "title": "GET /sales-reports/dashboard hung >40 s once under concurrent load",
+   "note": "Intermittent (1 of 4 runs); see run_meta.json slow list."
+  }
+ ]
+}

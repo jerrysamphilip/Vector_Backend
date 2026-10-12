@@ -1,0 +1,12 @@
+{
+ "tenantId": "e849ab1b-96b7-4093-829d-97ec597ea77e",
+ "rid": "3626b6",
+ "label": "smoke",
+ "users": {
+  "owner": {
+   "userId": "59212314-54ef-40d0-abb6-1f57eda7e4cf",
+   "email": "owner-3626b6@uitest.example",
+   "first": "Owner"
+  }
+ }
+}

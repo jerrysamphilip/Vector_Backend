@@ -99,12 +99,42 @@ def is_first_step(db: Session, email_msg: EmailMessage) -> bool:
         EmailSequence.sequence_id == email_msg.sequence_id).scalar() == 1
 
 
-def enrollment_notice(db: Session, user: User, enrolled: int) -> Optional[str]:
-    """Tell the user when today's limit means some first emails will wait (BR-OV-01)."""
+def enrollment_notice(db: Session, user: User, enrolled: int, prospect_ids=None, rejections=None,
+                      campaign_id: Optional[str] = None) -> Optional[str]:
+    """Tell the user when today's limit means some first emails will wait (BR-OV-01).
+    First emails count against the contact's owner (else the campaign's creator), so when the
+    enrolled contacts are known the notice checks each owner's quota, not the enrolling user's."""
     if not enrolled:
         return None
-    st = status_for(db, user)
-    if enrolled <= st["remaining"]:
+    if not prospect_ids:
+        st = status_for(db, user)
+        if enrolled <= st["remaining"]:
+            return None
+        return (f"Only {st['remaining']} of today's {st['limit']} new contacts remain for you; the first email to "
+                f"the other {enrolled - st['remaining']} will go out on the following day(s). Follow-ups are not limited.")
+    rejected = {r.get("prospect_id") for r in (rejections or [])}
+    ids = [pid for pid in prospect_ids if pid not in rejected]
+    creator = None
+    if campaign_id:
+        creator = db.query(Campaign.created_by).filter(Campaign.campaign_id == campaign_id).scalar()
+    per_owner: Dict[str, int] = {}
+    for (owner,) in db.query(Prospect.owner_id).filter(Prospect.prospect_id.in_(ids)).all() if ids else []:
+        key = owner or creator or user.user_id
+        per_owner[key] = per_owner.get(key, 0) + 1
+    limit = settings.DAILY_NEW_CONTACT_LIMIT
+    waiting = []
+    for owner_id, n in per_owner.items():
+        remaining = max(limit - sent_today(db, owner_id), 0)
+        if n > remaining:
+            who = "you" if owner_id == user.user_id else (
+                " ".join(filter(None, db.query(User.first_name, User.last_name)
+                                .filter(User.user_id == owner_id).first() or ())) or "the contact owner")
+            waiting.append((who, remaining, n - remaining))
+    if not waiting:
         return None
-    return (f"Only {st['remaining']} of today's {st['limit']} new contacts remain for you; the first email to "
-            f"the other {enrolled - st['remaining']} will go out on the following day(s). Follow-ups are not limited.")
+    parts = [f"{who} has {rem} of today's {limit} new contacts left, so {over} first email(s) will go out on the "
+             f"following day(s)" if who != "you" else
+             f"only {rem} of today's {limit} new contacts remain for you, so {over} first email(s) will go out on the "
+             f"following day(s)" for who, rem, over in waiting]
+    text = "; ".join(parts)
+    return text[0].upper() + text[1:] + ". Follow-ups are not limited."

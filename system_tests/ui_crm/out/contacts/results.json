@@ -1,0 +1,39 @@
+{
+  "suite": "ui_crm contacts",
+  "counts": {
+    "PASS": 3,
+    "FAIL": 1,
+    "BLOCKED": 0
+  },
+  "seconds": 23,
+  "cases": [
+    {
+      "id": "UIC-CON-29",
+      "title": "Properties modal: create NUMBER and SELECT custom fields; appear in DB and Add form",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-30",
+      "title": "Properties modal: blank label disables Add; duplicate label error",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "duplicate property label should be rejected with a message (found 2 'Budget' properties)"
+    },
+    {
+      "id": "UIC-CON-31",
+      "title": "Create contact with custom property values; shown in table column + detail; filterable",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-CON-32",
+      "title": "Properties modal: delete a custom field",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

@@ -385,6 +385,11 @@ class CampaignActionService:
         
         # ── CORE FIX: Restore all emails that were frozen by pause().
         # Set them back to QUEUED so the scheduler picks them up again.
+        # Re-spread whatever fell due during the pause instead of releasing it
+        # all at once, keeping each contact's step spacing (B02)
+        from app.services.email_scheduler_service import rebase_overdue_on_resume
+        rebase_overdue_on_resume(self.db, campaign)
+
         from app.models.email_message import EmailMessage
         self.db.query(EmailMessage).filter(
             EmailMessage.campaign_id == campaign_id,
@@ -426,7 +431,12 @@ class CampaignActionService:
         
         if campaign.status != CampaignStatus.DRAFT.value:
             raise ValueError(f"Cannot launch campaign with status: {campaign.status}")
-        
+
+        # CAN-SPAM: every email must carry the sender's own postal address, so a
+        # tenant without one cannot start new sending (400 with the reason)
+        from app.services.sender_identity import require_postal_address
+        require_postal_address(self.db, campaign.tenant_id)
+
         # Validation Gates (Stage 6)
         # 1. Must have sequence steps
         step_count = self.db.query(func.count(EmailSequence.sequence_id)).filter(

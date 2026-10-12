@@ -13,6 +13,8 @@ from app.models.email_message import EmailEvent
 from app.models.campaign import Campaign
 from app.models.sending_inbox import SendingInbox
 from app.models.join_tables import campaign_inboxes
+from app.services.domain_tenancy import (from_domain_criterion, get_or_create_tenant_domain,
+                                         get_tenant_domain, tenant_message_criterion)
 
 import boto3
 import dns.resolver
@@ -36,6 +38,7 @@ class DeliverabilityService:
         """
         Fetch sending statistics (Sends, Bounces, Complaints, Rejects) from AWS SES.
         Returns raw data points and calculated summaries.
+        Account-wide (every tenant's mail): platform admins only.
         """
         try:
             @retry_aws_call
@@ -72,10 +75,12 @@ class DeliverabilityService:
             logger.error(f"[Deliverability] Failed to fetch stats: {e}")
             return {"data_points": [], "summary": {}}
 
-    def get_domain_statistics(self, db: Session, domain: str) -> dict:
+    def get_domain_statistics(self, db: Session, domain: str = None, tenant_id: str = None) -> dict:
         """
-        Calculate statistics from LOCAL database for a specific domain.
+        Calculate statistics from LOCAL database, same shape as get_sending_statistics().
         Aggregates EmailMessage (Sent) and EmailEvent (Bounces, Complaints).
+        tenant_id: only that tenant's mail (always set for tenant users).
+        domain: only mail sent from that domain; None = all of the tenant's mail.
         """
         from datetime import timedelta
         from collections import defaultdict
@@ -97,13 +102,19 @@ class DeliverabilityService:
             key = get_date_key(d)
             stats_map[key] # Access to init
 
+        scope = [EmailMessage.direction == "OUTBOUND"]
+        if domain:
+            scope.append(from_domain_criterion(domain))
+        if tenant_id:
+            scope.append(tenant_message_criterion(tenant_id))
+
         # 2. Count SENDS (Messages with status=SENT or REPLIED or BOUNCED or COMPLAINED)
         # We look at sent_at timestamp
         sent_query = db.query(
             func.date(EmailMessage.sent_at).label('date'), 
             func.count(EmailMessage.message_id).label('count')
         ).filter(
-            EmailMessage.from_email.like(f"%@{domain}"),
+            *scope,
             EmailMessage.sent_at >= start_date
         ).group_by(func.date(EmailMessage.sent_at)).all()
 
@@ -120,7 +131,7 @@ class DeliverabilityService:
         ).join(
             EmailMessage, EmailEvent.message_id == EmailMessage.message_id
         ).filter(
-            EmailMessage.from_email.like(f"%@{domain}"),
+            *scope,
             EmailEvent.event_time >= start_date,
             EmailEvent.event_type.in_([EmailEvent.EVENT_BOUNCE, EmailEvent.EVENT_UNSUBSCRIBE]) # Unsubscribe covers complaints roughly
         ).group_by(
@@ -205,8 +216,8 @@ class DeliverabilityService:
             
             logger.info(f"[Deliverability] SESv2 Sync: Status={account_status}, Score={account_score}")
             
-            # Update all domains (SES account reputation affects all senders in that account)
-            domains = db.query(SendingDomain).all()
+            # Every tenant's domain rows (SES account reputation affects all senders in the account)
+            domains = db.query(SendingDomain).filter(SendingDomain.tenant_id.isnot(None)).all()
             for domain in domains:
                 domain.ses_reputation_status = account_status
                 domain.account_reputation_score = account_score
@@ -222,29 +233,29 @@ class DeliverabilityService:
             logger.error(f"[Deliverability] Unexpected error in sync_ses_metrics: {e}")
             return False
 
-    def update_domain_stats(self, domain_name: str, event_type: str, db: Session):
-        """Kept for callers outside the webhook; health is now rate-based (send_safety)."""
+    def update_domain_stats(self, domain_name: str, event_type: str, db: Session, tenant_id: str = None):
+        """Kept for callers outside the webhook; health is now rate-based (send_safety).
+        tenant_id: the tenant whose mail caused the event (domain records are per tenant)."""
         from app.services.send_safety import check_domain_health
-        if event_type in ("BOUNCE", "COMPLAINT"):
-            check_domain_health(db, domain_name, event_type.lower())
+        if not tenant_id:
+            logger.warning(f"[Deliverability] update_domain_stats({domain_name}) without a tenant; ignored")
             return
-        return self._legacy_update_domain_stats(domain_name, event_type, db)
+        if event_type in ("BOUNCE", "COMPLAINT"):
+            check_domain_health(db, domain_name, event_type.lower(), tenant_id=tenant_id)
+            return
+        return self._legacy_update_domain_stats(domain_name, event_type, db, tenant_id)
 
-    def _legacy_update_domain_stats(self, domain_name: str, event_type: str, db: Session):
+    def _legacy_update_domain_stats(self, domain_name: str, event_type: str, db: Session, tenant_id: str):
         """
         Update reputation score based on real-time events (Bounce, Complaint).
         Triggers safety switch if score drops below threshold.
         """
-        # 1. Get or Create Domain
-        domain = db.query(SendingDomain).filter(SendingDomain.domain_name == domain_name).first()
-        if not domain:
-            domain = SendingDomain(domain_name=domain_name)
-            db.add(domain)
-            db.flush() # flush to get default values if any
+        # 1. Get or Create the tenant's domain record
+        domain = get_or_create_tenant_domain(db, tenant_id, domain_name)
         
         # 2. Adjust Score logic (Simplified for MVP)
         # Starting Score: 100. Bounce = -5, Complaint = -20. Open = +1.
-        current_score = domain.current_reputation_score
+        current_score = domain.current_reputation_score if domain.current_reputation_score is not None else 100
         
         if event_type == "BOUNCE":
             current_score -= 5
@@ -256,20 +267,22 @@ class DeliverabilityService:
         # Clamp score between 0 and 100
         domain.current_reputation_score = max(0, min(100, current_score))
         
-        logger.info(f"[Deliverability] Domain {domain_name} score updated to {domain.current_reputation_score} (Event: {event_type})")
+        logger.info(f"[Deliverability] Domain {domain_name} (tenant {tenant_id}) score updated to {domain.current_reputation_score} (Event: {event_type})")
         
         # 3. Check Safety Switch
-        if domain.current_reputation_score < domain.safety_threshold:
+        if domain.current_reputation_score < (domain.safety_threshold or 70):
             self._trigger_safety_switch(domain, db)
             
         db.commit()
 
     def _trigger_safety_switch(self, domain: SendingDomain, db: Session):
         """
-        PAUSE all active campaigns using this domain and alert.
+        PAUSE the owning tenant's active campaigns using this domain and alert.
         """
         # Create Alert
         alert = ReputationAlert(
+            domain_id=domain.domain_id,
+            tenant_id=domain.tenant_id,
             domain_name=domain.domain_name,
             alert_type="REPUTATION_DROP",
             severity="CRITICAL",
@@ -283,6 +296,8 @@ class DeliverabilityService:
             .join(SendingInbox, SendingInbox.inbox_id == campaign_inboxes.c.inbox_id)
             .filter(
                 Campaign.status == "ACTIVE",
+                Campaign.tenant_id == domain.tenant_id,
+                SendingInbox.tenant_id == domain.tenant_id,
                 SendingInbox.email_address.like(f"%@{domain.domain_name}"),
             )
             .all()
@@ -291,68 +306,68 @@ class DeliverabilityService:
             campaign.status = "PAUSED"
 
         logger.warning(
-            f"[SAFETY SWITCH] Paused {len(affected_campaigns)} campaign(s) for {domain.domain_name} due to low reputation!"
+            f"[SAFETY SWITCH] Paused {len(affected_campaigns)} campaign(s) for {domain.domain_name} "
+            f"(tenant {domain.tenant_id}) due to low reputation!"
         )
 
-    def create_snapshot(self, db: Session):
+    def create_snapshot(self, db: Session, tenant_id: str = None):
         """
-        Scheduled job to create daily snapshots of all domains.
+        Snapshot domain health. tenant_id: only that tenant's domains; None = every
+        tenant-owned domain (scheduled job).
         """
-        domains = db.query(SendingDomain).all()
-        for d in domains:
+        q = db.query(SendingDomain).filter(SendingDomain.tenant_id.isnot(None))
+        if tenant_id:
+            q = q.filter(SendingDomain.tenant_id == tenant_id)
+        for d in q.all():
             snap = DomainHealthSnapshot(
+                domain_id=d.domain_id,
+                tenant_id=d.tenant_id,
                 domain_name=d.domain_name,
-                reputation_score=d.current_reputation_score,
-                # Calculate rates from raw logs in real implementation
-                bounce_rate_24h=0.0, 
-                complaint_rate_24h=0.0, 
+                reputation_score=d.current_reputation_score if d.current_reputation_score is not None else 100,
+                bounce_rate_24h=d.bounce_rate_24h or 0.0,
+                complaint_rate_24h=d.complaint_rate_24h or 0.0,
                 open_rate_24h=0.0
             )
             db.add(snap)
         db.commit()
 
-    def sync_from_inboxes(self, db: Session):
+    def sync_from_inboxes(self, db: Session, tenant_id: str = None) -> int:
         """
-        Scan all SendingInboxes and ensure their domains are registered in the reputation system.
-        Uses raw SQL to bypass SQLAlchemy column/relationship mismatch errors.
+        Ensure every (tenant, inbox domain) pair has a domain record.
+        tenant_id: only that tenant; None = every tenant.
         """
-        from sqlalchemy import text
+        q = db.query(SendingInbox.tenant_id, SendingInbox.email_address)
+        if tenant_id:
+            q = q.filter(SendingInbox.tenant_id == tenant_id)
+        pairs = set()
+        for t, email in q.all():
+            if t and email and "@" in email:
+                pairs.add((t, email.rsplit("@", 1)[1].lower()))
+        synced_count = 0
         try:
-            # 1. Get domains from inboxes
-            inboxes_res = db.execute(text("SELECT email_address FROM sending_inboxes")).fetchall()
-            unique_domains = set()
-            for row in inboxes_res:
-                email = row[0]
-                if email and "@" in email:
-                    unique_domains.add(email.split("@")[-1])
-            
-            # 2. Get existing domains
-            existing_res = db.execute(text("SELECT domain_name FROM sending_domains")).fetchall()
-            existing_domains = {r[0] for r in existing_res}
-            
-            # 3. Insert new domains
-            synced_count = 0
-            for d_name in unique_domains:
-                if d_name not in existing_domains:
-                    logger.info(f"[Deliverability] Syncing new domain from inbox: {d_name}")
-                    db.execute(text(
-                        "INSERT INTO sending_domains (domain_name, current_reputation_score, safety_threshold, warmup_status, spf_status, dkim_status, dmarc_status, is_blacklisted) "
-                        "VALUES (:name, 100, 70, 'COMPLETED', 'UNKNOWN', 'UNKNOWN', 'UNKNOWN', 0)"
-                    ), {"name": d_name})
+            for t, d_name in sorted(pairs):
+                if get_tenant_domain(db, t, d_name) is None:
+                    logger.info(f"[Deliverability] Syncing new domain from inbox: {d_name} (tenant {t})")
+                    get_or_create_tenant_domain(
+                        db, t, d_name, current_reputation_score=100, safety_threshold=70,
+                        warmup_status="COMPLETED", spf_status="UNKNOWN", dkim_status="UNKNOWN",
+                        dmarc_status="UNKNOWN", is_blacklisted=False)
                     synced_count += 1
-            
             db.commit()
             return synced_count
         except Exception as e:
             db.rollback()
-            logger.error(f"[Deliverability] sync_from_inboxes raw SQL failed: {e}")
-            raise e
+            logger.error(f"[Deliverability] sync_from_inboxes failed: {e}")
+            raise
 
-    def perform_dns_scan(self, domain_name: str, db: Session) -> dict:
+    def perform_dns_scan(self, domain_name: str, db: Session, tenant_id: str = None) -> dict:
         """
         Perform real-time DNS queries to verify SPF and DMARC alignment.
         Also syncs DKIM status from AWS SES directly.
-        Updates the SendingDomain record.
+        DNS and the SES identity are facts about the domain itself, so one scan is
+        written to the domain record of the given tenant (created if the tenant has
+        none yet), or with tenant_id None (scheduled job) to every tenant's record
+        for that domain name.
         """
         logger.info(f"[Deliverability] Starting DNS scan for {domain_name}")
         
@@ -447,13 +462,17 @@ class DeliverabilityService:
 
             
         # 4. Update Database
-        domain = db.query(SendingDomain).filter(SendingDomain.domain_name == domain_name).first()
-        if domain:
+        if tenant_id:
+            rows = [get_or_create_tenant_domain(db, tenant_id, domain_name)]
+        else:
+            rows = db.query(SendingDomain).filter(SendingDomain.domain_name == domain_name,
+                                                  SendingDomain.tenant_id.isnot(None)).all()
+        for domain in rows:
             domain.spf_status = spf_status
             domain.dmarc_status = dmarc_status
             domain.dkim_status = dkim_status
             domain.updated_at = datetime.utcnow()
-            db.commit()
+        db.commit()
             
         # Build actionable warnings for the UI
         warnings = []
@@ -477,16 +496,18 @@ class DeliverabilityService:
             "warnings": warnings,
         }
 
-    def get_all_domains_enriched(self, db: Session) -> list:
+    def get_all_domains_enriched(self, db: Session, tenant_id: str) -> list:
         """
-        Fetch all domains and populate associated inboxes and campaigns.
+        Fetch the tenant's domains and populate the tenant's associated inboxes and campaigns.
         """
-        domains = db.query(SendingDomain).all()
+        domains = (db.query(SendingDomain).filter(SendingDomain.tenant_id == tenant_id)
+                   .order_by(SendingDomain.domain_name).all())
         results = []
 
         for d in domains:
-            # 1. Find Inboxes for this domain
+            # 1. Find the tenant's Inboxes for this domain
             inboxes = db.query(SendingInbox).filter(
+                SendingInbox.tenant_id == tenant_id,
                 SendingInbox.email_address.like(f"%@{d.domain_name}")
             ).all()
 
@@ -498,12 +519,13 @@ class DeliverabilityService:
             for inbox in inboxes:
                 # Assuming 'campaigns' relationship exists on SendingInbox
                 for campaign in inbox.campaigns:
-                    if campaign.status == "ACTIVE":
+                    if campaign.status == "ACTIVE" and campaign.tenant_id == tenant_id:
                         active_campaign_names.add(campaign.campaign_name)
             
             # Convert to Dictionary to match Pydantic Schema
             domain_dict = {
                 "domain_name": d.domain_name,
+                "domain_id": d.domain_id,
                 "spf_status": d.spf_status,
                 "dkim_status": d.dkim_status,
                 "dmarc_status": d.dmarc_status,
@@ -523,18 +545,38 @@ class DeliverabilityService:
             
         return results
 
-    def verify_domain_and_get_tokens(self, domain_name: str, db: Session) -> dict:
+    def verify_domain_and_get_tokens(self, domain_name: str, db: Session, tenant_id: str = None) -> dict:
         """
         Initiate DKIM verification for a domain and return the DNS records needed.
-        Also ensures the domain is tracked in SendingDomain table.
+        Also ensures the tenant has its own SendingDomain record for it.
+
+        The SES domain identity is account-level in AWS (one per domain for the whole
+        account), so several tenants on the same domain share it: verify_domain_dkim is
+        idempotent and simply returns the same tokens again. Status is stored per tenant.
         """
-        logger.info(f"[Deliverability] Verifying domain identity: {domain_name}")
-        
+        domain_name = (domain_name or "").strip().lower()
+        logger.info(f"[Deliverability] Verifying domain identity: {domain_name} (tenant {tenant_id})")
+
+        # 1. The tenant's record exists even when the AWS call below fails
+        domain = None
+        if tenant_id:
+            domain = get_tenant_domain(db, tenant_id, domain_name)
+            if domain is None:
+                domain = get_or_create_tenant_domain(
+                    db, tenant_id, domain_name,
+                    spf_status="UNKNOWN",
+                    dkim_status="UNKNOWN",
+                    dmarc_status="UNKNOWN",
+                    warmup_status="WARMING",  # Start in warmup
+                    safety_threshold=70,
+                )
+                db.commit()
+
         dns_records = []
         dkim_tokens = []
         
         try:
-            # 1. Trigger AWS Verification / Get Tokens
+            # 2. Trigger AWS Verification / Get Tokens
             # Using verify_domain_dkim (SES V1) as it directly gives tokens
             response = self.ses_v1.verify_domain_dkim(Domain=domain_name)
             dkim_tokens = response.get("DkimTokens", [])
@@ -564,24 +606,10 @@ class DeliverabilityService:
                 "status": "Recommended"
             })
                 
-            # 2. Ensure Domain Exists in DB
-            domain = db.query(SendingDomain).filter(SendingDomain.domain_name == domain_name).first()
-            if not domain:
-                domain = SendingDomain(
-                    domain_name=domain_name,
-                    spf_status="UNKNOWN",
-                    dkim_status="PENDING", # We just asked for tokens
-                    dmarc_status="UNKNOWN",
-                    warmup_status="WARMING", # Start in warmup
-                    safety_threshold=70
-                )
-                db.add(domain)
-            else:
-                # If existed, maybe update status?
-                if domain.dkim_status != "PASS":
-                     domain.dkim_status = "PENDING"
-            
-            db.commit()
+            # 3. We just asked for tokens: DKIM is pending until DNS is in place
+            if domain is not None and domain.dkim_status != "PASS":
+                domain.dkim_status = "PENDING"
+                db.commit()
             
             return {
                 "domain": domain_name,

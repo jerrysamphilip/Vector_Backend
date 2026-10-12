@@ -3,11 +3,13 @@
 User model with role-based access control and authentication.
 """
 
-from sqlalchemy import Integer, Column, String, Boolean, TIMESTAMP, ForeignKey, UniqueConstraint, JSON
+from sqlalchemy import BigInteger, Integer, Column, String, Boolean, DateTime, Text, TIMESTAMP, ForeignKey, UniqueConstraint, JSON
+from sqlalchemy.sql import expression
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
 
+from app.core.encrypted_type import EncryptedString
 from app.models import Base
 
 
@@ -57,6 +59,16 @@ class User(Base):
     manager_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
     # Also send in-app notifications by email (BR-SF-07)
     notify_email = Column(Boolean, nullable=False, default=True)
+
+    # Two-factor sign-in (TOTP, app/core/totp.py; migration 0004_user_mfa). mfa_secret is encrypted at
+    # rest and set by /api/auth/mfa/setup before mfa_enabled turns on. mfa_recovery_codes is a JSON list
+    # of SHA-256 hashes of the unused recovery codes. mfa_last_step is the last accepted TOTP time step
+    # (a code is never accepted twice).
+    mfa_enabled = Column(Boolean, nullable=False, default=False, server_default=expression.false())
+    mfa_secret = Column(EncryptedString, nullable=True)
+    mfa_recovery_codes = Column(Text, nullable=True)
+    mfa_enabled_at = Column(DateTime, nullable=True)
+    mfa_last_step = Column(BigInteger, nullable=True)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="users")

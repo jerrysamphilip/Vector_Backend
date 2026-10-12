@@ -1,0 +1,74 @@
+{
+  "suite": "UI outreach/admin - details",
+  "counts": {
+    "PASS": 9,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 35,
+  "cases": [
+    {
+      "id": "UIO-DET-01",
+      "title": "Details header + Analytics tab: name, ACTIVE badge, enrolled counts and sequence cards match DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-DET-02",
+      "title": "Prospects tab: lists enrolled prospects, search filters, status pills carry counts, Export works",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-DET-03",
+      "title": "Prospects tab: Add Prospects (pick list) enrolls the contact (DB + table); Remove (confirm) cancels enrollment",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-DET-04",
+      "title": "Subsequence tab shows both steps with approval state; Approve All works; Edit step opens editor",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-DET-05",
+      "title": "Schedule tab shows queued emails per step/day; Trigger logs shows CREATE/LAUNCH audit events",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-DET-06",
+      "title": "Sending Accounts tab lists the campaign inbox; Inbox tab renders (empty state) and Sync button reports a clear error with no IMAP",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-DET-07",
+      "title": "Pause Campaign / Resume Campaign buttons change status (DB + badge)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-DET-08",
+      "title": "Send Now: confirm dialog, then result summary dialog; cancel path sends nothing",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-DET-09",
+      "title": "Role AGENT cannot open a campaign by URL (redirect Home)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

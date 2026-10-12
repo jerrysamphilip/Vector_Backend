@@ -1,0 +1,109 @@
+{
+  "suite": "UI outreach/admin - library",
+  "counts": {
+    "PASS": 13,
+    "FAIL": 1,
+    "BLOCKED": 0
+  },
+  "seconds": 40,
+  "cases": [
+    {
+      "id": "UIO-TPL-01",
+      "title": "Template library empty state renders; New template opens modal; Cancel closes without saving",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TPL-02",
+      "title": "Create template: merge-field insert, save -> row in list and in DB with subject/body/category/shared",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TPL-03",
+      "title": "Validation: saving a template with empty name shows a server error inside the modal (no crash)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TPL-04",
+      "title": "Preview renders with sample values; Edit updates DB; category filter + search narrow the list",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TPL-05",
+      "title": "Agent sees shared template but only the owner can edit/delete (no edit buttons for agent; API refuses)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-TPL-06",
+      "title": "Delete: dismissing confirm keeps it; accepting removes row and DB record",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTO-01",
+      "title": "Automation empty state; Create rule modal validation (required fields) keeps modal open",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTO-02",
+      "title": "Create Send-AI-Template rule: row appears; DB has trigger/action/template/delay and is active",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTO-02b",
+      "title": "Create \"Pause Campaign\" rule (offered in the Action dropdown) succeeds",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "UI offers Pause Campaign but POST /automation-rules/ rejects action_type PAUSE_CAMPAIGN (422); user only sees \"Failed to create rule. Please check the fields.\""
+    },
+    {
+      "id": "UIO-AUTO-03",
+      "title": "Toggle rule off/on (the repaired PUT): DB is_active flips and UI reflects it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AUTO-04",
+      "title": "Search filters rules; delete (confirm) removes row and DB record",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AIGEN-01",
+      "title": "AI generator: Classify disabled until designation entered; classification shows persona + confidence",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AIGEN-02",
+      "title": "Sequence tab: 3-email sequence is generated, shows compliance check, copy button works",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-AIGEN-03",
+      "title": "Classification failure (500) shows an error message to the user",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "suite": "ui_crm contact_detail",
+  "counts": {
+    "PASS": 1,
+    "FAIL": 0,
+    "BLOCKED": 2
+  },
+  "seconds": 7,
+  "cases": [
+    {
+      "id": "UIC-CD-16",
+      "title": "Create a deal directly from the contact record",
+      "status": "BLOCKED",
+      "category": "not-implemented",
+      "detail": "Record page only offers \"+ Create lead\"; deals are created from a lead conversion or the Deals page"
+    },
+    {
+      "id": "UIC-CD-17",
+      "title": "@mention in notes",
+      "status": "BLOCKED",
+      "category": "not-implemented",
+      "detail": "Composer has no @mention support"
+    },
+    {
+      "id": "UIC-CD-18",
+      "title": "Associations: company link opens the company page; list + campaign cards link out",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

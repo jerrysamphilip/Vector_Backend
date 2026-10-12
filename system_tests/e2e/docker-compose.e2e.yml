@@ -1,0 +1,43 @@
+# E2E stand-ins layered on the local stack. Usage (see README.md):
+#   docker compose -f docker-compose.yml -f <sandbox override> -f system_tests/e2e/docker-compose.e2e.yml up -d --no-build ses-mock api worker
+# ses-mock = moto's SES server (image vector-ses-mock, Dockerfile.ses-mock). api + worker talk to it through
+# AWS_ENDPOINT_URL (botocore honours it for the app's plain boto3.client("ses", region_name=..., keys)).
+x-e2e-env: &e2e-env
+  AWS_ENDPOINT_URL: http://ses-mock:5000
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_REGION: us-east-1
+  SENDER_EMAIL: platform@e2e-platform.example
+  SEND_ON_ANY_DAY: "true"
+
+services:
+  # The prebuilt vector-api:latest predates SEND_ON_ANY_DAY; the e2e stack runs an image built from the current tree:
+  #   docker build -f <sandbox Dockerfile> --build-context certs=<dir with ca.crt> -t vector-api:e2e .
+  migrate:
+    image: vector-api:e2e
+    build: !reset null
+  ses-mock:
+    image: vector-ses-mock
+    build: !reset null
+    ports:
+      - "127.0.0.1:${SES_MOCK_PORT:-5001}:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/moto-api/', timeout=3).status == 200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+  api:
+    image: vector-api:e2e
+    build: !reset null
+    environment: *e2e-env
+    depends_on:
+      ses-mock:
+        condition: service_healthy
+  worker:
+    image: vector-api:e2e
+    build: !reset null
+    environment: *e2e-env
+    depends_on:
+      ses-mock:
+        condition: service_healthy

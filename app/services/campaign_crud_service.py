@@ -394,6 +394,11 @@ class CampaignCRUDService:
         campaign.paused_reason = None
         campaign.paused_at = None
 
+        # Re-spread whatever fell due during the pause instead of releasing it
+        # all at once, keeping each contact's step spacing (B02)
+        from app.services.email_scheduler_service import rebase_overdue_on_resume
+        rebase_overdue_on_resume(self.db, campaign)
+
         # Restore frozen emails
         self.db.query(EmailMessage).filter(
             EmailMessage.campaign_id == campaign_id,
@@ -603,7 +608,7 @@ class CampaignCRUDService:
         Validate selected inboxes for campaign usage:
         - inbox belongs to current tenant
         - inbox status is ACTIVE
-        - domain is not blacklisted (if tracked in sending_domains)
+        - domain is not blacklisted (if tracked in the tenant's sending_domains)
         """
         unique_ids = list(dict.fromkeys(inbox_ids or []))
         if not unique_ids:
@@ -635,7 +640,7 @@ class CampaignCRUDService:
         if domains:
             domain_rows = (
                 self.db.query(SendingDomain.domain_name, SendingDomain.is_blacklisted)
-                .filter(SendingDomain.domain_name.in_(domains))
+                .filter(SendingDomain.tenant_id == tenant_id, SendingDomain.domain_name.in_(domains))
                 .all()
             )
             blocked = [name for name, is_blacklisted in domain_rows if is_blacklisted]
