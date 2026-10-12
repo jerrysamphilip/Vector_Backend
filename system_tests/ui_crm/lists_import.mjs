@@ -28,6 +28,7 @@ export async function runLists(rec, browser) {
     await m.getByRole('button', { name: 'Create list' }).click();
     await p.waitForURL(/\/app\/contacts\?list_id=/, { timeout: 8000 });
     eq(sql(`SELECT CONCAT_WS('|',list_type,description) FROM prospect_lists WHERE tenant_id='${t.tenantId}' AND list_name='Webinar invitees'`), 'STATIC|From the Oct webinar');
+    await p.getByText('List: Webinar invitees').waitFor({ timeout: 8000 }).catch(() => {});
     ok(await p.getByText('List: Webinar invitees').isVisible(), 'chip on contacts page');
     ok(await p.getByText('No contacts match').isVisible(), 'empty list');
   }, { u: A });
@@ -52,7 +53,7 @@ export async function runLists(rec, browser) {
     await m.getByLabel('Operator').first().locator('xpath=following-sibling::*[1]').selectOption({ value: 'LEAD' });
     const expected = cnt(t, `lifecycle_stage='LEAD'`);
     await m.getByText(/contacts? match right now/).waitFor();
-    eq(num(await m.getByText(/contacts? match right now/).innerText()), expected, 'preview count');
+    eq(Number((await m.getByText(/contacts? match right now/).innerText()).match(/(\d+)\s+contacts?\s+match/)[1]), expected, 'preview count');
     await m.getByRole('button', { name: 'Create list' }).click();
     await p.waitForURL(/\/app\/contacts\?list_id=/);
     await settle(A, 800);
@@ -64,9 +65,8 @@ export async function runLists(rec, browser) {
 
   await tc(rec, 'UIC-LST-05', 'Active list membership follows data: changing a contact moves it in/out automatically', async () => {
     const c = contacts.find(x => x.lifecycle_stage === 'SUBSCRIBER');
-    const before = num((await listRow(p, 'Hot leads').innerText()).match(/\d+\s*$/m)?.[0] ?? '0');
     await must(t.token, 'PATCH', `/contacts/${c.prospect_id}`, { lifecycle_stage: 'LEAD' });
-    await go(A, 'lists');
+    await go(A, 'lists'); await listRow(p, 'Hot leads').waitFor();
     const after = (await listRow(p, 'Hot leads').innerText());
     ok(after.includes(String(cnt(t, `lifecycle_stage='LEAD'`))), 'count includes newly-LEAD contact: ' + after.replace(/\n/g, ' '));
   }, { u: A });
@@ -99,6 +99,8 @@ export async function runLists(rec, browser) {
     await m.getByLabel('Add to list').selectOption({ label: 'Webinar invitees' });
     await m.getByRole('button', { name: /Add contact/ }).click();
     await p.waitForURL(/\/app\/contacts\/[0-9a-f-]{36}/);
+    eq(dbn(`SELECT COUNT(*) FROM prospect_list_members m JOIN prospect_lists l ON l.list_id=m.list_id JOIN prospects pr ON pr.prospect_id=m.prospect_id WHERE l.tenant_id='${t.tenantId}' AND l.list_name='Webinar invitees' AND pr.email='listed.${t.rid}@x.example'`), 1, 'membership created in DB');
+    await p.getByRole('link', { name: 'Webinar invitees' }).waitFor({ timeout: 8000 }).catch(() => {});
     ok(await p.getByRole('link', { name: 'Webinar invitees' }).isVisible(), 'list card on record page');
     eq(dbn(`SELECT COUNT(*) FROM prospect_list_members m JOIN prospect_lists l ON l.list_id=m.list_id WHERE l.tenant_id='${t.tenantId}' AND l.list_name='Webinar invitees'`), 4);
   }, { u: A });
@@ -206,19 +208,27 @@ export async function runImport(rec, browser) {
     await p.getByRole('link', { name: 'View contacts' }).click(); await p.waitForURL(/\/app\/contacts/);
   }, { u: A });
 
-  await tc(rec, 'UIC-IMP-04', 'Re-import same file: update_existing ON updates (no duplicates); OFF leaves records untouched', async () => {
+  await tc(rec, 'UIC-IMP-04', 'Re-import same file: update_existing OFF leaves records untouched; ON updates (no duplicates)', async () => {
     const rows = mk(12).map(r => ({ ...r, title: 'VP Updated' }));
     const f = writeTmp('imp-update.csv', csvText(header, rowsOf(rows)));
     await goImport(); await upload(f);
     await p.getByLabel(/Update existing contacts/).uncheck();
     await p.getByRole('button', { name: 'Import 12 rows' }).click(); await result();
-    eq(await stat('Contacts created'), 0, 'none created'); eq(await stat('Contacts updated'), 0, 'none updated when OFF');
-    eq(cnt(t, `email LIKE 'imp%.${t.rid}@%' AND designation='VP Updated'`), 0, 'titles untouched');
+    eq(await stat('Contacts created'), 0, 'none created');
+    eq(cnt(t, `email LIKE 'imp%.${t.rid}@%' AND designation='VP Updated'`), 0, 'titles untouched when OFF');
     await goImport(); await upload(f);
     await p.getByRole('button', { name: 'Import 12 rows' }).click(); await result();
     eq(await stat('Contacts updated'), 12, 'updated 12');
     eq(cnt(t, `email LIKE 'imp%.${t.rid}@%' AND designation='VP Updated'`), 12, 'titles updated');
     eq(cnt(t, `email LIKE 'imp%.${t.rid}@%'`), 12, 'no duplicates');
+  }, { u: A });
+  await tc(rec, 'UIC-IMP-04B', 'With update_existing OFF the result card must report 0 contacts updated', async () => {
+    const rows = mk(12).map(r => ({ ...r, title: 'Should Not Apply' }));
+    await goImport(); await upload(writeTmp('imp-off.csv', csvText(header, rowsOf(rows))));
+    await p.getByLabel(/Update existing contacts/).uncheck();
+    await p.getByRole('button', { name: 'Import 12 rows' }).click(); await result();
+    eq(cnt(t, `designation='Should Not Apply'`), 0, 'DB untouched');
+    eq(await stat('Contacts updated'), 0, 'result card "Contacts updated" (API reports contacts_updated=12 although nothing was written)');
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-05', 'Blank cells never overwrite existing values', async () => {
@@ -258,7 +268,7 @@ export async function runImport(rec, browser) {
     await goImport(); await upload(writeTmp('imp-ex.csv', csvText(header, rowsOf(rows))));
     await p.getByLabel('Add imported contacts to a list').selectOption('existing');
     ok(await p.getByRole('button', { name: 'Import 2 rows' }).isDisabled(), 'disabled until list chosen');
-    await p.getByLabel('List', { exact: true }).selectOption({ label: 'Imported Q4' });
+    await p.locator('select').filter({ hasText: 'Choose a list' }).selectOption({ label: 'Imported Q4' });
     await p.getByRole('button', { name: 'Import 2 rows' }).click(); await result();
     const lid = sql(`SELECT list_id FROM prospect_lists WHERE tenant_id='${t.tenantId}' AND list_name='Imported Q4'`);
     eq(dbn(`SELECT COUNT(*) FROM prospect_list_members WHERE list_id='${lid}'`), 6, 'members now 6');
@@ -321,7 +331,7 @@ export async function runImport(rec, browser) {
 
   await tc(rec, 'UIC-IMP-14', 'Two columns mapped to the same property show the "last one wins" warning', async () => {
     await goImport(); await upload(writeTmp('imp-dupmap.csv', csvText(['Email', 'Work Email'], [[`dm1.${t.rid}@dm.example`, `dm1b.${t.rid}@dm.example`]])));
-    const r = p.locator('tr').filter({ hasText: 'Work Email' }).first();
+    const r = p.locator('tr').filter({ has: p.locator('td p', { hasText: /^Work Email$/ }) }).first();
     await r.locator('select').first().selectOption('contact.email');
     ok(await p.getByText(/More than one column maps to the same property/).isVisible(), 'warning');
   }, { u: A });
@@ -329,9 +339,10 @@ export async function runImport(rec, browser) {
   await tc(rec, 'UIC-IMP-15', 'Company-only import (no email column) creates companies', async () => {
     const f = writeTmp('imp-companies.csv', csvText(['Company', 'Website', 'Industry'], [['Delta Dynamics', 'https://delta-dyn.example', 'Aero'], ['Epsilon Labs', 'https://epsilon-labs.example', 'Biotech']]));
     await goImport(); await upload(f);
-    const r = p.locator('tr').filter({ hasText: 'Company' }).first();
+    const r = p.locator('tr').filter({ has: p.locator('td p', { hasText: /^Company$/ }) }).first();
     await r.locator('select').first().selectOption('company.name');
-    await p.locator('tr').filter({ hasText: 'Website' }).first().locator('select').first().selectOption('company.website');
+    await p.locator('tr').filter({ has: p.locator('td p', { hasText: /^Website$/ }) }).first().locator('select').first().selectOption('company.website');
+    await p.locator('tr').filter({ has: p.locator('td p', { hasText: /^Industry$/ }) }).first().locator('select').first().selectOption('skip');
     await p.getByRole('button', { name: 'Import 2 rows' }).click(); await result();
     eq(await stat('Companies created'), 2, 'companies created stat');
     eq(dbn(`SELECT COUNT(*) FROM accounts WHERE tenant_id='${t.tenantId}' AND name IN ('Delta Dynamics','Epsilon Labs')`), 2);
@@ -377,7 +388,7 @@ export async function runImport(rec, browser) {
     await go(AG, 'import');
     ok(!/\/app\/import/.test(AG.page.url()), 'redirected away from /import: ' + AG.page.url());
     const tok = await t.tk('alice');
-    const r = await call(tok, 'GET', '/imports'); eq(r.status, 403, 'API list imports 403');
+    const r = await call(tok, 'GET', '/imports'); eq(r.status, 403, 'API list imports 403 (import history lists file names/counts for users without manage_prospects)');
   }, { u: AG });
 
   await tc(rec, 'UIC-IMP-21', 'Preview API failure shows an error message', async () => {

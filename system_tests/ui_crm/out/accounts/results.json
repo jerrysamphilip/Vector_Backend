@@ -1,18 +1,25 @@
 {
   "suite": "ui_crm accounts",
   "counts": {
-    "PASS": 0,
-    "FAIL": 1,
-    "BLOCKED": 0
+    "PASS": 1,
+    "FAIL": 0,
+    "BLOCKED": 1
   },
-  "seconds": 1,
+  "seconds": 7,
   "cases": [
     {
-      "id": "UIC-ACCOUNTS-CRASH",
-      "title": "area crashed",
-      "status": "FAIL",
-      "category": "test-issue",
-      "detail": "Error: POST /accounts -> 422 {\"success\":false,\"error\":\"Validation Error\",\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"annual_revenue\"],\"msg\":\"Input should be a valid string\",\"input\":500000}],\"code\":\"VALIDATION_ERROR\"}     at must (file:///home/user/Vector_Backend/system_tests/ui_crm/crm_common.mjs:34:41)     at process.processTicksAndRejections (node:internal/process/task_queues:105:5)"
+      "id": "UIC-ACC-04",
+      "title": "New company: name required (button disabled), full create -> detail page + DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-ACC-12",
+      "title": "AccountDetail lists the company's deals",
+      "status": "BLOCKED",
+      "category": "not-implemented",
+      "detail": "AccountDetail shows contacts and history only; deals appear on the Deals screen"
     }
   ]
 }

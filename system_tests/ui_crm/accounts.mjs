@@ -10,7 +10,7 @@ export async function run(rec, browser) {
   const bob = await t.addUser('ADMIN', 'Bob');
   const names = ['Acme Corp', 'Globex', 'Initech', 'Umbrella', 'Hooli', 'Stark Industries', 'Wayne Enterprises', 'Wonka Factory'];
   const accounts = [];
-  for (let i = 0; i < names.length; i++) accounts.push(await must(t.token, 'POST', '/accounts', { name: names[i], domain: `${names[i].toLowerCase().replace(/[^a-z]/g, '')}.example`, industry: i % 2 ? 'Software' : 'Manufacturing', country: i % 2 ? 'US' : 'Germany', city: 'Town' + i, annual_revenue: (i + 1) * 500000, owner_id: i < 6 ? t.owner.userId : (i === 6 ? alice.userId : null) }));
+  for (let i = 0; i < names.length; i++) accounts.push(await must(t.token, 'POST', '/accounts', { name: names[i], domain: `${names[i].toLowerCase().replace(/[^a-z]/g, '')}.example`, industry: i % 2 ? 'Software' : 'Manufacturing', country: i % 2 ? 'US' : 'Germany', city: 'Town' + i, annual_revenue: String((i + 1) * 500000), owner_id: i < 6 ? t.owner.userId : (i === 6 ? alice.userId : null) }));
   // 3 contacts for Acme, 1 for Globex
   for (let i = 0; i < 3; i++) await must(t.token, 'POST', '/contacts', { email: `p${i}.${t.rid}@acmecorp.example`, first_name: `Acme${i}`, last_name: 'Person', company_name: 'Acme Corp', account_id: accounts[0].account_id, owner_id: t.owner.userId });
   await must(t.token, 'POST', '/contacts', { email: `g0.${t.rid}@globex.example`, first_name: 'Glo', last_name: 'Bex', company_name: 'Globex', account_id: accounts[1].account_id, owner_id: t.owner.userId });
@@ -18,7 +18,7 @@ export async function run(rec, browser) {
 
   await tc(rec, 'UIC-ACC-01', 'Companies list renders with count, columns and revenue formatting', async () => {
     await go(A, 'accounts');
-    await p.getByRole('heading', { name: 'Companies' }).waitFor();
+    await p.getByRole('heading', { name: /^Companies/ }).first().waitFor();
     eq(await total(p), dbn(`SELECT COUNT(*) FROM accounts WHERE ${acct(t)}`), 'count');
     const row = p.locator('tbody tr').filter({ hasText: 'Acme Corp' });
     const txt = await row.innerText();
@@ -68,7 +68,7 @@ export async function run(rec, browser) {
     await p.waitForURL(/\/app\/accounts\/[0-9a-f-]{36}/, { timeout: 10000 });
     const id = p.url().split('/').pop();
     eq(sql(`SELECT CONCAT_WS('|',name,domain,industry,emp_band,annual_revenue,city,country,lifecycle_stage) FROM accounts WHERE account_id='${id}'`), 'Soylent Corp|soylent.example|Food|51-200|2500000.00|Chicago|US|CUSTOMER', 'DB row (domain normalised)');
-    ok(await p.getByRole('heading', { name: 'Soylent Corp' }).isVisible(), 'heading');
+    await p.getByRole('heading', { name: /^Soylent Corp/ }).first().waitFor({ timeout: 8000 });
     ok(await p.getByText('$2.5M revenue').isVisible(), 'revenue shown');
   }, { u: A });
 
@@ -85,7 +85,7 @@ export async function run(rec, browser) {
 
   await tc(rec, 'UIC-ACC-06', 'Company detail: stats, contacts listing, "Open in Contacts" filter chip', async () => {
     await go(A, `accounts/${accounts[0].account_id}`);
-    await p.getByRole('heading', { name: 'Acme Corp' }).waitFor();
+    await p.getByRole('heading', { name: /^Acme Corp/ }).first().waitFor();
     eq(num(await p.locator('p:has-text("Contacts") + p').first().innerText()), 3, 'contacts stat');
     for (let i = 0; i < 3; i++) ok(await p.getByText(`Acme${i} Person`).isVisible(), `contact ${i} listed`);
     await p.getByRole('link', { name: 'Open in Contacts' }).click(); await settle(A, 800);
@@ -110,7 +110,7 @@ export async function run(rec, browser) {
     await m.getByRole('button', { name: 'Save', exact: true }).click(); await settle(A, 900);
     eq(sql(`SELECT CONCAT_WS('|',name,phone,description) FROM accounts WHERE account_id='${a.account_id}'`), 'Initech Global|+15125550123|Makes TPS reports.');
     eq(sql(`SELECT company_name FROM prospects WHERE email='ini.${t.rid}@initech.example'`), 'Initech Global', 'contact company name follows rename');
-    ok(await p.getByRole('heading', { name: 'Initech Global' }).isVisible(), 'heading');
+    ok(await p.getByRole('heading', { name: /^Initech Global/ }).first().isVisible(), 'heading');
     ok(await p.getByText('Property history').isVisible() && await p.getByText('Initech Global').count() > 1, 'history shows the rename');
   }, { u: A });
 
@@ -178,7 +178,7 @@ export async function run(rec, browser) {
     eq(await total(pa), own, 'own companies only');
     eq(await pa.getByRole('button', { name: /Link contacts by company/ }).count(), 0, 'no backfill');
     await go(AG, `accounts/${accounts[6].account_id}`);
-    await pa.getByRole('heading', { name: 'Wayne Enterprises' }).waitFor();
+    await pa.getByRole('heading', { name: /^Wayne Enterprises/ }).first().waitFor();
     eq(await pa.getByRole('button', { name: /Delete company/ }).count(), 0, 'no delete');
     ok(await pa.getByText('Alice Test').first().isVisible(), 'owner read-only text');
   }, { u: AG });
@@ -194,7 +194,7 @@ export async function run(rec, browser) {
   await tc(rec, 'UIC-ACC-16', 'Companies API failure: page keeps its shell', async () => {
     await failApi(p, /\/api\/accounts$/, 500, 'GET');
     await go(A, 'accounts?x=1'); await settle(A, 700);
-    ok(await p.getByRole('heading', { name: 'Companies' }).isVisible(), 'shell');
+    ok(await p.getByRole('heading', { name: /^Companies/ }).first().isVisible(), 'shell');
     await p.unrouteAll({ behavior: 'ignoreErrors' });
   }, { u: A, allow: [/http 500/, /Failed to load resource/] });
 

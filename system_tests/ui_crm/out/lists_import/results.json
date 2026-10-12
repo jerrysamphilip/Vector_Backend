@@ -1,0 +1,25 @@
+{
+  "suite": "ui_crm lists_import",
+  "counts": {
+    "PASS": 2,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 13,
+  "cases": [
+    {
+      "id": "UIC-IMP-14",
+      "title": "Two columns mapped to the same property show the \"last one wins\" warning",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-IMP-15",
+      "title": "Company-only import (no email column) creates companies",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

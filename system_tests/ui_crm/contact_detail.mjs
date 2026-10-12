@@ -139,11 +139,12 @@ export async function run(rec, browser) {
   }, { u: A });
 
   await tc(rec, 'UIC-CD-12', 'Edit a logged activity then delete it (confirm)', async () => {
+    await must(t.token, 'POST', `/contacts/${id}/activities`, { activity_type: 'NOTE', body: 'Spoke about renewal pricing.' });
     await go(A, `contacts/${id}`);
     const item = p.locator('li').filter({ hasText: 'Spoke about renewal pricing.' }).first();
     await item.locator('button:has-text("Edit")').click();
     await item.locator('textarea').fill('Spoke about renewal pricing and discounts.');
-    await item.locator('button:has-text("Save")').click(); await settle(A, 700);
+    await p.locator('li').filter({ has: p.locator('textarea') }).locator('button:has-text("Save")').click(); await settle(A, 700);
     ok(await p.getByText('renewal pricing and discounts').first().isVisible(), 'edited text shown');
     ok(dbn(`SELECT COUNT(*) FROM contact_activities WHERE prospect_id='${id}' AND body LIKE '%and discounts%'`) === 1, 'edit persisted');
     await p.locator('li').filter({ hasText: 'and discounts' }).first().locator('button:has-text("Delete")').click(); await settle(A, 700);
@@ -186,7 +187,7 @@ export async function run(rec, browser) {
     await modalLoc(p).getByLabel('Lead source').fill('Referral');
     await modalLoc(p).getByRole('button', { name: 'Create lead' }).click();
     await p.waitForURL(/\/app\/leads\/[0-9a-f-]{36}/, { timeout: 10000 });
-    eq(sql(`SELECT CONCAT_WS('|',stage,source,owner_id) FROM leads WHERE prospect_id='${id}'`), `NEW|Referral|${bob.userId}`);
+    eq(sql(`SELECT CONCAT_WS('|',stage,source,owner_id) FROM leads WHERE prospect_id='${id}'`), `NEW|Referral|${row('owner_id')}`);
     await go(A, `contacts/${id}`);
     ok(await p.getByText(/Lead ·/).first().isVisible(), 'sales card shows the lead');
     eq(await p.getByRole('button', { name: '+ Create lead' }).count(), 0, 'no second create while open lead exists');
@@ -204,9 +205,9 @@ export async function run(rec, browser) {
     await go(A, `contacts/${id}`);
     ok(await p.getByRole('link', { name: 'Assoc list' }).isVisible(), 'list link');
     ok(await p.getByRole('link', { name: 'Assoc Campaign' }).first().isVisible(), 'campaign link');
-    await p.getByRole('heading', { name: 'Company' }).locator('xpath=ancestor::div[1]').getByRole('link').first().click();
+    await p.locator('a[href*="/app/accounts/"]').first().click();
     await p.waitForURL(/\/app\/accounts\//, { timeout: 8000 });
-    ok(await p.getByRole('heading', { name: 'Renamed Detail Co' }).isVisible(), 'company page');
+    ok(await p.getByRole('heading', { name: new RegExp('^' + row('company_name')) }).first().isVisible(), 'company page');
   }, { u: A });
 
   await tc(rec, 'UIC-CD-19', 'Unknown contact id shows "Contact not found" with back link', async () => {

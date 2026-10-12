@@ -342,7 +342,7 @@ def run_import(
                                   field="created", new_value=f"Imported from {job.file_name}", source="IMPORT",
                                   changed_by=current_user.user_id))
         else:
-            if account.account_id not in companies_touched:
+            if update_existing and account.account_id not in companies_touched:
                 stats["companies_updated"] += 1
             crm.record_changes(db, tenant_id, "COMPANY", account.account_id, before,
                                crm.snapshot(account, COMPANY_TARGETS), current_user.user_id, "IMPORT")
@@ -495,7 +495,8 @@ def run_import(
                         if owner_id and update_existing and "owner_id" not in vals:
                             vals["owner_id"] = owner_id
                         apply_contact(p, vals, custom, account, created=False)
-                        stats["contacts_updated"] += 1
+                        if update_existing:
+                            stats["contacts_updated"] += 1
                     list_members.append(p.prospect_id)
             except RowError as exc:
                 errors.append({"row": row_no, "reason": str(exc), "values": row})
@@ -557,9 +558,9 @@ def run_import(
 @router.get("")
 def import_history(page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100),
                    db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
-    query = db.query(ImportJob).filter(ImportJob.tenant_id == current_user.tenant_id)
     if not can_manage_contacts(current_user):
-        query = query.filter(ImportJob.created_by == current_user.user_id)
+        raise HTTPException(status_code=403, detail="Your account does not have the 'manage_prospects' permission.")
+    query = db.query(ImportJob).filter(ImportJob.tenant_id == current_user.tenant_id)
     total = query.count()
     rows = query.order_by(ImportJob.started_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     names = {u.user_id: f"{u.first_name} {u.last_name}".strip()

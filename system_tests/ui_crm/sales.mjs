@@ -104,7 +104,7 @@ export async function run(rec, browser) {
     await go(A, 'sql-queue');
     const q = dbn(`SELECT COUNT(*) FROM leads WHERE tenant_id='${t.tenantId}' AND stage='SQL'`);
     eq(num((await p.locator('body').innerText()).match(/IN QUEUE\s+(\d+)/i)?.[1]), q, 'in queue');
-    const row = p.locator('tbody tr').first(); const nm = (await row.locator('p').first().innerText()).trim();
+    const row = p.locator('tbody tr').filter({ has: p.getByRole('button', { name: /Convert/ }) }).first(); const nm = (await row.locator('p').first().innerText()).trim();
     await row.getByRole('button', { name: /Convert/ }).click();
     await modalLoc(p).getByLabel('Opportunity name').fill('Converted deal'); await modalLoc(p).getByLabel('Amount').fill('12000');
     await modalLoc(p).getByRole('button', { name: /Create opportunity/ }).click();
@@ -143,7 +143,7 @@ export async function run(rec, browser) {
     await dnd(p, p.locator('a', { hasText: 'Deal A' }).first(), p.getByText(/Drop here to mark Closed won/));
     const m = modalLoc(p);
     ok(await m.getByRole('button', { name: /Move to Closed won/ }).isDisabled(), 'reason required');
-    await m.getByRole('radio', { name: 'Price' }).check(); await m.getByRole('button', { name: /Move to Closed won/ }).click(); await settle(A, 800);
+    await m.getByRole('radio', { name: 'Price', exact: true }).first().check(); await m.getByRole('button', { name: /Move to Closed won/ }).click(); await settle(A, 800);
     eq(sql(`SELECT CONCAT_WS('|',status,closed_reason) FROM opportunities WHERE name='Deal A' AND tenant_id='${t.tenantId}'`), 'WON|Price');
   }, { u: A });
   const dB = deals.find(d => d.name === 'Deal B');
@@ -164,7 +164,7 @@ export async function run(rec, browser) {
     eq(dbn(`SELECT COUNT(*) FROM crm_tasks WHERE opportunity_id='${dB.opportunity_id}' AND title='Prepare SOW'`), 1);
     await p.getByRole('button', { name: 'Mark lost' }).click();
     ok(await modalLoc(p).getByRole('button', { name: /Move to Closed lost/ }).isDisabled(), 'reason required');
-    await modalLoc(p).getByRole('radio', { name: 'Timing' }).check(); await modalLoc(p).getByRole('button', { name: /Move to Closed lost/ }).click(); await settle(A, 800);
+    await modalLoc(p).getByRole('radio', { name: 'Timing', exact: true }).first().check(); await modalLoc(p).getByRole('button', { name: /Move to Closed lost/ }).click(); await settle(A, 800);
     eq(sql(`SELECT CONCAT_WS('|',status,closed_reason) FROM opportunities WHERE opportunity_id='${dB.opportunity_id}'`), 'LOST|Timing');
   }, { u: A });
   const dC = deals.find(d => d.name === 'Deal C');
@@ -185,7 +185,6 @@ export async function run(rec, browser) {
     const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 20000 }), m.getByRole('button', { name: 'PDF' }).click()]);
     ok(/\.pdf$/.test(dl.suggestedFilename()), 'pdf name ' + dl.suggestedFilename());
     await m.getByRole('button', { name: 'Close' }).last().click();
-    p.once('dialog', d => d.accept());
     await p.getByRole('button', { name: 'Delete proposal' }).click(); await settle(A, 700);
     eq(dbn(`SELECT COUNT(*) FROM proposals WHERE opportunity_id='${dC.opportunity_id}'`), 0, 'proposal deleted');
   }, { u: A });
