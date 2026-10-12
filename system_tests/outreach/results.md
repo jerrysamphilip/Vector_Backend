@@ -1,6 +1,6 @@
 # Outreach (BR-DF / §5.3 / §7) results
 
-PASS 93 · FAIL 7 · BLOCKED 3
+PASS 94 · FAIL 6 · BLOCKED 3
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -13,17 +13,17 @@ PASS 93 · FAIL 7 · BLOCKED 3
 | OUT-006 | Mailbox SMTP/IMAP passwords encrypted at rest and not returned by the API | PASS |  |  |
 | OUT-007 | After 10 wrong passwords the account is locked (429) even with the right password | PASS |  |  |
 | OUT-008 | Password-reset requests per email are limited (6th -> 429) | PASS |  |  |
-| OUT-102 | Permanent erasure (DELETE /prospects/{id}) removes the contact and logs the deletion | FAIL | defect | DELETE -> 200 {'status': 'deleted', 'prospect_id': '8ec03eec-978d-4e8e-9af3-cd9dc0a13dd0'}; row gone=True; audit_logs+property_changes rows for id=0 (contact_service.delete_contacts also deletes the contact's property_changes; nothing writes audit_logs) |
+| OUT-102 | Permanent erasure (DELETE /prospects/{id}) removes the contact and logs the deletion | PASS |  |  |
 | OUT-103a | Suppression entry survives erasure (contact cannot be re-emailed) | PASS |  |  |
 | OUT-010 | Upload: valid rows accepted, each invalid row rejected with a reason | PASS |  |  |
-| OUT-011 | Upload: syntactically invalid email addresses are rejected with a reason | FAIL | defect | accepted as valid: ["row7 'broken-48797b@' -> ACCEPTED", "row8 'has space-48797b@acme-48797b.example' -> ACCEPTED"] (utils/email_utils.py parse_email only checks for '@' and a non-personal domain) |
+| OUT-011 | Upload: syntactically invalid email addresses are rejected with a reason | PASS |  |  |
 | OUT-103 | Re-import of an erased, unsubscribed address is rejected (suppression kept) | PASS |  |  |
 | OUT-012 | Confirming the upload stores every accepted row in the new list | PASS |  |  |
 | OUT-013 | Enrolling the uploaded list enrolls every valid row | PASS |  |  |
 | OUT-014 | Enrollment returns a reason for every contact not enrolled | PASS |  |  |
 | OUT-089 | Expired voluntary suppression still blocks enrollment (contact stays unsubscribed) | PASS |  |  |
 | OUT-024b | Another workspace's contact cannot be enrolled (not_found) | PASS |  |  |
-| OUT-015 | Bulk list enrollment into an ACTIVE campaign schedules emails for the new contacts | FAIL | defect | POST /campaigns/{id}/enrollments/bulk -> 200 enrolled=2; email_messages for them=0 (prospect_list_router.enroll_prospects adds CampaignProspect rows but never calls _preschedule_all_emails, unlike CampaignEmailService.enroll_prospects_with_report) |
+| OUT-015 | Bulk list enrollment into an ACTIVE campaign schedules emails for the new contacts | PASS |  |  |
 | OUT-083b | Unsubscribed contact rejected by the bulk list enrollment path | PASS |  |  |
 | OUT-016 | Enrolling via the campaign page into an ACTIVE campaign schedules the new contact | PASS |  |  |
 | OUT-083c | Unsubscribed contact rejected by the contacts bulk-enroll path | PASS |  |  |
@@ -66,11 +66,11 @@ PASS 93 · FAIL 7 · BLOCKED 3
 | OUT-077 | Domain list does not show another workspace's mailboxes or campaigns | PASS |  |  |
 | OUT-075 | After the user resumes an auto-paused campaign it is judged on new sends (one bounce doesn't re-pause) | PASS |  |  |
 | OUT-072 | Two spam complaints auto-pause the campaign within 1 minute | PASS |  |  |
-| OUT-074 | Every domain that sent in the last 24h had its health recomputed within the last hour | PASS |  |  |
+| OUT-074 | Every domain that sent in the last 24h had its health recomputed within the last hour | FAIL | defect | stale=[['acme-dbfd42.example', '2026-10-10 17:54:59']] missing_rows=[['acme-48797b.example'], ['acme-ddeecc.io'], ['acme-10eee3.example']] |
 | OUT-078 | Pause freezes pending emails (PAUSED_BY_CAMPAIGN); resume releases them | PASS |  |  |
 | OUT-033 | Batch mode: batches of 2, 30 minutes apart | PASS |  |  |
 | OUT-030 | 500-contact campaign: all 500 enrolled and scheduled at launch (no stall near 330) | PASS |  |  |
-| OUT-031 | Configured pace (100 new contacts/day) spreads 500 contacts over 5 business days | PASS |  |  |
+| OUT-031 | Configured pace (100 new contacts/day) spreads 500 contacts over 5 business days | FAIL | defect | per day: [['2026-11-02', '200'], ['2026-11-03', '100'], ['2026-11-04', '100'], ['2026-11-05', '100']] |
 | OUT-032 | Launching the 500-contact campaign completes within 30 seconds | PASS |  |  |
 | OUT-036 | Inbox pace (60 s between emails) can reach the 500/day cap within a day | PASS |  |  |
 | OUT-051 | IMAP connection test succeeds against a reachable mailbox | PASS |  |  |
@@ -83,7 +83,7 @@ PASS 93 · FAIL 7 · BLOCKED 3
 | OUT-056 | Mailbox sign-in failure is reported (sync fails with a reason stored on the inbox) | PASS |  |  |
 | OUT-040 | Delivery event sets final status DELIVERED | PASS |  |  |
 | OUT-041 | Delivery event without our tag is matched by the SES message id | PASS |  |  |
-| OUT-042 | A redelivered (duplicate) SES event is processed once | FAIL | defect | first=(200, {'status': 'processed', 'type': 'delivery', 'emails': ['evt2-48797b@acme-48797b.example']}) second=(200, {'status': 'duplicate', 'type': 'Delivery'}) delivered_events=0 |
+| OUT-042 | A redelivered (duplicate) SES event is processed once | FAIL | defect | first=(200, {'status': 'processed', 'type': 'delivery', 'emails': ['evt2-ee7984@acme-ee7984.example']}) second=(200, {'status': 'duplicate', 'type': 'Delivery'}) delivered_events=0 |
 | OUT-043 | Hard bounce after delivery: final status BOUNCED, address suppressed | PASS |  |  |
 | OUT-044 | Soft (transient) bounce does not suppress the contact or change the message status | PASS |  |  |
 | OUT-045 | Complaint: final status COMPLAINED, contact unsubscribed and suppressed | PASS |  |  |

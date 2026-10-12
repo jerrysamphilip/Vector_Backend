@@ -1,0 +1,256 @@
+{
+ "rid": "ea18d8",
+ "ws": {
+  "email": "owner-j1-ea18d8@systest.example",
+  "password": "Systest-ea18d8-pw!",
+  "tenant_id": "9cddb7fb-68ab-408d-8faa-9e7d1829bf18",
+  "user_id": "a1c405f8-7bd9-45b4-a1ba-e83587f881f7",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMWM0MDVmOC03YmQ5LTQ1YjQtYTFiYS1lODM1ODdmODgxZjciLCJ0ZW5hbnRfaWQiOiI5Y2RkYjdmYi02OGFiLTQwOGQtOGZhYS05ZTdkMTgyOWJmMTgiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJleHAiOjE3OTE3MjUzNDUsInR5cGUiOiJhY2Nlc3MifQ.LZpeZpWGWJdSvflgvHNkxQrP7-Zm65B2YyP0Q2hUmZw",
+  "rid": "ea18d8"
+ },
+ "users": {
+  "owner": {
+   "email": "owner-j1-ea18d8@systest.example",
+   "user_id": "a1c405f8-7bd9-45b4-a1ba-e83587f881f7",
+   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMWM0MDVmOC03YmQ5LTQ1YjQtYTFiYS1lODM1ODdmODgxZjciLCJ0ZW5hbnRfaWQiOiI5Y2RkYjdmYi02OGFiLTQwOGQtOGZhYS05ZTdkMTgyOWJmMTgiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJleHAiOjE3OTE3MjUzNDUsInR5cGUiOiJhY2Nlc3MifQ.LZpeZpWGWJdSvflgvHNkxQrP7-Zm65B2YyP0Q2hUmZw"
+  },
+  "mgr": {
+   "email": "miaea18d8-ea18d8@systest.example",
+   "user_id": "da1a1f75-4f36-45a9-b7e3-78038cdb6fa5",
+   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkYTFhMWY3NS00ZjM2LTQ1YTktYjdlMy03ODAzOGNkYjZmYTUiLCJ0ZW5hbnRfaWQiOiI5Y2RkYjdmYi02OGFiLTQwOGQtOGZhYS05ZTdkMTgyOWJmMTgiLCJyb2xlIjoiTUFOQUdFUiIsImV4cCI6MTc5MTcyNTM0NywidHlwZSI6ImFjY2VzcyJ9.gMY_XiZBSMp26teeKsdh20piWv-_5I4Pgcg-0PtwZpQ",
+   "first": "Miaea18d8"
+  },
+  "a1": {
+   "email": "anaea18d8-ea18d8@systest.example",
+   "user_id": "d448651a-a9b4-49f7-a5d2-4e5d72ab4e33",
+   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkNDQ4NjUxYS1hOWI0LTQ5ZjctYTVkMi00ZTVkNzJhYjRlMzMiLCJ0ZW5hbnRfaWQiOiI5Y2RkYjdmYi02OGFiLTQwOGQtOGZhYS05ZTdkMTgyOWJmMTgiLCJyb2xlIjoiQUdFTlQiLCJleHAiOjE3OTE3MjUzNDcsInR5cGUiOiJhY2Nlc3MifQ.5ZKumI5-aEfLp0_xZ6l9Kuom8RlT05pNIZOzn7Qzdpg",
+   "first": "Anaea18d8"
+  },
+  "a2": {
+   "email": "benea18d8-ea18d8@systest.example",
+   "user_id": "d597ffb3-1484-4b5f-bc8a-7038907e2cb0",
+   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkNTk3ZmZiMy0xNDg0LTRiNWYtYmM4YS03MDM4OTA3ZTJjYjAiLCJ0ZW5hbnRfaWQiOiI5Y2RkYjdmYi02OGFiLTQwOGQtOGZhYS05ZTdkMTgyOWJmMTgiLCJyb2xlIjoiQUdFTlQiLCJleHAiOjE3OTE3MjUzNDgsInR5cGUiOiJhY2Nlc3MifQ.GFnaQbWDHpdQIfLzouWLpIwvRQp7BQZ4VS75hkRZK08",
+   "first": "Benea18d8"
+  }
+ },
+ "company": "Systest Co ea18d8",
+ "postal": "1 Test Street, Austin, TX 78701, USA",
+ "dom": "outreach-ea18d8.example",
+ "inbox1": "51cfe238-f222-499f-8669-5ae67e8fbb64",
+ "inbox2": "4dd6f97e-3c59-4519-a178-e32eb06c9072",
+ "addr1": "priya.ea18d8@outreach-ea18d8.example",
+ "addr2": "sam.ea18d8@outreach-ea18d8.example",
+ "emails": [
+  "ann.adler@alpha-ea18d8.example",
+  "bo.brandt@alpha-ea18d8.example",
+  "cy.cole@bravo-ea18d8.example",
+  "di.dunn@charlie-ea18d8.example",
+  "ed.egan@delta-ea18d8.example",
+  "flo.fry@echo-ea18d8.example",
+  "gus.gray@foxtrot-ea18d8.example",
+  "hal.hart@golf-ea18d8.example",
+  "ida.ives@hotel-ea18d8.example",
+  "jo.jain@india-ea18d8.example",
+  "kit.kerr@juliet-ea18d8.example",
+  "lea.lund@kilo-ea18d8.example",
+  "max.moss@lima-ea18d8.example",
+  "ned.nash@mike-ea18d8.example",
+  "oli.orr@november-ea18d8.example",
+  "pam.pike@oscar-ea18d8.example"
+ ],
+ "pre_unsub": "pre.unsub@zulu-ea18d8.example",
+ "list_id": "8a11adc4-4f1d-478f-8b0e-ffd356e32895",
+ "upload_id": "8a11adc4-4f1d-478f-8b0e-ffd356e32895",
+ "pid": {
+  "ann.adler@alpha-ea18d8.example": "6d72d4a4-1b6e-4f02-b676-0f6f40c479ef",
+  "bo.brandt@alpha-ea18d8.example": "b86823c5-e43b-447d-a024-34b34cfc8927",
+  "cy.cole@bravo-ea18d8.example": "afdfd79f-a164-4cab-a425-3162fd03526b",
+  "di.dunn@charlie-ea18d8.example": "010aef8e-1536-4cab-ac25-499e086433a4",
+  "ed.egan@delta-ea18d8.example": "5c2e6aae-9f56-4e6d-ad0a-6e8b44ebe5c0",
+  "flo.fry@echo-ea18d8.example": "3142fd62-3b2d-4366-b8fb-8dde23c8bcb1",
+  "gus.gray@foxtrot-ea18d8.example": "aea8cb59-9c5f-4bed-a9fb-f7d6a6db9818",
+  "hal.hart@golf-ea18d8.example": "81144b81-a18b-43ab-965c-e5ceb8904fd0",
+  "ida.ives@hotel-ea18d8.example": "4a13f990-b0d9-4b9d-b162-3925b56b82a2",
+  "jo.jain@india-ea18d8.example": "7ed8f0c7-ab4c-4db9-929e-881f48557bb7",
+  "kit.kerr@juliet-ea18d8.example": "38302ed5-c71a-4d32-9c6d-555a92e64e38",
+  "lea.lund@kilo-ea18d8.example": "ab80e54d-b6ac-468a-b7a6-be15a5416f3e",
+  "max.moss@lima-ea18d8.example": "3ff873ba-5b15-4fbd-b823-6b271088264e",
+  "ned.nash@mike-ea18d8.example": "1ff1685b-140a-4538-ad0d-723ac0871df5",
+  "oli.orr@november-ea18d8.example": "dcb7a0a1-785d-4390-a7ac-087a971ab783",
+  "pam.pike@oscar-ea18d8.example": "1da2e295-d5a2-43f8-9a2b-8ca41061aeda"
+ },
+ "waits": [
+  0,
+  2,
+  3
+ ],
+ "cid": "4d129bfe-4644-4839-ac28-a81f77ba219a",
+ "workaround_templates": 4,
+ "launched_at": "2026-10-11 12:59:12",
+ "step1_planned_min": "2026-10-13 00:00:00",
+ "ses_n0": 44,
+ "clock_travel_step1": true,
+ "send_secs": 49.5,
+ "step1": {
+  "ann.adler@alpha-ea18d8.example": {
+   "message_id": "41b425aa-82aa-4b7d-a0cd-e02d209b1ffc",
+   "ses_id": "yuamtrljwiwpgpyf-rtigxfwr-hrrl-szvl-cnee-oygexvstvyti-dhacgd",
+   "pm_id": "<179172357499.1.18095822488312092242@outreach-ea18d8.example>",
+   "inbox_id": "4dd6f97e-3c59-4519-a178-e32eb06c9072",
+   "src": "sam.ea18d8@outreach-ea18d8.example"
+  },
+  "bo.brandt@alpha-ea18d8.example": {
+   "message_id": "73600177-1655-4f63-b1a7-468b151a70a3",
+   "ses_id": "yeobynvmjqusuaje-eanxysew-mksd-qbtx-znwl-ncfithkvaqts-bbcemw",
+   "pm_id": "<179172357991.1.3699340059017276016@outreach-ea18d8.example>",
+   "inbox_id": "4dd6f97e-3c59-4519-a178-e32eb06c9072",
+   "src": "sam.ea18d8@outreach-ea18d8.example"
+  },
+  "cy.cole@bravo-ea18d8.example": {
+   "message_id": "0740a3f5-e4a9-41a1-b86e-2c8619f63509",
+   "ses_id": "fkkklznrjowditht-nvsxnixo-ybqh-cmyk-dyou-slteqlmxtsol-wbtajm",
+   "pm_id": "<179172357025.1.13627974323272859114@outreach-ea18d8.example>",
+   "inbox_id": "51cfe238-f222-499f-8669-5ae67e8fbb64",
+   "src": "priya.ea18d8@outreach-ea18d8.example"
+  },
+  "di.dunn@charlie-ea18d8.example": {
+   "message_id": "99dcf2d5-1ab7-47a5-9f9d-1082d85f5870",
+   "ses_id": "wuqrwmkzrnjxpnyu-fyycmtep-rtmx-fkfx-vkhb-zruvcboeskyk-pmgyyy",
+   "pm_id": "<179172359596.1.3736948754495053393@outreach-ea18d8.example>",
+   "inbox_id": "4dd6f97e-3c59-4519-a178-e32eb06c9072",
+   "src": "sam.ea18d8@outreach-ea18d8.example"
+  },
+  "ed.egan@delta-ea18d8.example": {
+   "message_id": "e5a7d580-9d6b-4727-919d-52e2c179caae",
+   "ses_id": "cnkqhxtdkqtradqi-xqcdqalx-flxy-szaj-bjha-bantddnsrckr-vafiin",
+   "pm_id": "<179172358994.1.13961085621117846037@outreach-ea18d8.example>",
+   "inbox_id": "51cfe238-f222-499f-8669-5ae67e8fbb64",
+   "src": "priya.ea18d8@outreach-ea18d8.example"
+  },
+  "flo.fry@echo-ea18d8.example": {
+   "message_id": "109c0e5c-e4af-4919-ae77-a3afdc8b9df0",
+   "ses_id": "dhtgzkrnlkapxuep-rwrxpmea-jvvw-ucft-jmij-veexepjqauvd-xxotvr",
+   "pm_id": "<179172357334.1.4619544877470663693@outreach-ea18d8.example>",
+   "inbox_id": "51cfe238-f222-499f-8669-5ae67e8fbb64",
+   "src": "priya.ea18d8@outreach-ea18d8.example"
+  },
+  "gus.gray@foxtrot-ea18d8.example": {
+   "message_id": "9404dd78-d58a-4cb2-87fc-13d575a4b132",
+   "ses_id": "lbxqvhhkipycvebw-xyinkkmk-bmim-loua-sjjt-gmyataymzkaa-uyfdjb",
+   "pm_id": "<179172359234.1.17020907808598361834@outreach-ea18d8.example>",
+   "inbox_id": "4dd6f97e-3c59-4519-a178-e32eb06c9072",
+   "src": "sam.ea18d8@outreach-ea18d8.example"
+  },
+  "hal.hart@golf-ea18d8.example": {
+   "message_id": "8eec7398-0639-48b0-a8fc-6eaf3eb05cc8",
+   "ses_id": "hvuorlocyygliouw-lkjmxvsn-tukp-enkt-iqef-hpothbxqagqw-aenkcg",
+   "pm_id": "<179172358832.1.17006032869768152722@outreach-ea18d8.example>",
+   "inbox_id": "4dd6f97e-3c59-4519-a178-e32eb06c9072",
+   "src": "sam.ea18d8@outreach-ea18d8.example"
+  },
+  "ida.ives@hotel-ea18d8.example": {
+   "message_id": "ef054964-5efc-4208-9151-09feaa833827",
+   "ses_id": "nwsvlxdnttzgtkpj-vnlanxvf-kgmc-qlpj-bplv-pmeiijcwcmoo-plfzev",
+   "pm_id": "<179172360035.1.5475965548921176709@outreach-ea18d8.example>",
+   "inbox_id": "4dd6f97e-3c59-4519-a178-e32eb06c9072",
+   "src": "sam.ea18d8@outreach-ea18d8.example"
+  },
+  "jo.jain@india-ea18d8.example": {
+   "message_id": "b3acc219-7491-4156-bc5f-a7d9fc1f40b8",
+   "ses_id": "yiynclrjjlycfukk-pjhyyxqh-oihq-qggk-yekq-wlpjccxwvrll-llnjpc",
+   "pm_id": "<179172358471.1.16116649024937776197@outreach-ea18d8.example>",
+   "inbox_id": "51cfe238-f222-499f-8669-5ae67e8fbb64",
+   "src": "priya.ea18d8@outreach-ea18d8.example"
+  },
+  "kit.kerr@juliet-ea18d8.example": {
+   "message_id": "28234f15-3c20-48d0-bc98-5675399fbad7",
+   "ses_id": "zeajwedpiudnrqth-xmiimagl-ecye-ehyr-fubj-kcnvwyatzxdj-uuzupy",
+   "pm_id": "<179172357032.1.4419547459475068326@outreach-ea18d8.example>",
+   "inbox_id": "4dd6f97e-3c59-4519-a178-e32eb06c9072",
+   "src": "sam.ea18d8@outreach-ea18d8.example"
+  },
+  "lea.lund@kilo-ea18d8.example": {
+   "message_id": "57a4fc72-98d4-4cea-b921-368b8c740b34",
+   "ses_id": "cxckobsbqkzxhckw-jibhihqr-nihq-ydow-rjzp-bhxyewwgtsvc-sexhtg",
+   "pm_id": "<179172357713.1.6965341444048776814@outreach-ea18d8.example>",
+   "inbox_id": "51cfe238-f222-499f-8669-5ae67e8fbb64",
+   "src": "priya.ea18d8@outreach-ea18d8.example"
+  },
+  "max.moss@lima-ea18d8.example": {
+   "message_id": "e9b07c9e-5d24-4395-a29c-779277b14f33",
+   "ses_id": "ggwarfoffmfgards-dkjyrgqq-eruk-vyac-dhuo-sfteidelsfxz-awuerp",
+   "pm_id": "<179172359892.1.6036948805000993829@outreach-ea18d8.example>",
+   "inbox_id": "51cfe238-f222-499f-8669-5ae67e8fbb64",
+   "src": "priya.ea18d8@outreach-ea18d8.example"
+  },
+  "ned.nash@mike-ea18d8.example": {
+   "message_id": "754fed1a-b758-45c8-ae0a-fe8cab198be7",
+   "ses_id": "zocvaqlmcqfzcndl-fslnzpjc-vhjp-peoo-rhfm-gdlwaurffxcj-rbsmcn",
+   "pm_id": "<179172358348.1.810391446530486286@outreach-ea18d8.example>",
+   "inbox_id": "4dd6f97e-3c59-4519-a178-e32eb06c9072",
+   "src": "sam.ea18d8@outreach-ea18d8.example"
+  },
+  "oli.orr@november-ea18d8.example": {
+   "message_id": "e6be6d01-a5b9-4082-bcc4-1b9bcf4c3494",
+   "ses_id": "jbkybdtopbxdjrff-dooahecp-booo-lkic-cxby-iafqsrwnbyxw-hmfjzj",
+   "pm_id": "<179172359355.1.1218020006627047578@outreach-ea18d8.example>",
+   "inbox_id": "51cfe238-f222-499f-8669-5ae67e8fbb64",
+   "src": "priya.ea18d8@outreach-ea18d8.example"
+  },
+  "pam.pike@oscar-ea18d8.example": {
+   "message_id": "9ec9e5cb-a8c6-4f6e-9e19-6892fd422e99",
+   "ses_id": "yccmxxagedquzwsi-cxgvotag-iajd-ojth-rswy-oudywpblsctv-uwbzlf",
+   "pm_id": "<179172358145.1.9543229155697396490@outreach-ea18d8.example>",
+   "inbox_id": "51cfe238-f222-499f-8669-5ae67e8fbb64",
+   "src": "priya.ea18d8@outreach-ea18d8.example"
+  }
+ },
+ "ev_counts": {
+  "1": "16",
+  "2": "11",
+  "10": "15",
+  "3": "5",
+  "5": "1"
+ },
+ "replier_inbound": "d2f17e0b-1eba-41af-bc01-12d67359e4e0",
+ "won_pid": "5c2e6aae-9f56-4e6d-ad0a-6e8b44ebe5c0",
+ "lead_id": "e4f18d04-5978-41bf-adb3-82e6f710d693",
+ "stage_ids": {
+  "Qualification": "415027e3-3a8a-4184-8be7-755db9b7fb1a",
+  "Needs analysis": "a23904a0-8aa0-43f7-a178-ac6d47f42dff",
+  "Proposal": "1606a5aa-f73e-4ede-90d0-0ea96f4d721a",
+  "Negotiation": "06cd1a46-126d-4e67-967a-eea6a424e87d",
+  "Closed won": "41c0a5d1-2652-4689-a0a9-06e850fab0c7",
+  "Closed lost": "352ee03d-0be6-418e-ab0a-476695db91a3"
+ },
+ "opp_id": "789c2721-0117-42d7-91e0-8f6fdda92301",
+ "w_dict": {
+  "rid": "ea18d8",
+  "email": "owner-j1-ea18d8@systest.example",
+  "password": "Systest-ea18d8-pw!",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMWM0MDVmOC03YmQ5LTQ1YjQtYTFiYS1lODM1ODdmODgxZjciLCJ0ZW5hbnRfaWQiOiI5Y2RkYjdmYi02OGFiLTQwOGQtOGZhYS05ZTdkMTgyOWJmMTgiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJleHAiOjE3OTE3MjUzNDUsInR5cGUiOiJhY2Nlc3MifQ.LZpeZpWGWJdSvflgvHNkxQrP7-Zm65B2YyP0Q2hUmZw",
+  "tenant_id": "9cddb7fb-68ab-408d-8faa-9e7d1829bf18",
+  "user_id": "a1c405f8-7bd9-45b4-a1ba-e83587f881f7"
+ },
+ "users_clean": {
+  "owner": {
+   "email": "owner-j1-ea18d8@systest.example",
+   "user_id": "a1c405f8-7bd9-45b4-a1ba-e83587f881f7"
+  },
+  "mgr": {
+   "email": "miaea18d8-ea18d8@systest.example",
+   "user_id": "da1a1f75-4f36-45a9-b7e3-78038cdb6fa5",
+   "first": "Miaea18d8"
+  },
+  "a1": {
+   "email": "anaea18d8-ea18d8@systest.example",
+   "user_id": "d448651a-a9b4-49f7-a5d2-4e5d72ab4e33",
+   "first": "Anaea18d8"
+  },
+  "a2": {
+   "email": "benea18d8-ea18d8@systest.example",
+   "user_id": "d597ffb3-1484-4b5f-bc8a-7038907e2cb0",
+   "first": "Benea18d8"
+  }
+ }
+}

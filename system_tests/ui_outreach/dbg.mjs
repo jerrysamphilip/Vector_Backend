@@ -1,0 +1,14 @@
+import { startSuite, getWs, go, body } from './lib.mjs';
+const S = await startSuite('dbg');
+const ws = await getWs('shell');
+const { page, w } = await S.open(ws, 'owner');
+await go(page, '/app/dashboard');
+const dlg = page.getByRole('dialog', { name: 'Help' });
+await page.locator('body').click({ position: { x: 700, y: 400 } });
+await page.keyboard.press('?'); await page.waitForTimeout(500);
+console.log('after ?', await dlg.isVisible());
+await page.keyboard.press('Shift+/'); await page.waitForTimeout(500);
+console.log('after shift+/', await dlg.isVisible());
+await page.keyboard.press('F1'); await page.waitForTimeout(500);
+console.log('after F1', await dlg.isVisible());
+await S.done();

@@ -1,11 +1,11 @@
 {
   "suite": "reports_platform",
   "counts": {
-    "PASS": 93,
-    "FAIL": 3,
-    "BLOCKED": 9
+    "PASS": 92,
+    "FAIL": 1,
+    "BLOCKED": 12
   },
-  "seconds": 146.8,
+  "seconds": 139.2,
   "cases": [
     {
       "id": "RP-001",
@@ -171,9 +171,9 @@
     {
       "id": "RP-032",
       "title": "Funnel 'from first step' percentages stay within 0-100% (same rule as step ratios)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "from_first above 100%: lead=140.0, opportunity=260.0 (app/routers/sales_reports_router.py funnel(): from_previous is capped at 100 but from_first is not)"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "RP-033",
@@ -268,7 +268,7 @@
     },
     {
       "id": "RP-052",
-      "title": "Default forecast year is the current FY (2026) for today 2026-10-10",
+      "title": "Default forecast year is the current FY (2026) for today 2026-10-11",
       "status": "PASS",
       "category": "",
       "detail": ""
@@ -409,9 +409,9 @@
     {
       "id": "RP-114",
       "title": "Campaign analytics (v1 reports) refuse a BD manager reading another team's rep (user_id filter)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "/reports/dashboard-summary?user_id=<other team rep> -> 200; campaign-comparison -> 200 (app/routers/reports_router.py only forces AGENTs to their own id; MANAGERs may pass any user_id)"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "RP-115",
@@ -551,7 +551,7 @@
       "title": "Email notification actually delivered to the user's mailbox",
       "status": "BLOCKED",
       "category": "env",
-      "detail": "SENDER_EMAIL is empty in the worker; local stack has no mail sink - verify in UAT"
+      "detail": "SENDER_EMAIL is set in the worker; local stack has no mail sink - verify in UAT"
     },
     {
       "id": "RP-091",
@@ -717,30 +717,30 @@
     {
       "id": "RP-131",
       "title": "25 concurrent users x 60s mixed reads: 0% errors and p95 < 3 s",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "{\"users\": 25, \"seconds\": 60, \"requests\": 2799, \"rps\": 46.6, \"p50_ms\": 3, \"p95_ms\": 1080, \"max_ms\": 2962, \"error_rate_pct\": 56.13, \"errors_sample\": [\"/contacts?page_size=50:exc RemoteDisconnected\", \"/sales-reports/funnel:exc RemoteDisconnected\", \"/sales-reports/leaderboard:exc RemoteDisconnected\", \"/opportunities?page_size=50:exc RemoteDisconnected\", \"/sales-reports/forecast:exc RemoteDisconnected\""
     },
     {
       "id": "RP-140",
-      "title": "Login: 10 wrong passwords lock the account; even the right password gets 429 with Retry-After (~15 min)",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "title": "Login lockout (opt-in: set RP_RATELIMIT=1)",
+      "status": "BLOCKED",
+      "category": "env",
+      "detail": "skipped: would lock the shared client IP out of logins"
     },
     {
       "id": "RP-141",
-      "title": "Login: per-IP limit (60 attempts / 5 min) answers 429 from the 61st attempt",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "title": "Per-IP login limit (opt-in: set RP_RATELIMIT=1)",
+      "status": "BLOCKED",
+      "category": "env",
+      "detail": "skipped: would lock the shared client IP out of logins"
     },
     {
       "id": "RP-142",
-      "title": "Per-IP limits cannot be bypassed by sending a different X-Forwarded-For on the published API port",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "A new X-Forwarded-For value from the same client gets 401 (not 429): client_ip() in app/core/rate_limit.py trusts the right-most X-Forwarded-For hop, which the client controls when it calls :8191 directly (TRUSTED_PROXY_HOPS=1, no proxy in front)"
+      "title": "X-Forwarded-For spoofing (opt-in: set RP_RATELIMIT=1)",
+      "status": "BLOCKED",
+      "category": "env",
+      "detail": "skipped: would lock the shared client IP out of logins"
     }
   ]
 }

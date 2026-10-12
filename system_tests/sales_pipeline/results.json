@@ -1,11 +1,11 @@
 {
   "suite": "Sales hierarchy, daily limit, leads & pipeline (BRD 5.4-5.7)",
   "counts": {
-    "PASS": 90,
-    "FAIL": 6,
+    "PASS": 92,
+    "FAIL": 4,
     "BLOCKED": 0
   },
-  "seconds": 722.1,
+  "seconds": 550.6,
   "cases": [
     {
       "id": "SP-001",
@@ -290,9 +290,9 @@
     {
       "id": "SP-066",
       "title": "SQL queue (BD view): only SQL leads of the team, with owner, age, next step & overdue flag, by-owner summary",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "in=True other_team=False only_sql=True team=True mine={'owner_name': 'Agoneaabf133 Test', 'sql_age_days': -1, 'next_step': 'Send pricing', 'next_step_overdue': True}"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "SP-067",
@@ -542,9 +542,9 @@
     {
       "id": "SP-131",
       "title": "BD manager enrolls an exec's contacts while the exec is at 500: user is told the first emails will wait",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "HTTP 200 enrolled=2 rejected={} notice=None"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "SP-132",
@@ -584,9 +584,9 @@
     {
       "id": "SP-137",
       "title": "Enrolling past the remaining quota returns a notice (1 left, 2 wait); within quota \u2192 no notice",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "200 \"Only 1 of today's 500 new contacts remain for you, so 2 first email(s) will go out on the following day(s). Follow-ups are not limited.\" | 200 {'enrolled_count': 2, 'rejected_count': 0, 'rejected_summary': {}, 'rejected': [], 'daily_limit_notice': None}"
     },
     {
       "id": "SP-138",
@@ -600,28 +600,28 @@
       "title": "Worker: 501st new contact's first email is held (QUEUED, DAILY_NEW_CONTACT_LIMIT) and rescheduled to tomorrow",
       "status": "FAIL",
       "category": "defect",
-      "detail": "row=QUEUED|-|2026-10-10|-"
+      "detail": "row=QUEUED|-|2026-10-11|-"
     },
     {
       "id": "SP-140",
       "title": "Worker: a follow-up for the same user at the limit is not held by the daily limit (it proceeds to send)",
       "status": "FAIL",
       "category": "test-issue",
-      "detail": "follow-up never processed within 120 s: QUEUED|-|2026-10-10|-"
+      "detail": "follow-up never processed within 120 s: QUEUED|-|2026-10-11|-"
     },
     {
       "id": "SP-141",
       "title": "Worker reopens the disqualified lead (\u2192 NEW), notifies the owner and logs the change",
       "status": "FAIL",
       "category": "defect",
-      "detail": "back=False kinds=['ASSIGNED', 'ASSIGNED']"
+      "detail": "back=False kinds=['STALE_DEAL', 'ASSIGNED', 'ASSIGNED']"
     },
     {
       "id": "SP-142",
       "title": "Overdue deal raises a STALE_DEAL notification for its owner within a worker cycle",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "no STALE_DEAL notification within 170 s"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "SP-151",

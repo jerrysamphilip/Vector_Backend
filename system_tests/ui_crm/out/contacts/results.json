@@ -1,0 +1,18 @@
+{
+  "suite": "ui_crm contacts",
+  "counts": {
+    "PASS": 1,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 11,
+  "cases": [
+    {
+      "id": "UIC-CON-13",
+      "title": "Filter builder: nested group  stage=Lead AND (country=US OR tag=hot)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

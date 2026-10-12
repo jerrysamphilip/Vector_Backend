@@ -1,11 +1,11 @@
 {
   "suite": "Outreach (BR-DF / \u00a75.3 / \u00a77)",
   "counts": {
-    "PASS": 93,
-    "FAIL": 7,
+    "PASS": 94,
+    "FAIL": 6,
     "BLOCKED": 3
   },
-  "seconds": 285.0,
+  "seconds": 124.2,
   "cases": [
     {
       "id": "OUT-001",
@@ -73,9 +73,9 @@
     {
       "id": "OUT-102",
       "title": "Permanent erasure (DELETE /prospects/{id}) removes the contact and logs the deletion",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "DELETE -> 200 {'status': 'deleted', 'prospect_id': '8ec03eec-978d-4e8e-9af3-cd9dc0a13dd0'}; row gone=True; audit_logs+property_changes rows for id=0 (contact_service.delete_contacts also deletes the contact's property_changes; nothing writes audit_logs)"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "OUT-103a",
@@ -94,9 +94,9 @@
     {
       "id": "OUT-011",
       "title": "Upload: syntactically invalid email addresses are rejected with a reason",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "accepted as valid: [\"row7 'broken-48797b@' -> ACCEPTED\", \"row8 'has space-48797b@acme-48797b.example' -> ACCEPTED\"] (utils/email_utils.py parse_email only checks for '@' and a non-personal domain)"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "OUT-103",
@@ -143,9 +143,9 @@
     {
       "id": "OUT-015",
       "title": "Bulk list enrollment into an ACTIVE campaign schedules emails for the new contacts",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "POST /campaigns/{id}/enrollments/bulk -> 200 enrolled=2; email_messages for them=0 (prospect_list_router.enroll_prospects adds CampaignProspect rows but never calls _preschedule_all_emails, unlike CampaignEmailService.enroll_prospects_with_report)"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "OUT-083b",
@@ -444,9 +444,9 @@
     {
       "id": "OUT-074",
       "title": "Every domain that sent in the last 24h had its health recomputed within the last hour",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "stale=[['acme-dbfd42.example', '2026-10-10 17:54:59']] missing_rows=[['acme-48797b.example'], ['acme-ddeecc.io'], ['acme-10eee3.example']]"
     },
     {
       "id": "OUT-078",
@@ -472,9 +472,9 @@
     {
       "id": "OUT-031",
       "title": "Configured pace (100 new contacts/day) spreads 500 contacts over 5 business days",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "per day: [['2026-11-02', '200'], ['2026-11-03', '100'], ['2026-11-04', '100'], ['2026-11-05', '100']]"
     },
     {
       "id": "OUT-032",
@@ -565,7 +565,7 @@
       "title": "A redelivered (duplicate) SES event is processed once",
       "status": "FAIL",
       "category": "defect",
-      "detail": "first=(200, {'status': 'processed', 'type': 'delivery', 'emails': ['evt2-48797b@acme-48797b.example']}) second=(200, {'status': 'duplicate', 'type': 'Delivery'}) delivered_events=0"
+      "detail": "first=(200, {'status': 'processed', 'type': 'delivery', 'emails': ['evt2-ee7984@acme-ee7984.example']}) second=(200, {'status': 'duplicate', 'type': 'Delivery'}) delivered_events=0"
     },
     {
       "id": "OUT-043",

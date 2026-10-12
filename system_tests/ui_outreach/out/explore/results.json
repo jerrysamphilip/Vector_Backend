@@ -1,0 +1,10 @@
+{
+  "suite": "UI outreach/admin - explore",
+  "counts": {
+    "PASS": 0,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 6,
+  "cases": []
+}

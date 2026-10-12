@@ -1,6 +1,6 @@
 # reports_platform results
 
-PASS 93 · FAIL 3 · BLOCKED 9
+PASS 92 · FAIL 1 · BLOCKED 12
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -27,7 +27,7 @@ PASS 93 · FAIL 3 · BLOCKED 9
 | RP-028 | Pipeline totals reconcile: report = /pipeline/revenue = sum of /opportunities (open) | PASS |  |  |
 | RP-030 | Funnel sent>replied>lead>SQL>opportunity>won counts exact (owner) | PASS |  |  |
 | RP-031 | Funnel step conversion = count / previous step x 100 (none shown above 100%) | PASS |  |  |
-| RP-032 | Funnel 'from first step' percentages stay within 0-100% (same rule as step ratios) | FAIL | defect | from_first above 100%: lead=140.0, opportunity=260.0 (app/routers/sales_reports_router.py funnel(): from_previous is capped at 100 but from_first is not) |
+| RP-032 | Funnel 'from first step' percentages stay within 0-100% (same rule as step ratios) | PASS |  |  |
 | RP-033 | Funnel sent>replied>lead>SQL>opportunity>won counts exact (bd1) | PASS |  |  |
 | RP-040 | Quarter-wise forecast FY 2026-27: won, open, weighted, lost, forecast per quarter exact | PASS |  |  |
 | RP-041 | Fiscal quarters are Apr-Jun, Jul-Sep, Oct-Dec, Jan-Mar with labels 'Qn FY 2026-27' | PASS |  |  |
@@ -41,7 +41,7 @@ PASS 93 · FAIL 3 · BLOCKED 9
 | RP-049 | Forecast member filter (BD head) = that head's team only | PASS |  |  |
 | RP-050 | Forecast is scoped to the caller's hierarchy (BD, executive, report, L1) | PASS |  |  |
 | RP-051 | Forecast carries quarter/FY targets and attainment = won / target x 100 | PASS |  |  |
-| RP-052 | Default forecast year is the current FY (2026) for today 2026-10-10 | PASS |  |  |
+| RP-052 | Default forecast year is the current FY (2026) for today 2026-10-11 | PASS |  |  |
 | RP-053 | Invalid fy parameter is rejected (422) | PASS |  |  |
 | RP-060 | Team scorecard per rep: activities, emails, leads, SQLs, deals, won, lost, pipeline exact | PASS |  |  |
 | RP-061 | Team totals and stage conversion rates (lead->SQL, SQL->opportunity, win rate) exact | PASS |  |  |
@@ -61,7 +61,7 @@ PASS 93 · FAIL 3 · BLOCKED 9
 | RP-111 | Other tenant's reports contain only its own data (exact totals; ours excluded) and ours exclude its 99,999 | PASS |  |  |
 | RP-112 | Cross-tenant object access (deal, timeline, saved report, target write) returns 404 | PASS |  |  |
 | RP-113 | Hierarchy: users cannot widen any report to a peer's or their manager's data (404) | PASS |  |  |
-| RP-114 | Campaign analytics (v1 reports) refuse a BD manager reading another team's rep (user_id filter) | FAIL | defect | /reports/dashboard-summary?user_id=<other team rep> -> 200; campaign-comparison -> 200 (app/routers/reports_router.py only forces AGENTs to their own id; MANAGERs may pass any user_id) |
+| RP-114 | Campaign analytics (v1 reports) refuse a BD manager reading another team's rep (user_id filter) | PASS |  |  |
 | RP-115 | Role checks: agents cannot change sales settings, workflow rules, products or their own target; a BD manager can set targets only inside their team | PASS |  |  |
 | RP-088 | Targets per rep per quarter: list is scoped to the caller's team with quarter amounts | PASS |  |  |
 | RP-100 | Quote lines: qty x unit price less line discount; proposal amount = line total (3 x 1,200 -10% + 500) | PASS |  |  |
@@ -81,7 +81,7 @@ PASS 93 · FAIL 3 · BLOCKED 9
 | RP-084b | Stale deals: no activity for N days or past close date are flagged (list filter + flag) | PASS |  |  |
 | RP-086 | In-app notifications: assignment alerts reach the new owner; mark-as-read lowers unread count | PASS |  |  |
 | RP-087 | Email notifications: preference saved and the worker's email loop processes the notification | PASS |  |  |
-| RP-087b | Email notification actually delivered to the user's mailbox | BLOCKED | env | SENDER_EMAIL is empty in the worker; local stack has no mail sink - verify in UAT |
+| RP-087b | Email notification actually delivered to the user's mailbox | BLOCKED | env | SENDER_EMAIL is set in the worker; local stack has no mail sink - verify in UAT |
 | RP-091 | Template library: merge fields fill from the contact; shared within tenant, 404 across tenants, only owner/admin may edit | PASS |  |  |
 | RP-080 | One-click lead from a campaign reply: lead linked to contact, owner and campaign; duplicate refused | PASS |  |  |
 | RP-081 | Disqualified lead keeps its reason and a recycle date (30 days) and shows in the report | PASS |  |  |
@@ -105,7 +105,7 @@ PASS 93 · FAIL 3 · BLOCKED 9
 | RP-153 | UI: team performance lists every rep with revenue won as the API | PASS |  | 12 values matched |
 | RP-154 | UI: targets & leaderboard tab shows rep targets as the API | PASS |  | 5 values matched |
 | RP-155 | UI: dashboard and every report tab render without page errors or 5xx responses | PASS |  |  |
-| RP-131 | 25 concurrent users x 60s mixed reads: 0% errors and p95 < 3 s | PASS |  |  |
-| RP-140 | Login: 10 wrong passwords lock the account; even the right password gets 429 with Retry-After (~15 min) | PASS |  |  |
-| RP-141 | Login: per-IP limit (60 attempts / 5 min) answers 429 from the 61st attempt | PASS |  |  |
-| RP-142 | Per-IP limits cannot be bypassed by sending a different X-Forwarded-For on the published API port | FAIL | defect | A new X-Forwarded-For value from the same client gets 401 (not 429): client_ip() in app/core/rate_limit.py trusts the right-most X-Forwarded-For hop, which the client controls when it calls :8191 directly (TRUSTED_PROXY_HOPS=1, no proxy in front) |
+| RP-131 | 25 concurrent users x 60s mixed reads: 0% errors and p95 < 3 s | FAIL | defect | {"users": 25, "seconds": 60, "requests": 2799, "rps": 46.6, "p50_ms": 3, "p95_ms": 1080, "max_ms": 2962, "error_rate_pct": 56.13, "errors_sample": ["/contacts?page_size=50:exc RemoteDisconnected", "/sales-reports/funnel:exc RemoteDisconnected", "/sales-reports/leaderboard:exc RemoteDisconnected", "/opportunities?page_size=50:exc RemoteDisconnected", "/sales-reports/forecast:exc RemoteDisconnected" |
+| RP-140 | Login lockout (opt-in: set RP_RATELIMIT=1) | BLOCKED | env | skipped: would lock the shared client IP out of logins |
+| RP-141 | Per-IP login limit (opt-in: set RP_RATELIMIT=1) | BLOCKED | env | skipped: would lock the shared client IP out of logins |
+| RP-142 | X-Forwarded-For spoofing (opt-in: set RP_RATELIMIT=1) | BLOCKED | env | skipped: would lock the shared client IP out of logins |

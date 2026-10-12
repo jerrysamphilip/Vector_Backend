@@ -1,6 +1,6 @@
 # Sales hierarchy, daily limit, leads & pipeline (BRD 5.4-5.7) results
 
-PASS 90 · FAIL 6 · BLOCKED 0
+PASS 92 · FAIL 4 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -44,7 +44,7 @@ PASS 90 · FAIL 6 · BLOCKED 0
 | SP-063 | Lead stage ↔ lifecycle: NEW/CONTACTED=LEAD, ENGAGED=MQL, moving back never downgrades the contact | PASS |  |  |
 | SP-064 | Set CONVERTED directly / unknown stage / disqualify without reason → 400; stage unchanged | PASS |  |  |
 | SP-065 | SQL needs all four BANT criteria; missing ones are named; once met: SQL, qualified_at set, contact → SQL | PASS |  |  |
-| SP-066 | SQL queue (BD view): only SQL leads of the team, with owner, age, next step & overdue flag, by-owner summary | FAIL | defect | in=True other_team=False only_sql=True team=True mine={'owner_name': 'Agoneaabf133 Test', 'sql_age_days': -1, 'next_step': 'Send pricing', 'next_step_overdue': True} |
+| SP-066 | SQL queue (BD view): only SQL leads of the team, with owner, age, next step & overdue flag, by-owner summary | PASS |  |  |
 | SP-067 | SQL queue tracks age (oldest first, >14-day count) and filters by owner | PASS |  |  |
 | SP-068 | Lead board: one column per open stage, each open lead in exactly its stage column; closed stages on request | PASS |  |  |
 | SP-069 | Invariant: no lead in the workspace without a stage or an owner (DB check) | PASS |  |  |
@@ -80,18 +80,18 @@ PASS 90 · FAIL 6 · BLOCKED 0
 | SP-120 | Exec journey NEW→CONTACTED→ENGAGED→BANT→SQL→(in BD queue)→convert→stages→proposal accepted→won; contact CUSTOMER; Head sees it; BD won total includes it | PASS |  |  |
 | SP-121 | Reply-to-loss journey: deal keeps the reply's campaign (ROI link), lead link and LOST with reason | PASS |  |  |
 | SP-130 | User with no first emails today: limit 500, used 0, remaining 500, not reached | PASS |  |  |
-| SP-131 | BD manager enrolls an exec's contacts while the exec is at 500: user is told the first emails will wait | FAIL | defect | HTTP 200 enrolled=2 rejected={} notice=None |
+| SP-131 | BD manager enrolls an exec's contacts while the exec is at 500: user is told the first emails will wait | PASS |  |  |
 | SP-132 | At 499 new contacts (plus 20 follow-ups today and 7 yesterday): used 499, remaining 1, not reached | PASS |  |  |
 | SP-133 | At exactly 500: reached, remaining 0, and the user is told (message mentions 500 and follow-ups) | PASS |  |  |
 | SP-134 | Another user's 500 first emails don't consume this user's quota | PASS |  |  |
 | SP-135 | First emails to unowned contacts count for the campaign creator | PASS |  |  |
 | SP-136 | Held-for-tomorrow count and message tell the user how many first emails were queued for the next day | PASS |  |  |
-| SP-137 | Enrolling past the remaining quota returns a notice (1 left, 2 wait); within quota → no notice | PASS |  |  |
+| SP-137 | Enrolling past the remaining quota returns a notice (1 left, 2 wait); within quota → no notice | FAIL | defect | 200 "Only 1 of today's 500 new contacts remain for you, so 2 first email(s) will go out on the following day(s). Follow-ups are not limited." \| 200 {'enrolled_count': 2, 'rejected_count': 0, 'rejected_summary': {}, 'rejected': [], 'daily_limit_notice': None} |
 | SP-138 | Importing 3 contacts for a user at the limit leaves used_today unchanged (only first sends count) | PASS |  |  |
-| SP-139 | Worker: 501st new contact's first email is held (QUEUED, DAILY_NEW_CONTACT_LIMIT) and rescheduled to tomorrow | FAIL | defect | row=QUEUED\|-\|2026-10-10\|- |
-| SP-140 | Worker: a follow-up for the same user at the limit is not held by the daily limit (it proceeds to send) | FAIL | test-issue | follow-up never processed within 120 s: QUEUED\|-\|2026-10-10\|- |
-| SP-141 | Worker reopens the disqualified lead (→ NEW), notifies the owner and logs the change | FAIL | defect | back=False kinds=['ASSIGNED', 'ASSIGNED'] |
-| SP-142 | Overdue deal raises a STALE_DEAL notification for its owner within a worker cycle | FAIL | defect | no STALE_DEAL notification within 170 s |
+| SP-139 | Worker: 501st new contact's first email is held (QUEUED, DAILY_NEW_CONTACT_LIMIT) and rescheduled to tomorrow | FAIL | defect | row=QUEUED\|-\|2026-10-11\|- |
+| SP-140 | Worker: a follow-up for the same user at the limit is not held by the daily limit (it proceeds to send) | FAIL | test-issue | follow-up never processed within 120 s: QUEUED\|-\|2026-10-11\|- |
+| SP-141 | Worker reopens the disqualified lead (→ NEW), notifies the owner and logs the change | FAIL | defect | back=False kinds=['STALE_DEAL', 'ASSIGNED', 'ASSIGNED'] |
+| SP-142 | Overdue deal raises a STALE_DEAL notification for its owner within a worker cycle | PASS |  |  |
 | SP-151 | UI (BD manager): Leads screen shows own team leads and no other team | PASS |  | missing=[] leaked=[] |
 | SP-152 | UI (BD manager): SQL queue shows own team SQLs only | PASS |  | missing=[] leaked=[] |
 | SP-153 | UI (BD manager): Deals screen shows team deals only | PASS |  | missing=[] leaked=[] |

@@ -1,0 +1,144 @@
+{
+  "suite": "UI outreach/admin - campaigns_list",
+  "counts": {
+    "PASS": 13,
+    "FAIL": 6,
+    "BLOCKED": 0
+  },
+  "seconds": 78,
+  "cases": [
+    {
+      "id": "UIO-CAMP-HOME-01",
+      "title": "Home (My day rail) renders empty state for a new workspace: \"Nothing due today\", no stale deals",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-EMPTY",
+      "title": "Campaigns list empty state: \"No campaigns yet\" + Create New Campaign button works",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-CAMP-DASH-EMPTY",
+      "title": "Campaign analytics (Dashboard) empty workspace: zeros not NaN, range buttons render",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-CAMP-HOME-02",
+      "title": "Home My day rail lists a due task; ticking it marks it DONE in the DB and removes it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-01",
+      "title": "Campaigns list shows every campaign with correct status badge and prospect count (matches DB)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-02",
+      "title": "Search filters rows (server-side, debounced) and clearing restores; no-match shows empty state",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-03",
+      "title": "Column picker toggles columns, persists in localStorage across reload, Reset restores defaults",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-04",
+      "title": "Row Pause on ACTIVE campaign -> PAUSED (DB + badge), Resume -> ACTIVE",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-CAMP-LIST-05",
+      "title": "Delete: cancelling the confirm keeps the campaign; accepting removes it (UI + DB)",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "locator.click: Error: strict mode violation: locator('tbody tr').filter({ hasText: 'Delta Delete db94ff' }).first().getByTitle('Delete') resolved to 2 elements:"
+    },
+    {
+      "id": "UIO-CAMP-LIST-06",
+      "title": "Row click: DRAFT opens the wizard in edit mode, ACTIVE opens details; View icon opens details",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "locator.click: Timeout 12000ms exceeded."
+    },
+    {
+      "id": "UIO-CAMP-LIST-07",
+      "title": "Select-all + bulk bar: Pause selected (confirm) pauses active campaigns in DB; clear selection",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "statuses ACTIVE/PAUSED"
+    },
+    {
+      "id": "UIO-CAMP-LIST-08",
+      "title": "Pause API failure surfaces feedback to the user (not silent)",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "API error on pause shown nowhere (silent failure)"
+    },
+    {
+      "id": "UIO-CAMP-LIST-09",
+      "title": "Campaigns list: API 500 shows an explicit error (not the empty state)",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "no error message: {\"detail\":\"x\"}"
+    },
+    {
+      "id": "UIO-CAMP-DASH-01",
+      "title": "Dashboard shows real totals for the workspace (campaign count, status breakdown) consistent with DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-CAMP-DASH-02",
+      "title": "Dashboard range buttons (Daily/Weekly/Monthly/Yearly) change the chart without errors; alerts bell opens",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-CAMP-DASH-03",
+      "title": "Dashboard campaign table lists campaigns; rows and \"View Campaigns\" navigate",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-CAMP-DASH-04",
+      "title": "Dashboard API failure (global-analytics/dashboard-summary 500) degrades without crash",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-CAMP-ROLE-mgr",
+      "title": "MANAGER sees the campaigns list and can open a campaign (manage_campaigns)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIO-CAMP-ROLE-agent-dash",
+      "title": "AGENT on Campaign analytics: page shows a clear state (no raw 403 errors / crash)",
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "http 403 GET /vector/api/reports/global-analytics?start_date=2026-05-01&end_date=2026-10-11&granularity=daily ; console: Failed to load resource: the server responded with a status of 403 (Forbidden) ; http 403 GET /vector/api/reports/global-analytics?start_date=2026-05-01&end_date=2026-10-11&granularity=daily ; console: Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    }
+  ]
+}

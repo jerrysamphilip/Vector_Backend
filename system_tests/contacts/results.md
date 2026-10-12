@@ -1,6 +1,6 @@
 # Contact Management (BRD §5.2) results
 
-PASS 86 · FAIL 7 · BLOCKED 4
+PASS 92 · FAIL 1 · BLOCKED 4
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -15,8 +15,8 @@ PASS 86 · FAIL 7 · BLOCKED 4
 | CM-009 | Company domain is unique per workspace; duplicate name rejected (BR-CM-03) | PASS |  |  |
 | CM-010 | Company auto-created from email domain; colleagues auto-associated (BR-CM-04) | PASS |  |  |
 | CM-011 | Personal email domains don't create a company; company name is used instead (BR-CM-04) | PASS |  |  |
-| CM-012 | Contact on a soft-deleted company's domain can still be created (BR-CM-04 edge) | FAIL | defect | POST /contacts after deleting company of ghostco-e5a905.com -> 500 {'success': False, 'error': 'An unexpected system error occurred', 'code': 'INTERNAL_SERVER_ERROR'} |
-| CM-013 | Import row on a soft-deleted company's domain is not linked to the deleted company (BR-CM-04 edge) | FAIL | defect | import=201 created=1; contact linked to account with deleted_at='2026-10-10 17:56:10' |
+| CM-012 | Contact on a soft-deleted company's domain can still be created (BR-CM-04 edge) | PASS |  |  |
+| CM-013 | Import row on a soft-deleted company's domain is not linked to the deleted company (BR-CM-04 edge) | PASS |  |  |
 | CM-014 | Contact linked to several companies with primary + association labels (BR-CM-05) | BLOCKED | not-implemented | Contact has a single account_id; no multi-company association or labels in API/schema |
 | CM-015 | Renaming a company updates its contacts' company name (BR-CM-03) | PASS |  |  |
 | CM-016 | All 8 lifecycle stages on contacts and companies; invalid rejected (BR-CM-06) | PASS |  |  |
@@ -28,7 +28,7 @@ PASS 86 · FAIL 7 · BLOCKED 4
 | CM-022 | Custom property values are validated and normalised by type (BR-CM-09) | PASS |  |  |
 | CM-023 | Users without manage permission cannot create properties (BR-CM-09/38) | PASS |  |  |
 | CM-024 | Required property enforced on create via UI/API (BR-CM-10) | PASS |  |  |
-| CM-024b | Required property also enforced for contacts created by import (BR-CM-10) | FAIL | defect | import status=201 contacts_created=1 (row lacking required 'Must Have e5a905' was accepted) |
+| CM-024b | Required property also enforced for contacts created by import (BR-CM-10) | PASS |  |  |
 | CM-025 | Property change history keeps old/new value, user, time, source (BR-CM-11) | PASS |  |  |
 | CM-026 | Custom property and owner changes are in history with readable values (BR-CM-11) | PASS |  |  |
 | CM-027 | Record page payload: properties, company, lists, campaigns, stats in one call (BR-CM-12) | PASS |  |  |
@@ -50,7 +50,7 @@ PASS 86 · FAIL 7 · BLOCKED 4
 | CM-043 | Active list membership updates automatically from filter criteria (BR-CM-22) | PASS |  |  |
 | CM-044 | Active list rejects manual members and empty criteria (BR-CM-22) | PASS |  |  |
 | CM-045 | Static list holds a fixed set; add/remove; deleted contacts excluded (BR-CM-23) | PASS |  |  |
-| CM-046b | Campaign wizard list endpoint GET /campaigns/lists is reachable (BR-CM-24) | FAIL | defect | GET /campaigns/lists -> 404 'Campaign not found' (shadowed by GET /campaigns/{campaign_id}) |
+| CM-046b | Campaign wizard list endpoint GET /campaigns/lists is reachable (BR-CM-24) | FAIL | defect | GET /campaigns/lists -> 500 'Campaign not found' (shadowed by GET /campaigns/{campaign_id}) |
 | CM-046 | Static and active lists can be used as a campaign audience (BR-CM-24, integration) | PASS |  |  |
 | CM-047 | Import preview suggests a column mapping (BR-CM-26) | PASS |  |  |
 | CM-048 | Import contacts + companies in one CSV with associations, new property, rejected-row reasons (BR-CM-25/26/29) | PASS |  |  |
@@ -65,7 +65,7 @@ PASS 86 · FAIL 7 · BLOCKED 4
 | CM-057 | Import → property history → search index (integration) | PASS |  |  |
 | CM-058 | Export a filtered view to CSV with chosen columns (BR-CM-31) | PASS |  |  |
 | CM-059 | Export to XLSX (BR-CM-31) | PASS |  |  |
-| CM-060 | Export restricted to admins and managers (BR-CM-31) | FAIL | defect | agent=403 admin=200 manager(default perms)=403 b'{"detail":"Only admins and managers can export contacts"}' |
+| CM-060 | Export restricted to admins and managers (BR-CM-31) | PASS |  |  |
 | CM-061 | Export neutralises spreadsheet formula injection (BR-CM-31, security) | PASS |  |  |
 | CM-062 | Duplicate detection: same email variants and similar name at same company (BR-CM-32) | PASS |  |  |
 | CM-063 | Merge keeps chosen values, combines timeline, tasks, lists, tags, history (BR-CM-33, integration) | PASS |  |  |
@@ -86,12 +86,12 @@ PASS 86 · FAIL 7 · BLOCKED 4
 | CM-078 | Unsubscribe link in a campaign email updates the CRM contact (BR-CM-39, integration) | PASS |  |  |
 | CM-079 | Consent and legal basis recorded per contact (BR-CM-40) | PASS |  |  |
 | CM-080 | Erasure removes the contact and all dependent personal data (§7 GDPR/DPDP) | PASS |  |  |
-| CM-080b | Erasure is logged (who/when/which record) (§7 'deletion logged') | FAIL | defect | audit_logs+property_changes rows for erased id=0; DELETE /prospects/{id} writes no log |
+| CM-080b | Erasure is logged (who/when/which record) (§7 'deletion logged') | PASS | defect |  |
 | CM-081 | Market Research journey: import → filter view → assign owners → list → campaign → export (BR-CM-41) | PASS |  |  |
 | CM-082 | Company data enrichment from the domain (BR-CM-42, Could) | BLOCKED | not-implemented | no enrichment endpoint; company created from domain keeps industry/size/location empty |
 | CM-083 | Contact scoring on fit and engagement (BR-CM-43, Could) | BLOCKED | not-implemented | no fit/engagement score on contact payload, filters or sort (only AI persona classification) |
 | CM-084 | Acceptance: 1,000-row contact+company file imports < 10 s with associations and per-row reasons (§5.2) | PASS |  |  |
-| CM-085 | Single-column CSV (just an Email column) imports correctly (BR-CM-25) | FAIL | defect | preview headers=['E', 'ail'] sample=[{'E': 'ono-e5a905.co', 'ail': None}, {'E': 'ono-e5a905.co', 'ail': None}, {'E': 'ono-e5a905.co', 'ail': None}]; import=400 {'detail': 'Map an Email column (contacts) or a Company name/domain column (companies)'} |
+| CM-085 | Single-column CSV (just an Email column) imports correctly (BR-CM-25) | PASS |  |  |
 | CM-UI-01 | UI: log in and open the Contacts list (BR-CM-17) | PASS |  | contact visible=true errors=[] |
 | CM-UI-02 | UI: contact record page shows properties, lifecycle and timeline (BR-CM-12) | PASS |  | name=true timeline=true lifecycle=true errors=[] |
 | CM-UI-03 | UI: Import screen renders with a file picker (BR-CM-25) | PASS |  | import text=true file_input=true errors=[] |
