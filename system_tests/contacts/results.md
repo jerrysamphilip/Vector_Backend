@@ -1,6 +1,6 @@
 # Contact Management (BRD §5.2) results
 
-PASS 92 · FAIL 1 · BLOCKED 4
+PASS 93 · FAIL 0 · BLOCKED 4
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -50,7 +50,7 @@ PASS 92 · FAIL 1 · BLOCKED 4
 | CM-043 | Active list membership updates automatically from filter criteria (BR-CM-22) | PASS |  |  |
 | CM-044 | Active list rejects manual members and empty criteria (BR-CM-22) | PASS |  |  |
 | CM-045 | Static list holds a fixed set; add/remove; deleted contacts excluded (BR-CM-23) | PASS |  |  |
-| CM-046b | Campaign wizard list endpoint GET /campaigns/lists is reachable (BR-CM-24) | FAIL | defect | GET /campaigns/lists -> 500 'Campaign not found' (shadowed by GET /campaigns/{campaign_id}) |
+| CM-046b | Campaign wizard list endpoint GET /campaigns/lists is reachable (BR-CM-24) | PASS |  |  |
 | CM-046 | Static and active lists can be used as a campaign audience (BR-CM-24, integration) | PASS |  |  |
 | CM-047 | Import preview suggests a column mapping (BR-CM-26) | PASS |  |  |
 | CM-048 | Import contacts + companies in one CSV with associations, new property, rejected-row reasons (BR-CM-25/26/29) | PASS |  |  |

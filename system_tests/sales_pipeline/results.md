@@ -86,12 +86,12 @@ PASS 92 · FAIL 4 · BLOCKED 0
 | SP-134 | Another user's 500 first emails don't consume this user's quota | PASS |  |  |
 | SP-135 | First emails to unowned contacts count for the campaign creator | PASS |  |  |
 | SP-136 | Held-for-tomorrow count and message tell the user how many first emails were queued for the next day | PASS |  |  |
-| SP-137 | Enrolling past the remaining quota returns a notice (1 left, 2 wait); within quota → no notice | FAIL | defect | 200 "Only 1 of today's 500 new contacts remain for you, so 2 first email(s) will go out on the following day(s). Follow-ups are not limited." \| 200 {'enrolled_count': 2, 'rejected_count': 0, 'rejected_summary': {}, 'rejected': [], 'daily_limit_notice': None} |
+| SP-137 | Enrolling past the remaining quota returns a notice (1 left, 2 wait); within quota → no notice | PASS |  |  |
 | SP-138 | Importing 3 contacts for a user at the limit leaves used_today unchanged (only first sends count) | PASS |  |  |
-| SP-139 | Worker: 501st new contact's first email is held (QUEUED, DAILY_NEW_CONTACT_LIMIT) and rescheduled to tomorrow | FAIL | defect | row=QUEUED\|-\|2026-10-11\|- |
-| SP-140 | Worker: a follow-up for the same user at the limit is not held by the daily limit (it proceeds to send) | FAIL | test-issue | follow-up never processed within 120 s: QUEUED\|-\|2026-10-11\|- |
-| SP-141 | Worker reopens the disqualified lead (→ NEW), notifies the owner and logs the change | FAIL | defect | back=False kinds=['STALE_DEAL', 'ASSIGNED', 'ASSIGNED'] |
-| SP-142 | Overdue deal raises a STALE_DEAL notification for its owner within a worker cycle | PASS |  |  |
+| SP-139 | Worker: 501st new contact's first email is held (QUEUED, DAILY_NEW_CONTACT_LIMIT) and rescheduled to tomorrow | FAIL | defect | row=QUEUED\|-\|2026-10-12\|- |
+| SP-140 | Worker: a follow-up for the same user at the limit is not held by the daily limit (it proceeds to send) | FAIL | test-issue | follow-up never processed within 120 s: QUEUED\|-\|2026-10-12\|- |
+| SP-141 | Worker reopens the disqualified lead (→ NEW), notifies the owner and logs the change | FAIL | defect | back=False kinds=['ASSIGNED', 'ASSIGNED'] |
+| SP-142 | Overdue deal raises a STALE_DEAL notification for its owner within a worker cycle | FAIL | defect | no STALE_DEAL notification within 170 s |
 | SP-151 | UI (BD manager): Leads screen shows own team leads and no other team | PASS |  | missing=[] leaked=[] |
 | SP-152 | UI (BD manager): SQL queue shows own team SQLs only | PASS |  | missing=[] leaked=[] |
 | SP-153 | UI (BD manager): Deals screen shows team deals only | PASS |  | missing=[] leaked=[] |

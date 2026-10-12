@@ -1,11 +1,11 @@
 {
   "suite": "Outreach (BR-DF / \u00a75.3 / \u00a77)",
   "counts": {
-    "PASS": 94,
-    "FAIL": 6,
-    "BLOCKED": 3
+    "PASS": 98,
+    "FAIL": 5,
+    "BLOCKED": 0
   },
-  "seconds": 124.2,
+  "seconds": 503.2,
   "cases": [
     {
       "id": "OUT-001",
@@ -446,7 +446,7 @@
       "title": "Every domain that sent in the last 24h had its health recomputed within the last hour",
       "status": "FAIL",
       "category": "defect",
-      "detail": "stale=[['acme-dbfd42.example', '2026-10-10 17:54:59']] missing_rows=[['acme-48797b.example'], ['acme-ddeecc.io'], ['acme-10eee3.example']]"
+      "detail": "stale=[] missing_rows=[['recipients-0283b0.example'], ['golf-fc83a4.example'], ['foxtrot-fc83a4.example'], ['delta-fc83a4.example'], ['echo-fc83a4.example']]"
     },
     {
       "id": "OUT-078",
@@ -500,9 +500,9 @@
     {
       "id": "OUT-052",
       "title": "Prospect reply is fetched and shown in the unified inbox thread",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "sync 200 {'status': 'success', 'message': 'IMAP sync for last 7 days completed.', 'inbox': 'replies-1db48a@reply-1db48a.example', 'imap_host': '172.18.0.1', 'last_sync_at': '2026-10-12T13:18:32'}; conversation=[{'id': '0fb34669-35a7-4201-998a-fdb0fcda3330', 'prospect_id': '331930d3-90ac-4013-bd51-b53c355d94ab', 'prospect_name': 'Pat Test', 'prospect_email': 'rep1-1db48a@acme-1db48a.example', 'inbox_email': 'replies-1db48a@reply-1db48a.example', 'subject': 'Re: hello', 'last_message_snippet': '<p"
     },
     {
       "id": "OUT-053",
@@ -521,9 +521,9 @@
     {
       "id": "OUT-055",
       "title": "Reply 'unsubscribe' unsubscribes the contact from every campaign",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "consent=OPT_IN"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "OUT-059",
@@ -563,9 +563,9 @@
     {
       "id": "OUT-042",
       "title": "A redelivered (duplicate) SES event is processed once",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "first=(200, {'status': 'processed', 'type': 'delivery', 'emails': ['evt2-ee7984@acme-ee7984.example']}) second=(200, {'status': 'duplicate', 'type': 'Delivery'}) delivered_events=0"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "OUT-043",
@@ -635,7 +635,7 @@
       "title": "Campaign analytics reflect sent emails and events",
       "status": "FAIL",
       "category": "defect",
-      "detail": "200 total_sent=5 metrics={\"sent_count\": 5, \"opened_count\": 1, \"clicked_count\": 1, \"replied_count\": 0, \"positive_replied_count\": 0, \"ooo_count\": 0, \"bounced_count\": 1, \"sender_bounced_count\": 1, \"unsubscribed_count\": 1, \"open_"
+      "detail": "200 db_sent=7 total_sent=5 metrics={\"sent_count\": 5, \"opened_count\": 1, \"clicked_count\": 1, \"replied_count\": 0, \"positive_replied_count\": 0, \"ooo_count\": 0, \"bounced_count\": 1, \"sender_bounced_count\": 1, \"unsubscribed_count\": 1, \"open_"
     },
     {
       "id": "OUT-120",
@@ -702,24 +702,24 @@
     },
     {
       "id": "OUT-034",
-      "title": "Inbox daily cap reached: email re-queued for later",
-      "status": "BLOCKED",
-      "category": "blocked",
-      "detail": "no time zone is on a US business day right now (weekend/US holiday); the scheduler's business-day send-window guard holds every send, so this path can't be reached; observed ['QUEUED', '']"
+      "title": "Inbox daily cap reached: email re-queued for later, not sent",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "OUT-037",
       "title": "Personal-address recipient blocked before SES with a reason",
-      "status": "BLOCKED",
-      "category": "blocked",
-      "detail": "no time zone is on a US business day right now (weekend/US holiday); the scheduler's business-day send-window guard holds every send, so this path can't be reached; observed ['QUEUED', '']"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "OUT-049",
-      "title": "SES unavailable: retried with backoff, then FAILED with a final status",
-      "status": "BLOCKED",
-      "category": "blocked",
-      "detail": "no time zone is on a US business day right now (weekend/US holiday); the scheduler's business-day send-window guard holds every send, so this path can't be reached; observed ['QUEUED', '']"
+      "title": "SES unavailable: retried with backoff, then FAILED with a final status and reason",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "OUT-057",

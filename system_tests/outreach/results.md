@@ -1,6 +1,6 @@
 # Outreach (BR-DF / §5.3 / §7) results
 
-PASS 94 · FAIL 6 · BLOCKED 3
+PASS 98 · FAIL 5 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -66,7 +66,7 @@ PASS 94 · FAIL 6 · BLOCKED 3
 | OUT-077 | Domain list does not show another workspace's mailboxes or campaigns | PASS |  |  |
 | OUT-075 | After the user resumes an auto-paused campaign it is judged on new sends (one bounce doesn't re-pause) | PASS |  |  |
 | OUT-072 | Two spam complaints auto-pause the campaign within 1 minute | PASS |  |  |
-| OUT-074 | Every domain that sent in the last 24h had its health recomputed within the last hour | FAIL | defect | stale=[['acme-dbfd42.example', '2026-10-10 17:54:59']] missing_rows=[['acme-48797b.example'], ['acme-ddeecc.io'], ['acme-10eee3.example']] |
+| OUT-074 | Every domain that sent in the last 24h had its health recomputed within the last hour | FAIL | defect | stale=[] missing_rows=[['recipients-0283b0.example'], ['golf-fc83a4.example'], ['foxtrot-fc83a4.example'], ['delta-fc83a4.example'], ['echo-fc83a4.example']] |
 | OUT-078 | Pause freezes pending emails (PAUSED_BY_CAMPAIGN); resume releases them | PASS |  |  |
 | OUT-033 | Batch mode: batches of 2, 30 minutes apart | PASS |  |  |
 | OUT-030 | 500-contact campaign: all 500 enrolled and scheduled at launch (no stall near 330) | PASS |  |  |
@@ -74,16 +74,16 @@ PASS 94 · FAIL 6 · BLOCKED 3
 | OUT-032 | Launching the 500-contact campaign completes within 30 seconds | PASS |  |  |
 | OUT-036 | Inbox pace (60 s between emails) can reach the 500/day cap within a day | PASS |  |  |
 | OUT-051 | IMAP connection test succeeds against a reachable mailbox | PASS |  |  |
-| OUT-052 | Prospect reply is fetched and shown in the unified inbox thread | PASS |  |  |
+| OUT-052 | Prospect reply is fetched and shown in the unified inbox thread | FAIL | defect | sync 200 {'status': 'success', 'message': 'IMAP sync for last 7 days completed.', 'inbox': 'replies-1db48a@reply-1db48a.example', 'imap_host': '172.18.0.1', 'last_sync_at': '2026-10-12T13:18:32'}; conversation=[{'id': '0fb34669-35a7-4201-998a-fdb0fcda3330', 'prospect_id': '331930d3-90ac-4013-bd51-b53c355d94ab', 'prospect_name': 'Pat Test', 'prospect_email': 'rep1-1db48a@acme-1db48a.example', 'inbox_email': 'replies-1db48a@reply-1db48a.example', 'subject': 'Re: hello', 'last_message_snippet': '<p |
 | OUT-053 | Reply stops the sequence: enrollment REPLIED, follow-up cancelled | PASS |  |  |
 | OUT-054 | Out-of-office reply is visible but does not stop the sequence | PASS |  |  |
-| OUT-055 | Reply 'unsubscribe' unsubscribes the contact from every campaign | FAIL | defect | consent=OPT_IN |
+| OUT-055 | Reply 'unsubscribe' unsubscribes the contact from every campaign | PASS |  |  |
 | OUT-059 | Mail from another workspace's contact is not filed into either workspace via this mailbox | PASS |  |  |
 | OUT-121 | Reply from the unified inbox creates an outbound message in the thread | PASS |  |  |
 | OUT-056 | Mailbox sign-in failure is reported (sync fails with a reason stored on the inbox) | PASS |  |  |
 | OUT-040 | Delivery event sets final status DELIVERED | PASS |  |  |
 | OUT-041 | Delivery event without our tag is matched by the SES message id | PASS |  |  |
-| OUT-042 | A redelivered (duplicate) SES event is processed once | FAIL | defect | first=(200, {'status': 'processed', 'type': 'delivery', 'emails': ['evt2-ee7984@acme-ee7984.example']}) second=(200, {'status': 'duplicate', 'type': 'Delivery'}) delivered_events=0 |
+| OUT-042 | A redelivered (duplicate) SES event is processed once | PASS |  |  |
 | OUT-043 | Hard bounce after delivery: final status BOUNCED, address suppressed | PASS |  |  |
 | OUT-044 | Soft (transient) bounce does not suppress the contact or change the message status | PASS |  |  |
 | OUT-045 | Complaint: final status COMPLAINED, contact unsubscribed and suppressed | PASS |  |  |
@@ -93,7 +93,7 @@ PASS 94 · FAIL 6 · BLOCKED 3
 | OUT-117 | Open pixel returns an image and records an open event | PASS |  |  |
 | OUT-118a | Click tracking does not redirect to an unrecognised destination (no open redirect) | PASS |  |  |
 | OUT-118b | Click on a link that is in the email is recorded and redirected (302) | PASS |  |  |
-| OUT-119 | Campaign analytics reflect sent emails and events | FAIL | defect | 200 total_sent=5 metrics={"sent_count": 5, "opened_count": 1, "clicked_count": 1, "replied_count": 0, "positive_replied_count": 0, "ooo_count": 0, "bounced_count": 1, "sender_bounced_count": 1, "unsubscribed_count": 1, "open_ |
+| OUT-119 | Campaign analytics reflect sent emails and events | FAIL | defect | 200 db_sent=7 total_sent=5 metrics={"sent_count": 5, "opened_count": 1, "clicked_count": 1, "replied_count": 0, "positive_replied_count": 0, "ooo_count": 0, "bounced_count": 1, "sender_bounced_count": 1, "unsubscribed_count": 1, "open_ |
 | OUT-120 | Prospect report export for a campaign returns a file with the campaign's contacts | PASS |  |  |
 | OUT-123 | Campaign audit trail records the launch | PASS |  |  |
 | OUT-130 | Owner signs in; campaigns, inboxes, unified inbox, prospects, lists, domain-health render without errors | PASS |  |  |
@@ -103,7 +103,7 @@ PASS 94 · FAIL 6 · BLOCKED 3
 | OUT-088 | Send-time gate: a suppression added out-of-band stops the email | PASS |  |  |
 | OUT-060 | A second email for an already-sent step to the same address is cancelled, not sent | PASS |  |  |
 | OUT-035 | Due email outside the campaign send window is held and re-queued, not sent | PASS |  |  |
-| OUT-034 | Inbox daily cap reached: email re-queued for later | BLOCKED | blocked | no time zone is on a US business day right now (weekend/US holiday); the scheduler's business-day send-window guard holds every send, so this path can't be reached; observed ['QUEUED', ''] |
-| OUT-037 | Personal-address recipient blocked before SES with a reason | BLOCKED | blocked | no time zone is on a US business day right now (weekend/US holiday); the scheduler's business-day send-window guard holds every send, so this path can't be reached; observed ['QUEUED', ''] |
-| OUT-049 | SES unavailable: retried with backoff, then FAILED with a final status | BLOCKED | blocked | no time zone is on a US business day right now (weekend/US holiday); the scheduler's business-day send-window guard holds every send, so this path can't be reached; observed ['QUEUED', ''] |
+| OUT-034 | Inbox daily cap reached: email re-queued for later, not sent | PASS |  |  |
+| OUT-037 | Personal-address recipient blocked before SES with a reason | PASS |  |  |
+| OUT-049 | SES unavailable: retried with backoff, then FAILED with a final status and reason | PASS |  |  |
 | OUT-057 | Worker syncs a reply into the inbox within 10 minutes without a manual sync | PASS |  |  |

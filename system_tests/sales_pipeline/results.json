@@ -5,7 +5,7 @@
     "FAIL": 4,
     "BLOCKED": 0
   },
-  "seconds": 550.6,
+  "seconds": 721.8,
   "cases": [
     {
       "id": "SP-001",
@@ -584,9 +584,9 @@
     {
       "id": "SP-137",
       "title": "Enrolling past the remaining quota returns a notice (1 left, 2 wait); within quota \u2192 no notice",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "200 \"Only 1 of today's 500 new contacts remain for you, so 2 first email(s) will go out on the following day(s). Follow-ups are not limited.\" | 200 {'enrolled_count': 2, 'rejected_count': 0, 'rejected_summary': {}, 'rejected': [], 'daily_limit_notice': None}"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "SP-138",
@@ -600,28 +600,28 @@
       "title": "Worker: 501st new contact's first email is held (QUEUED, DAILY_NEW_CONTACT_LIMIT) and rescheduled to tomorrow",
       "status": "FAIL",
       "category": "defect",
-      "detail": "row=QUEUED|-|2026-10-11|-"
+      "detail": "row=QUEUED|-|2026-10-12|-"
     },
     {
       "id": "SP-140",
       "title": "Worker: a follow-up for the same user at the limit is not held by the daily limit (it proceeds to send)",
       "status": "FAIL",
       "category": "test-issue",
-      "detail": "follow-up never processed within 120 s: QUEUED|-|2026-10-11|-"
+      "detail": "follow-up never processed within 120 s: QUEUED|-|2026-10-12|-"
     },
     {
       "id": "SP-141",
       "title": "Worker reopens the disqualified lead (\u2192 NEW), notifies the owner and logs the change",
       "status": "FAIL",
       "category": "defect",
-      "detail": "back=False kinds=['STALE_DEAL', 'ASSIGNED', 'ASSIGNED']"
+      "detail": "back=False kinds=['ASSIGNED', 'ASSIGNED']"
     },
     {
       "id": "SP-142",
       "title": "Overdue deal raises a STALE_DEAL notification for its owner within a worker cycle",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "no STALE_DEAL notification within 170 s"
     },
     {
       "id": "SP-151",
