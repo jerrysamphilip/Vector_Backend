@@ -1,0 +1,447 @@
+{
+ "counts": {
+  "PASS": 66,
+  "FAIL": 6,
+  "BLOCKED": 1
+ },
+ "cases": [
+  {
+   "id": "UIC-CD-01",
+   "title": "Record page renders header, stats, 3 columns of cards",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CD-02",
+   "title": "Change lifecycle stage inline -> persisted, appears as property change with old/new",
+   "status": "FAIL",
+   "detail": "Command failed: docker exec vector-mysql-1 mysql -uvector -pvector outreach_ai -N -e SELECT COUNT(*) FROM property_changes WHERE entity_id='d91cfee3-d0c3-4093-80a9-8761d2b96281' AND field='lifecycle_s"
+  },
+  {
+   "id": "UIC-CD-03",
+   "title": "Change lead status inline persisted",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CD-04",
+   "title": "Edit details: save changes (name, phone, title, company, location) -> DB; Cancel discards",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CD-05",
+   "title": "Edit details: invalid email shows an error and saves nothing",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CD-06",
+   "title": "Tags: add and remove in header persists",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-01",
+   "title": "Contacts list renders 25/60 with pager text and header",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-02",
+   "title": "Pagination next/prev/last page counts and disabled state",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-03",
+   "title": "Sort by name asc/desc matches API order",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-04",
+   "title": "Sort by Email and Company headers",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-05",
+   "title": "Search box filters by name/email/company; empty-state; clear",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-06",
+   "title": "Column chooser hides/shows columns, persists, Reset restores",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-07",
+   "title": "Filter builder: enum (lifecycle stage is Lead) equals DB count",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-08",
+   "title": "Filter builder: AND of two conditions (stage + country text)",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-09",
+   "title": "Filter builder: toggle AND->OR changes result to union",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-10",
+   "title": "Filter builder: tag has tag \"hot\"; \"has no tags\"",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-11",
+   "title": "Filter builder: text contains / starts with / is empty",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-12",
+   "title": "Filter builder: date \"in the last N days\" and owner \"Me\"",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-13",
+   "title": "Filter builder: nested group  stage=Lead AND (country=US OR tag=hot)",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-14",
+   "title": "Filter builder: remove condition / Clear all resets to 60",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-15",
+   "title": "Built-in views from sidebar: My contacts / Unassigned / Recently created",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-16",
+   "title": "Save filtered view -> appears in sidebar & DB; reopening applies filter",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-17",
+   "title": "Rename saved view (Update this view) and persisted",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-18",
+   "title": "Save-view modal: empty name disables Save; Cancel closes",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-19",
+   "title": "Delete saved view removes it from sidebar and DB",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-20",
+   "title": "Board view: lane totals equal DB; drag card to another stage persists",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-21",
+   "title": "Board: admin drags a card backwards (allowed for admins, BR-CM-08) and it persists",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-22",
+   "title": "Board: group by lead status and switch back to table",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-23",
+   "title": "Add contact: empty email -> validation message, nothing created",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-24",
+   "title": "Add contact: invalid email format -> clear error, nothing created",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-25",
+   "title": "Add contact: full form creates contact, company account linked, tags, redirect to detail",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-26",
+   "title": "Add contact: duplicate email -> error + \"Open the existing contact\" link works",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-27",
+   "title": "Add contact: email of a deleted contact -> restore hint (Recently deleted)",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-28",
+   "title": "Add contact modal: Cancel / X close paths, no row created",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-29",
+   "title": "Properties modal: create NUMBER and SELECT custom fields; appear in DB and Add form",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-30",
+   "title": "Properties modal: blank label disables Add; duplicate label error",
+   "status": "FAIL",
+   "detail": "duplicate property label should be rejected with a message (found 2 'Budget' properties)"
+  },
+  {
+   "id": "UIC-CON-31",
+   "title": "Create contact with custom property values; shown in table column + detail; filterable",
+   "status": "FAIL",
+   "detail": "detail shows values"
+  },
+  {
+   "id": "UIC-CON-32",
+   "title": "Properties modal: delete a custom field",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-33",
+   "title": "Bulk: select-all-on-page shows \"25 selected\", Clear selection works",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-34",
+   "title": "Bulk: Edit property (lead status) updates DB for selected only",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-35",
+   "title": "Bulk: Add to new list -> notice and list membership in DB",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-36",
+   "title": "Bulk: Assign owner persists",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-37",
+   "title": "Bulk: Add tag / Remove tag",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-38",
+   "title": "Bulk: Enroll in campaign shows enrolled count + rejection reasons (unsubscribed, invalid)",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-39",
+   "title": "Bulk: Delete (confirm) soft-deletes and notice; appears in Recently deleted",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-40",
+   "title": "Export CSV downloads file whose rows equal the visible filtered set",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-41",
+   "title": "Export XLSX downloads a valid workbook with the same row count",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-42",
+   "title": "Duplicates modal: no duplicates state, then merge with per-property choices",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-43",
+   "title": "AGENT (no manage_prospects): sees only own contacts; no Import/Export/Properties/Duplicates/checkboxes",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-44",
+   "title": "AGENT: direct API refused for bulk/export/merge; own-contact create works without owner field",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-45",
+   "title": "AGENT: cannot open someone else's contact by URL (\"Contact not found\")",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-CON-46",
+   "title": "List API 500 -> page does not crash (graceful state)",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-RD-01",
+   "title": "Recently deleted lists deleted contacts (30 minus purged-window one), paginated, days remaining",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-RD-02",
+   "title": "Search, select-all restore and single restore update DB and the Contacts list",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-RD-03",
+   "title": "Manual purge of a deleted record",
+   "status": "BLOCKED",
+   "detail": "No purge/permanent-delete control on Recently deleted (items expire after 90 days)"
+  },
+  {
+   "id": "UIC-RD-04",
+   "title": "AGENT without manage_prospects: page not reachable, API refused",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-SAL-01",
+   "title": "Leads split view lists open leads; stage chips filter; counts equal DB",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-SAL-02",
+   "title": "Leads list mode + board mode render with per-stage counts",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-SAL-03",
+   "title": "Leads: search and owner filter",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-SAL-04",
+   "title": "Create lead via modal (contact search) -> DB; duplicate open lead shows link to existing",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-SAL-05",
+   "title": "LeadDetail: stage steps, BANT qualification, next step persisted",
+   "status": "FAIL",
+   "detail": "locator.check: Clicking the checkbox did not change its state"
+  },
+  {
+   "id": "UIC-SAL-06",
+   "title": "Disqualify requires a reason; stores reason + recycle; recycle as new",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-SAL-07",
+   "title": "SQL queue: tiles equal DB; convert to opportunity creates deal and redirects",
+   "status": "FAIL",
+   "detail": "locator.innerText: Timeout 15000ms exceeded."
+  },
+  {
+   "id": "UIC-SAL-08",
+   "title": "Deals board: stage column counts and amounts equal DB; list view total",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-SAL-09",
+   "title": "Deals: create via modal (validation, company, amount, close date) -> DB",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-SAL-10",
+   "title": "Deals board: drag to next stage persists; drag to Closed won asks for reason (required)",
+   "status": "FAIL",
+   "detail": "locator.click: Timeout 15000ms exceeded."
+  },
+  {
+   "id": "UIC-TSK-01",
+   "title": "Tasks page: counters and list equal DB",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-TSK-02",
+   "title": "Date filters: overdue / next 7 days / no due date; status Done/All",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-TSK-03",
+   "title": "New task: title required; create with type/priority/due/assignee -> DB and visible to assignee",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-TSK-04",
+   "title": "Complete, reopen and delete (confirm) a task",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-TSK-05",
+   "title": "Task linked to a contact shows a link to it",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-TSK-06",
+   "title": "AGENT: no \"Everyone\" scope, only own tasks; cannot modify others' task via API",
+   "status": "PASS",
+   "detail": ""
+  },
+  {
+   "id": "UIC-TSK-07",
+   "title": "Empty state and API failure",
+   "status": "PASS",
+   "detail": ""
+  }
+ ]
+}

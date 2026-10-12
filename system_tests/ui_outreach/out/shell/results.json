@@ -1,11 +1,11 @@
 {
   "suite": "UI outreach/admin - shell",
   "counts": {
-    "PASS": 33,
-    "FAIL": 5,
+    "PASS": 34,
+    "FAIL": 4,
     "BLOCKED": 0
   },
-  "seconds": 272,
+  "seconds": 285,
   "cases": [
     {
       "id": "UIO-SHELL-SB-owner",
@@ -66,9 +66,9 @@
     {
       "id": "UIO-SHELL-NAV-agent",
       "title": "Every visible sidebar link navigates and its page renders cleanly (AGENT)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "Campaign analytics: link missing"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-SHELL-GUARD-agent",

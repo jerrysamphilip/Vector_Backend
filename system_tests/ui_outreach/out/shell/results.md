@@ -1,6 +1,6 @@
 # UI outreach/admin - shell results
 
-PASS 33 · FAIL 5 · BLOCKED 0
+PASS 34 · FAIL 4 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -12,7 +12,7 @@ PASS 33 · FAIL 5 · BLOCKED 0
 | UIO-SHELL-NAV-owner | Every visible sidebar link navigates and its page renders cleanly (OWNER) | PASS |  |  |
 | UIO-SHELL-NAV-admin | Every visible sidebar link navigates and its page renders cleanly (ADMIN) | PASS |  |  |
 | UIO-SHELL-NAV-manager | Every visible sidebar link navigates and its page renders cleanly (MANAGER) | PASS |  |  |
-| UIO-SHELL-NAV-agent | Every visible sidebar link navigates and its page renders cleanly (AGENT) | FAIL | defect | Campaign analytics: link missing |
+| UIO-SHELL-NAV-agent | Every visible sidebar link navigates and its page renders cleanly (AGENT) | PASS |  |  |
 | UIO-SHELL-GUARD-agent | AGENT opening restricted URLs is redirected to Home (no flash of forbidden data) | PASS |  |  |
 | UIO-SHELL-GUARD-manager | MANAGER opening restricted URLs is redirected to Home (no flash of forbidden data) | PASS |  |  |
 | UIO-SHELL-GUARD-admin-owner | OWNER opening /vector/admin/... is redirected to Home | PASS |  |  |

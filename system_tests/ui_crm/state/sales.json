@@ -1,0 +1,27 @@
+{
+ "tenantId": "aa5bca81-2f49-453a-b3b2-5278945aaf78",
+ "rid": "7130af",
+ "label": "sales",
+ "users": {
+  "owner": {
+   "userId": "24baa8e9-fcc2-4d7a-bf7c-eca2951a4854",
+   "email": "owner-7130af@uitest.example",
+   "first": "Owner"
+  },
+  "alice": {
+   "userId": "a5cbf2db-2b02-418a-bca1-f2dcc188a65c",
+   "email": "alice-7130af@uitest.example",
+   "first": "Alice"
+  },
+  "boss": {
+   "userId": "3c39637b-6839-42cf-ae2e-8e00114262a3",
+   "email": "boss-7130af@uitest.example",
+   "first": "Boss"
+  },
+  "other": {
+   "userId": "93321a8f-e367-459c-ba05-178a8eb1c536",
+   "email": "other-7130af@uitest.example",
+   "first": "Other"
+  }
+ }
+}

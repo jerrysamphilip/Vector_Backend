@@ -1,0 +1,88 @@
+{
+  "suite": "ui_crm tasks_trash",
+  "counts": {
+    "PASS": 10,
+    "FAIL": 0,
+    "BLOCKED": 1
+  },
+  "seconds": 46,
+  "cases": [
+    {
+      "id": "UIC-TSK-01",
+      "title": "Tasks page: counters and list equal DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-TSK-02",
+      "title": "Date filters: overdue / next 7 days / no due date; status Done/All",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-TSK-03",
+      "title": "New task: title required; create with type/priority/due/assignee -> DB and visible to assignee",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-TSK-04",
+      "title": "Complete, reopen and delete (confirm) a task",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-TSK-05",
+      "title": "Task linked to a contact shows a link to it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-TSK-06",
+      "title": "AGENT: no \"Everyone\" scope, only own tasks; cannot modify others' task via API",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-TSK-07",
+      "title": "Empty state and API failure",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-RD-01",
+      "title": "Recently deleted lists deleted contacts (30 minus purged-window one), paginated, days remaining",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-RD-02",
+      "title": "Search, select-all restore and single restore update DB and the Contacts list",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-RD-03",
+      "title": "Manual purge of a deleted record",
+      "status": "BLOCKED",
+      "category": "not-implemented",
+      "detail": "No purge/permanent-delete control on Recently deleted (items expire after 90 days)"
+    },
+    {
+      "id": "UIC-RD-04",
+      "title": "AGENT without manage_prospects: page not reachable, API refused",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

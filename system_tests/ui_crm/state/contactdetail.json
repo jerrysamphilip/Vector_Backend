@@ -1,0 +1,27 @@
+{
+ "tenantId": "e395a642-41da-4ece-9ea2-8d0dde3ed30e",
+ "rid": "636b91",
+ "label": "contactdetail",
+ "users": {
+  "owner": {
+   "userId": "37d1adee-ff26-461c-8860-066b4e91d80d",
+   "email": "owner-636b91@uitest.example",
+   "first": "Owner"
+  },
+  "alice": {
+   "userId": "de7c7f34-89d6-481e-966b-f4f112fafd98",
+   "email": "alice-636b91@uitest.example",
+   "first": "Alice"
+  },
+  "mia": {
+   "userId": "71c2c443-2265-4f71-8cd2-faf4ba78b371",
+   "email": "mia-636b91@uitest.example",
+   "first": "Mia"
+  },
+  "bob": {
+   "userId": "aaf790a9-4e4b-4f99-8e76-f0c4b796034f",
+   "email": "bob-636b91@uitest.example",
+   "first": "Bob"
+  }
+ }
+}

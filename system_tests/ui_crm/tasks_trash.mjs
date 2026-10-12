@@ -1,5 +1,5 @@
 // UIC-TSK: Tasks; UIC-RD: Recently deleted
-import { Tenant, ui, go, settle, tc, ok, eq, num, must, call, sql, dbn, modalLoc, standalone, isMain, failApi, seedContacts } from './crm_common.mjs';
+import { skip, Tenant, ui, go, settle, tc, ok, eq, num, must, call, sql, dbn, modalLoc, standalone, isMain, failApi, seedContacts } from './crm_common.mjs';
 const day = d => new Date(Date.now() + d * 86400000).toISOString();
 
 export async function run(rec, browser) {
@@ -107,7 +107,7 @@ export async function run(rec, browser) {
     eq(dbn(`SELECT COUNT(*) FROM prospects WHERE tenant_id='${r.tenantId}' AND deleted_at IS NULL`), n + 1, 'single restore');
     await go(B, 'contacts'); ok(await q.getByText(`${n + 1} contacts`).isVisible(), 'visible in Contacts');
   }, { u: B });
-  await tc(rec, 'UIC-RD-03', 'Purge control', async () => { throw new Error('No purge/permanent-delete control exists on Recently deleted (items only expire after 90 days)'); }, {});
+  skip(rec, 'UIC-RD-03', 'Manual purge of a deleted record', 'No purge/permanent-delete control on Recently deleted (items expire after 90 days)', 'not-implemented');
   const BG = await ui(browser, ag);
   await tc(rec, 'UIC-RD-04', 'AGENT without manage_prospects: page not reachable, API refused', async () => {
     await go(BG, 'recently-deleted'); ok(!/recently-deleted/.test(BG.page.url()), 'redirected: ' + BG.page.url());

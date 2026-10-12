@@ -1103,6 +1103,10 @@ def list_fields(db: Session = Depends(get_db), current_user: User = Depends(tena
 def create_field(payload: FieldWrite, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
     _require_manager(current_user)
     field_type, options = _validate_field(payload)
+    if db.query(ContactFieldDefinition.field_id).filter(
+            ContactFieldDefinition.tenant_id == current_user.tenant_id,
+            func.lower(ContactFieldDefinition.label) == payload.label.strip().lower()).first():
+        raise HTTPException(status_code=409, detail=f"A property called {payload.label.strip()} already exists")
     definition = create_field_definition(db, current_user.tenant_id, payload.label, field_type, options,
                                          payload.group_name, payload.required)
     if payload.sort_order is not None:
