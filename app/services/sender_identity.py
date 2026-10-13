@@ -178,8 +178,15 @@ class _BrandedCompletions:
                 {**m, "content": brand(m.get("content"))} if isinstance(m, dict) else m
                 for m in messages
             ]
-        from app.services.llm_budget import charge
-        return self._completions.create(*args, **charge(kwargs))
+        from app.services.llm_budget import charge, settle
+        kwargs, reserved = charge(kwargs)
+        try:
+            response = self._completions.create(*args, **kwargs)
+        except Exception:
+            settle(reserved, None)
+            raise
+        settle(reserved, response)
+        return response
 
     def __getattr__(self, name):
         return getattr(self._completions, name)

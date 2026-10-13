@@ -63,32 +63,34 @@ def classify_reply_intent(subject: str, body: str) -> Optional[str]:
         return None
 
     try:
-        from app.services.llm_budget import charge, LLMBudgetExceeded
+        from app.services.llm_budget import charge, settle, LLMBudgetExceeded
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Classify a prospect's email reply to a cold B2B outreach email. "
+                    "Respond with exactly one word, lowercase, nothing else:\n"
+                    "positive - shows buying interest, agrees to a call/meeting, asks "
+                    "for more info/pricing, or otherwise wants to move forward\n"
+                    "negative - declines, says not interested, asks to stop emailing, "
+                    "or is hostile\n"
+                    "neutral - anything else (auto-generated text, unclear, unrelated "
+                    "question, deferral without commitment)"
+                ),
+            },
+            {"role": "user", "content": f"Subject: {subject or ''}\n\nReply:\n{(body or '')[:1500]}"},
+        ]
         try:
-            kwargs = charge({})
+            kwargs, reserved = charge({"messages": messages, "max_tokens": 5})
         except LLMBudgetExceeded:
             return None
-        response = _openai_client.chat.completions.create(
-            model=settings.OPENAI_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Classify a prospect's email reply to a cold B2B outreach email. "
-                        "Respond with exactly one word, lowercase, nothing else:\n"
-                        "positive - shows buying interest, agrees to a call/meeting, asks "
-                        "for more info/pricing, or otherwise wants to move forward\n"
-                        "negative - declines, says not interested, asks to stop emailing, "
-                        "or is hostile\n"
-                        "neutral - anything else (auto-generated text, unclear, unrelated "
-                        "question, deferral without commitment)"
-                    ),
-                },
-                {"role": "user", "content": f"Subject: {subject or ''}\n\nReply:\n{(body or '')[:1500]}"},
-            ],
-            temperature=0,
-            max_tokens=5,
-        )
+        try:
+            response = _openai_client.chat.completions.create(
+                model=settings.OPENAI_MODEL, temperature=0, **kwargs)
+        except Exception:
+            settle(reserved, None)
+            raise
+        settle(reserved, response)
         label = (response.choices[0].message.content or "").strip().lower()
         return label if label in ("positive", "neutral", "negative") else None
     except Exception as e:
