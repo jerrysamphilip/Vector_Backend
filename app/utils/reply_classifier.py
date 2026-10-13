@@ -63,6 +63,11 @@ def classify_reply_intent(subject: str, body: str) -> Optional[str]:
         return None
 
     try:
+        from app.services.llm_budget import charge, LLMBudgetExceeded
+        try:
+            kwargs = charge({})
+        except LLMBudgetExceeded:
+            return None
         response = _openai_client.chat.completions.create(
             model=settings.OPENAI_MODEL,
             messages=[

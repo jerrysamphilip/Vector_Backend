@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # OpenAI Settings
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
+    # Hard usage caps (app/services/llm_budget.py): calls per UTC day across all processes, tokens per reply
+    OPENAI_MAX_CALLS_PER_DAY: int = 100
+    OPENAI_MAX_OUTPUT_TOKENS: int = 1500
     
     # Default IDs for multi-tenant support
     DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000001"
