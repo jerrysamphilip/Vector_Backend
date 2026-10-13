@@ -16,7 +16,10 @@ Where events are raised:
   contact.deleted                                         crm.soft_delete_contacts
   email.bounced, email.unsubscribed                       suppression.suppress (HARD_BOUNCE / UNSUBSCRIBE, COMPLAINT)
   email.replied                                           imap_sync_service (inbound reply, not out-of-office)
-  campaign.paused, campaign.completed                     campaign state changes (CRUD / action services, auto-pause)
+  campaign.paused                                         campaign state changes (pause API, auto-pause)
+
+campaign.completed is not offered: no code path marks a campaign COMPLETED today (the services'
+complete() methods have no caller).
 
 Every outbound request is SSRF-checked at send time: the host is resolved, every address must
 be public (development / test also allow private ranges and http://), and the connection goes to
@@ -53,8 +56,8 @@ def allow_insecure() -> bool:
     return (settings.ENVIRONMENT or "").strip().lower() in ("development", "dev", "local", "test")
 
 
-def check_url(url: str, resolver=wh.socket_resolver) -> wh.Target:
-    return wh.validate_url(url, allow_insecure=allow_insecure(), resolver=resolver)
+def check_url(url: str, resolver=None) -> wh.Target:
+    return wh.validate_url(url, allow_insecure=allow_insecure(), resolver=resolver or wh.socket_resolver)
 
 
 # ── Emitting (outbox) ──────────────────────────────────────────
@@ -237,7 +240,7 @@ def email_replied(db: Session, tenant_id: str, reply, replied_to, prospect) -> N
 
 def campaign_state_changed(db: Session, campaign_id: str, from_state: Optional[str], to_state: str,
                            reason: Optional[str] = None) -> None:
-    event_type = {"PAUSED": "campaign.paused", "COMPLETED": "campaign.completed"}.get(to_state)
+    event_type = {"PAUSED": "campaign.paused"}.get(to_state)
     if not event_type or from_state == to_state:
         return
     from app.models.campaign import Campaign

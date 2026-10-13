@@ -23,6 +23,9 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-only-jwt-secret-0123456789abcdef01
 os.environ.setdefault("CREDENTIALS_ENCRYPTION_KEY", "test-only-credentials-key")
 # No AWS calls from tests: fail fast instead of probing the EC2 metadata endpoint
 os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
+# Tests must never call OpenAI (daily spend cap, see app/services/llm_budget.py): an empty key turns
+# every LLM path into its no-key fallback. Environment variables beat .env / app-properties.ini.
+os.environ["OPENAI_API_KEY"] = ""
 
 import pytest  # noqa: E402
 from sqlalchemy import text  # noqa: E402
@@ -69,6 +72,20 @@ _ensure_schema()
 from fastapi.testclient import TestClient  # noqa: E402
 
 RUN = uuid.uuid4().hex[:8]
+
+
+# ── Layer markers (docs/TESTING.md): tests/unit/** -> unit, every other test under tests/ -> functional ──
+
+def pytest_collection_modifyitems(config, items):
+    tests_dir = os.path.dirname(os.path.abspath(__file__))
+    unit_dir = os.path.join(tests_dir, "unit") + os.sep
+    for item in items:
+        path = str(item.fspath)
+        if not path.startswith(tests_dir + os.sep):
+            continue
+        layer = "unit" if path.startswith(unit_dir) else "functional"
+        if not item.get_closest_marker(layer):
+            item.add_marker(getattr(pytest.mark, layer))
 
 
 # ── Helpers ──

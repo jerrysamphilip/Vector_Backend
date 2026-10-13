@@ -41,7 +41,6 @@ EVENT_TYPES: Dict[str, Tuple[str, str]] = {
     "email.bounced": ("Email bounced", "An address hard-bounced and was suppressed."),
     "email.unsubscribed": ("Email unsubscribed", "A contact unsubscribed or complained."),
     "campaign.paused": ("Campaign paused", "A campaign was paused, by a user or automatically."),
-    "campaign.completed": ("Campaign completed", "A campaign was marked completed."),
 }
 TEST_EVENT = "webhook.test"
 

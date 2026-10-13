@@ -79,7 +79,7 @@ class ScoringModelWrite(BaseModel):
     @field_validator("engagement")
     @classmethod
     def _bound_signals(cls, v):
-        if v is not None and len(v) > len(scoring_engine.ENGAGEMENT_SIGNALS):
+        if v is not None and (len(v) > len(scoring_engine.ENGAGEMENT_SIGNALS) or any(len(k) > 40 for k in v)):
             raise ValueError("too many engagement signals")
         return v
 

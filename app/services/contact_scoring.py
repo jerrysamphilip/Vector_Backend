@@ -122,8 +122,9 @@ def _email_type(email: Optional[str], stored: Optional[str]) -> Optional[str]:
     if not email:
         return None
     from app.utils.email_utils import parse_email
+    # Same classification as when a contact is created (contacts_router._email_meta)
     info = parse_email(email)
-    return (info or {}).get("email_type") or None
+    return info.get("email_type") if info else "PERSONAL"
 
 
 def _contact_inputs(db: Session, rows: List[Any]) -> Dict[str, Dict[str, Any]]:
@@ -295,30 +296,34 @@ def recompute_tenant(tenant_id: str) -> Optional[int]:
         _release(conn, lock)
 
 
-def run_scoring_job(cap: int = JOB_CAP) -> Dict[str, int]:
-    """Worker pass: full recomputes that were asked for, then up to `cap` stale or unscored contacts."""
+def run_scoring_job(cap: int = JOB_CAP, tenant_id: Optional[str] = None) -> Dict[str, int]:
+    """Worker pass: full recomputes that were asked for, then up to `cap` stale or unscored contacts.
+    `tenant_id` limits the pass to one workspace (tests, manual runs)."""
     from app.core.database import SessionLocal
     stats = {"recomputed_tenants": 0, "refreshed": 0}
     with SessionLocal() as db:
-        pending = [r[0] for r in db.query(ContactScoringModel.tenant_id).filter(
-            ContactScoringModel.recompute_requested_at.isnot(None)).limit(20)]
-    for tenant_id in pending:
-        if recompute_tenant(tenant_id) is not None:
+        pending_q = db.query(ContactScoringModel.tenant_id).filter(ContactScoringModel.recompute_requested_at.isnot(None))
+        if tenant_id:
+            pending_q = pending_q.filter(ContactScoringModel.tenant_id == tenant_id)
+        pending = [r[0] for r in pending_q.limit(20)]
+    for pending_tenant in pending:
+        if recompute_tenant(pending_tenant) is not None:
             stats["recomputed_tenants"] += 1
 
     with SessionLocal() as db:
         cutoff = _now() - timedelta(hours=STALE_AFTER_HOURS)
-        stale = db.query(Prospect.tenant_id, Prospect.prospect_id).filter(
+        stale_q = db.query(Prospect.tenant_id, Prospect.prospect_id).filter(
             Prospect.deleted_at.is_(None),
-            or_(Prospect.scored_at.is_(None), and_(Prospect.scored_at.isnot(None), Prospect.scored_at < cutoff)),
-        ).limit(cap).all()
+            or_(Prospect.scored_at.is_(None), and_(Prospect.scored_at.isnot(None), Prospect.scored_at < cutoff)))
+        if tenant_id:
+            stale_q = stale_q.filter(Prospect.tenant_id == tenant_id)
         by_tenant: Dict[str, List[str]] = defaultdict(list)
-        for tenant_id, pid in stale:
-            by_tenant[tenant_id].append(pid)
-        for tenant_id, ids in by_tenant.items():
-            model = get_model(db, tenant_id)
+        for stale_tenant, pid in stale_q.limit(cap).all():
+            by_tenant[stale_tenant].append(pid)
+        for stale_tenant, ids in by_tenant.items():
+            model = get_model(db, stale_tenant)
             now = _now()
             for i in range(0, len(ids), BATCH_SIZE):
-                stats["refreshed"] += score_contacts(db, tenant_id, ids[i:i + BATCH_SIZE], model=model, now=now)
+                stats["refreshed"] += score_contacts(db, stale_tenant, ids[i:i + BATCH_SIZE], model=model, now=now)
                 db.commit()
     return stats

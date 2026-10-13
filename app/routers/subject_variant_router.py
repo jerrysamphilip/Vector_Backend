@@ -15,7 +15,7 @@ permission. Promotion: the campaign's owner (creator) or a workspace admin, with
 manage_campaigns. Another workspace's campaign is 404.
 """
 
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field, field_validator
@@ -34,9 +34,9 @@ BASE = "/{campaign_id}/sequences/{step}/subject-variants"
 READ_ROLES = ("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
 WRITE_ROLES = ("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
 
-StepParam = Path(..., ge=1, le=7, description="Sequence step number (1-7)")
-LabelParam = Path(..., pattern="^[A-Da-d]$", description="Variant label A-D")
-CampaignParam = Path(..., min_length=1, max_length=36)
+StepParam = Annotated[int, Path(ge=1, le=7, description="Sequence step number (1-7)")]
+LabelParam = Annotated[str, Path(pattern="^[A-Da-d]$", description="Variant label A-D")]
+CampaignParam = Annotated[str, Path(min_length=1, max_length=36)]
 
 
 class VariantCreate(BaseModel):
@@ -112,8 +112,8 @@ def _listing(svc: SubjectVariantService, seq) -> dict:
 
 @router.get(BASE)
 def list_subject_variants(
-    campaign_id: str = CampaignParam,
-    step: int = StepParam,
+    campaign_id: CampaignParam,
+    step: StepParam,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*READ_ROLES)),
 ):
@@ -129,8 +129,8 @@ def list_subject_variants(
 @router.post(BASE, status_code=201, dependencies=[Depends(require_permission("manage_campaigns"))])
 def create_subject_variant(
     data: VariantCreate,
-    campaign_id: str = CampaignParam,
-    step: int = StepParam,
+    campaign_id: CampaignParam,
+    step: StepParam,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*WRITE_ROLES)),
 ):
@@ -147,8 +147,8 @@ def create_subject_variant(
 
 @router.get(BASE + "/stats")
 def subject_variant_stats(
-    campaign_id: str = CampaignParam,
-    step: int = StepParam,
+    campaign_id: CampaignParam,
+    step: StepParam,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*READ_ROLES)),
 ):
@@ -163,8 +163,8 @@ def subject_variant_stats(
 
 @router.get(BASE + "/messages")
 def subject_variant_messages(
-    campaign_id: str = CampaignParam,
-    step: int = StepParam,
+    campaign_id: CampaignParam,
+    step: StepParam,
     label: Optional[str] = Query(None, pattern="^[A-Da-d]$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0, le=100000),
@@ -183,9 +183,9 @@ def subject_variant_messages(
 @router.patch(BASE + "/{label}", dependencies=[Depends(require_permission("manage_campaigns"))])
 def update_subject_variant(
     data: VariantUpdate,
-    campaign_id: str = CampaignParam,
-    step: int = StepParam,
-    label: str = LabelParam,
+    campaign_id: CampaignParam,
+    step: StepParam,
+    label: LabelParam,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*WRITE_ROLES)),
 ):
@@ -204,9 +204,9 @@ def update_subject_variant(
 
 @router.delete(BASE + "/{label}", status_code=204, dependencies=[Depends(require_permission("manage_campaigns"))])
 def delete_subject_variant(
-    campaign_id: str = CampaignParam,
-    step: int = StepParam,
-    label: str = LabelParam,
+    campaign_id: CampaignParam,
+    step: StepParam,
+    label: LabelParam,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*WRITE_ROLES)),
 ):
@@ -223,9 +223,9 @@ def delete_subject_variant(
 
 @router.post(BASE + "/{label}/promote", dependencies=[Depends(require_permission("manage_campaigns"))])
 def promote_subject_variant(
-    campaign_id: str = CampaignParam,
-    step: int = StepParam,
-    label: str = LabelParam,
+    campaign_id: CampaignParam,
+    step: StepParam,
+    label: LabelParam,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*WRITE_ROLES)),
 ):

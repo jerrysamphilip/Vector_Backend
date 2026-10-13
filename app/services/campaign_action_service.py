@@ -522,7 +522,7 @@ class CampaignActionService:
             reason=reason,
         )
         self.db.add(event)
-        # Outbound webhooks (BR-SF-20): campaign.paused / campaign.completed
+        # Outbound webhooks (BR-SF-20): campaign.paused
         from app.services import webhooks
         webhooks.campaign_state_changed(self.db, campaign_id, from_state, to_state, reason)
     
