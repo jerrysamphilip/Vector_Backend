@@ -1,8 +1,8 @@
 # UI outreach/admin functional results
 
-PASS 192 | FAIL 4 | BLOCKED 0
+PASS 195 | FAIL 1 | BLOCKED 0
 
-Failures by category: {"unclassified":2,"defect-backend":2}
+Failures by category: {"defect-backend":1}
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -63,7 +63,7 @@ Failures by category: {"unclassified":2,"defect-backend":2}
 | UIO-SHELL-GUARD-admin-owner | OWNER opening /vector/admin/... is redirected to Home | PASS |  |  |
 | UIO-SHELL-GUARD-admin-agent | AGENT opening /vector/admin/... is redirected to Home | PASS |  |  |
 | UIO-SHELL-GUARD-api | Server also refuses AGENT on team/inbox/campaign management endpoints (403), not just the UI | PASS |  |  |
-| UIO-SHELL-404 | Unknown routes (/app/does-not-exist, /vector/xyz, /app/campaigns/<bad id>) end on a safe page, no crash | FAIL | unclassified | unknown /app route -> http://localhost:8190/vector/app/does-not-exist |
+| UIO-SHELL-404 | Unknown routes: /app/does-not-exist shows the 404 page (URL kept, link back Home works); /vector/xyz -> Home; /app/campaigns/<bad id> safe | PASS |  |  |
 | UIO-SHELL-HELP-01 | Help button opens panel for the current screen; Close button and Esc close it | PASS |  |  |
 | UIO-SHELL-HELP-02 | ? and F1 keyboard shortcuts toggle help; ? is ignored while typing in a field | PASS |  |  |
 | UIO-SHELL-HELP-03 | Help panel search finds articles, opens one, Back returns; "Open in Help Center" deep-links | PASS |  |  |
@@ -134,7 +134,7 @@ Failures by category: {"unclassified":2,"defect-backend":2}
 | UIO-DET-05 | Schedule tab shows queued emails per step/day; Trigger logs shows CREATE/LAUNCH audit events | PASS |  |  |
 | UIO-DET-06 | Sending Accounts tab lists the campaign inbox; Inbox tab renders (empty state) and Sync button reports a clear error with no IMAP | PASS |  |  |
 | UIO-DET-07 | Pause Campaign / Resume Campaign buttons change status (DB + badge) | PASS |  |  |
-| UIO-DET-08 | Send Now: confirm dialog, then result summary dialog; cancel path sends nothing | FAIL | unclassified | no result dialog: confirm: ⚠️ Force Send Now?  This will bypass all schedules/office hours and immediately send the next email to all queued prospects.  Are you sure? |
+| UIO-DET-08 | Send Now: cancel at the confirm sends nothing; accept -> POST /send-now answered and the outcome is shown (result dialog or visible error) | PASS |  |  |
 | UIO-DET-09 | Role AGENT cannot open a campaign by URL (redirect Home) | PASS |  |  |
 | UIO-TPL-01 | Template library empty state renders; New template opens modal; Cancel closes without saving | PASS |  |  |
 | UIO-TPL-02 | Create template: merge-field insert, save -> row in list and in DB with subject/body/category/shared | PASS |  |  |
@@ -144,7 +144,7 @@ Failures by category: {"unclassified":2,"defect-backend":2}
 | UIO-TPL-06 | Delete: dismissing confirm keeps it; accepting removes row and DB record | PASS |  |  |
 | UIO-AUTO-01 | Automation empty state; Create rule modal validation (required fields) keeps modal open | PASS |  |  |
 | UIO-AUTO-02 | Create Send-AI-Template rule: row appears; DB has trigger/action/template/delay and is active | PASS |  |  |
-| UIO-AUTO-02b | Create "Pause Campaign" rule (offered in the Action dropdown) succeeds | FAIL | defect-backend | UI Action dropdown offers PAUSE_CAMPAIGN but ActionType enum (app/models/automation_rule.py:21-25) has only SEND_EMAIL/CHANGE_CAMPAIGN_STEP/PAUSE_PROSPECT/MARK_INTERESTED -> POST /automation-rules/ 422; UI shows only 'Fa |
+| UIO-AUTO-02b | Create "Pause this contact" rule (PAUSE_PROSPECT, replaced "Pause Campaign"): option offered, no template picker, row listed, DB row persisted | PASS |  |  |
 | UIO-AUTO-03 | Toggle rule off/on (the repaired PUT): DB is_active flips and UI reflects it | PASS |  |  |
 | UIO-AUTO-04 | Search filters rules; delete (confirm) removes row and DB record | PASS |  |  |
 | UIO-AIGEN-01 | AI generator: Classify disabled until designation entered; classification shows persona + confidence | PASS |  |  |

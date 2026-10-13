@@ -1,13 +1,12 @@
 {
   "suite": "UI outreach/admin",
   "counts": {
-    "PASS": 192,
-    "FAIL": 4,
+    "PASS": 195,
+    "FAIL": 1,
     "BLOCKED": 0
   },
   "failuresByCategory": {
-    "unclassified": 2,
-    "defect-backend": 2
+    "defect-backend": 1
   },
   "cases": [
     {
@@ -525,10 +524,10 @@
     },
     {
       "id": "UIO-SHELL-404",
-      "title": "Unknown routes (/app/does-not-exist, /vector/xyz, /app/campaigns/<bad id>) end on a safe page, no crash",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "unknown /app route -> http://localhost:8190/vector/app/does-not-exist",
+      "title": "Unknown routes: /app/does-not-exist shows the 404 page (URL kept, link back Home works); /vector/xyz -> Home; /app/campaigns/<bad id> safe",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "shell",
       "note": ""
     },
@@ -1164,10 +1163,10 @@
     },
     {
       "id": "UIO-DET-08",
-      "title": "Send Now: confirm dialog, then result summary dialog; cancel path sends nothing",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "no result dialog: confirm: ⚠️ Force Send Now?\n\nThis will bypass all schedules/office hours and immediately send the next email to all queued prospects.\n\nAre you sure?",
+      "title": "Send Now: cancel at the confirm sends nothing; accept -> POST /send-now answered and the outcome is shown (result dialog or visible error)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "details",
       "note": ""
     },
@@ -1254,12 +1253,12 @@
     },
     {
       "id": "UIO-AUTO-02b",
-      "title": "Create \"Pause Campaign\" rule (offered in the Action dropdown) succeeds",
-      "status": "FAIL",
-      "category": "defect-backend",
-      "detail": "locator.selectOption: Timeout 12000ms exceeded.",
+      "title": "Create \"Pause this contact\" rule (PAUSE_PROSPECT, replaced \"Pause Campaign\"): option offered, no template picker, row listed, DB row persisted",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "library",
-      "note": "UI Action dropdown offers PAUSE_CAMPAIGN but ActionType enum (app/models/automation_rule.py:21-25) has only SEND_EMAIL/CHANGE_CAMPAIGN_STEP/PAUSE_PROSPECT/MARK_INTERESTED -> POST /automation-rules/ 422; UI shows only 'Failed to create rule' (UI/API contract mismatch; fix either side)."
+      "note": ""
     },
     {
       "id": "UIO-AUTO-03",

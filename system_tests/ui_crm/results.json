@@ -1,9 +1,9 @@
 {
   "suite": "ui_crm (CRM + Sales functional UI)",
   "counts": {
-    "PASS": 150,
-    "FAIL": 3,
-    "BLOCKED": 4
+    "PASS": 164,
+    "FAIL": 1,
+    "BLOCKED": 0
   },
   "seconds": 621,
   "cases": [
@@ -332,9 +332,9 @@
     {
       "id": "UIC-CD-01",
       "title": "Record page renders header, stats, 3 columns of cards",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "card Company"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIC-CD-02",
@@ -409,9 +409,9 @@
     {
       "id": "UIC-CD-12",
       "title": "Edit a logged activity then delete it (confirm)",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "deleted: got 1 expected 0"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIC-CD-13",
@@ -433,20 +433,6 @@
       "status": "PASS",
       "category": "",
       "detail": ""
-    },
-    {
-      "id": "UIC-CD-16",
-      "title": "Create a deal directly from the contact record",
-      "status": "BLOCKED",
-      "category": "not-implemented",
-      "detail": "Record page only offers \"+ Create lead\"; deals are created from a lead conversion or the Deals page"
-    },
-    {
-      "id": "UIC-CD-17",
-      "title": "@mention in notes",
-      "status": "BLOCKED",
-      "category": "not-implemented",
-      "detail": "Composer has no @mention support"
     },
     {
       "id": "UIC-CD-18",
@@ -568,13 +554,6 @@
       "detail": ""
     },
     {
-      "id": "UIC-ACC-12",
-      "title": "AccountDetail lists the company's deals",
-      "status": "BLOCKED",
-      "category": "not-implemented",
-      "detail": "AccountDetail shows contacts and history only; deals appear on the Deals screen"
-    },
-    {
       "id": "UIC-ACC-13",
       "title": "Delete company (confirm): contacts kept, appears in Recently deleted > Companies, restore works",
       "status": "PASS",
@@ -654,9 +633,9 @@
     {
       "id": "UIC-LST-08",
       "title": "Edit list: rename + description persisted; active list criteria edit changes membership",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "locator.selectOption: Error: Element is not a <select> element"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIC-LST-09",
@@ -904,13 +883,6 @@
       "detail": ""
     },
     {
-      "id": "UIC-RD-03",
-      "title": "Manual purge of a deleted record",
-      "status": "BLOCKED",
-      "category": "not-implemented",
-      "detail": "No purge/permanent-delete control on Recently deleted (items expire after 90 days)"
-    },
-    {
       "id": "UIC-RD-04",
       "title": "AGENT without manage_prospects: page not reachable, API refused",
       "status": "PASS",
@@ -1102,6 +1074,90 @@
     {
       "id": "UIC-SAL-27",
       "title": "Deals API failure keeps the page shell",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-01",
+      "title": "Companies card: lists the primary company; Add a second company with a label (search + pick) -> card + DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-02",
+      "title": "Companies card: star makes the second company primary (badge moves, DB is_primary + contact account)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-03",
+      "title": "Companies card: removing the primary asks for the next primary (pre-selected), Cancel keeps it, Remove -> Alpha primary",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-04",
+      "title": "Company page shows association chips: label + \"Associated\" on the non-primary company; card link opens it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-05",
+      "title": "@mention: type \"@B\", pick Bianca with the keyboard, save -> highlighted in timeline; note_mentions + MENTION notification (not for author)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-06",
+      "title": "Mentioned colleague's bell shows the MENTION (unread), click opens the contact record and marks it read",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-07",
+      "title": "Mentioning an AGENT who does not own the contact: the notification link should open a record they can see",
+      "status": "FAIL",
+      "category": "defect-backend",
+      "detail": "[@mention lets you pick any active user (app/services/mentions.py mentionable_users/validate: 'Any active user of the workspace can be mentioned'), but an AGENT only sees own contacts: the MENTION notification links to /app/contacts/{id}, GET /contacts/{id} -> 404 and the page says 'Contact not found'. Either limit the picker/validation to users who can see the record or grant read access via the mention.] mentioned agent cannot open the record: GET /contacts/{id} -> 404, page shows \"Contact not"
+    },
+    {
+      "id": "UIC-NF-08",
+      "title": "Sales reports > Leads & SQLs: \"SQL to win\" card numbers match GET /sales-reports/sql-to-win (and the seeded data)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-09",
+      "title": "Forecast tab: \"Forecast accuracy\" card; admin \"Take snapshot now\" stores a MANUAL snapshot (DB) and the card shows it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-10",
+      "title": "Contact record \"+ Create deal\": form opens with the primary company pre-selected; Create -> deal linked to contact + company",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-11",
+      "title": "AccountDetail shows the Deals section (count, total, deal link); a company without deals shows the empty state",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-12",
+      "title": "Recently deleted: select -> \"Delete forever\" -> confirm modal (Cancel keeps it) -> contact removed from DB + PURGE_CONTACT audit row",
       "status": "PASS",
       "category": "",
       "detail": ""

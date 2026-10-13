@@ -1,11 +1,11 @@
 {
   "suite": "ui_crm contact_detail",
   "counts": {
-    "PASS": 1,
+    "PASS": 3,
     "FAIL": 0,
-    "BLOCKED": 2
+    "BLOCKED": 0
   },
-  "seconds": 7,
+  "seconds": 14,
   "cases": [
     {
       "id": "UIC-CD-01",
@@ -15,18 +15,18 @@
       "detail": ""
     },
     {
-      "id": "UIC-CD-16",
-      "title": "Create a deal directly from the contact record",
-      "status": "BLOCKED",
-      "category": "not-implemented",
-      "detail": "Record page only offers \"+ Create lead\"; deals are created from a lead conversion or the Deals page"
+      "id": "UIC-CD-09",
+      "title": "Log a note -> timeline entry + DB activity",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
-      "id": "UIC-CD-17",
-      "title": "@mention in notes",
-      "status": "BLOCKED",
-      "category": "not-implemented",
-      "detail": "Composer has no @mention support"
+      "id": "UIC-CD-12",
+      "title": "Edit a logged activity then delete it (confirm)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     }
   ]
 }
