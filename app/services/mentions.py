@@ -38,8 +38,11 @@ def mentionable_users(db: Session, user: User, q: Optional[str] = None, limit: i
     return [{"user_id": u.user_id, "name": _name(u), "email": u.email} for u in users]
 
 
-def validate(db: Session, user: User, user_ids: Optional[Iterable[str]]) -> List[User]:
-    """The mentioned users, each an active user of the author's workspace (400 otherwise)."""
+def validate(db: Session, user: User, user_ids: Optional[Iterable[str]], owner_id: Optional[str] = None,
+             check_owner: bool = False) -> List[User]:
+    """The mentioned users, each an active user of the author's workspace (400 otherwise).
+    With check_owner, each must also be able to see a record owned by owner_id: a notification
+    linking to a record the person cannot open would only lead to a 404."""
     ids = list(dict.fromkeys(i for i in (user_ids or []) if i))
     if not ids:
         return []
@@ -50,6 +53,11 @@ def validate(db: Session, user: User, user_ids: Optional[Iterable[str]]) -> List
                                   User.role.in_(("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT"))).all()
     if len(users) != len(ids):
         raise HTTPException(status_code=400, detail="You can only mention active users in your workspace")
+    if check_owner:
+        from app.services.contact_service import can_see_owner
+        for u in users:
+            if not can_see_owner(db, u, owner_id):
+                raise HTTPException(status_code=400, detail=f"{_name(u)} cannot see this record, so cannot be mentioned")
     by_id = {u.user_id: u for u in users}
     return [by_id[i] for i in ids]
 

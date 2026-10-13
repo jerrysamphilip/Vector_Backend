@@ -1235,7 +1235,8 @@ def update_activity(activity_id: str, payload: ActivityUpdate, db: Session = Dep
         if mentioned_ids and activity.activity_type != "NOTE":
             raise HTTPException(status_code=400, detail="You can only mention people in notes")
         prospect = _get_contact(db, current_user, activity.prospect_id)
-        mentions.save(db, current_user, activity, mentions.validate(db, current_user, mentioned_ids),
+        mentions.save(db, current_user, activity,
+                      mentions.validate(db, current_user, mentioned_ids, prospect.owner_id, True),
                       prospect.full_name or prospect.email, f"/app/contacts/{prospect.prospect_id}", replace=True)
     for field, value in data.items():
         if field == "occurred_at":
@@ -1670,7 +1671,7 @@ def log_activity(
         raise HTTPException(status_code=400, detail="Add a subject or some details")
     if payload.mentioned_user_ids and activity_type != "NOTE":
         raise HTTPException(status_code=400, detail="You can only mention people in notes")
-    mentioned_users = mentions.validate(db, current_user, payload.mentioned_user_ids)
+    mentioned_users = mentions.validate(db, current_user, payload.mentioned_user_ids, prospect.owner_id, True)
     activity = ContactActivity(
         tenant_id=current_user.tenant_id,
         prospect_id=prospect.prospect_id,

@@ -765,7 +765,7 @@ def log_deal_activity(opportunity_id: str, payload: DealActivity, db: Session = 
     from app.services import mentions
     if payload.mentioned_user_ids and payload.activity_type != "NOTE":
         raise HTTPException(status_code=400, detail="You can only mention people in notes")
-    mentioned_users = mentions.validate(db, current_user, payload.mentioned_user_ids)
+    mentioned_users = mentions.validate(db, current_user, payload.mentioned_user_ids, opp.owner_id, True)
     a = ContactActivity(tenant_id=current_user.tenant_id, prospect_id=opp.prospect_id, opportunity_id=opp.opportunity_id,
                         activity_type=payload.activity_type, subject=clean_str(payload.subject), body=payload.body,
                         outcome=clean_str(payload.outcome), duration_minutes=payload.duration_minutes,

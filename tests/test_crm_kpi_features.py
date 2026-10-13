@@ -137,7 +137,7 @@ def test_contact_companies_tenant_and_hierarchy(client, tenant_x, tenant_b):
 
 def test_mention_in_note_notifies_colleague(client, tenant_x, tenant_b):
     h = tenant_x["headers"]
-    ada = _member(client, tenant_x["tenant_id"], "ada")
+    ada = _member(client, tenant_x["tenant_id"], "ada", role="ADMIN")
     author_id = sql("SELECT user_id FROM users WHERE email = :e", e=tenant_x["email"])
     pid = _contact(client, h, f"mention.{RUN}@gmail.com", first_name="Men")["prospect_id"]
 
@@ -163,7 +163,7 @@ def test_mention_in_note_notifies_colleague(client, tenant_x, tenant_b):
     assert {m["user_id"] for m in timeline[0]["activity"]["mentions"]} == {ada["user_id"], author_id}
 
     # Editing the note doesn't notify again; a newly added mention does
-    bob = _member(client, tenant_x["tenant_id"], "bob")
+    bob = _member(client, tenant_x["tenant_id"], "bob", role="ADMIN")
     r = client.patch(f"/contacts/activities/{activity_id}", headers=h,
                      json={"mentioned_user_ids": [ada["user_id"], bob["user_id"]]})
     assert r.status_code == 200, r.text
@@ -196,7 +196,7 @@ def test_mention_validation(client, tenant_x, tenant_b):
 
 def test_mention_on_deal_note(client, tenant_x):
     h = tenant_x["headers"]
-    cara = _member(client, tenant_x["tenant_id"], "cara")
+    cara = _member(client, tenant_x["tenant_id"], "cara", role="ADMIN")
     stage = next(s for s in client.get("/sales/stages", headers=h).json() if s["status"] == "OPEN")
     r = client.post("/opportunities", headers=h, json={"name": f"Deal mention {RUN}", "stage_id": stage["stage_id"]})
     assert r.status_code == 201, r.text

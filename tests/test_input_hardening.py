@@ -40,3 +40,17 @@ def test_unsubscribe_only_reply_is_recognised():
     raw = "Unsubscribe\n\nOn Mon, Oct 12, 2026 Outreach wrote:\n> hello"
     assert _is_unsubscribe_reply(extract_latest_message_text(raw, strip_boilerplate=False).strip().lower())
     assert not _is_unsubscribe_reply("thanks, sounds good")
+
+
+def test_mention_of_user_who_cannot_see_the_contact_is_refused(client, tenant_a):
+    import uuid
+    from tests.test_crm_kpi_features import _member
+    h = tenant_a["headers"]
+    c = client.post("/contacts", headers=h, json={"email": f"menhid-{uuid.uuid4().hex[:6]}@example.com"}).json()
+    agent = _member(client, tenant_a["tenant_id"], "hidden")          # an agent who does not own the contact
+    admin = _member(client, tenant_a["tenant_id"], "seer", role="ADMIN")
+    body = {"activity_type": "NOTE", "subject": "n", "body": "@x"}
+    r = client.post(f"/contacts/{c['prospect_id']}/activities", headers=h, json={**body, "mentioned_user_ids": [agent["user_id"]]})
+    assert r.status_code == 400, r.text
+    r = client.post(f"/contacts/{c['prospect_id']}/activities", headers=h, json={**body, "mentioned_user_ids": [admin["user_id"]]})
+    assert r.status_code == 201, r.text
