@@ -1,0 +1,27 @@
+{
+ "tenantId": "4d5a626d-5994-4f39-ad21-6edf2fe130b7",
+ "rid": "cf08d7",
+ "label": "newfeat",
+ "users": {
+  "owner": {
+   "userId": "cdebb305-c8cc-445c-897a-41c5fa287109",
+   "email": "owner-cf08d7@uitest.example",
+   "first": "Owner"
+  },
+  "bianca": {
+   "userId": "26ef0c5f-e600-4a3f-8813-3d65eee30ef8",
+   "email": "bianca-cf08d7@uitest.example",
+   "first": "Bianca"
+  },
+  "bram": {
+   "userId": "61cd9bdc-3d0a-4560-b266-7f4e01902574",
+   "email": "bram-cf08d7@uitest.example",
+   "first": "Bram"
+  },
+  "aaron": {
+   "userId": "57c34abb-3719-4223-aa62-16bb881a9bb7",
+   "email": "aaron-cf08d7@uitest.example",
+   "first": "Aaron"
+  }
+ }
+}

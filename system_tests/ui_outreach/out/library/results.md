@@ -1,6 +1,6 @@
 # UI outreach/admin - library results
 
-PASS 13 · FAIL 1 · BLOCKED 0
+PASS 14 · FAIL 0 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -12,7 +12,7 @@ PASS 13 · FAIL 1 · BLOCKED 0
 | UIO-TPL-06 | Delete: dismissing confirm keeps it; accepting removes row and DB record | PASS |  |  |
 | UIO-AUTO-01 | Automation empty state; Create rule modal validation (required fields) keeps modal open | PASS |  |  |
 | UIO-AUTO-02 | Create Send-AI-Template rule: row appears; DB has trigger/action/template/delay and is active | PASS |  |  |
-| UIO-AUTO-02b | Create "Pause Campaign" rule (offered in the Action dropdown) succeeds | FAIL | defect | locator.selectOption: Timeout 12000ms exceeded. |
+| UIO-AUTO-02b | Create "Pause this contact" rule (PAUSE_PROSPECT, replaced "Pause Campaign"): option offered, no template picker, row listed, DB row persisted | PASS |  |  |
 | UIO-AUTO-03 | Toggle rule off/on (the repaired PUT): DB is_active flips and UI reflects it | PASS |  |  |
 | UIO-AUTO-04 | Search filters rules; delete (confirm) removes row and DB record | PASS |  |  |
 | UIO-AIGEN-01 | AI generator: Classify disabled until designation entered; classification shows persona + confidence | PASS |  |  |

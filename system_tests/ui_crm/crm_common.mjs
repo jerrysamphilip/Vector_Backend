@@ -39,7 +39,8 @@ export const PASSWORD = 'Uitest-crm-pw!';
 const STATE = path.join(HERE, 'state'); fs.mkdirSync(STATE, { recursive: true });
 const WIPE_TABLES = ['accounts', 'campaigns', 'contact_activities', 'contact_field_definitions', 'crm_tasks', 'global_unsubscribes', 'import_jobs', 'leads',
   'notifications', 'opportunities', 'products', 'property_changes', 'proposals', 'prospect_lists', 'prospects', 'sales_settings', 'sales_stages', 'sales_targets',
-  'saved_reports', 'saved_views', 'user_connections', 'workflow_rules', 'conversations', 'message_templates'];
+  'saved_reports', 'saved_views', 'user_connections', 'workflow_rules', 'conversations', 'message_templates',
+  'contact_companies', 'note_mentions', 'forecast_snapshots'];
 const readJson = (f, d = null) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 function jwtExp(tok) { try { return JSON.parse(Buffer.from(tok.split('.')[1], 'base64url').toString()).exp * 1000; } catch { return 0; } }
 

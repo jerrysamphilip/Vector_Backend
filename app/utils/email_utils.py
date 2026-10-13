@@ -1,3 +1,4 @@
+import html
 import re
 
 # app/utils/email_utils.py
@@ -316,6 +317,31 @@ def extract_latest_message_text(body_content: str, strip_boilerplate: bool = Tru
     text = re.sub(r"\n{3,}", "\n\n", text)
 
     return text.strip()
+
+
+def html_to_text(body: str) -> str:
+    """Plain-text view of an (possibly HTML) email body: tags removed, entities
+    decoded, paragraph / line breaks kept as newlines."""
+    if not body:
+        return ""
+    text = str(body)
+    if not re.search(r"<[a-zA-Z/!][^>]*>|&[#a-zA-Z0-9]+;", text):
+        return text
+    text = re.sub(r"<(style|script|head|title)[^>]*>.*?</\1\s*>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</(?:p|div|tr|li|h[1-6]|blockquote)\s*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", "", text)
+    return html.unescape(text).replace("\xa0", " ")
+
+
+def conversation_snippet(body: str, limit: int = 100) -> str:
+    """One-line plain-text preview of a message for the unified inbox list."""
+    text = extract_latest_message_text(html_to_text(body or ""))
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return "No messages"
+    return text[:limit] + ("..." if len(text) > limit else "")
 
 
 def format_email_body_html(body: str) -> str:

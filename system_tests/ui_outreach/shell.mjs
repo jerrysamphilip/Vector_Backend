@@ -141,9 +141,24 @@ for (const r of ['agent', 'manager']) {
 // ---------- 404 / unknown routes ----------
 {
   const { page, w } = P.owner;
-  await S.t(`${A}-404`, 'Unknown routes (/app/does-not-exist, /vector/xyz, /app/campaigns/<bad id>) end on a safe page, no crash', async () => {
+  await S.t(`${A}-404`, 'Unknown routes: /app/does-not-exist shows the 404 page (URL kept, link back Home works); /vector/xyz -> Home; /app/campaigns/<bad id> safe', async () => {
+    // Deliberate change: unknown /app/* routes render NotFound (src/pages/NotFound.jsx) instead of redirecting Home.
     await go(page, '/app/does-not-exist');
-    if (!/\/app\/dashboard$/.test(new URL(page.url()).pathname)) return 'unknown /app route -> ' + page.url();
+    if (!/\/app\/does-not-exist$/.test(new URL(page.url()).pathname)) return 'unknown /app route did not keep its URL -> ' + page.url();
+    const nf = (await body(page)).replace(/\s+/g, ' ');
+    if (!/\b404\b/.test(nf) || !/Page not found/i.test(nf)) return '404 page content missing: ' + nf.slice(0, 300);
+    if (!nf.includes('/app/does-not-exist')) return '404 page does not name the unknown address';
+    if (!(await page.locator('aside, nav').first().isVisible().catch(() => false))) return '404 page is not rendered inside the app shell (no sidebar)';
+    const home = page.getByRole('link', { name: /Back to Home/i });
+    if (await home.count() !== 1) return `expected one "Back to Home" link, found ${await home.count()}`;
+    const href = await home.getAttribute('href');
+    if (!/\/vector\/app\/dashboard$/.test(href || '')) return 'Back to Home link href = ' + href;
+    await home.click();
+    await page.waitForURL(/\/app\/dashboard$/, { timeout: 8000 }).catch(() => {});
+    if (!/\/app\/dashboard$/.test(new URL(page.url()).pathname)) return 'Back to Home did not navigate Home -> ' + page.url();
+    // nested unknown path also gets the 404 page
+    await go(page, '/app/campaigns-typo/abc');
+    if (!/Page not found/i.test(await body(page))) return 'nested unknown /app path shows no 404 page';
     await go(page, '/totally/unknown');
     if (!/\/app\/dashboard$/.test(new URL(page.url()).pathname)) return 'unknown root route -> ' + page.url();
     w.drain();

@@ -8,7 +8,7 @@ from datetime import datetime
 from app.models.conversation import Conversation
 from app.models.email_message import EmailMessage
 from app.schemas.conversation_schema import ConversationListItem, ConversationListResponse, ConversationDetailResponse
-from app.utils.email_utils import extract_latest_message_text
+from app.utils.email_utils import conversation_snippet
 
 class ConversationService:
     def __init__(self, db: Session):
@@ -37,15 +37,15 @@ class ConversationService:
         items = []
         for c in conversations:
             # Get last message for snippet and direction
+            # sent_at has second precision: a reply ingested in the same second
+            # as the send must still win the tie (it necessarily came after).
             last_msg = self.db.query(EmailMessage).filter(EmailMessage.conversation_id == c.id)\
-                .order_by(desc(EmailMessage.sent_at)).first()
+                .order_by(
+                    desc(EmailMessage.sent_at),
+                    func.coalesce(EmailMessage.direction, "OUTBOUND").asc(),
+                ).first()
 
-            if last_msg and last_msg.body_text:
-                cleaned = extract_latest_message_text(last_msg.body_text)
-                snippet_src = cleaned or "No messages"
-                snippet = snippet_src[:100] + ("..." if len(snippet_src) > 100 else "")
-            else:
-                snippet = "No messages"
+            snippet = conversation_snippet(last_msg.body_text if last_msg else None)
 
             items.append(ConversationListItem(
                 id=c.id,

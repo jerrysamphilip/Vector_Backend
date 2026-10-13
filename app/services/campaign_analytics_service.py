@@ -16,7 +16,11 @@ from app.models.email_message import EmailMessage, EmailEvent
 # comparison):
 #   sent   = outbound campaign messages that actually left (status SENT, or
 #            BOUNCED / COMPLAINED after a send), inbound replies excluded;
-#   opened = UNIQUE prospects with an open event in the campaign.
+#   opened = UNIQUE prospects with an open event in the campaign;
+#   clicked = UNIQUE prospects with a click event in the campaign (so a
+#            contact clicking two links counts once; click rate = clicked /
+#            opened);
+#   replied / bounced = distinct messages with that event.
 SENT_STATUSES = ("SENT", "BOUNCED", "COMPLAINED")
 
 
@@ -29,15 +33,21 @@ def sent_message_filters():
     ]
 
 
-def unique_openers_expr():
-    """Unique (campaign, prospect) pairs over EmailEvent x EmailMessage open rows.
+def unique_prospects_expr():
+    """Unique (campaign, prospect) pairs over EmailEvent x EmailMessage rows.
 
-    Within one campaign this is the number of distinct prospects who opened;
-    across campaigns it is the sum of those per-campaign numbers.
+    Filter the joined rows on one event type (open, click): within one
+    campaign this is the number of distinct prospects with that event; across
+    campaigns it is the sum of those per-campaign numbers.
     """
     return func.count(func.distinct(
         func.concat(EmailMessage.campaign_id, ":", EmailMessage.prospect_id)
     ))
+
+
+# Opened / clicked both count unique prospects (see the definition above).
+unique_openers_expr = unique_prospects_expr
+unique_clickers_expr = unique_prospects_expr
 
 
 class CampaignAnalyticsService:

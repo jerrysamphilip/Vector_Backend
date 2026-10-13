@@ -1,11 +1,11 @@
 {
   "suite": "UI outreach/admin - library",
   "counts": {
-    "PASS": 13,
-    "FAIL": 1,
+    "PASS": 14,
+    "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 59,
+  "seconds": 13,
   "cases": [
     {
       "id": "UIO-TPL-01",
@@ -65,10 +65,10 @@
     },
     {
       "id": "UIO-AUTO-02b",
-      "title": "Create \"Pause Campaign\" rule (offered in the Action dropdown) succeeds",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "locator.selectOption: Timeout 12000ms exceeded."
+      "title": "Create \"Pause this contact\" rule (PAUSE_PROSPECT, replaced \"Pause Campaign\"): option offered, no template picker, row listed, DB row persisted",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-AUTO-03",

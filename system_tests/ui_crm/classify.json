@@ -1,0 +1,6 @@
+{
+ "UIC-NF-07": {
+  "category": "defect-backend",
+  "note": "@mention lets you pick any active user (app/services/mentions.py mentionable_users/validate: 'Any active user of the workspace can be mentioned'), but an AGENT only sees own contacts: the MENTION notification links to /app/contacts/{id}, GET /contacts/{id} -> 404 and the page says 'Contact not found'. Either limit the picker/validation to users who can see the record or grant read access via the mention."
+ }
+}

@@ -27,7 +27,11 @@ from app.models.sending_inbox import SendingInbox
 from app.models.prospect import Prospect
 from app.models.domain_reputation import SendingDomain, DomainHealthSnapshot
 from app.models.user import User
-from app.services.campaign_analytics_service import sent_message_filters, unique_openers_expr
+from app.services.campaign_analytics_service import (
+    sent_message_filters,
+    unique_openers_expr,
+    unique_prospects_expr,
+)
 from app.schemas.reports_schema import (
     GlobalKPIs,
     TimeSeriesPoint,
@@ -67,15 +71,19 @@ class ReportsService:
         q = q.filter(*_by_owner(Campaign.created_by, user_id))
         return q.subquery()
 
-    def _unique_openers(self, *filters) -> int:
-        """Opened = unique prospects (per campaign) with an open event."""
+    def _unique_prospects_with(self, event_type: str, *filters) -> int:
+        """Unique prospects (per campaign) with an event of ``event_type``."""
         return (
-            self.db.query(unique_openers_expr())
+            self.db.query(unique_prospects_expr())
             .select_from(EmailEvent)
             .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-            .filter(EmailEvent.event_type == EmailEvent.EVENT_OPEN, *filters)
+            .filter(EmailEvent.event_type == event_type, *filters)
             .scalar()
         ) or 0
+
+    def _unique_openers(self, *filters) -> int:
+        """Opened = unique prospects (per campaign) with an open event."""
+        return self._unique_prospects_with(EmailEvent.EVENT_OPEN, *filters)
 
     # ------------------------------------------------------------------
     # GLOBAL ANALYTICS
@@ -111,10 +119,14 @@ class ReportsService:
 
         event_row = (
             self.db.query(
-                func.sum(case((EmailEvent.event_type == EmailEvent.EVENT_OPEN, 1), else_=0)).label("opened"),
-                func.sum(case((EmailEvent.event_type == EmailEvent.EVENT_REPLY, 1), else_=0)).label("replied"),
-                func.sum(case((EmailEvent.event_type == EmailEvent.EVENT_BOUNCE, 1), else_=0)).label("bounced"),
-                func.sum(case((EmailEvent.event_type == EmailEvent.EVENT_CLICK, 1), else_=0)).label("clicked"),
+                # replied / bounced = distinct messages with the event (as the
+                # campaign metrics count them), not raw event rows
+                func.count(func.distinct(case(
+                    (EmailEvent.event_type == EmailEvent.EVENT_REPLY, EmailEvent.message_id)
+                ))).label("replied"),
+                func.count(func.distinct(case(
+                    (EmailEvent.event_type == EmailEvent.EVENT_BOUNCE, EmailEvent.message_id)
+                ))).label("bounced"),
             )
             .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
             .filter(
@@ -130,9 +142,16 @@ class ReportsService:
             EmailEvent.event_time >= start_date,
             EmailEvent.event_time < end_date + timedelta(days=1),
         )
+        # Clicked = unique prospects (per campaign) with a click event, the
+        # same definition as step analytics and /campaigns/{id}/metrics.
+        clicked = self._unique_prospects_with(
+            EmailEvent.EVENT_CLICK,
+            EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
+            EmailEvent.event_time >= start_date,
+            EmailEvent.event_time < end_date + timedelta(days=1),
+        )
         replied = event_row.replied or 0
         bounced = event_row.bounced or 0
-        clicked = event_row.clicked or 0
 
         # Fallback: if no open events, count prospects with OPENED/REPLIED status
         # (mirrors CampaignAnalyticsService logic — a reply implies the email was opened)
@@ -224,8 +243,8 @@ class ReportsService:
         event_results = (
             self.db.query(
                 func.date(EmailEvent.event_time).label("d"),
-                EmailEvent.event_type.label("t"),
-                func.count(EmailEvent.event_id).label("cnt"),
+                EmailEvent.event_type.label("etype"),
+                func.count(func.distinct(EmailEvent.message_id)).label("cnt"),
             )
             .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
             .filter(
@@ -261,11 +280,11 @@ class ReportsService:
         reply_map = {}
         bounce_map = {}
         for row in event_results:
-            if row.t == EmailEvent.EVENT_OPEN:
+            if row.etype == EmailEvent.EVENT_OPEN:
                 continue
-            elif row.t == EmailEvent.EVENT_REPLY:
+            elif row.etype == EmailEvent.EVENT_REPLY:
                 reply_map[row.d] = row.cnt
-            elif row.t == EmailEvent.EVENT_BOUNCE:
+            elif row.etype == EmailEvent.EVENT_BOUNCE:
                 bounce_map[row.d] = row.cnt
 
         # Build series

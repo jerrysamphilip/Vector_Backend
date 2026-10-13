@@ -107,7 +107,7 @@ export async function run(rec, browser) {
     eq(dbn(`SELECT COUNT(*) FROM prospects WHERE tenant_id='${r.tenantId}' AND deleted_at IS NULL`), n + 1, 'single restore');
     await go(B, 'contacts'); ok(await q.getByText(`${n + 1} contacts`).isVisible(), 'visible in Contacts');
   }, { u: B });
-  skip(rec, 'UIC-RD-03', 'Manual purge of a deleted record', 'No purge/permanent-delete control on Recently deleted (items expire after 90 days)', 'not-implemented');
+  // UIC-RD-03 (was BLOCKED not-implemented): the feature now exists and is covered by UIC-NF-12 in new_features.mjs
   const BG = await ui(browser, ag);
   await tc(rec, 'UIC-RD-04', 'AGENT without manage_prospects: page not reachable, API refused', async () => {
     await go(BG, 'recently-deleted'); ok(!/recently-deleted/.test(BG.page.url()), 'redirected: ' + BG.page.url());

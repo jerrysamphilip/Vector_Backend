@@ -37,7 +37,11 @@ from app.schemas.sequence_schema import (
     SequenceResponse,
 )
 from app.services.campaign_service import CampaignService
-from app.services.campaign_analytics_service import sent_message_filters, unique_openers_expr
+from app.services.campaign_analytics_service import (
+    sent_message_filters,
+    unique_clickers_expr,
+    unique_openers_expr,
+)
 from app.services.sequence_service import SequenceService
 from app.services.audit_service import AuditService
 from app.utils.email_utils import normalize_unsubscribe_footer
@@ -1318,9 +1322,19 @@ def get_campaign_analytics(
         EmailEvent.event_type == EmailEvent.EVENT_OPEN
     ).group_by(EmailMessage.sequence_id).all())
 
+    seq_clickers_map = dict(db.query(
+        EmailMessage.sequence_id,
+        unique_clickers_expr()
+    ).join(
+        EmailEvent, EmailEvent.message_id == EmailMessage.message_id
+    ).filter(
+        EmailMessage.campaign_id == campaign_id,
+        EmailMessage.sequence_id.in_(sequence_ids),
+        EmailEvent.event_type == EmailEvent.EVENT_CLICK
+    ).group_by(EmailMessage.sequence_id).all())
+
     event_types = [
         EmailEvent.EVENT_OPEN,
-        EmailEvent.EVENT_CLICK,
         EmailEvent.EVENT_REPLY,
         EmailEvent.EVENT_BOUNCE,
         EmailEvent.EVENT_SENDER_BOUNCE,
@@ -1359,7 +1373,7 @@ def get_campaign_analytics(
 
         e_counts = event_map.get(s_id, {})
         opened_count = seq_openers_map.get(s_id, 0)
-        clicked_count = e_counts.get(EmailEvent.EVENT_CLICK, 0)
+        clicked_count = seq_clickers_map.get(s_id, 0)
         replied_count = e_counts.get(EmailEvent.EVENT_REPLY, 0)
         bounced_count = e_counts.get(EmailEvent.EVENT_BOUNCE, 0)
         sender_bounced_count = e_counts.get(EmailEvent.EVENT_SENDER_BOUNCE, 0)
@@ -1467,8 +1481,11 @@ def get_campaign_analytics(
         EmailEvent.event_type == EmailEvent.EVENT_BOUNCE
     ).scalar() or 0
 
-    total_clicked = db.query(func.count(func.distinct(EmailEvent.message_id))).filter(
-        EmailEvent.message_id.in_(all_msg_ids),
+    # Clicked = unique prospects with a click event (shared definition).
+    total_clicked = db.query(unique_clickers_expr()).join(
+        EmailEvent, EmailEvent.message_id == EmailMessage.message_id
+    ).filter(
+        EmailMessage.campaign_id == campaign_id,
         EmailEvent.event_type == EmailEvent.EVENT_CLICK
     ).scalar() or 0
 

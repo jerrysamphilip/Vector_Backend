@@ -155,7 +155,7 @@ export async function run(rec, browser) {
     ok(await p.getByRole('button', { name: 'Next page' }).isDisabled(), 'next disabled');
   }, { u: A });
 
-  skip(rec, 'UIC-ACC-12', 'AccountDetail lists the company\'s deals', 'AccountDetail shows contacts and history only; deals appear on the Deals screen', 'not-implemented');
+  // UIC-ACC-12 (was BLOCKED not-implemented): the feature now exists and is covered by UIC-NF-11 in new_features.mjs
 
   await tc(rec, 'UIC-ACC-13', 'Delete company (confirm): contacts kept, appears in Recently deleted > Companies, restore works', async () => {
     const a = accounts[5];
