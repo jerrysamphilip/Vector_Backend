@@ -11,9 +11,9 @@ class SendingInboxResponse(BaseModel):
     inbox_id: str
     email_address: str
     provider: Optional[str] = None
-    status: str
+    status: Optional[str] = None  # S10: nullable columns
     last_sent_at: Optional[datetime] = None
-    daily_limit: int
+    daily_limit: Optional[int] = None
 
     # SMTP fields
     smtp_host: Optional[str] = None

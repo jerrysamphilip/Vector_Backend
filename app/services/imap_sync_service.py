@@ -569,6 +569,10 @@ class IMAPSyncService:
                         )
                         self.db.add(reply_event)
                         logger.info(f"[IMAP] Created REPLY event for msg {replied_to_msg.message_id}")
+                        if not is_ooo:
+                            # Outbound webhooks (BR-SF-20), committed with this message's savepoint
+                            from app.services import webhooks
+                            webhooks.email_replied(self.db, prospect.tenant_id, new_msg, replied_to_msg, prospect)
 
                         # Tag the reply as OOO or (if not OOO) run AI intent
                         # classification for the "Positive Replies" metric.

@@ -46,6 +46,9 @@ class EmailMessage(Base):
     body_text = Column(Text, nullable=True)
     to_email = Column(String(255), nullable=False)
     from_email = Column(String(255), nullable=True)
+    # A/B subject test (BR-SF-18): the variant label (A-D) whose subject this
+    # message carries; assigned once at pre-schedule time and kept on re-plan.
+    subject_variant = Column(String(1), nullable=True)
 
     # Retry Logic
     retry_count = Column(Integer, default=0)

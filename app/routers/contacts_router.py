@@ -36,6 +36,7 @@ from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.prospect_persona import ProspectPersona
 from app.models.user import User
 from app.services import contact_companies, crm, mentions
+from app.services import contact_scoring  # BR-CM-43
 from app.services.contact_service import (
     MERGE_CHOOSABLE,
     can_access_contact,
@@ -62,6 +63,7 @@ SORT_COLUMNS = {
     "lead_status": (Prospect.lead_status,),
     "created_at": (Prospect.created_at,),
     "updated_at": (Prospect.updated_at,),
+    "score": (Prospect.score,),  # BR-CM-43
 }
 
 EVENT_LABELS = {
@@ -90,6 +92,7 @@ COLUMNS = {
     "poc_country": "Country", "timezone": "Time zone", "consent_status": "Email subscription",
     "legal_basis": "Legal basis", "linkedin_url": "LinkedIn", "last_activity_at": "Last activity",
     "last_contacted_at": "Last contacted", "created_at": "Create date", "updated_at": "Last updated",
+    "score": "Score",  # BR-CM-43: fit + engagement score with its grade
 }
 
 
@@ -313,6 +316,12 @@ def _summaries(db: Session, prospects: List[Prospect]) -> List[dict]:
         "is_valid_email": p.is_valid_email,
         "custom_fields": p.custom_fields or {},
         "quality_flags": crm.quality_flags(p),
+        # Contact score (BR-CM-43); None until first scored
+        "score": p.score,
+        "fit_score": p.fit_score,
+        "engagement_score": p.engagement_score,
+        "score_grade": p.score_grade,
+        "scored_at": p.scored_at,
         "last_activity_at": last_activity.get(p.prospect_id),
         "last_contacted_at": last_contacted.get(p.prospect_id),
         "created_at": p.created_at,
@@ -489,7 +498,8 @@ def search_condition(q: str):
 
 def _filtered_query(db: Session, user: User, q=None, owner=None, account_id=None, tag=None, list_id=None,
                     campaign_id=None, consent_status=None, email_valid=None, has_phone=None, country=None,
-                    industry=None, lifecycle_stage=None, lead_status=None, filters=None):
+                    industry=None, lifecycle_stage=None, lead_status=None, filters=None,
+                    grade=None, score_min=None, score_max=None):
     query = _visible(db, user)
     # Owner filters narrow within what the user may already see
     if owner == "me":
@@ -534,6 +544,16 @@ def _filtered_query(db: Session, user: User, q=None, owner=None, account_id=None
         query = query.filter(Prospect.lifecycle_stage == lifecycle_stage)
     if lead_status:
         query = query.filter(Prospect.lead_status == lead_status)
+    # Contact score (BR-CM-43): grade(s) "A" or "A,B", and a 0-100 range
+    if grade:
+        grades = [g for g in (x.strip().upper() for x in grade.split(",")) if g in ("A", "B", "C", "D")]
+        if not grades:
+            raise HTTPException(status_code=400, detail="grade must be A, B, C or D (comma-separated)")
+        query = query.filter(Prospect.score_grade.in_(grades))
+    if score_min is not None:
+        query = query.filter(Prospect.score >= score_min)
+    if score_max is not None:
+        query = query.filter(Prospect.score <= score_max)
     if filters:
         try:
             clause = crm.filter_clause(db, crm.parse_filter_param(filters), user)
@@ -579,15 +599,19 @@ def list_contacts(
     lifecycle_stage: Optional[str] = None,
     lead_status: Optional[str] = None,
     filters: Optional[str] = Query(None, description="JSON AND/OR filter, see app/services/crm.py"),
-    sort_by: str = Query("created_at", pattern="^(name|email|company|lifecycle_stage|lead_status|created_at|updated_at)$"),
+    sort_by: str = Query("created_at", pattern="^(name|email|company|lifecycle_stage|lead_status|created_at|updated_at|score)$"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
+    grade: Optional[str] = Query(None, max_length=20, description="Score grade(s): A, B, C, D, comma-separated"),
+    score_min: Optional[int] = Query(None, ge=0, le=100),
+    score_max: Optional[int] = Query(None, ge=0, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(tenant_user),
 ):
     query = _filtered_query(db, current_user, q, owner, account_id, tag, list_id, campaign_id, consent_status,
-                            email_valid, has_phone, country, industry, lifecycle_stage, lead_status, filters)
+                            email_valid, has_phone, country, industry, lifecycle_stage, lead_status, filters,
+                            grade=grade, score_min=score_min, score_max=score_max)
     direction = (lambda c: c.asc()) if sort_order == "asc" else (lambda c: c.desc())
     order = [direction(c) for c in SORT_COLUMNS[sort_by]] + [direction(Prospect.prospect_id)]
     if q and q.strip():
@@ -698,7 +722,10 @@ def create_contact(
     contact_companies.sync_primary(db, prospect, current_user.user_id)
     db.add(PropertyChange(tenant_id=current_user.tenant_id, object_type="CONTACT", object_id=prospect.prospect_id,
                           field="created", new_value="Contact created", source="UI", changed_by=current_user.user_id))
+    from app.services import webhooks
+    webhooks.emit_event(db, current_user.tenant_id, "contact.created", webhooks.contact_data(prospect))
     db.commit()
+    contact_scoring.rescore(db, current_user.tenant_id, [prospect.prospect_id])  # BR-CM-43
     return _contact_detail(db, current_user, prospect)
 
 
@@ -745,8 +772,21 @@ def contact_owners(db: Session = Depends(get_db), current_user: User = Depends(t
 
 @router.get("/mentionable-users")
 def mentionable_users(q: Optional[str] = Query(None, max_length=100), limit: int = Query(20, ge=1, le=50),
+                      prospect_id: Optional[str] = Query(None, max_length=36),
+                      opportunity_id: Optional[str] = Query(None, max_length=36),
                       db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
-    """Colleagues who can be @mentioned in a note: any active user of the workspace (BR-CM-16)."""
+    """
+    Colleagues who can be @mentioned in a note: any active user of the workspace (BR-CM-16).
+    With prospect_id (contact notes) or opportunity_id (deal notes), only those who can see that
+    record, matching the check made when the note is saved.
+    """
+    if prospect_id:
+        prospect = _get_contact(db, current_user, prospect_id)
+        return mentions.mentionable_users(db, current_user, q, limit, prospect.owner_id, True)
+    if opportunity_id:
+        from app.services import sales as sales_svc
+        opp = sales_svc.get_opp(db, current_user, opportunity_id)
+        return mentions.mentionable_users(db, current_user, q, limit, opp.owner_id, True)
     return mentions.mentionable_users(db, current_user, q, limit)
 
 
@@ -1367,6 +1407,7 @@ def update_contact(
     if before.get("account_id") != prospect.account_id:
         contact_companies.sync_primary(db, prospect, current_user.user_id)
     db.commit()
+    contact_scoring.rescore(db, current_user.tenant_id, [prospect.prospect_id])  # BR-CM-43
     db.refresh(prospect)
     return _contact_detail(db, current_user, prospect)
 
@@ -1492,7 +1533,8 @@ def _history_label(field: str, defs: Dict[str, str]) -> str:
         return defs.get(field[len("custom."):], field[len("custom."):])
     return COLUMNS.get(field, {"account_id": "Company", "company_association": "Associated company",
                                "owner_id": "Owner", "emp_band": "Employees",
-                               "deleted": "Deleted", "created": "Created"}.get(field, field.replace("_", " ").capitalize()))
+                               "deleted": "Deleted", "created": "Created",
+                               "score_grade": "Score grade"}.get(field, field.replace("_", " ").capitalize()))
 
 
 def _history_value(field: str, value: Optional[str], users: Dict[str, str], companies: Dict[str, str]):
@@ -1608,7 +1650,7 @@ def contact_timeline(
                 "kind": "EMAIL_RECEIVED" if inbound else "EMAIL_SENT",
                 "at": m.sent_at or m.scheduled_at,
                 "email": {
-                    "message_id": m.message_id, "subject": m.subject,
+                    "message_id": m.message_id, "subject": m.subject, "subject_variant": m.subject_variant,
                     "snippet": (m.body_text or "")[:400], "status": m.status, "final_status": m.final_status, "failure_reason": m.failure_reason,
                     "from_email": m.from_email, "to_email": m.to_email,
                     "campaign_id": m.campaign_id, "campaign_name": campaign_name,
@@ -1697,5 +1739,7 @@ def log_activity(
                       f"/app/contacts/{prospect.prospect_id}")
     prospect.updated_at = func.now()
     db.commit()
+    if activity_type in ("CALL", "MEETING"):
+        contact_scoring.rescore(db, current_user.tenant_id, [prospect.prospect_id])  # BR-CM-43 engagement
     return _activity_dict(activity, {current_user.user_id: current_user},
                           [{"user_id": u.user_id, "name": _user_name(u)} for u in mentioned_users])

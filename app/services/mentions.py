@@ -26,7 +26,10 @@ def _name(u: Optional[User]) -> str:
     return f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email
 
 
-def mentionable_users(db: Session, user: User, q: Optional[str] = None, limit: int = 20) -> List[dict]:
+def mentionable_users(db: Session, user: User, q: Optional[str] = None, limit: int = 20,
+                      owner_id: Optional[str] = None, check_owner: bool = False) -> List[dict]:
+    """Active colleagues matching q. With check_owner, only those who can see a record owned by
+    owner_id (the same rule validate() applies when the note is saved)."""
     query = db.query(User).filter(User.tenant_id == user.tenant_id, User.status == "ACTIVE",
                                   User.role.in_(("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")))
     if q and q.strip():
@@ -34,7 +37,12 @@ def mentionable_users(db: Session, user: User, q: Optional[str] = None, limit: i
         query = query.filter(or_(func.lower(func.concat(func.coalesce(User.first_name, ""), " ",
                                                         func.coalesce(User.last_name, ""))).like(term),
                                  func.lower(User.email).like(term)))
-    users = query.order_by(User.first_name, User.last_name).limit(limit).all()
+    query = query.order_by(User.first_name, User.last_name)
+    if check_owner:
+        from app.services.contact_service import can_see_owner
+        users = [u for u in query.limit(500).all() if can_see_owner(db, u, owner_id)][:limit]
+    else:
+        users = query.limit(limit).all()
     return [{"user_id": u.user_id, "name": _name(u), "email": u.email} for u in users]
 
 

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel, Field
 
 from app.core.auth import require_role, require_permission
@@ -604,16 +604,40 @@ async def get_campaign_audit_trail(
         handle_route_error(e, context="get_campaign_audit_trail")
 
 
+SEND_NOW_BATCH = 25
+
+
+def parse_send_now_cursor(cursor: Optional[str]):
+    """'<step_number>:<message_id>' -> (step, message_id); None/invalid -> None."""
+    if not cursor:
+        return None
+    step, sep, message_id = cursor.partition(":")
+    if not sep or not step.isdigit() or not message_id or len(message_id) > 64:
+        raise HTTPException(status_code=400, detail="Invalid cursor")
+    return int(step), message_id
+
+
+def format_send_now_cursor(step_number: int, message_id: str) -> str:
+    return f"{int(step_number or 0)}:{message_id}"
+
+
 @router.post("/{campaign_id}/send-now", dependencies=[Depends(require_permission("manage_campaigns"))])
 async def send_campaign_now(
     campaign_id: str,
+    limit: int = Query(SEND_NOW_BATCH, ge=1, le=100),
+    cursor: Optional[str] = Query(None, max_length=100),
+    since: Optional[datetime] = None,
     service: CampaignService = Depends(get_campaign_service),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")),
 ):
     """
-    Immediately send FIRST STEP emails only for this campaign.
-    Only sends Step 1 (first email) for each prospect.
+    Immediately send this campaign's queued emails that are due in sequence order,
+    at most `limit` per request so a big queue never times out one HTTP request.
+    The response says how many remain (`remaining`, `has_more`); to continue the same
+    run, call again with the returned `cursor` and `since` (= the first call's
+    `started_at`). Within a run, follow-ups that only became sendable because their
+    previous step went out during the run are left to the scheduler.
     """
     from app.models import EmailMessage, EmailTemplate, Prospect, EmailEvent, EmailSequence, Campaign
     from app.services.email_sender_service import email_sender, TransientEmailFailure, PermanentEmailFailure
@@ -630,14 +654,41 @@ async def send_campaign_now(
     # Get all queued/scheduled emails for this campaign, ordered by sequence step
     # A contact's follow-up only goes once the step before it was sent (B01):
     # steps whose previous step is still unsent are left for the scheduler.
-    queued_emails = db.query(EmailMessage).join(EmailSequence).filter(
+    from sqlalchemy import exists, or_
+    from sqlalchemy.orm import aliased
+
+    after = parse_send_now_cursor(cursor)
+    started_at = since.astimezone(timezone.utc).replace(tzinfo=None) if since and since.tzinfo else since
+    # Whole seconds: sent_at is stored without fractions, so a send in this run is never "before" it
+    started_at = (started_at or datetime.utcnow()).replace(microsecond=0)
+    criteria = [
         EmailMessage.campaign_id == campaign_id,
         EmailMessage.status.in_(["QUEUED", "SCHEDULED"]),
         ~email_scheduler._earlier_step_pending(EmailMessage, EmailSequence),
-    ).order_by(EmailSequence.step_number).all()
-    
+    ]
+    if since:
+        # Same run: skip follow-ups whose previous step was sent during this run
+        prev, prev_step = aliased(EmailMessage), aliased(EmailSequence)
+        criteria.append(~exists().where(
+            prev.campaign_id == EmailMessage.campaign_id, prev.prospect_id == EmailMessage.prospect_id,
+            prev.message_id != EmailMessage.message_id, prev.sent_at >= started_at,
+            prev_step.sequence_id == prev.sequence_id, prev_step.step_number < EmailSequence.step_number))
+    if after:
+        criteria.append(or_(EmailSequence.step_number > after[0],
+                            and_(EmailSequence.step_number == after[0], EmailMessage.message_id > after[1])))
+    eligible = db.query(EmailMessage).join(EmailSequence).filter(*criteria)
+    batch = eligible.with_entities(EmailMessage.message_id, EmailSequence.step_number).order_by(
+        EmailSequence.step_number, EmailMessage.message_id).limit(limit).all()
+    step_of = {mid: step for mid, step in batch}
+    queued_emails = db.query(EmailMessage).filter(EmailMessage.message_id.in_(list(step_of))).all() if batch else []
+    queued_emails.sort(key=lambda m: (step_of[m.message_id], m.message_id))
+    next_cursor = format_send_now_cursor(batch[-1][1], batch[-1][0]) if batch else cursor
+    run_started = started_at.isoformat()
+
     if not queued_emails:
-        return {"status": "no_emails", "message": "No queued emails to send", "sent": 0, "failed": 0}
+        return {"status": "no_emails", "message": "No queued emails to send", "sent": 0, "failed": 0,
+                "skipped": 0, "total": 0, "remaining": 0, "has_more": False, "cursor": next_cursor,
+                "started_at": run_started, "errors": []}
     
     sent_count = 0
     failed_count = 0
@@ -855,6 +906,19 @@ async def send_campaign_now(
             failed_count += 1
             errors.append(str(e)[:100])
     
+    # What is left for the next request of this run (after this batch's cursor)
+    rest = [EmailMessage.campaign_id == campaign_id, EmailMessage.status.in_(["QUEUED", "SCHEDULED"]),
+            ~email_scheduler._earlier_step_pending(EmailMessage, EmailSequence)]
+    prev, prev_step = aliased(EmailMessage), aliased(EmailSequence)
+    rest.append(~exists().where(
+        prev.campaign_id == EmailMessage.campaign_id, prev.prospect_id == EmailMessage.prospect_id,
+        prev.message_id != EmailMessage.message_id, prev.sent_at >= started_at,
+        prev_step.sequence_id == prev.sequence_id, prev_step.step_number < EmailSequence.step_number))
+    last_step, last_id = parse_send_now_cursor(next_cursor)
+    rest.append(or_(EmailSequence.step_number > last_step,
+                    and_(EmailSequence.step_number == last_step, EmailMessage.message_id > last_id)))
+    remaining = db.query(func.count(EmailMessage.message_id)).join(EmailSequence).filter(*rest).scalar() or 0
+
     return {
         "status": "completed",
         "sent": sent_count,
@@ -862,6 +926,10 @@ async def send_campaign_now(
         "skipped": len(skipped),
         "skipped_details": skipped[:50],
         "total": len(queued_emails),
+        "remaining": int(remaining),
+        "has_more": remaining > 0,
+        "cursor": next_cursor,
+        "started_at": run_started,
         "errors": errors[:5] if errors else []  # Return first 5 errors
     }
 
@@ -1768,6 +1836,7 @@ def get_campaign_schedule(
         EmailMessage.status,
         EmailMessage.sequence_id,
         EmailMessage.prospect_id,
+        EmailMessage.subject_variant,
         Prospect.first_name,
         Prospect.last_name,
         Prospect.email
@@ -1823,6 +1892,7 @@ def get_campaign_schedule(
                 "sent_at": msg.sent_at.isoformat() if msg.sent_at else None,
                 "scheduled_at": msg.scheduled_at.isoformat() if msg.scheduled_at else None,
                 "message_status": msg.status,
+                "subject_variant": msg.subject_variant,  # A/B subject test (BR-SF-18)
             })
 
         if status == "SENT":

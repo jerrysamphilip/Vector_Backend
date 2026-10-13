@@ -26,7 +26,7 @@ from app.models.prospect import Prospect
 from app.models.sales import (CLIENT_TYPES, LEAD_STAGES, OPEN_LEAD_STAGES, PROPOSAL_STATUSES, SQL_CRITERIA, Lead,
                               Opportunity, Proposal, SalesStage)
 from app.models.user import User
-from app.services import crm
+from app.services import crm, quote_approval
 from app.services import sales as svc
 from app.services.contact_service import (SALES_LEVELS, can_access_contact, clean_str, sees_everything,
                                           team_user_ids, visible_user_ids)
@@ -714,16 +714,21 @@ def update_opp(opportunity_id: str, payload: OppWrite, db: Session = Depends(get
             opp.forecast_category_manual = False
             current = db.query(SalesStage).filter(SalesStage.stage_id == opp.stage_id).first()
             opp.forecast_category = svc.category_for(current) if current else "PIPELINE"
+    moved_to = None
     if data.get("stage_id") and data["stage_id"] != opp.stage_id:
         stage = svc.apply_stage(db, opp, data["stage_id"])
         svc.require_close_reason(db, opp, stage, opp.closed_reason)
         if stage.is_won and opp.prospect_id:
             prospect = db.query(Prospect).filter(Prospect.prospect_id == opp.prospect_id).first()
             svc.sync_contact_lifecycle(db, prospect, "CUSTOMER", current_user.user_id)
+        moved_to = stage
     after = crm.snapshot(opp, svc.OPP_FIELDS)
     if before.get("stage_id") != after.get("stage_id"):
         names = {s.stage_id: s.name for s in svc.stages(db, current_user.tenant_id, True)}
         before["stage_id"], after["stage_id"] = names.get(before["stage_id"]), names.get(after["stage_id"])
+    if moved_to is not None:
+        # Owner and their manager hear about won / lost / stage moves (E2E-J1-87b)
+        svc.notify_stage_change(db, opp, moved_to, current_user, before.get("stage_id"))
     _record(db, current_user, "DEAL", opp.opportunity_id, before, after)
     db.commit()
     return get_opp(opportunity_id, db, current_user)
@@ -840,7 +845,9 @@ def _proposal_dict(p: Proposal, opp: Optional[dict] = None) -> dict:
     d = {"proposal_id": p.proposal_id, "opportunity_id": p.opportunity_id, "title": p.title,
          "amount": svc.as_float(p.amount) if p.amount is not None else None, "status": p.status,
          "status_label": PROPOSAL_STATUSES.get(p.status), "valid_until": p.valid_until, "notes": p.notes,
-         "sent_at": p.sent_at, "decided_at": p.decided_at, "created_at": p.created_at}
+         "sent_at": p.sent_at, "decided_at": p.decided_at, "created_at": p.created_at,
+         "approval_status": p.approval_status or "NOT_REQUIRED", "approval_reason": p.approval_reason,
+         "approval_decided_at": p.approval_decided_at}
     if opp:
         d.update({"opportunity_name": opp["name"], "company_name": opp["company_name"],
                   "owner_id": opp["owner_id"], "owner_name": opp["owner_name"], "client_type": opp["client_type"]})
@@ -923,6 +930,7 @@ def update_proposal(proposal_id: str, payload: ProposalWrite, db: Session = Depe
         if f in data:
             setattr(p, f, data[f])
     if data.get("status"):
+        quote_approval.ensure_can_send(db, p, data["status"])  # BR-SF-17: discount above the limit needs approval
         _set_proposal_status(p, data["status"])
     if p.status != old_status:
         _record(db, current_user, "DEAL", p.opportunity_id, {"proposal": f"{p.title}: {old_status.lower()}"},

@@ -242,6 +242,9 @@ app.include_router(platform_admin_router)
 # Contact management (contacts across all lists, accounts, activities)
 from app.routers.contacts_router import router as contacts_router
 from app.routers.accounts_router import router as accounts_router
+# Contact scoring (BR-CM-43): before contacts_router so /contacts/scoring-model is not a contact id
+from app.routers.contact_scoring_router import router as contact_scoring_router
+app.include_router(contact_scoring_router)
 app.include_router(contacts_router)
 app.include_router(accounts_router)
 from app.routers.tasks_router import router as tasks_router
@@ -268,6 +271,12 @@ from app.routers.connections_router import router as connections_router
 app.include_router(quotes_router)
 app.include_router(custom_reports_router)
 app.include_router(connections_router)
+# A/B testing of email subject lines (BR-SF-18)
+from app.routers.subject_variant_router import router as subject_variant_router
+app.include_router(subject_variant_router)
+# Outbound webhooks for other systems (BR-SF-20)
+from app.routers.webhooks_router import router as webhooks_router
+app.include_router(webhooks_router)
  
  
 # =============================

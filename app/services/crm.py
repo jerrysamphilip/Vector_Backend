@@ -128,6 +128,10 @@ def record_changes(db: Session, tenant_id: str, object_type: str, object_id: str
     if changed and source not in ("IMPORT", "MERGE"):
         from app.services import workflow
         workflow.on_changes(db, tenant_id, object_type, object_id, changed, user_id)
+    if rows:
+        # Outbound webhooks (BR-SF-20): contact / lead / deal events, queued in this transaction
+        from app.services import webhooks
+        webhooks.on_record_changes(db, tenant_id, object_type, object_id, before, after, source)
     return rows
 
 
@@ -233,6 +237,8 @@ def soft_delete_contacts(db: Session, prospects: list, user_id: Optional[str]) -
     for pid in ids:
         db.add(PropertyChange(tenant_id=prospects[0].tenant_id, object_type="CONTACT", object_id=pid,
                               field="deleted", old_value=None, new_value="deleted", source="UI", changed_by=user_id))
+    from app.services import webhooks
+    webhooks.contacts_deleted(db, [p for p in prospects if p.prospect_id in ids], user_id)
     return len(ids)
 
 

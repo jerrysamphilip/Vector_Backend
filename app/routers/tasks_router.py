@@ -229,6 +229,10 @@ def update_task(task_id: str, payload: TaskWrite, db: Session = Depends(get_db),
     if "status" in data:
         task.completed_at = datetime.utcnow() if task.status == "DONE" else None
     db.commit()
+    if "status" in data and task.prospect_id:
+        # Completed tasks count towards the contact's engagement score (BR-CM-43)
+        from app.services import contact_scoring
+        contact_scoring.rescore(db, task.tenant_id, [task.prospect_id])
     return task_dict(db, task)
 
 

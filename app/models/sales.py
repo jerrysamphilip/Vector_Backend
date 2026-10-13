@@ -157,9 +157,18 @@ class Proposal(Base):
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    # Discount approval (BR-SF-17): NOT_REQUIRED / PENDING / APPROVED / REJECTED (app/services/quote_approval.py)
+    approval_status = Column(String(20), nullable=False, default="NOT_REQUIRED", server_default="NOT_REQUIRED")
+    approval_discount_pct = Column(Numeric(5, 2), nullable=True)   # discount submitted / approved
+    approval_requested_by = Column(String(36), nullable=True)
+    approval_requested_at = Column(TIMESTAMP, nullable=True)
+    approval_decided_by = Column(String(36), nullable=True)
+    approval_decided_at = Column(TIMESTAMP, nullable=True)
+    approval_reason = Column(String(1000), nullable=True)          # approver's reason / submit note
 
     __table_args__ = (
         Index("ix_proposals_tenant_status", "tenant_id", "status"),
         Index("ix_proposals_opp", "opportunity_id"),
+        Index("ix_proposals_tenant_approval", "tenant_id", "approval_status"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )

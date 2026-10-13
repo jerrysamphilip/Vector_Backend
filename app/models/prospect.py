@@ -4,7 +4,7 @@ Prospect and Global Unsubscribe models.
 GDPR compliant with consent tracking and anonymization support.
 """
 
-from sqlalchemy import Column, String, Boolean, TIMESTAMP, ForeignKey, JSON, UniqueConstraint, Index, Computed
+from sqlalchemy import Column, String, Boolean, SmallInteger, TIMESTAMP, ForeignKey, JSON, UniqueConstraint, Index, Computed
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -81,6 +81,14 @@ class Prospect(Base):
     consent_source = Column(String(100), nullable=True)
     consent_timestamp = Column(TIMESTAMP, nullable=True)
 
+    # Contact score on fit and engagement (BR-CM-43): 0-100 each, total and grade A-D;
+    # NULL until first scored. Kept on the row so list sort / filter stay one indexed query.
+    score = Column(SmallInteger, nullable=True)
+    fit_score = Column(SmallInteger, nullable=True)
+    engagement_score = Column(SmallInteger, nullable=True)
+    score_grade = Column(String(1), nullable=True)
+    scored_at = Column(TIMESTAMP, nullable=True)
+
     # Validation & Anonymization
     is_valid_email = Column(Boolean, default=True)
     is_anonymized = Column(Boolean, default=False)
@@ -106,6 +114,9 @@ class Prospect(Base):
         Index("ix_prospects_lifecycle_stage", "lifecycle_stage"),
         Index("ix_prospects_tenant_live_created", "tenant_id", "deleted_at", "created_at"),
         Index("ix_prospects_tenant_live_updated", "tenant_id", "deleted_at", "updated_at"),
+        Index("ix_prospects_tenant_live_score", "tenant_id", "deleted_at", "score"),
+        Index("ix_prospects_tenant_live_grade", "tenant_id", "deleted_at", "score_grade"),
+        Index("ix_prospects_scored_at", "scored_at"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

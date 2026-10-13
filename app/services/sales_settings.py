@@ -33,6 +33,8 @@ DEFAULTS = {
     # BR-SF-12: who must not see amounts and revenue
     "amount_hidden_roles": [],      # e.g. ["AGENT"]
     "amount_hidden_levels": [],     # e.g. [4]
+    # BR-SF-17: quotes with a discount above this percent need approval; None = off
+    "discount_approval_threshold": None,
 }
 
 

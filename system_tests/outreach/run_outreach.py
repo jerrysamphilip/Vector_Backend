@@ -1026,7 +1026,10 @@ def check_background(bg):
 
 UI_SCRIPT = r"""
 import { chromium } from 'playwright';
-const [web, email, password, unsubUrl] = process.argv.slice(2);
+// argv after the script: web, email, password, unsubUrl, (unused), campaignId, campaignName.
+// OUT-132: the campaign id is argv.slice(2)[5] (process.argv[7]); reading process.argv[6] picked up the
+// empty placeholder, so the campaign-detail capture was skipped and came back empty.
+const [web, email, password, unsubUrl, , campaignId, campaignName] = process.argv.slice(2);
 const out = {pages: {}, errors: [], unsub: null, campaign: null};
 const browser = await chromium.launch({executablePath: process.env.CHROMIUM || undefined});
 const page = await browser.newPage();
@@ -1047,12 +1050,12 @@ try {
     out.pages[p] = {url: page.url(), chars: text.length, crashed: /something went wrong|unexpected application error/i.test(text),
                     snippet: text.slice(0, 120).replace(/\s+/g, ' ')};
   }
-  if (process.argv[6]) {
+  if (campaignId) {
     current = 'campaign-detail';
-    await page.goto(`${web}/app/campaigns/${process.argv[6]}`, {waitUntil: 'networkidle'});
-    await page.waitForTimeout(1500);
+    await page.goto(`${web}/app/campaigns/${campaignId}`, {waitUntil: 'networkidle'});
+    await page.getByText(campaignName || '@@').first().waitFor({timeout: 15000}).catch(() => {});
     const text = await page.locator('body').innerText();
-    out.campaign = {chars: text.length, hasName: text.includes(process.argv[7] || '@@'),
+    out.campaign = {chars: text.length, hasName: text.includes(campaignName || '@@'),
                     crashed: /something went wrong|unexpected application error/i.test(text)};
   }
   current = 'unsubscribe';

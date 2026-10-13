@@ -346,7 +346,9 @@ class CampaignEmailService:
             if not prospect:
                 continue
 
-            final_subject = self.substitute_placeholders(
+            # An email in a subject A/B test keeps its variant's subject (BR-SF-18);
+            # only its body follows the template.
+            final_subject = msg.subject if msg.subject_variant else self.substitute_placeholders(
                 template.subject or "", prospect, sender_name, campaign.cta_link, campaign.sender_title
             )
             final_body = self.substitute_placeholders(
@@ -556,6 +558,19 @@ class CampaignEmailService:
             ).all()
         }
 
+        # A/B subject test (BR-SF-18): pick each new email's subject variant up
+        # front, balanced against the step's existing assignments. Emails that
+        # already exist keep theirs (the idempotency guard below skips them).
+        from app.services.subject_variant_service import SubjectVariantService
+        needed_by_seq = {}
+        for cp in prospects:
+            if cp.prospect_id not in prospect_by_id:
+                continue
+            for seq in sequences:
+                if (cp.prospect_id, seq.sequence_id) not in existing_message_keys:
+                    needed_by_seq.setdefault(seq.sequence_id, []).append(cp.prospect_id)
+        variant_by_key = SubjectVariantService(self.db).assignments_for_new_messages(campaign_id, needed_by_seq)
+
         for prospect_index, cp in enumerate(prospects):
             prospect = prospect_by_id.get(cp.prospect_id)
 
@@ -633,8 +648,9 @@ class CampaignEmailService:
                 if not template:
                     continue
 
+                variant = variant_by_key.get((cp.prospect_id, seq.sequence_id))
                 final_subject = self.substitute_placeholders(
-                    template.subject or f"[Step {seq.step_number}] Email",
+                    (variant.subject if variant else None) or template.subject or f"[Step {seq.step_number}] Email",
                     prospect,
                     sender_name,
                     campaign.cta_link,
@@ -666,7 +682,8 @@ class CampaignEmailService:
                     status="SCHEDULED",
                     scheduled_at=scheduled_at,
                     sent_at=None,
-                    template_id=template.template_id
+                    template_id=template.template_id,
+                    subject_variant=variant.label if variant else None,
                 )
                 self.db.add(email_msg)
                 messages_created += 1

@@ -408,7 +408,7 @@ class UserOut(BaseModel):
     last_name: str
     email: str
     role: str
-    status: str
+    status: str | None  # S10: column is nullable
     auth_provider: str
     email_verified: bool
     avatar_url: str | None
@@ -433,6 +433,23 @@ def _revoke_pending_invitations(db: Session, user: User) -> None:
     db.query(MagicLoginToken).filter(
         MagicLoginToken.user_id == user.user_id, MagicLoginToken.used_at.is_(None)
     ).update({MagicLoginToken.used_at: datetime.utcnow()}, synchronize_session=False)
+
+
+def _reinvitable(db: Session, user: User) -> bool:
+    """
+    An account that never joined can be invited again: still INVITED (reissue), or
+    deactivated while invited (revoked invitation). Anyone who joined keeps the 409.
+    """
+    if user.status == "INVITED":
+        return True
+    if user.status != "INACTIVE" or user.last_login_at is not None:
+        return False
+    joined = db.query(Invitation.invitation_id).filter(
+        Invitation.tenant_id == user.tenant_id, Invitation.email == user.email,
+        Invitation.status == "ACCEPTED").first()
+    invited = db.query(Invitation.invitation_id).filter(
+        Invitation.tenant_id == user.tenant_id, Invitation.email == user.email).first()
+    return joined is None and invited is not None
 
 
 @router.get("", response_model=list[UserOut])
@@ -492,8 +509,12 @@ def invite_user(
         .filter(User.tenant_id == current_user.tenant_id, User.email == body.email)
         .first()
     )
-    if existing:
+    if existing and not _reinvitable(db, existing):
         raise HTTPException(status_code=409, detail="User with this email already exists in your workspace")
+    if existing:
+        # Invitation revoked / invited account deactivated before it was ever used:
+        # reissue it on the same account instead of refusing (old links stop working)
+        _revoke_pending_invitations(db, existing)
 
     # Check for pending invitation
     pending = (
@@ -511,19 +532,27 @@ def invite_user(
     first_name, last_name = _derive_name_from_email(body.email)
     temporary_password = _generate_temporary_password()
 
-    user = User(
-        tenant_id=current_user.tenant_id,
-        first_name=first_name,
-        last_name=last_name,
-        email=body.email,
-        password_hash=hash_password(temporary_password),
-        role=body.role,
-        auth_provider="local",
-        email_verified=True,
-        status="INVITED",
-        invited_by=current_user.user_id,
-    )
-    db.add(user)
+    if existing:
+        user = existing
+        user.password_hash = hash_password(temporary_password)
+        user.role = body.role
+        user.custom_permissions = None
+        user.status = "INVITED"
+        user.invited_by = current_user.user_id
+    else:
+        user = User(
+            tenant_id=current_user.tenant_id,
+            first_name=first_name,
+            last_name=last_name,
+            email=body.email,
+            password_hash=hash_password(temporary_password),
+            role=body.role,
+            auth_provider="local",
+            email_verified=True,
+            status="INVITED",
+            invited_by=current_user.user_id,
+        )
+        db.add(user)
     db.flush()
 
     raw_magic_token = secrets.token_urlsafe(48)

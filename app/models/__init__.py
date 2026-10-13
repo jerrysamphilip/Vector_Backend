@@ -16,6 +16,7 @@ from app.models.account import Account
 from app.models.contact_activity import ContactActivity
 from app.models.contact_field import ContactFieldDefinition
 from app.models.crm import PropertyChange, CrmTask, SavedView, ImportJob, ContactCompany, NoteMention
+from app.models.contact_scoring import ContactScoringModel  # noqa: F401  (BR-CM-43 contact scoring)
 from app.models.sales import Lead, SalesStage, Opportunity, Proposal
 from app.models.sales_extra import (Notification, WorkflowRule, SalesSetting, SalesTarget, MessageTemplate,
                                     SavedReport, Product, ProposalLine, UserConnection, ForecastSnapshot)
@@ -54,6 +55,8 @@ from app.models.provider_reputation import (
     ExternalIngestionRun,
 )
 from app.models.alert_center import AlertPreference, AlertEmailDispatch
+from app.models.subject_variant import EmailSubjectVariant  # noqa: F401  (BR-SF-18 A/B subjects)
+from app.models.webhook import WebhookEndpoint, WebhookDelivery  # noqa: F401  (BR-SF-20 outbound webhooks)
 
 __all__ = [
     "Base",
@@ -106,4 +109,5 @@ __all__ = [
     "RefreshToken",
     "PasswordResetToken",
     "MagicLoginToken",
+    "EmailSubjectVariant",
 ]

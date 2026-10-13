@@ -4,14 +4,18 @@ Products, quote lines on proposals, and the proposal PDF (BRD v2.0 BR-SF-15).
 
 A proposal with lines takes its amount from them: quantity x unit price, less
 each line's discount. The PDF is generated in-process (app/utils/pdf.py).
+
+Discounts above the workspace threshold need approval before the quote goes
+out (BR-SF-17): /proposals/{id}/approval*, /quotes/approvals and
+/quotes/approval-settings; the rules live in app/services/quote_approval.py.
 """
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
@@ -21,9 +25,10 @@ from app.models.prospect import Prospect
 from app.models.sales import Opportunity, Proposal
 from app.models.sales_extra import Product, ProposalLine
 from app.models.user import User
+from app.services import quote_approval as qa
 from app.services import sales as svc
-from app.services.contact_service import clean_str
-from app.services.sales_settings import can_see_amounts, masked_for
+from app.services.contact_service import clean_str, team_user_ids
+from app.services.sales_settings import can_see_amounts, masked_for, save_settings
 
 router = APIRouter(tags=["Quotes"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -133,7 +138,8 @@ def _quote(db: Session, p: Proposal) -> dict:
 
 @router.get("/proposals/{proposal_id}/lines")
 def get_lines(proposal_id: str, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
-    return masked_for(db, current_user, _quote(db, _proposal(db, current_user, proposal_id)))
+    p = _proposal(db, current_user, proposal_id)
+    return masked_for(db, current_user, {**_quote(db, p), "approval": qa.state(db, p, current_user)})
 
 
 @router.put("/proposals/{proposal_id}/lines")
@@ -164,11 +170,132 @@ def set_lines(proposal_id: str, payload: LinesIn, db: Session = Depends(get_db),
         db.add(ProposalLine(proposal_id=p.proposal_id, product_id=product.product_id if product else None,
                             description=description[:500], quantity=qty, unit_price=price, discount_pct=disc, sort_order=i))
     db.flush()
+    qa.after_lines_changed(db, current_user, p)  # BR-SF-17: a raised discount goes back for approval
     quote = _quote(db, p)
     if payload.lines:
         p.amount = Decimal(str(quote["amount"]))
+    quote["approval"] = qa.state(db, p, current_user)
     db.commit()
     return quote
+
+
+# ── Discount approval (BR-SF-17) ─────────────────────────────
+
+class ApprovalSettingsIn(BaseModel):
+    # None turns approval off; otherwise quotes with a discount above this percent need approval
+    discount_approval_threshold: Optional[float] = Field(None, ge=0, le=100)
+
+
+class SubmitIn(BaseModel):
+    note: Optional[str] = Field(None, max_length=1000)
+
+
+class DecisionIn(BaseModel):
+    reason: Optional[str] = Field(None, max_length=1000)
+
+
+@router.get("/quotes/approval-settings")
+def get_approval_settings(db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    return {"discount_approval_threshold": qa.threshold_for(db, current_user.tenant_id),
+            "can_edit": current_user.role in ("SUPER_ADMIN", "ADMIN")}
+
+
+@router.put("/quotes/approval-settings")
+def put_approval_settings(payload: ApprovalSettingsIn, db: Session = Depends(get_db),
+                          current_user: User = Depends(admin_user)):
+    threshold = qa.parse_threshold(payload.discount_approval_threshold)
+    save_settings(db, current_user.tenant_id, {qa.SETTING_KEY: threshold})
+    db.commit()
+    return {"discount_approval_threshold": threshold, "can_edit": True}
+
+
+def _approval_proposal(db: Session, user: User, proposal_id: str) -> Proposal:
+    """A quote the user can see, or one they may decide on (approvers need not see every deal)."""
+    p = db.query(Proposal).filter(Proposal.proposal_id == proposal_id, Proposal.tenant_id == user.tenant_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    if p.approval_status == "PENDING" and qa.can_decide(db, user, p):
+        return p
+    svc.get_opp(db, user, p.opportunity_id)
+    return p
+
+
+def _approval_result(db: Session, user: User, p: Proposal) -> dict:
+    return {"proposal_id": p.proposal_id, "opportunity_id": p.opportunity_id, "title": p.title,
+            "status": p.status, **qa.state(db, p, user)}
+
+
+@router.get("/proposals/{proposal_id}/approval")
+def get_approval(proposal_id: str, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    return _approval_result(db, current_user, _approval_proposal(db, current_user, proposal_id))
+
+
+@router.post("/proposals/{proposal_id}/approval/submit")
+def submit_approval(proposal_id: str, payload: Optional[SubmitIn] = None, db: Session = Depends(get_db),
+                    current_user: User = Depends(tenant_user)):
+    p = _proposal(db, current_user, proposal_id)
+    qa.submit(db, current_user, p, clean_str(payload.note) if payload else None)
+    db.commit()
+    return _approval_result(db, current_user, p)
+
+
+@router.post("/proposals/{proposal_id}/approval/approve")
+def approve_discount(proposal_id: str, payload: Optional[DecisionIn] = None, db: Session = Depends(get_db),
+                     current_user: User = Depends(tenant_user)):
+    p = _approval_proposal(db, current_user, proposal_id)
+    qa.decide(db, current_user, p, True, clean_str(payload.reason) if payload else None)
+    db.commit()
+    return _approval_result(db, current_user, p)
+
+
+@router.post("/proposals/{proposal_id}/approval/reject")
+def reject_discount(proposal_id: str, payload: DecisionIn, db: Session = Depends(get_db),
+                    current_user: User = Depends(tenant_user)):
+    p = _approval_proposal(db, current_user, proposal_id)
+    qa.decide(db, current_user, p, False, clean_str(payload.reason))
+    db.commit()
+    return _approval_result(db, current_user, p)
+
+
+@router.get("/quotes/approvals")
+def list_approvals(scope: Literal["mine", "requested"] = "mine",
+                   status: Literal["PENDING", "APPROVED", "REJECTED", "ALL"] = "PENDING",
+                   limit: int = Query(200, ge=1, le=500),
+                   db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    """mine: quotes awaiting (or decided by) my approval; requested: my own quotes that needed approval."""
+    q = db.query(Proposal, Opportunity).join(Opportunity, Opportunity.opportunity_id == Proposal.opportunity_id).filter(
+        Proposal.tenant_id == current_user.tenant_id)
+    q = q.filter(Proposal.approval_status == status) if status != "ALL" else \
+        q.filter(Proposal.approval_status.in_(("PENDING", "APPROVED", "REJECTED")))
+    if scope == "requested":
+        q = q.filter((Opportunity.owner_id == current_user.user_id) | (Proposal.approval_requested_by == current_user.user_id))
+    elif current_user.role not in qa.DECIDER_ROLES:
+        reports = team_user_ids(db, current_user) - {current_user.user_id}  # people whose manager chain includes me
+        if not reports:
+            q = q.filter(Proposal.proposal_id.is_(None))
+        else:
+            q = q.filter(Opportunity.owner_id.in_(reports))
+    rows = q.order_by(Proposal.approval_requested_at.desc()).limit(limit).all()
+    if scope == "mine":
+        rows = [(p, o) for p, o in rows if current_user.role == "SUPER_ADMIN"
+                or current_user.user_id not in (o.owner_id, p.approval_requested_by)]
+    threshold = qa.threshold_for(db, current_user.tenant_id)
+    lines = {}
+    if rows:
+        for l in db.query(ProposalLine).filter(ProposalLine.proposal_id.in_([p.proposal_id for p, _ in rows])):
+            lines.setdefault(l.proposal_id, []).append((l.quantity, l.unit_price, l.discount_pct))
+    companies = {a.account_id: a.name for a in db.query(Account.account_id, Account.name).filter(
+        Account.account_id.in_({o.account_id for _, o in rows if o.account_id}))} if rows else {}
+    owners = svc.user_names(db, [o.owner_id for _, o in rows])
+    items = []
+    for p, o in rows:
+        effective = qa.effective_discount(lines.get(p.proposal_id, []))
+        items.append({"proposal_id": p.proposal_id, "title": p.title, "status": p.status, "amount": svc.as_float(p.amount),
+                      "opportunity_id": o.opportunity_id, "opportunity_name": o.name,
+                      "company_name": companies.get(o.account_id), "owner_id": o.owner_id,
+                      "owner_name": owners.get(o.owner_id),
+                      **qa.state(db, p, current_user, threshold=threshold, effective=effective, owner_id=o.owner_id)})
+    return masked_for(db, current_user, {"items": items, "total": len(items), "threshold": threshold})
 
 
 # ── PDF ──────────────────────────────────────────────────────

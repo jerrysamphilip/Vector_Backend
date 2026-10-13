@@ -624,6 +624,84 @@ Regards,
     }
 
 
+# ============================================================
+# BUILT-IN STARTER TEMPLATES (no LLM)
+# ============================================================
+
+AI_FALLBACK_NOTICE = "AI unavailable - starter templates were used, please review"
+
+_BUILTIN_INTRO = {
+    "subject": ("An idea for {{company_name}}", "{{first_name}}, an idea for {{company_name}}"),
+    "body": ("I'm reaching out because {{our_company}} works with teams like yours, and I thought what "
+             "we do could be relevant to your work as {{designation}} at {{company_name}}."),
+    "cta": "If it sounds useful, you can pick a time that suits you here: {{calendar_link}}",
+    "close": "I'd be glad to share more if it's useful.",
+}
+_BUILTIN_FOLLOW_UPS = (
+    {
+        "subject": ("Following up for {{company_name}}", "{{first_name}}, following up"),
+        "body": ("I wanted to follow up on my previous note in case it got buried. Many teams we speak with "
+                 "are looking for practical ways to save time and get better results, and that is where "
+                 "{{our_company}} can help {{company_name}}."),
+        "cta": "If you have 15 minutes, you can book a time here: {{calendar_link}}",
+        "close": "Happy to send over a short summary if that's easier.",
+    },
+    {
+        "subject": ("A quick thought for {{company_name}}", "{{first_name}}, a quick thought"),
+        "body": ("One more thought: teams at companies like {{company_name}} usually start small with "
+                 "{{our_company}} and expand once they see results. I'd be happy to outline how that could "
+                 "look for you."),
+        "cta": "Feel free to choose a convenient time here: {{calendar_link}}",
+        "close": "Just reply if you'd like the outline.",
+    },
+    {
+        "subject": ("Worth a look for {{company_name}}?", "{{first_name}}, worth a look?"),
+        "body": ("I know your inbox is busy, so I'll keep this short. If improving how your team works is on "
+                 "your list this quarter, {{our_company}} may be able to help {{company_name}}."),
+        "cta": "Here is my calendar if a short call would help: {{calendar_link}}",
+        "close": "Let me know if it's worth a closer look.",
+    },
+)
+_BUILTIN_FINAL = {
+    "subject": ("Closing the loop", "{{first_name}}, closing the loop"),
+    "body": ("I haven't heard back, so I'll assume the timing isn't right and this will be my last note for "
+             "now. If things change at {{company_name}}, I'd be happy to reconnect."),
+    "cta": "My calendar stays open here: {{calendar_link}}",
+    "close": "Thanks for your time either way.",
+}
+
+
+def builtin_sequence_emails(num_emails: int, cta_enabled: bool = False,
+                            include_first_name_in_subject: bool = False) -> List[Dict]:
+    """
+    Deterministic starter copy for every step of a sequence, used when AI generation is
+    unavailable (no key, daily spend cap hit, or a failed call). Step 1 is an introduction,
+    the last step (from step 2 on) a final follow-up, and steps in between follow-ups with
+    different wording. Only personalization tokens the sender already resolves are used, and
+    the CTA ({{calendar_link}}) appears only when the campaign has a CTA link.
+    """
+    num_emails = max(1, int(num_emails or 1))
+    emails = []
+    for i in range(1, num_emails + 1):
+        if i == 1:
+            spec, kind = _BUILTIN_INTRO, "INTRO"
+        elif i == num_emails:
+            spec, kind = _BUILTIN_FINAL, "FINAL_FOLLOW_UP"
+        else:
+            spec, kind = _BUILTIN_FOLLOW_UPS[(i - 2) % len(_BUILTIN_FOLLOW_UPS)], "FOLLOW_UP"
+        cta = spec["cta"] if cta_enabled else ""
+        body = (f"Hi {{{{first_name}}}},\n\n{spec['body']}\n\n{cta or spec['close']}"
+                f"\n\nRegards,\n{{{{signature_block}}}}")
+        emails.append({
+            "step_number": i,
+            "kind": kind,
+            "subject": spec["subject"][1 if include_first_name_in_subject else 0],
+            "body": body,
+            "cta": cta,
+        })
+    return emails
+
+
 class SequenceGeneratorService:
     def __init__(self, db: Session):
         self.db = db

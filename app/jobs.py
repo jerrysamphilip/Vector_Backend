@@ -212,6 +212,35 @@ async def sales_jobs_iteration() -> None:
         _last_sync = time.monotonic()
 
 
+async def contact_scoring_iteration() -> None:
+    # Contact scores (BR-CM-43): full recomputes an admin asked for, then stale / unscored
+    # contacts (at most JOB_CAP per pass, in batches), which also applies recency decay
+    from app.services.contact_scoring import run_scoring_job
+    stats = await _run_in_thread(run_scoring_job)
+    if stats.get("refreshed") or stats.get("recomputed_tenants"):
+        logger.info("Contact scoring: %s", stats)
+
+
+_last_webhook_purge = 0.0
+
+
+async def webhooks_iteration() -> Optional[float]:
+    # Outbound webhooks (BR-SF-20): send due deliveries from the outbox with retries / backoff;
+    # delivery log older than 30 days is purged hourly
+    global _last_webhook_purge
+    from app.services import webhooks
+
+    sent = await _run_in_thread(webhooks.deliver_due, SessionLocal)
+    if not _last_webhook_purge or time.monotonic() - _last_webhook_purge >= 3600:
+        def _purge():
+            with SessionLocal() as db:
+                return webhooks.purge_old(db)
+        await _run_in_thread(_purge)
+        _last_webhook_purge = time.monotonic()
+    # A full batch means more may be due: come straight back
+    return 2 if sent >= webhooks.BATCH_SIZE else None
+
+
 def all_jobs() -> List[Job]:
     return [
         Job("scheduler", 30, scheduler_iteration),
@@ -222,6 +251,8 @@ def all_jobs() -> List[Job]:
         Job("crm_purge", 6 * 3600, crm_purge_iteration),
         Job("send_safety", 60, send_safety_iteration),
         Job("sales_jobs", 60, sales_jobs_iteration),
+        Job("contact_scoring", 300, contact_scoring_iteration),
+        Job("webhooks", 15, webhooks_iteration),
     ]
 
 

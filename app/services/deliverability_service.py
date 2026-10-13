@@ -302,8 +302,12 @@ class DeliverabilityService:
             )
             .all()
         )
+        # Same pause as the other safety paths: freeze the queue, record why, tell owner + admins
+        from app.services.send_safety import auto_pause
+        reason = (f"sending domain {domain.domain_name} reputation score dropped to "
+                  f"{domain.current_reputation_score} (threshold {domain.safety_threshold or 70})")
         for campaign in affected_campaigns:
-            campaign.status = "PAUSED"
+            auto_pause(db, campaign, reason)
 
         logger.warning(
             f"[SAFETY SWITCH] Paused {len(affected_campaigns)} campaign(s) for {domain.domain_name} "
