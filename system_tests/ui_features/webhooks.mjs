@@ -7,6 +7,7 @@
 // Uses the ui_crm helpers (own reusable tenant "webhooks", webhook rows wiped on every run).  node webhooks.mjs
 import http from 'node:http';
 import { ui, go, settle, tc, ok, eq, must, call, sql, standalone, isMain, modalLoc, Tenant } from '../ui_crm/crm_common.mjs';
+import { sidebarLink } from './_ui_extra.mjs';
 
 const PORT = Number(process.env.WEBHOOK_UI_RX_PORT || 18766);
 const HOST = process.env.WEBHOOK_RX_HOST || '172.18.0.1';
@@ -32,7 +33,7 @@ export async function run(rec, browser) {
 
   await tc(rec, 'UIF-WH-01', 'Admin sees Workspace > Webhooks in the sidebar; empty state on a new workspace', async () => {
     await go(A, 'dashboard');
-    await p.getByRole('link', { name: 'Webhooks', exact: true }).first().click();
+    await (await sidebarLink(p, 'Webhooks', 'Workspace')).click();   // the sidebar keeps only the active group open
     await p.waitForURL(/\/app\/webhooks$/, { timeout: 8000 }); await settle(A, 600);
     await p.getByRole('heading', { name: 'Webhooks', exact: true }).waitFor();
     await p.getByText('No webhook endpoints yet').waitFor();
@@ -132,7 +133,7 @@ export async function run(rec, browser) {
   const W = await ui(browser, agent); const pw = W.page;
   await tc(rec, 'UIF-WH-08', 'Agent: no Webhooks nav entry; /app/webhooks says only admins can manage webhooks; API is 403', async () => {
     await go(W, 'dashboard');
-    eq(await pw.getByRole('link', { name: 'Webhooks', exact: true }).count(), 0, 'no nav entry');
+    eq(await (await sidebarLink(pw, 'Webhooks', 'Workspace')).count(), 0, 'no nav entry (Workspace group expanded)');
     await go(W, 'webhooks');
     await pw.getByText('Only admins can manage webhooks.').waitFor();
     const r = await call(await t.tokenOf(agent), 'GET', '/integrations/webhooks');

@@ -308,8 +308,11 @@ def list_templates(q: Optional[str] = None, category: Optional[str] = None,
         query = query.filter(or_(MessageTemplate.name.ilike(term), MessageTemplate.subject.ilike(term)))
     rows = query.order_by(MessageTemplate.usage_count.desc(), MessageTemplate.name).limit(500).all()
     names = svc.user_names(db, [t.owner_id for t in rows])
+    # Categories of the templates this user can see only (not of other users' private templates)
     cats = sorted({c for (c,) in db.query(MessageTemplate.category).filter(
-        MessageTemplate.tenant_id == current_user.tenant_id, MessageTemplate.category.isnot(None)).distinct()})
+        MessageTemplate.tenant_id == current_user.tenant_id, MessageTemplate.category.isnot(None),
+        MessageTemplate.category != "",
+        or_(MessageTemplate.shared.is_(True), MessageTemplate.owner_id == current_user.user_id)).distinct()})
     return {"items": [_template_dict(t, current_user, names) for t in rows], "categories": cats,
             "merge_fields": [{"token": k, "label": v} for k, v in MERGE_FIELDS]}
 

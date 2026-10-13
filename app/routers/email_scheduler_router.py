@@ -67,11 +67,16 @@ async def process_emails_sync(
 async def get_scheduler_status(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "PLATFORM_ADMIN")),
 ):
-    """Get current scheduler status (the pause switch is shared by the API and the worker)."""
-    return {
-        "running": not platform_flags.scheduler_paused(),
+    """Get current scheduler status (the pause switch is shared by the API and the worker).
+    Platform admins also see who paused it (paused_by: the flag value, an admin email)."""
+    paused_by = platform_flags.get(platform_flags.SCHEDULER_PAUSED)
+    out = {
+        "running": paused_by is None,
         "batch_size": email_scheduler.batch_size
     }
+    if current_user.role == "PLATFORM_ADMIN":
+        out["paused_by"] = paused_by
+    return out
 
 
 @router.post("/start")

@@ -4,6 +4,7 @@
 //   breakdown on the contact record, and admin-only access to the settings.
 // Uses the ui_crm helpers (own reusable tenant "cscore", wiped on every run).  node contact_scoring.mjs
 import { ui, go, settle, tc, ok, eq, must, call, standalone, isMain, Tenant } from '../ui_crm/crm_common.mjs';
+import { sidebarLink } from './_ui_extra.mjs';
 
 const TAG_MODEL = {
   fit_rules: [
@@ -124,7 +125,7 @@ export async function run(rec, browser) {
   const G = await ui(browser, agent); const pg = G.page;
   await tc(rec, 'UIF-CS-08', 'Agent: no Contact scoring link in the sidebar; the page says admins only; own contacts still show a score', async () => {
     await go(G, 'dashboard');
-    eq(await pg.getByRole('link', { name: 'Contact scoring' }).count(), 0, 'no sidebar link');
+    eq(await (await sidebarLink(pg, 'Contact scoring', 'Workspace')).count(), 0, 'no sidebar link (Workspace group expanded)');
     await go(G, 'contact-scoring');
     await pg.getByText('Only workspace admins can change the scoring model.').waitFor({ timeout: 8000 });
     const own = await must(await t.tokenOf(agent), 'POST', '/contacts', { email: `own.${marker}@cs.example`, first_name: 'Owny', tags: ['hot'] });

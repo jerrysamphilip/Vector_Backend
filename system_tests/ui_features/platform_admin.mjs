@@ -2,12 +2,13 @@
 // /scheduler/*). A PLATFORM_ADMIN user is created by SQL for the run (tenant_id NULL, as app/models/user.py documents) and
 // removed at the end. Covers sign-in landing, tenant roster + search, tenant detail, suspend / reactivate a throwaway tenant
 // (login blocked while suspended, live session behaviour), create tenant (+ validation / duplicates), stats tiles, route guards
-// both ways, and the scheduler pause / resume switch (no UI exists: API with the platform admin's token).
+// both ways, and the scheduler pause / resume switch (console card UIF-PA-14 with confirmation; API UIF-PA-15/16),
+// /admin/tenants and /admin/users views (UIF-PA-18). Suspend / Reactivate / scheduler changes ask window.confirm (auto-accepted).
 // The scheduler flag (platform_flags.scheduler_paused) is captured first and restored EXACTLY in a finally block.
 // Tenants: "padmin" (a normal tenant whose admin must be kept out) and "pa_victim" (suspended / reactivated), both reusable.
 //   node platform_admin.mjs
 import crypto from 'node:crypto';
-import { ui, go, settle, tc, skip, ok, eq, call, sql, sq, standalone, isMain, modalLoc, Tenant, PASSWORD, WEB } from '../ui_crm/crm_common.mjs';
+import { ui, go, settle, tc, ok, eq, call, sql, sq, standalone, isMain, modalLoc, Tenant, PASSWORD, WEB } from '../ui_crm/crm_common.mjs';
 import { loginToken } from '../ui/ui_common.mjs';
 import { anon, freshLogin, fillLogin, loginPaced } from './_ui_extra.mjs';
 
@@ -202,8 +203,50 @@ export async function run(rec, browser) {
       ok(/Platform admins cannot access tenant data/.test(JSON.stringify(r.data)), 'detail');
     }, { u: P });
 
-    skip(rec, 'UIF-PA-14', 'Scheduler pause / resume controls in the admin console',
-      'not implemented: PlatformAdmin.jsx / AdminLayout.jsx have no scheduler control; /scheduler/start|stop|status exist only as API (covered by UIF-PA-15)', 'not-implemented');
+    await tc(rec, 'UIF-PA-14', 'Scheduler card on /admin: current state shown; Pause / Resume ask for confirmation and flip the flag; original state restored', async () => {
+      try {
+        await P.page.goto(`${WEB}/admin`); await settle(P, 1000);
+        const status = p.getByTestId('scheduler-status');
+        const toggle = p.getByTestId('scheduler-toggle');
+        await toggle.waitFor({ timeout: 8000 });
+        ok(new RegExp(origFlag === null ? 'running' : 'paused', 'i').test(await status.innerText()), `state shown: ${await status.innerText()}`);
+        if (origFlag !== null) {              // paused by someone: resume first
+          P.lastDialog = '';
+          await toggle.click(); await settle(P, 800);
+          ok(/Resume the email scheduler/.test(P.lastDialog || ''), `resume confirmation: ${P.lastDialog}`);
+          await status.getByText(/^running$/i).waitFor({ timeout: 8000 });
+          eq(readFlag(), null, 'flag cleared');
+        }
+        P.lastDialog = '';
+        await toggle.click(); await settle(P, 800);
+        ok(/Pause the email scheduler/.test(P.lastDialog || ''), `pause confirmation: ${P.lastDialog}`);
+        await status.getByText(/^paused$/i).waitFor({ timeout: 8000 });
+        eq(readFlag(), pa.email, 'flag holds the admin email');
+        ok((await status.innerText()).includes(pa.email), 'paused by shown');
+        ok(/Resume scheduler/.test(await toggle.innerText()), 'button offers Resume');
+        P.lastDialog = '';
+        await toggle.click(); await settle(P, 800);
+        ok(/Resume the email scheduler/.test(P.lastDialog || ''), `resume confirmation: ${P.lastDialog}`);
+        await status.getByText(/^running$/i).waitFor({ timeout: 8000 });
+        eq(readFlag(), null, 'flag cleared');
+      } finally { writeFlag(origFlag); }
+    }, { u: P });
+
+    await tc(rec, 'UIF-PA-18', '/admin/tenants shows the tenant list (no stats tiles); /admin/users lists tenant users with search', async () => {
+      await P.page.goto(`${WEB}/admin/tenants`); await settle(P, 1000);
+      await p.getByRole('heading', { level: 1, name: 'Tenants' }).waitFor();
+      eq(await p.getByText('Total Tenants', { exact: true }).count(), 0, 'no stats tiles on the tenant list');
+      await p.getByPlaceholder('Search tenants...').fill(vName); await settle(P, 900);
+      await row(vName).waitFor({ timeout: 8000 });
+      await P.page.goto(`${WEB}/admin/users`); await settle(P, 1000);
+      await p.getByRole('heading', { level: 1, name: 'Users' }).waitFor();
+      await p.getByPlaceholder('Search users...').fill(v.owner.email); await settle(P, 900);
+      const r = p.locator('tbody tr').filter({ hasText: v.owner.email });
+      await r.waitFor({ timeout: 8000 });
+      ok((await r.innerText()).includes(vName), 'tenant name in the row');
+      ok(/SUPER ADMIN/.test(await r.innerText()), 'role badge');
+      eq(await p.getByRole('button', { name: /Suspend|Delete|Edit/ }).count(), 0, 'read-only');
+    }, { u: P });
 
     await tc(rec, 'UIF-PA-15', 'Scheduler switch (API, platform admin): stop -> paused + flag holds the admin email; start -> running; original state restored', async () => {
       const st = async () => (await call(paToken, 'GET', '/scheduler/status')).data.running;

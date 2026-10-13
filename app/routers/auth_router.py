@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from app.core import rate_limit, totp
 from app.core.auth import ensure_tenant_active, get_current_user, require_role
 from app.core.auth_cookies import (
+    ACCESS_COOKIE,
     REFRESH_COOKIE,
     clear_auth_cookies,
     require_csrf,
@@ -39,6 +40,7 @@ from app.core.database import get_db
 from app.core.security import (
     create_access_token,
     create_mfa_token,
+    decode_access_token,
     decode_mfa_token,
     generate_refresh_token,
     hash_password,
@@ -51,6 +53,7 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.refresh_token import RefreshToken
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.services import token_revocation
 
 logger = logging.getLogger(__name__)
 
@@ -449,16 +452,32 @@ def refresh_token(
     return _deliver_tokens(_issue_tokens(user, db), request, response)
 
 
+def _revoke_presented_access_token(request: Request, db: Session) -> None:
+    """Put the request's access token (Authorization: Bearer, else the access cookie) on the revoked
+    list. Expired / invalid tokens are ignored: they are refused anyway."""
+    auth_header = request.headers.get("authorization") or ""
+    token = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else request.cookies.get(ACCESS_COOKIE)
+    if not token:
+        return
+    try:
+        payload = decode_access_token(token)
+    except JWTError:
+        return
+    token_revocation.revoke(db, payload)
+
+
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
     request: Request,
     body: RefreshRequest | None = None,
     db: Session = Depends(get_db),
 ):
-    """Revoke the refresh token (body or cookie) and clear the session cookies.
+    """Revoke the refresh token (body or cookie) and the access token (bearer or cookie), and clear
+    the session cookies.
 
     No access token is needed: holding the refresh token is the proof, and an expired session must
-    still be able to sign out."""
+    still be able to sign out. A still-valid access token sent with the request is revoked too, so a
+    copy of it stops working at once instead of at its expiry."""
     raw = _refresh_token_from(request, body, csrf=False)
     if raw:
         rt = db.query(RefreshToken).filter(
@@ -468,6 +487,7 @@ def logout(
         if rt:
             rt.revoked_at = datetime.utcnow()
             db.commit()
+    _revoke_presented_access_token(request, db)
     result = Response(status_code=status.HTTP_204_NO_CONTENT)
     clear_auth_cookies(result)
     return result

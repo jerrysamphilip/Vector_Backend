@@ -111,6 +111,15 @@ async def get_current_user(
     if via_cookie:
         require_csrf(request)
 
+    # Signed out: the access token was revoked at logout (app/services/token_revocation.py)
+    from app.services.token_revocation import is_revoked
+    if is_revoked(db, payload.get("jti")):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user or user.status != "ACTIVE":
         raise HTTPException(
