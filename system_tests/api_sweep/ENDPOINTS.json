@@ -19902,7 +19902,9 @@
     "MANAGER",
     "SUPER_ADMIN"
    ],
-   "perms": [],
+   "perms": [
+    "manage_prospects"
+   ],
    "auth_required": true,
    "public": false,
    "dangerous": false,
@@ -19910,14 +19912,14 @@
    "other_deps": [],
    "handler": "app.routers.import_router.import_history",
    "in_introspection": true,
-   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
    "expect": {
     "PLATFORM_ADMIN": false,
     "SUPER_ADMIN": true,
     "ADMIN": true,
-    "MANAGER": true,
-    "AGENT": true,
-    "AGENT_NOPERM": true
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
    }
   },
   {
@@ -19947,7 +19949,9 @@
     "MANAGER",
     "SUPER_ADMIN"
    ],
-   "perms": [],
+   "perms": [
+    "manage_prospects"
+   ],
    "auth_required": true,
    "public": false,
    "dangerous": false,
@@ -19955,14 +19959,14 @@
    "other_deps": [],
    "handler": "app.routers.import_router.run_import",
    "in_introspection": true,
-   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
    "expect": {
     "PLATFORM_ADMIN": false,
     "SUPER_ADMIN": true,
     "ADMIN": true,
-    "MANAGER": true,
-    "AGENT": true,
-    "AGENT_NOPERM": true
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
    }
   },
   {
@@ -19992,7 +19996,9 @@
     "MANAGER",
     "SUPER_ADMIN"
    ],
-   "perms": [],
+   "perms": [
+    "manage_prospects"
+   ],
    "auth_required": true,
    "public": false,
    "dangerous": false,
@@ -20000,14 +20006,14 @@
    "other_deps": [],
    "handler": "app.routers.import_router.preview",
    "in_introspection": true,
-   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
    "expect": {
     "PLATFORM_ADMIN": false,
     "SUPER_ADMIN": true,
     "ADMIN": true,
-    "MANAGER": true,
-    "AGENT": true,
-    "AGENT_NOPERM": true
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
    }
   },
   {

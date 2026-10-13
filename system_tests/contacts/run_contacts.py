@@ -237,16 +237,18 @@ def _():
 
 @case("CM-014", "Contact linked to several companies with primary + association labels (BR-CM-05)")
 def _():
-    s, spec = req("GET", "/openapi.json")
-    props = spec["components"]["schemas"]["ContactCreate"]["properties"]
-    multi = [k for k in props if "compan" in k and k != "company_name" or "association" in k]
-    if multi:
-        R.record("CM-014", "Contact linked to several companies with primary + association labels (BR-CM-05)", None,
-                 f"API has {multi}; extend test", "test-issue")
-    else:
-        R.record("CM-014", "Contact linked to several companies with primary + association labels (BR-CM-05)", None,
-                 "Contact has a single account_id; no multi-company association or labels in API/schema",
-                 "not-implemented")
+    a1 = ok(*req("POST", "/accounts", {"name": f"Multi One {C.rid}"}, C.owner))
+    a2 = ok(*req("POST", "/accounts", {"name": f"Multi Two {C.rid}"}, C.owner))
+    k = ok(*req("POST", "/contacts", {"email": f"multi-co@cm-{C.rid}.example", "account_id": a1["account_id"]}, C.owner))
+    pid = k["prospect_id"]
+    s, b = req("POST", f"/contacts/{pid}/companies", {"account_id": a2["account_id"], "label": "Board advisor"}, C.owner)
+    s2, lst = req("GET", f"/contacts/{pid}/companies", None, C.owner)
+    items = lst if isinstance(lst, list) else (lst or {}).get("items", (lst or {}).get("companies", []))
+    by = {i.get("account_id"): i for i in items or []}
+    R.check("CM-014", "Contact linked to several companies with primary + association labels (BR-CM-05)",
+            s in (200, 201) and s2 == 200 and len(by) == 2 and by.get(a1["account_id"], {}).get("is_primary")
+            and not by.get(a2["account_id"], {}).get("is_primary") and by.get(a2["account_id"], {}).get("label") == "Board advisor",
+            f"link={s} list={s2} {json.dumps(items)[:300]}")
 
 
 @case("CM-015", "Renaming a company updates its contacts' company name (BR-CM-03)")
@@ -545,16 +547,16 @@ def _():
     s0, before = req("GET", "/notifications", None, C.admin["token"])
     n0 = len(before.get("items", before) if isinstance(before, dict) else before or [])
     ok(*req("POST", f"/contacts/{pid}/activities",
-            {"activity_type": "NOTE", "body": f"@Ada{C.rid} Test please review this account"}, C.owner))
+            {"activity_type": "NOTE", "body": f"@Ada{C.rid} Test please review this account",
+             "mentioned_user_ids": [C.admin["user_id"]]}, C.owner))
     s1, after = req("GET", "/notifications", None, C.admin["token"])
     items = after.get("items", after) if isinstance(after, dict) else after or []
     mention = [n for n in items if "mention" in json.dumps(n).lower() or "review this account" in json.dumps(n)]
     if mention:
         R.record("CM-033", "@mention a colleague in a note notifies them (BR-CM-16)", True)
     else:
-        R.record("CM-033", "@mention a colleague in a note notifies them (BR-CM-16)", None,
-                 f"no notification for mentioned user (before={n0}, after={len(items)}); no mention parsing in code",
-                 "not-implemented")
+        R.record("CM-033", "@mention a colleague in a note notifies them (BR-CM-16)", False,
+                 f"no MENTION notification for the mentioned user (before={n0}, after={len(items)})", "defect")
 
 
 @case("CM-034", "Only the author or a manager can edit/delete an activity (BR-CM-13)")

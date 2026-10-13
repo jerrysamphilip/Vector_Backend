@@ -881,6 +881,13 @@ CREATIVE_EMAIL_MODE:
             max_tokens=500,
         )
     
+    if openai_client is None:
+        # No OpenAI key configured: a clear 503 instead of retrying and failing with a 500 (AttributeError)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI generation is not configured on this server.",
+        )
+
     try:
         response = retry_with_backoff(
             _call_openai,

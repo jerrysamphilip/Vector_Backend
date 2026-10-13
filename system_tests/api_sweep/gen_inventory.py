@@ -39,6 +39,8 @@ INLINE_PERMS = {
     "GET /contacts/deleted": "manage_prospects", "GET /contacts/duplicates": "manage_prospects",
     "DELETE /contacts/fields/{field_id}": "manage_prospects", "DELETE /contacts/{prospect_id}": "manage_prospects",
     "DELETE /lists/{list_id}": "manage_prospects",
+    # import_router checks can_manage_contacts() in the handler (imports are for users who manage every contact)
+    "GET /imports": "manage_prospects", "POST /imports": "manage_prospects", "POST /imports/preview": "manage_prospects",
 }
 INLINE_ROLES = {"GET /contacts/export": ["ADMIN", "MANAGER", "SUPER_ADMIN"],
                 "DELETE /contacts/{prospect_id}": ["ADMIN", "MANAGER", "SUPER_ADMIN"],   # "Agents cannot delete contacts"

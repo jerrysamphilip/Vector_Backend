@@ -1217,7 +1217,8 @@ class CampaignScheduleResponse(BaseModel):
 
 
 class RegenerateRequest(BaseModel):
-    tone: Optional[str] = Field("professional", description="Tone: professional, casual, formal")
+    # max_length matches email_templates.tone (String(50)): longer values were a 500 (DataError 1406)
+    tone: Optional[str] = Field("professional", max_length=50, description="Tone: professional, casual, formal")
     regenerate_subject: bool = True
     regenerate_body: bool = True
     creative_email: bool = False

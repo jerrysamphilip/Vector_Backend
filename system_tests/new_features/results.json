@@ -1,11 +1,11 @@
 {
   "suite": "new_features",
   "counts": {
-    "PASS": 37,
-    "FAIL": 3,
+    "PASS": 41,
+    "FAIL": 0,
     "BLOCKED": 1
   },
-  "seconds": 9.6,
+  "seconds": 9.2,
   "cases": [
     {
       "id": "NF-001",
@@ -108,16 +108,23 @@
     {
       "id": "NF-020",
       "title": "A note with a mention is accepted",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "(400, {'detail': 'Nora Test cannot see this record, so cannot be mentioned'})"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-020b",
+      "title": "Mentioning an agent who cannot see the record is refused (400)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "NF-021",
       "title": "The mentioned colleague gets a MENTION notification",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "0"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "NF-022",
@@ -164,9 +171,9 @@
     {
       "id": "NF-028",
       "title": "Contact timeline returns the mentions on the note",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "(200, '{\"items\": [{\"kind\": \"PROPERTY_CHANGE\", \"at\": \"2026-10-13T10:40:34.346891\", \"change\": {\"change_id\": \"1a17713e-cd33-4adf-ae63-2aa623329bb3\", \"field\": \"created\", \"label\": \"Created\", \"old_value\": null, \"n')"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "NF-040",

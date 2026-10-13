@@ -1,0 +1,172 @@
+{
+  "suite": "webhooks",
+  "counts": {
+    "PASS": 23,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 227.1,
+  "cases": [
+    {
+      "id": "WH-001",
+      "title": "RP-106b: outbound webhook subscription API is documented (OpenAPI)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-002",
+      "title": "Agents cannot list or register webhooks (403)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-003",
+      "title": "Admin registers an endpoint; the secret is returned once, reads show a hint only",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-004",
+      "title": "Secret is encrypted at rest",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-005",
+      "title": "SSRF / input checks: metadata, link-local, unspecified, non-http(s), credentials, bad events -> 422",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-006",
+      "title": "Send test: delivered synchronously, signed with the secret, logged as a test delivery",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-007",
+      "title": "contact.created reaches the receiver via the worker, signed, with event headers",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-008",
+      "title": "contact.updated carries the changed field (from / to)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-009",
+      "title": "lead.created and lead.qualified (SQL) are delivered",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-010",
+      "title": "deal.created, deal.stage_changed and deal.won are delivered",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-011",
+      "title": "Events the endpoint is not subscribed to are not sent (contact.deleted)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-012",
+      "title": "A 500 answer is recorded and retried later (attempt 1 of 6, next attempt ~1 min)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-013",
+      "title": "The retry succeeds once the receiver recovers (same event id)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-014",
+      "title": "Redeliver queues the same event again and the worker sends it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-015",
+      "title": "After 20 consecutive failures the endpoint is switched off and admins are notified",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-016",
+      "title": "A disabled endpoint receives nothing",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-017",
+      "title": "Redirects are not followed (302 = failed delivery, target never called)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-018",
+      "title": "A receiver slower than 10 s times out (failed, request bounded)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-019",
+      "title": "Rotated secret: deliveries are signed with the new secret, not the old one",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-020",
+      "title": "Another workspace gets 404 on every endpoint operation",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-021",
+      "title": "Events of another workspace never reach this workspace's endpoint",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-022",
+      "title": "Delivery log: newest first, bounded (limit<=100), status filter, payload on detail",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "WH-023",
+      "title": "Deleting an endpoint removes it and its delivery log",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

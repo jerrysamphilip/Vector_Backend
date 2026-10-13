@@ -253,6 +253,13 @@ def create_phase(E, t):
     h("GET /campaigns/{campaign_id}/sequences")
     h("PUT /campaigns/sequences/{sequence_id}", body={"wait_days": 1})
     h("POST /campaigns/{campaign_id}/content/stub")
+    # (re)generation replaces the campaign's templates: run it before a template_id is picked for the template
+    # calls below, else the saved template (and its attachment) are gone by the time DELETE / ISO-intact run
+    h("POST /campaigns/{campaign_id}/generations",
+      body={"campaign_id": ids["campaign_id"], "list_id": ids["list_id"], "product_name": "p", "company_name": "c", "campaign_description": "d"},
+      env=(400, 422, 500, 502, 503))
+    h("POST /campaigns/{campaign_id}/personas/{persona_type}/generations",
+      body={"list_id": ids["list_id"], "product_name": "p", "company_name": "c", "campaign_description": "d"}, env=(400, 404, 422, 500, 502, 503))
     s, b = http("GET", f"/campaigns/{ids['campaign_id']}/templates", token=t.tok["SUPER_ADMIN"])
     if isinstance(b, dict) and b.get("templates"):
         ids["template_id"] = b["templates"][0]["template_id"]
@@ -281,11 +288,6 @@ def create_phase(E, t):
                                                  "timezone": "UTC", "inbox_ids": [ids["inbox_id"]]}, save={"wizard_campaign_id": "campaign_id"})
     h("POST /campaigns/wizard-executions", body={"campaign_name": f"WizEx {mk}", "list_id": ids["list_id"]},
       env=(400, 422, 500, 502, 503))
-    h("POST /campaigns/{campaign_id}/generations",
-      body={"campaign_id": ids["campaign_id"], "list_id": ids["list_id"], "product_name": "p", "company_name": "c", "campaign_description": "d"},
-      env=(400, 422, 500, 502, 503))
-    h("POST /campaigns/{campaign_id}/personas/{persona_type}/generations",
-      body={"list_id": ids["list_id"], "product_name": "p", "company_name": "c", "campaign_description": "d"}, env=(400, 404, 422, 500, 502, 503))
     h("POST /campaigns/{campaign_id}/prospects", body={"prospect_ids": [ids["prospect_id"], ids["prospect_beta"]]})
     h("POST /campaigns/{campaign_id}/enrollments", body={"campaign_id": ids["campaign_id"], "list_id": ids["list_id"]}, env=(400, 409, 422))
     h("POST /campaigns/{campaign_id}/enrollments/bulk", body={"campaign_id": ids["campaign_id"], "list_ids": [ids["list_id"]]}, env=(400, 409, 422))
@@ -304,6 +306,9 @@ def create_phase(E, t):
     h("POST /campaigns/{campaign_id}/resume")
     h("POST /campaigns/{campaign_id}/activations", body={"campaign_id": ids["campaign_id"]}, expect=OK2 + (400, 409))
     h("POST /campaigns/{campaign_id}/send-now", expect=OK2 + (400, 409))
+    # mark-opened needs a SENT message; whether send-now's worker pass has sent one yet is timing, so make one SENT
+    sql(f"UPDATE email_messages SET status='SENT', sent_at=UTC_TIMESTAMP() WHERE campaign_id={q(ids['campaign_id'])} "
+        f"AND prospect_id={q(ids['prospect_id'])} AND direction='OUTBOUND' ORDER BY scheduled_at LIMIT 1")
     h("POST /campaigns/{campaign_id}/prospects/{prospect_id}/mark-opened")
     h("POST /automation-rules/", body={"name": f"AR {mk}", "trigger_type": "EMAIL_OPENED", "action_type": "PAUSE_PROSPECT",
                                        "campaign_id": ids["campaign_id"]}, save={"auto_rule_id": "rule_id"})
@@ -608,3 +613,6 @@ def auth_phase(E, A):
     # password change last
     E.happy("PUT /api/auth/me/password", A, who="AGENT_ONLY_manage_inboxes",
             body={"current_password": A.password, "new_password": A.password + "x"})
+    # put the password back, so a later run that reuses the cached workspace (.state.json) can change it again
+    _http("PUT", "/api/auth/me/password", {"current_password": A.password + "x", "new_password": A.password},
+          A.tok["AGENT_ONLY_manage_inboxes"])

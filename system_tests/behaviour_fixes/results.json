@@ -1,0 +1,144 @@
+{
+  "suite": "behaviour_fixes",
+  "counts": {
+    "PASS": 19,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 25.2,
+  "cases": [
+    {
+      "id": "BF-001",
+      "title": "Stage change notifies the deal owner and their manager, linking to the deal, not the actor",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-002",
+      "title": "Deal won notifies owner and manager with the reason",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-003",
+      "title": "Owner marking their own deal lost notifies only their manager",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-004",
+      "title": "Deal notifications appear in the owner's in-app notifications",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-005",
+      "title": "Auto-paused campaign notifies its owner and the workspace admins (not agents)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-006",
+      "title": "The auto-pause notification gives the reason",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-007",
+      "title": "Without AI the wizard creates a template for every one of the 3 steps",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-008",
+      "title": "The response tells the UI starter templates were used",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-009",
+      "title": "Starter templates differ per step and are marked not AI-generated",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-010",
+      "title": "Re-inviting an email whose invitation was revoked reissues it (201, same account)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-011",
+      "title": "Re-inviting an invited account that was deactivated works too",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-012",
+      "title": "Inviting someone who already joined is still 409",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-013",
+      "title": "Send Now handles at most 25 messages per request and says how many remain",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-014",
+      "title": "Continuing with the cursor finishes the rest and stops",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-015",
+      "title": "Every queued message was handled exactly once; a malformed cursor is 400",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-016",
+      "title": "Response fields backed by nullable columns are nullable in the OpenAPI",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-017",
+      "title": "Picker with prospect_id lists only people who can see the contact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-018",
+      "title": "Someone who cannot see the contact gets 404 from the scoped picker",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "BF-019",
+      "title": "Deal note picker lists only people who can see the deal",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

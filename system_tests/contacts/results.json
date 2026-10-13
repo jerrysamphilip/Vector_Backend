@@ -1,11 +1,11 @@
 {
   "suite": "Contact Management (BRD \u00a75.2)",
   "counts": {
-    "PASS": 93,
+    "PASS": 96,
     "FAIL": 0,
-    "BLOCKED": 4
+    "BLOCKED": 1
   },
-  "seconds": 162.9,
+  "seconds": 169.7,
   "cases": [
     {
       "id": "CM-001",
@@ -101,9 +101,9 @@
     {
       "id": "CM-014",
       "title": "Contact linked to several companies with primary + association labels (BR-CM-05)",
-      "status": "BLOCKED",
-      "category": "not-implemented",
-      "detail": "Contact has a single account_id; no multi-company association or labels in API/schema"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "CM-015",
@@ -241,9 +241,9 @@
     {
       "id": "CM-033",
       "title": "@mention a colleague in a note notifies them (BR-CM-16)",
-      "status": "BLOCKED",
-      "category": "not-implemented",
-      "detail": "no notification for mentioned user (before=0, after=0); no mention parsing in code"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "CM-034",
@@ -605,9 +605,9 @@
     {
       "id": "CM-083",
       "title": "Contact scoring on fit and engagement (BR-CM-43, Could)",
-      "status": "BLOCKED",
-      "category": "not-implemented",
-      "detail": "no fit/engagement score on contact payload, filters or sort (only AI persona classification)"
+      "status": "PASS",
+      "category": "",
+      "detail": "['score', 'fit_score', 'engagement_score', 'score_grade', 'scored_at']"
     },
     {
       "id": "CM-084",
