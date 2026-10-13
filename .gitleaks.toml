@@ -9,4 +9,13 @@ description = "Historical findings already removed from the tree"
 # kill_locks.py (added in b49a60d "Baseline", deleted in ea3f380) contained a database
 # credential. It is still in git history, so that credential MUST be treated as leaked and
 # rotated; this entry only stops every scan of old history from failing on it.
-paths = ['''(^|/)kill_locks\.py$''']
+paths = [
+  '''(^|/)kill_locks\.py$''',
+  # Test-run artefacts committed before they were git-ignored (system_tests/.gitignore): cached
+  # login tokens and raw API captures for throwaway test users on the local docker stack. The JWTs
+  # are signed with the compose default key "local-dev-only-change-me-..." and expire in 30 minutes,
+  # so they grant nothing outside a local dev stack. The files are no longer tracked.
+  '''^system_tests/ui_crm/state/tok-[^/]+\.json$''',
+  '''^system_tests/e2e/\.state/[^/]+\.json$''',
+  '''^system_tests/api_sweep/sweep_cases\.json$''',
+]

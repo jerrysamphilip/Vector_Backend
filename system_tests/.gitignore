@@ -6,3 +6,8 @@ __pycache__/
 results_prev.json
 node_modules
 .auth/
+# Cached login tokens and raw request/response captures written by test runs.
+# They hold JWTs for throwaway test users (signed with the local-dev key) and are regenerated on every run.
+ui_crm/state/tok-*.json
+e2e/.state/
+api_sweep/sweep_cases.json
