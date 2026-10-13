@@ -1,6 +1,6 @@
 # ui_crm new_features results
 
-PASS 9 · FAIL 3 · BLOCKED 0
+PASS 11 · FAIL 1 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -9,10 +9,10 @@ PASS 9 · FAIL 3 · BLOCKED 0
 | UIC-NF-03 | Companies card: removing the primary asks for the next primary (pre-selected), Cancel keeps it, Remove -> Alpha primary | PASS |  |  |
 | UIC-NF-04 | Company page shows association chips: label + "Associated" on the non-primary company; card link opens it | PASS |  |  |
 | UIC-NF-05 | @mention: type "@B", pick Bianca with the keyboard, save -> highlighted in timeline; note_mentions + MENTION notification (not for author) | PASS |  |  |
-| UIC-NF-06 | Mentioned colleague's bell shows the MENTION (unread), click opens the contact record and marks it read | FAIL | unclassified | mention visible to Bianca on the record |
-| UIC-NF-07 | Mentioning an AGENT who does not own the contact: the notification link should open a record they can see | FAIL | unclassified | mentioned agent cannot open the record: GET /contacts/{id} -> 404, page shows "Contact not found" |
+| UIC-NF-06 | Mentioned colleague's bell shows the MENTION (unread), click opens the contact record and marks it read | PASS |  |  |
+| UIC-NF-07 | Mentioning an AGENT who does not own the contact: the notification link should open a record they can see | FAIL | defect-backend | [@mention lets you pick any active user (app/services/mentions.py mentionable_users/validate: 'Any active user of the workspace can be mentioned'), but an AGENT only sees own contacts: the MENTION notification links to /app/contacts/{id}, GET /contacts/{id} -> 404 and the page says 'Contact not found'. Either limit the picker/validation to users who can see the record or grant read access via the mention.] mentioned agent cannot open the record: GET /contacts/{id} -> 404, page shows "Contact not |
 | UIC-NF-08 | Sales reports > Leads & SQLs: "SQL to win" card numbers match GET /sales-reports/sql-to-win (and the seeded data) | PASS |  |  |
 | UIC-NF-09 | Forecast tab: "Forecast accuracy" card; admin "Take snapshot now" stores a MANUAL snapshot (DB) and the card shows it | PASS |  |  |
-| UIC-NF-10 | Contact record "+ Create deal": form opens with the primary company pre-selected; Create -> deal linked to contact + company | FAIL | unclassified | deal row: got "a2a7c080-13c6-4bce-94d9-7f0e9f3a8bbd\|ee6f441a-ea58-49cd-93a8-1fa21f83ec19\|25000.00\|cdebb305-c8cc-445c-897a-41c5fa287109" expected "a2a7c080-13c6-4bce-94d9-7f0e9f3a8bbd\|ee6f441a-ea58-49cd-93a8-1fa21f83ec19\|25000\|cdebb305-c8cc-445c-897a-41c5fa287109" |
+| UIC-NF-10 | Contact record "+ Create deal": form opens with the primary company pre-selected; Create -> deal linked to contact + company | PASS |  |  |
 | UIC-NF-11 | AccountDetail shows the Deals section (count, total, deal link); a company without deals shows the empty state | PASS |  |  |
 | UIC-NF-12 | Recently deleted: select -> "Delete forever" -> confirm modal (Cancel keeps it) -> contact removed from DB + PURGE_CONTACT audit row | PASS |  |  |

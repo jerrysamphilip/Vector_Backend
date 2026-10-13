@@ -1,8 +1,8 @@
 {
   "suite": "ui_crm new_features",
   "counts": {
-    "PASS": 9,
-    "FAIL": 3,
+    "PASS": 11,
+    "FAIL": 1,
     "BLOCKED": 0
   },
   "seconds": 48,
@@ -45,16 +45,16 @@
     {
       "id": "UIC-NF-06",
       "title": "Mentioned colleague's bell shows the MENTION (unread), click opens the contact record and marks it read",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "mention visible to Bianca on the record"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIC-NF-07",
       "title": "Mentioning an AGENT who does not own the contact: the notification link should open a record they can see",
       "status": "FAIL",
-      "category": "unclassified",
-      "detail": "mentioned agent cannot open the record: GET /contacts/{id} -> 404, page shows \"Contact not found\""
+      "category": "defect-backend",
+      "detail": "[@mention lets you pick any active user (app/services/mentions.py mentionable_users/validate: 'Any active user of the workspace can be mentioned'), but an AGENT only sees own contacts: the MENTION notification links to /app/contacts/{id}, GET /contacts/{id} -> 404 and the page says 'Contact not found'. Either limit the picker/validation to users who can see the record or grant read access via the mention.] mentioned agent cannot open the record: GET /contacts/{id} -> 404, page shows \"Contact not"
     },
     {
       "id": "UIC-NF-08",
@@ -73,9 +73,9 @@
     {
       "id": "UIC-NF-10",
       "title": "Contact record \"+ Create deal\": form opens with the primary company pre-selected; Create -> deal linked to contact + company",
-      "status": "FAIL",
-      "category": "unclassified",
-      "detail": "deal row: got \"a2a7c080-13c6-4bce-94d9-7f0e9f3a8bbd|ee6f441a-ea58-49cd-93a8-1fa21f83ec19|25000.00|cdebb305-c8cc-445c-897a-41c5fa287109\" expected \"a2a7c080-13c6-4bce-94d9-7f0e9f3a8bbd|ee6f441a-ea58-49cd-93a8-1fa21f83ec19|25000|cdebb305-c8cc-445c-897a-41c5fa287109\""
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIC-NF-11",

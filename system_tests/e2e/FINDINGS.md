@@ -1,9 +1,31 @@
 # E2E findings
 
-Stack: current tree (commit 68c8d7e) in image `vector-api:e2e`, SES = moto, IMAP = fake server, worker = the real worker.
+Stack (first runs): tree at commit 68c8d7e in image `vector-api:e2e`, SES = moto, IMAP = fake server, worker = the real worker.
 Evidence for each item is in `results.json` (case id given) and was reproduced through the API plus read-only DB queries.
 
-## Defects (by severity)
+## Status after the development round (re-run 13 Oct, Tuesday)
+Run: image `vector-api:e2e` built 13 Oct 07:14 from the tree after commit b51812a. Result **183 pass / 4 fail / 1 blocked** of 188
+(was 174 / 13 / 1). Fixed and now passing: E2E-J1-23, -31, -42, -43, -46, -47, -63, J4-12, J6-04.
+
+| ID | Status | Evidence |
+|---|---|---|
+| D1 | **Open** | E2E-J1-15 fails: templates exist for step 1 only; `GET /campaigns/{id}/sequences/2/emails` -> `{"subject":"No subject","body":"No body content"}`. Same as UIO-WIZ-05. The launch refusal (E2E-J1-18) works. |
+| D2 | Fixed + verified | E2E-J1-63 pass (reply "unsubscribe" -> workspace suppression, sequence stopped); pytest `test_unsubscribe_only_reply_is_recognised`. |
+| D3 | Fixed + verified | E2E-J6-04 pass: step 2 goes only to the 3 non-paused contacts. |
+| D4 | **Partly fixed.** Opened/sent now agree; *clicked* did not in the tested image | J1-42, -43, -45, -46, -47 pass. **E2E-J1-44 fails**: dashboard-summary `total_clicked: 5` (5 click events) vs 4 unique clickers (all other fields match). The tested image still summed click events (`reports_service.py` l.117 in the container). The source was changed at 07:39, after the image was built, to count unique clickers (`_unique_prospects_with(EVENT_CLICK)`), with pytest `tests/test_metrics_inbox_fixes.py::test_clicked_is_unique_prospects_on_every_screen`. E2E has not re-checked this: the stack was recreated without the E2E wiring before a re-run was possible. Status: fixed, not re-verified by E2E. |
+| D5 | Fixed + verified | E2E-J4-12 pass: each tenant's `total_emails_sent` equals its own OUTBOUND sends (X 10, Y 16). |
+| D6 | Fixed + verified | E2E-J1-31 pass: one sign-off with the campaign sender's name and no second signature after the footer. |
+| D7 | Fixed, not re-verified by E2E | E2E-J1-23 passes, but this run launched on a weekday, so the shifted-step-1 path did not run. Covered by pytest `test_planned_follow_ups_follow_shifted_first_step` only. |
+| D8 | Fixed, not re-verified by E2E | J3-06/-07/-10/-11 pass (links work), but they do not assert the link's origin when there is no `Origin` header. |
+| D9 | Fixed (pytest) | pytest `test_accept_invite_completes_invited_account` and `test_invitation_lifecycle_and_repeat_deletes`. The E2E invite flow (J3-06..09, magic link) passes; E2E does not call `accept-invite`. |
+| D10 | Fixed; passed in this run | E2E-J6-03 pass (1 of 1 runs; previously failed 1 of 3); pytest `test_automation_send_is_not_a_duplicate_of_step_one`. The two extra J6 repeats could not run: another agent recreated `vector-api-1`/`vector-worker-1` without the SES stand-in wiring (pre-flight refused). The run was not restarted, per the no-container-restart rule. |
+| NI-1 | Not implemented | E2E-J1-87b: no built-in notification when a deal is won or changes stage (agent got only `ASSIGNED`, manager 0). |
+| NI-2 | Not implemented | E2E-J2-09: auto-pause raises a reputation alert but no in-app notification (`items: []`). |
+| NI-3 | Blocked (needs LLM) | E2E-J1-67: positive-reply detection needs `OPENAI_API_KEY`; there is no keyword fallback. |
+
+No new defects were found in this run.
+
+## Defects (by severity) - original write-up (12 Oct)
 
 ### High
 **D1 - Without an LLM the campaign wizard cannot produce a launchable multi-step campaign** (E2E-J1-15, -18)
