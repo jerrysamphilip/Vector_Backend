@@ -627,13 +627,13 @@ def t_complaints():
 def t_hourly():
     stale = rows("SELECT d.domain_name, IFNULL(d.health_checked_at,'never') FROM sending_domains d "
                  "WHERE d.domain_name IN (SELECT DISTINCT SUBSTRING_INDEX(from_email,'@',-1) FROM email_messages "
-                 "WHERE sent_at >= UTC_TIMESTAMP() - INTERVAL 24 HOUR AND from_email LIKE '%@%') "
+                 "WHERE direction='OUTBOUND' AND sent_at >= UTC_TIMESTAMP() - INTERVAL 24 HOUR AND from_email LIKE '%@%') "
                  "AND (d.health_checked_at IS NULL OR d.health_checked_at < UTC_TIMESTAMP() - INTERVAL 65 MINUTE) "
                  # a domain first used within the hour can't have had its hourly check yet
                  "AND EXISTS (SELECT 1 FROM email_messages m2 WHERE SUBSTRING_INDEX(m2.from_email,'@',-1) = d.domain_name "
                  "AND m2.sent_at < UTC_TIMESTAMP() - INTERVAL 65 MINUTE)")
     missing = rows("SELECT DISTINCT SUBSTRING_INDEX(from_email,'@',-1) FROM email_messages "
-                   "WHERE sent_at >= UTC_TIMESTAMP() - INTERVAL 24 HOUR AND sent_at < UTC_TIMESTAMP() - INTERVAL 65 MINUTE "
+                   "WHERE direction='OUTBOUND' AND sent_at >= UTC_TIMESTAMP() - INTERVAL 24 HOUR AND sent_at < UTC_TIMESTAMP() - INTERVAL 65 MINUTE "
                    "AND from_email LIKE '%@%' AND SUBSTRING_INDEX(from_email,'@',-1) NOT IN (SELECT domain_name FROM sending_domains)")
     rec("OUT-074", "Every domain that sent in the last 24h had its health recomputed within the last hour",
         not stale and not missing, f"stale={stale[:5]} missing_rows={missing[:5]}")
