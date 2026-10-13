@@ -70,8 +70,9 @@ export async function run(rec, browser) {
     const U = sessions[V.tag]; const p = U.page;
     await tc(rec, `UIF-MOB-${pad(81 + k)}`, `Navigation reachable at ${V.tag} ${V.vp.width}px: menu toggle opens the nav (or the sidebar link is on screen) and navigates`, async () => {
       await go(U, 'dashboard', { wait: 800 });
-      const toggle = p.getByRole('button', { name: /menu|navigation|sidebar/i });
-      if (await toggle.count()) { await toggle.first().click(); await settle(U, 500); }
+      // the opener (not the drawer's own "Close navigation menu" button, which sits first in the DOM while the drawer is closed)
+      const toggle = p.getByRole('button', { name: /^(open|show|toggle)\b.*(menu|navigation|sidebar)|^menu$/i });
+      if (await toggle.count() && await toggle.first().isVisible()) { await toggle.first().click(); await settle(U, 500); }
       const link = await sidebarLink(p, 'Contacts', 'CRM');
       await link.waitFor({ state: 'visible', timeout: 5000 });
       const box = await fitsViewport(link);

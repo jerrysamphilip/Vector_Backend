@@ -311,6 +311,8 @@ const ids = [...fs.readFileSync('/home/user/Vector_Frontend/src/help/articles.js
   const uid = ws.users.manager.userId;
   const mk = (title, link, read) => sql(`INSERT INTO notifications (notification_id,tenant_id,user_id,kind,title,body,link,read_at,created_at) VALUES (UUID(),${q(ws.tenantId)},${q(uid)},'test',${q(title)},'Body of ${title}',${link ? q(link) : 'NULL'},${read ? 'NOW()' : 'NULL'},NOW())`);
   const t1 = 'Notif A ' + rid(), t2 = 'Notif B ' + rid(), t3 = 'Notif C read ' + rid();
+  // the workspace is reused across runs: start from a clean slate so the unread count is only ours
+  sql(`UPDATE notifications SET read_at=NOW() WHERE user_id=${q(uid)} AND read_at IS NULL`);
   mk(t1, '/vector/app/tasks', false); mk(t2, null, false); mk(t3, null, true);
   await S.t(`${A}-NOTIF-01`, 'Bell shows unread count, lists notifications, unread highlighted; empty state for other user', async () => {
     await go(page, '/app/dashboard', { wait: 1000 });

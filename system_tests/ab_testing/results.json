@@ -1,0 +1,242 @@
+{
+  "suite": "ab_testing",
+  "counts": {
+    "PASS": 33,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 11.3,
+  "cases": [
+    {
+      "id": "AB-S001",
+      "title": "OpenAPI lists the subject-variant endpoints (CRUD, stats, promote)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S002",
+      "title": "Owner adds variants A and B to step 1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S003",
+      "title": "Listing shows two variants and the test as active",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S004",
+      "title": "Out-of-bounds weight / subject length / empty subject are 422",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S005",
+      "title": "A subject with a disallowed phrase fails the compliance check (400)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S006",
+      "title": "A multi-line subject (header injection) is refused (422)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S007",
+      "title": "At most four variants per step (fifth is 409)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S008",
+      "title": "Unsent variants can be deleted (204)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S010",
+      "title": "An agent cannot change variants (403)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S011",
+      "title": "An agent can read the variant stats (200)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S012",
+      "title": "Another workspace gets 404 on list / stats / create",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S020",
+      "title": "Campaign launches (start date in the future)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S021",
+      "title": "Launch assigns every email a variant, split evenly (32 / 32)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S022",
+      "title": "Each email carries its variant's subject, personalised",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S023",
+      "title": "Schedule view shows the variant per email",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S030",
+      "title": "Below 30 sends per variant no winner is named (insufficient_data)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S031",
+      "title": "Promotion is refused before the sample size is reached (409)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S032",
+      "title": "Variant A stats: sent 30, unique opened 12 (40%), clicked 3, scheduled 2",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S033",
+      "title": "Variant B stats: sent 30, opened 6 (20%), replied 2 (6.67%)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S034",
+      "title": "Winner by open rate is A once both variants have 30 sends",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S040",
+      "title": "A variant that was sent cannot change its subject (409)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S041",
+      "title": "A variant that was sent cannot be deleted (409)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S050",
+      "title": "A manager who does not own the campaign cannot promote (403)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S051",
+      "title": "Promoting a variant that is not the winner is 409",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S052",
+      "title": "Another workspace cannot promote (404)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S053",
+      "title": "The owner promotes the winner; the two unsent B emails switch",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S054",
+      "title": "All remaining unsent emails now use the winner's subject",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S055",
+      "title": "Already-sent emails (sent history) are unchanged",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S056",
+      "title": "Stats report the promoted winner",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S057",
+      "title": "After promotion the test is closed: adding a variant is 409",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S060",
+      "title": "Email list filtered to variant B shows its 30 sent emails with the B subject",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S061",
+      "title": "Email list page size is bounded (limit > 200 is 422)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AB-S062",
+      "title": "Contact email history carries the subject variant",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+﻿Name,Email,Company,Owner,Lifecycle stage,Lead status,Score,Tags,Last activity,Create date,Budget
+Unknown,custom.cae9c7@cf.example,Cf,Owner Admin,Lead,New,5,,,2026-10-13 12:11,125000
+Brand New,brand.new.cae9c7@newco.example,Newco Industries,Owner Admin,Lead,New,15,vip,,2026-10-13 12:10,
+Seed48 Person48,seed48.cae9c7@acme-0.example,Acme Corp,,Lead,Attempted to contact,23,hot; q4,,2026-10-13 12:09,
+Seed55 Person55,seed55.cae9c7@acme-7.example,Wonka,,Lead,New,23,,,2026-10-13 12:09,
+Seed49 Person49,seed49.cae9c7@acme-1.example,Globex,,Lead,Connected,23,warm,,2026-10-13 12:09,
+Seed43 Person43,seed43.cae9c7@acme-3.example,Umbrella,Alice Test,Lead,Attempted to contact,23,,,2026-10-13 12:09,
+Seed37 Person37,seed37.cae9c7@acme-5.example,Stark,Alice Test,Lead,In progress,23,warm,,2026-10-13 12:09,
+Seed25 Person25,seed25.cae9c7@acme-1.example,Globex,Alice Test,Lead,New,23,warm,,2026-10-13 12:09,
+Seed31 Person31,seed31.cae9c7@acme-7.example,Wonka,Bob Test,Lead,Open,23,,,2026-10-13 12:09,
+Seed19 Person19,seed19.cae9c7@acme-3.example,Umbrella,Alice Test,Lead,Connected,23,,,2026-10-13 12:09,
+Seed7 Person07,seed7.cae9c7@acme-7.example,Wonka,Alice Test,Lead,In progress,23,,,2026-10-13 12:09,
+Seed1 Person01,seed1.cae9c7@acme-1.example,Globex,Alice Test,Lead,Connected,23,warm,,2026-10-13 12:09,

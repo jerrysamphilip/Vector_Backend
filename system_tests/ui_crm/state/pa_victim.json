@@ -1,0 +1,12 @@
+{
+ "tenantId": "65a389fd-8ce9-4a03-89c7-66ddaec2dd03",
+ "rid": "3b9d4e",
+ "label": "pa_victim",
+ "users": {
+  "owner": {
+   "userId": "73d3200b-b883-40f6-8071-2b1776e2cf86",
+   "email": "owner-3b9d4e@uitest.example",
+   "first": "Owner"
+  }
+ }
+}

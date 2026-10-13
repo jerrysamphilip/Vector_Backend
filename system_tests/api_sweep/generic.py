@@ -166,6 +166,12 @@ def _role_read(E, A):
 
 
 # ═══════════════════════════ VALIDATION ═══════════════════════════
+# Endpoints whose path id is not server state (the handler never looks it up; it works on the request body only),
+# so an unknown or another tenant's id cannot be rejected and there is nothing to isolate (triage.json: by-design).
+# The ISO probe still fails on any leak of tenant B's data.
+STATELESS_PATH_IDS = {"POST /uploads/{upload_id}/revalidations"}
+
+
 def rec_val(E, ep, kind, s, b, req_desc, must_reject=False, must_not_500=True, note=""):
     bad500 = is_bad5(s)
     if must_reject:
@@ -211,7 +217,8 @@ def _val_one(E, A, ep):
             rec_val(E, ep, "path-sqli-id", s, b, "path params=\"' OR 1=1--\"")
             s, b, h = call("pathnx", fake=True, body=body if is_json_body(ep) else None,
                            **({"files": multipart_parts(ep, A)[0], "form": multipart_parts(ep, A)[1]} if is_multipart(ep) else {}))
-            rec_val(E, ep, "path-nonexistent-id", s, b, f"{meth} unknown uuid", must_reject=not public)
+            rec_val(E, ep, "path-nonexistent-id", s, b, f"{meth} unknown uuid",
+                    must_reject=not public and ep["id"] not in STATELESS_PATH_IDS)
 
         if skip_body_probes(ep, public, limited):
             pass
@@ -427,6 +434,8 @@ def iso_checks(E, A, B):
             txt = _trunc(b, 4000) if not isinstance(b, bytes) else ""
             leaks = find_leaks(txt, B) if 200 <= s < 300 else []
             ok = s in (400, 403, 404, 409, 410, 422) and s < 500
+            if ep["id"] in STATELESS_PATH_IDS:
+                ok = (ok or 200 <= s < 300) and not leaks
             E.rec.rec(ep["id"], meth, ep["path"], "ISO", "path-foreign-id", ok,
                       f"tenant A used tenant B's {idp} -> {s} (expected 403/404){' LEAK: ' + str(leaks[:3]) if leaks else ''}: {_trunc(b, 200)}",
                       evidence={"status": s, "resp": _trunc(b, 400), "foreign": {n: fp[n] for n in idp}},

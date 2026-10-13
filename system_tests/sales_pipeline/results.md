@@ -1,6 +1,6 @@
 # Sales hierarchy, daily limit, leads & pipeline (BRD 5.4-5.7) results
 
-PASS 93 · FAIL 3 · BLOCKED 0
+PASS 96 · FAIL 0 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -89,9 +89,9 @@ PASS 93 · FAIL 3 · BLOCKED 0
 | SP-137 | Enrolling past the remaining quota returns a notice (1 left, 2 wait); within quota → no notice | PASS |  |  |
 | SP-138 | Importing 3 contacts for a user at the limit leaves used_today unchanged (only first sends count) | PASS |  |  |
 | SP-139 | Worker: 501st new contact's first email is held (QUEUED, DAILY_NEW_CONTACT_LIMIT) and rescheduled to tomorrow | PASS | defect |  |
-| SP-140 | Worker: a follow-up for the same user at the limit is not held by the daily limit (it proceeds to send) | FAIL | test-issue | follow-up never processed within 120 s: SENDING\|SSL validation failed for https://email.us-east-1.\|2026-10-13\|- |
-| SP-141 | Worker reopens the disqualified lead (→ NEW), notifies the owner and logs the change | FAIL | defect | back=False kinds=['ASSIGNED', 'ASSIGNED'] |
-| SP-142 | Overdue deal raises a STALE_DEAL notification for its owner within a worker cycle | FAIL | defect | no STALE_DEAL notification within 170 s |
+| SP-140 | Worker: a follow-up for the same user at the limit is not held by the daily limit (it proceeds to send) | PASS | defect |  |
+| SP-141 | Worker reopens the disqualified lead (→ NEW), notifies the owner and logs the change | PASS |  |  |
+| SP-142 | Overdue deal raises a STALE_DEAL notification for its owner within a worker cycle | PASS |  |  |
 | SP-151 | UI (BD manager): Leads screen shows own team leads and no other team | PASS |  | missing=[] leaked=[] |
 | SP-152 | UI (BD manager): SQL queue shows own team SQLs only | PASS |  | missing=[] leaked=[] |
 | SP-153 | UI (BD manager): Deals screen shows team deals only | PASS |  | missing=[] leaked=[] |

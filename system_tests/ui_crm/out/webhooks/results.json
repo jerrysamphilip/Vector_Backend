@@ -1,0 +1,74 @@
+{
+  "suite": "ui_crm webhooks",
+  "counts": {
+    "PASS": 9,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 36,
+  "cases": [
+    {
+      "id": "UIF-WH-01",
+      "title": "Admin sees Workspace > Webhooks in the sidebar; empty state on a new workspace",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-WH-02",
+      "title": "Validation: non-http(s) URL is refused with the server message; no events -> \"Choose at least one event\"; nothing stored",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-WH-03",
+      "title": "Add endpoint: tick events, save -> secret shown once with Copy; list shows URL, Active and the secret hint; DB row",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-WH-04",
+      "title": "Send test: banner \"Test event delivered\", receiver got a signed webhook.test, delivery log lists it and View shows the payload",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-WH-05",
+      "title": "Edit endpoint: add an event -> chips and DB event_types updated",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-WH-06",
+      "title": "Rotate secret (confirm) -> a new secret is shown once and differs from the first",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-WH-07",
+      "title": "Turn off -> badge \"Off\", DB inactive; turn on again -> Active",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-WH-08",
+      "title": "Agent: no Webhooks nav entry; /app/webhooks says only admins can manage webhooks; API is 403",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-WH-09",
+      "title": "Delete (confirm) -> card gone, empty state back, DB endpoint and its deliveries removed",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

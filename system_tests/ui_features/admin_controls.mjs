@@ -148,7 +148,7 @@ export async function run(rec, browser) {
     await card.getByRole('button', { name: 'Details' }).click();
     await card.getByRole('button', { name: /DNS records/ }).click();
     const dlg = pa.getByRole('dialog', { name: `DNS records for ${domain}` });
-    await dlg.getByTestId('dns-records-panel').waitFor({ timeout: 10000 });
+    await dlg.getByTestId('dns-records-panel').waitFor({ timeout: 30000 })   // the API asks SES for DKIM tokens: ~9 s when AWS is unreachable (sandbox);
     await dlg.getByRole('button', { name: 'Close' }).click();
   }, { u: A });
 

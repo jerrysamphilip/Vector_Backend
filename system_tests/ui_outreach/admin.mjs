@@ -22,8 +22,8 @@ await S.t(`${T}-02`, 'Invite modal: opens/cancels; empty and malformed email are
   await page.getByRole('button', { name: 'Invite Member' }).click();
   const em = page.getByPlaceholder('colleague@company.com');
   const reqs = []; const f = r => { if (/users\/invite/.test(r.url())) reqs.push(r.url()); }; page.on('request', f);
-  await page.getByRole('button', { name: 'Send Invite' }).click(); await sleep(400);
-  await em.fill('not-an-email'); await page.getByRole('button', { name: 'Send Invite' }).click(); await sleep(400);
+  await page.getByRole('button', { name: 'Send Invite', exact: true }).click(); await sleep(400);
+  await em.fill('not-an-email'); await page.getByRole('button', { name: 'Send Invite', exact: true }).click(); await sleep(400);
   page.off('request', f);
   if (reqs.length) return 'invite request sent for invalid email';
   if ((await page.locator('input[type=radio][name=role]').count()) !== 4) return 'role radios != 4';
@@ -34,7 +34,7 @@ await S.t(`${T}-03`, 'Invite a Manager: modal closes, confirmation banner; DB ha
   await page.getByRole('button', { name: 'Invite Member' }).click();
   await page.getByPlaceholder('colleague@company.com').fill(INV);
   await page.locator('input[type=radio][value=MANAGER]').check();
-  await page.getByRole('button', { name: 'Send Invite' }).click(); await sleep(2500);
+  await page.getByRole('button', { name: 'Send Invite', exact: true }).click(); await sleep(2500);
   const u = sql(`SELECT role,status,tenant_id FROM users WHERE email=${q(INV)}`).split('\t');
   if (u.join('|') !== `MANAGER|INVITED|${ws.tenantId}`) return 'user row ' + u.join('|');
   if (sql(`SELECT COUNT(*) FROM magic_login_tokens m JOIN users u ON u.user_id=m.user_id WHERE u.email=${q(INV)}`) !== '1') return 'no magic token';
@@ -46,7 +46,7 @@ await S.t(`${T}-03`, 'Invite a Manager: modal closes, confirmation banner; DB ha
 await S.t(`${T}-04`, 'Inviting an existing member shows the server error in the modal (409), stays open', async () => {
   await page.getByRole('button', { name: 'Invite Member' }).click();
   await page.getByPlaceholder('colleague@company.com').fill(ws.users.agent.email);
-  await page.getByRole('button', { name: 'Send Invite' }).click(); await sleep(1500);
+  await page.getByRole('button', { name: 'Send Invite', exact: true }).click(); await sleep(1500);
   if (!/already exists/i.test(await body(page))) return 'no duplicate message';
   w.drain([/users\/invite/, /Failed to load resource/]);
   await page.getByRole('button', { name: 'Cancel' }).click();

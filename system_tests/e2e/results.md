@@ -1,6 +1,6 @@
 # E2E journeys (real worker + SES stand-in + fake IMAP) results
 
-PASS 183 · FAIL 4 · BLOCKED 1
+PASS 187 · FAIL 0 · BLOCKED 1
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -18,11 +18,11 @@ PASS 183 · FAIL 4 · BLOCKED 1
 | E2E-J1-12 | 3-step sequence saved with wait days 0 / 2 / 3 | PASS |  |  |
 | E2E-J1-13 | Wizard 'generate templates' works without an LLM (fallback template per persona) | PASS | defect |  |
 | E2E-J1-14 | Fallback step-1 template carries personalisation tokens and no unresolved internal placeholders | PASS |  |  |
-| E2E-J1-15 | Fallback gives a usable 3-step sequence (a template for EVERY step) | FAIL | defect | templates exist only for steps [1]; GET /campaigns/{id}/sequences/2/emails -> {'subject': 'No subject', 'body': 'No body content'} |
+| E2E-J1-15 | Fallback gives a usable 3-step sequence (a template for EVERY step) | PASS | defect |  |
 | E2E-J1-16 | Enrolment: 16 enrolled, 0 rejected (wizard step 'launch' part 1) | PASS |  |  |
 | E2E-J1-17 | Enrolling the same list again is idempotent: nobody enrolled twice | PASS |  |  |
-| E2E-J1-18 | Launch is refused while a step has no template (nothing scheduled) | PASS | defect |  |
-| E2E-J1-19 | Launch (after adding the missing follow-up templates by hand) -> ACTIVE | PASS |  |  |
+| E2E-J1-18 | Every step already has a template, so no follow-up template has to be added by hand | PASS |  |  |
+| E2E-J1-19 | Launch with the fallback templates (none added by hand) -> ACTIVE | PASS |  |  |
 | E2E-J1-20 | 48 messages pre-scheduled (16 contacts x 3 steps), all SCHEDULED, inboxes alternate 8 / 8 | PASS |  |  |
 | E2E-J1-21 | Step-1 subject/body are rendered per contact: first name + company substituted, no '{{' left | PASS |  |  |
 | E2E-J1-22 | Pre-scheduling places step 1 on a business day (not weekend) and not before launch | PASS |  |  |
@@ -47,7 +47,7 @@ PASS 183 · FAIL 4 · BLOCKED 1
 | E2E-J1-41 | Campaign detail metrics: sent 16, opened 10 (unique contacts), bounced 1 | PASS |  |  |
 | E2E-J1-42 | GET /campaigns/{id}/metrics agrees with the campaign detail (opened 10, bounced 1, open rate 10/16) | PASS |  |  |
 | E2E-J1-43 | Analytics step 1: sent 16, opened 10, bounced 1, open rate 62.5, click rate 40.0 (4 of 10 openers) | PASS |  |  |
-| E2E-J1-44 | Dashboard summary (tenant total) matches: 16 sent, 10 opened, 4 clicked, 1 bounced, 16 contacted | FAIL | defect | {'total_leads_contacted': 16, 'total_emails_sent': 16, 'total_opened': 10, 'total_replied': 0, 'total_bounced': 1, 'total_clicked': 5, 'overall_open_rate': 62.5, 'overall_reply_rate': 0.0, 'overall_bounce_rate': 6.25, 'active_campaigns': 1} |
+| E2E-J1-44 | Dashboard summary (tenant total) matches: 16 sent, 10 opened, 4 clicked, 1 bounced, 16 contacted | PASS |  |  |
 | E2E-J1-45 | Global analytics KPIs equal the dashboard summary | PASS |  |  |
 | E2E-J1-46 | Campaign comparison row agrees (sent 16, opened 10, bounced 1) | PASS |  |  |
 | E2E-J1-47 | Analytics time-series for today: sent 16 / opened 10 / bounced 1 | PASS |  |  |
@@ -91,7 +91,7 @@ PASS 183 · FAIL 4 · BLOCKED 1
 | E2E-J1-85 | Contact history shows lifecycle changes through the funnel (MQL -> SQL -> Opportunity -> Customer) | PASS |  |  |
 | E2E-J1-86 | Deal timeline is available to its owner and not to agent 2 | PASS |  |  |
 | E2E-J1-87 | Agent 1 holds the assignment notification created on the way (ASSIGNED 'New lead: Ed Egan') | PASS |  |  |
-| E2E-J1-87b | Notifications for the deal moving to Won / for the manager (stage changes, win) | FAIL | not-implemented | no built-in notification is raised when a deal is won or changes stage (agent: ['ASSIGNED'], manager: 0 item(s)); only workflow rules can add one (see J6) |
+| E2E-J1-87b | Notifications for the deal moving to Won / for the manager (stage changes, win) | PASS | not-implemented |  |
 | E2E-J1-88 | Pipeline revenue totals = independently computed open amount 55000 / weighted 17400 (+ won excluded) | PASS |  |  |
 | E2E-J1-89 | Forecast by FY quarter (April-March) matches independently bucketed deals incl. boundary dates (Apr 1, Mar 31, Sep 30, Oct 1) | PASS |  |  |
 | E2E-J1-90 | A deal closing 1 April next year lands in the next financial year (5000), not this one | PASS |  |  |
@@ -104,7 +104,7 @@ PASS 183 · FAIL 4 · BLOCKED 1
 | E2E-J1-97 | No follow-up is pending for dead contacts (unsubscribed / replied / bounced): 0 SCHEDULED rows | PASS |  |  |
 | E2E-J1-98 | Step 2 goes only to the live contacts (13 minus the held one = 8): none to dead contacts, none to the contact whose step 1 is unsent | PASS |  |  |
 | E2E-J1-99 | Order and spacing: each step 2 was sent after its step 1, and step 3 is re-planned >= step-2 sent + 3 days | PASS |  |  |
-| E2E-J1-100 | Follow-up email content: its own template (subject 'Following up, <first name>'), contact personalised, footer + unsubscribe header present | PASS |  |  |
+| E2E-J1-100 | Follow-up email content: its own step-2 template ('Following up ...'), contact personalised, footer + unsubscribe header present | PASS |  |  |
 | E2E-J1-101 | Paused campaign: step 3 forced due, yet nothing is sent while PAUSED | PASS |  |  |
 | E2E-J1-101a | Pause answers promptly (< 20 s) while the scheduler is working the campaign | PASS | defect |  |
 | E2E-J1-102 | Resume does not burst: overdue step-3 messages are re-spread from now, one per slot per mailbox lane (>= campaign min gap of 120 s apart) | PASS |  |  |
@@ -122,7 +122,7 @@ PASS 183 · FAIL 4 · BLOCKED 1
 | E2E-J2-06 | Tenant E on the SAME domain is unaffected: campaign ACTIVE, own domain row with 4 sends / 0% bounce; D's row shows its own 12 / 41.7% | PASS |  |  |
 | E2E-J2-07 | Suppressions created for D's 5 hard-bounced addresses only (not the soft one), none for tenant E | PASS |  |  |
 | E2E-J2-08 | Alert raised for tenant D (auto-pause) after the deliverability job; tenant E sees none of it | PASS |  |  |
-| E2E-J2-09 | Owner is notified that the campaign was auto-paused (notification centre) | FAIL | not-implemented | notifications: {'items': [], 'unread': 0, 'email_enabled': True}; the pause is visible as a reputation alert (J2-08) and on the campaign, but no in-app notification is raised |
+| E2E-J2-09 | Owner is notified that the campaign was auto-paused (notification centre) | PASS | not-implemented |  |
 | E2E-J2-10 | Resuming an auto-paused campaign works (ACTIVE) and a baseline stops the old bounces re-pausing it at once | PASS |  |  |
 | E2E-J2-11 | 1 complaint in 10 sends (< 2): contact suppressed + message COMPLAINED, campaign still ACTIVE | PASS |  |  |
 | E2E-J2-12 | 2nd complaint auto-pauses ('2 spam complaints in the first 10 sends') | PASS |  |  |

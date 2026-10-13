@@ -1,0 +1,221 @@
+{
+  "suite": "discount_approval",
+  "counts": {
+    "PASS": 30,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 7.4,
+  "cases": [
+    {
+      "id": "DAS-001",
+      "title": "Threshold is off by default",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-002",
+      "title": "A rep cannot set the threshold (403)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-003",
+      "title": "Out-of-range / non-numeric threshold is 422",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-004",
+      "title": "Admin sets the threshold to 15%",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-005",
+      "title": "General sales settings refuse a threshold over 100 (400)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-006",
+      "title": "A 15% discount at a 15% limit needs no approval",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-007",
+      "title": "That quote can be sent",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-008",
+      "title": "25% discount: approval required, cannot send, owner can submit",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-009",
+      "title": "Sent / Under review / Accepted are refused with 409 before approval",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-010",
+      "title": "Submit note over 1000 characters is 422",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-011",
+      "title": "Owner submits for approval -> PENDING",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-012",
+      "title": "The owner's manager is notified",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-013",
+      "title": "Submitting twice is 409",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-014",
+      "title": "Manager's 'Awaiting my approval' list has the quote",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-015",
+      "title": "An unrelated manager does not see it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-016",
+      "title": "Owner and unrelated manager cannot approve (403/404)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-017",
+      "title": "Manager approves with a reason; approver and time recorded",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-018",
+      "title": "Owner is notified of the decision",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-019",
+      "title": "Approved quote can be sent",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-020",
+      "title": "Approval steps are in the deal history",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-021",
+      "title": "Lowering the discount keeps the approval",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-022",
+      "title": "Raising it above the approved discount resets to PENDING",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-023",
+      "title": "...and the quote cannot be accepted",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-024",
+      "title": "Reject needs a reason (400) of at most 1000 characters (422)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-025",
+      "title": "Manager rejects with a reason",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-026",
+      "title": "Owner resubmits; an admin can approve",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-027",
+      "title": "Another workspace gets 404",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-028",
+      "title": "List filter / limit are bounded (422)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-029",
+      "title": "Turning approval off lifts the gate",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "DAS-030",
+      "title": "Approval endpoints are published in the API spec",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

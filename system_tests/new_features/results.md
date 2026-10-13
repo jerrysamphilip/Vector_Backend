@@ -1,6 +1,6 @@
 # new_features results
 
-PASS 37 · FAIL 3 · BLOCKED 1
+PASS 41 · FAIL 0 · BLOCKED 1
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -18,15 +18,16 @@ PASS 37 · FAIL 3 · BLOCKED 1
 | NF-012 | Property history records company association changes | PASS |  |  |
 | NF-013 | An agent who cannot see the contact cannot link companies (403/404) | PASS |  |  |
 | NF-014 | Merging contacts moves the duplicate's company links to the survivor | PASS |  |  |
-| NF-020 | A note with a mention is accepted | FAIL | defect | (400, {'detail': 'Nora Test cannot see this record, so cannot be mentioned'}) |
-| NF-021 | The mentioned colleague gets a MENTION notification | FAIL | defect | 0 |
+| NF-020 | A note with a mention is accepted | PASS |  |  |
+| NF-020b | Mentioning an agent who cannot see the record is refused (400) | PASS |  |  |
+| NF-021 | The mentioned colleague gets a MENTION notification | PASS |  |  |
 | NF-022 | The author is not notified of their own mention | PASS |  |  |
 | NF-023 | Mentioning a user id that does not exist is 400 | PASS |  |  |
 | NF-024 | Mentioning a user from another workspace is 400 | PASS |  |  |
 | NF-025 | More than 20 mentions is rejected (400/422) | PASS |  |  |
 | NF-026 | Mentions are only allowed on notes (400) | PASS |  |  |
 | NF-027 | Mentionable-users lists active colleagues matching the search | PASS |  |  |
-| NF-028 | Contact timeline returns the mentions on the note | FAIL | defect | (200, '{"items": [{"kind": "PROPERTY_CHANGE", "at": "2026-10-13T10:40:34.346891", "change": {"change_id": "1a17713e-cd33-4adf-ae63-2aa623329bb3", "field": "created", "label": "Created", "old_value": null, "n') |
+| NF-028 | Contact timeline returns the mentions on the note | PASS |  |  |
 | NF-040 | SQL-to-win returns the documented fields | PASS |  |  |
 | NF-041 | SQL-to-win over an empty period is 200 with zero rate, not an error | PASS |  |  |
 | NF-042 | SQL-to-win with a bad date is 422 | PASS |  |  |

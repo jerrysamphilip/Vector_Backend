@@ -1,11 +1,11 @@
 {
   "suite": "Sales hierarchy, daily limit, leads & pipeline (BRD 5.4-5.7)",
   "counts": {
-    "PASS": 93,
-    "FAIL": 3,
+    "PASS": 96,
+    "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 549.6,
+  "seconds": 76.9,
   "cases": [
     {
       "id": "SP-001",
@@ -605,23 +605,23 @@
     {
       "id": "SP-140",
       "title": "Worker: a follow-up for the same user at the limit is not held by the daily limit (it proceeds to send)",
-      "status": "FAIL",
-      "category": "test-issue",
-      "detail": "follow-up never processed within 120 s: SENDING|SSL validation failed for https://email.us-east-1.|2026-10-13|-"
+      "status": "PASS",
+      "category": "defect",
+      "detail": ""
     },
     {
       "id": "SP-141",
       "title": "Worker reopens the disqualified lead (\u2192 NEW), notifies the owner and logs the change",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "back=False kinds=['ASSIGNED', 'ASSIGNED']"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "SP-142",
       "title": "Overdue deal raises a STALE_DEAL notification for its owner within a worker cycle",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "no STALE_DEAL notification within 170 s"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "SP-151",

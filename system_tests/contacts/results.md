@@ -1,6 +1,6 @@
 # Contact Management (BRD §5.2) results
 
-PASS 93 · FAIL 0 · BLOCKED 4
+PASS 96 · FAIL 0 · BLOCKED 1
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -17,7 +17,7 @@ PASS 93 · FAIL 0 · BLOCKED 4
 | CM-011 | Personal email domains don't create a company; company name is used instead (BR-CM-04) | PASS |  |  |
 | CM-012 | Contact on a soft-deleted company's domain can still be created (BR-CM-04 edge) | PASS |  |  |
 | CM-013 | Import row on a soft-deleted company's domain is not linked to the deleted company (BR-CM-04 edge) | PASS |  |  |
-| CM-014 | Contact linked to several companies with primary + association labels (BR-CM-05) | BLOCKED | not-implemented | Contact has a single account_id; no multi-company association or labels in API/schema |
+| CM-014 | Contact linked to several companies with primary + association labels (BR-CM-05) | PASS |  |  |
 | CM-015 | Renaming a company updates its contacts' company name (BR-CM-03) | PASS |  |  |
 | CM-016 | All 8 lifecycle stages on contacts and companies; invalid rejected (BR-CM-06) | PASS |  |  |
 | CM-017 | All 8 lead statuses; invalid rejected (BR-CM-07) | PASS |  |  |
@@ -37,7 +37,7 @@ PASS 93 · FAIL 0 · BLOCKED 4
 | CM-030 | Campaign emails (sent, opened, clicked, replied) appear on the timeline (BR-CM-14, integration) | PASS |  |  |
 | CM-031 | Tasks with due date, reminder, owner, priority and a My-tasks queue (BR-CM-15) | PASS |  |  |
 | CM-032 | Task visibility: an agent cannot see/edit a task of another agent (BR-CM-15/38) | PASS |  |  |
-| CM-033 | @mention a colleague in a note notifies them (BR-CM-16) | BLOCKED | not-implemented | no notification for mentioned user (before=0, after=0); no mention parsing in code |
+| CM-033 | @mention a colleague in a note notifies them (BR-CM-16) | PASS |  |  |
 | CM-034 | Only the author or a manager can edit/delete an activity (BR-CM-13) | PASS |  |  |
 | CM-035 | Contacts table: sort, paging and column chooser metadata (BR-CM-17) | PASS |  |  |
 | CM-036 | Companies table: search, sort and paging (BR-CM-17) | PASS |  |  |
@@ -89,7 +89,7 @@ PASS 93 · FAIL 0 · BLOCKED 4
 | CM-080b | Erasure is logged (who/when/which record) (§7 'deletion logged') | PASS | defect |  |
 | CM-081 | Market Research journey: import → filter view → assign owners → list → campaign → export (BR-CM-41) | PASS |  |  |
 | CM-082 | Company data enrichment from the domain (BR-CM-42, Could) | BLOCKED | not-implemented | no enrichment endpoint; company created from domain keeps industry/size/location empty |
-| CM-083 | Contact scoring on fit and engagement (BR-CM-43, Could) | BLOCKED | not-implemented | no fit/engagement score on contact payload, filters or sort (only AI persona classification) |
+| CM-083 | Contact scoring on fit and engagement (BR-CM-43, Could) | PASS |  | ['score', 'fit_score', 'engagement_score', 'score_grade', 'scored_at'] |
 | CM-084 | Acceptance: 1,000-row contact+company file imports < 10 s with associations and per-row reasons (§5.2) | PASS |  |  |
 | CM-085 | Single-column CSV (just an Email column) imports correctly (BR-CM-25) | PASS |  |  |
 | CM-UI-01 | UI: log in and open the Contacts list (BR-CM-17) | PASS |  | contact visible=true errors=[] |

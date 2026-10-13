@@ -1,0 +1,137 @@
+{
+  "suite": "ui_crm platform_admin",
+  "counts": {
+    "PASS": 18,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 59,
+  "cases": [
+    {
+      "id": "UIF-PA-01",
+      "title": "Platform admin signs in through the login form and lands on /admin (Platform Administration, no tenant navigation)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-02",
+      "title": "Tenant roster: search narrows to the tenant; status ACTIVE, user / campaign counts match the DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-03",
+      "title": "Search with no match shows \"No tenants found for the current search.\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-04",
+      "title": "Tenant detail: View opens the modal with the tenant name, user count and the team (owner email, SUPER ADMIN)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-05",
+      "title": "Suspend from the roster: badge SUSPENDED, Activate offered, DB status SUSPENDED",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-06",
+      "title": "Suspended tenant: API login -> 403 \"Tenant suspended\"; the login form shows the error and stays on /login",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-07",
+      "title": "A user signed in before the suspension is signed out or told the workspace is suspended on the next screen (no broken page)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-08",
+      "title": "Reactivate: Activate -> ACTIVE badge, DB ACTIVE, the tenant owner can sign in again",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-09",
+      "title": "Add Tenant: required fields block an empty submit (no API call); valid form creates tenant + INVITED SUPER_ADMIN + magic link",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-10",
+      "title": "Add Tenant duplicates: same tenant name -> \"A tenant with this name already exists\"; same admin email -> \"A user with this email already exists\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-11",
+      "title": "Stats tiles: Total Tenants / Suspended match /api/admin/stats (read around the page load)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-12",
+      "title": "Tenant SUPER_ADMIN cannot reach the console: /admin and /admin/tenants redirect to /app/dashboard; /api/admin/* -> 403",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-13",
+      "title": "Platform admin is kept out of tenant screens: /app/contacts redirects to /admin; tenant API -> 403",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-14",
+      "title": "Scheduler card on /admin: current state shown; Pause / Resume ask for confirmation and flip the flag; original state restored",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-18",
+      "title": "/admin/tenants shows the tenant list (no stats tiles); /admin/users lists tenant users with search",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-15",
+      "title": "Scheduler switch (API, platform admin): stop -> paused + flag holds the admin email; start -> running; original state restored",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-16",
+      "title": "Tenant admin / agent cannot pause or run the scheduler (403), flag unchanged; status is readable",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-PA-17",
+      "title": "Platform admin signs out from the profile popup: /login, and /admin then redirects to /login",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

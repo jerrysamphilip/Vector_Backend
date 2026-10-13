@@ -1,11 +1,11 @@
 {
   "suite": "reports_platform",
   "counts": {
-    "PASS": 93,
+    "PASS": 98,
     "FAIL": 0,
-    "BLOCKED": 12
+    "BLOCKED": 7
   },
-  "seconds": 174.0,
+  "seconds": 171.2,
   "cases": [
     {
       "id": "RP-001",
@@ -619,16 +619,16 @@
     {
       "id": "RP-103",
       "title": "BR-SF-17 discount above threshold routed for approval",
-      "status": "BLOCKED",
-      "category": "not-implemented",
-      "detail": "Quote lines accept any discount 0-100% with no approval step (quotes_router.set_lines)"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "RP-104",
       "title": "BR-SF-18 A/B test of email subject lines",
-      "status": "BLOCKED",
-      "category": "not-implemented",
-      "detail": "No A/B / variant endpoint in /openapi.json"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "RP-105",
@@ -647,23 +647,23 @@
     {
       "id": "RP-106b",
       "title": "BR-SF-20 outbound webhooks for other systems",
-      "status": "BLOCKED",
-      "category": "not-implemented",
-      "detail": "Only the inbound SES webhook exists; no webhook subscription API"
-    },
-    {
-      "id": "RP-107",
-      "title": "BR-SF-05 stale-deal alert notification raised by hourly job",
-      "status": "BLOCKED",
-      "category": "env",
-      "detail": "Job runs hourly in vector-worker (app/jobs.py); not waited for in an automated run - see manual case"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "RP-161",
       "title": "KPI SQL-to-win rate and forecast accuracy (actual / committed per quarter) reported directly",
-      "status": "BLOCKED",
-      "category": "not-implemented",
-      "detail": "No report returns these ratios; derivable from team-performance counts and forecast commit/won"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "RP-107",
+      "title": "BR-SF-05 stale-deal alert notification raised by hourly job (triggered on demand)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "RP-130",
@@ -684,7 +684,7 @@
       "title": "UI: sales dashboard tiles show the same KPIs as the API (pipeline, won, counts)",
       "status": "PASS",
       "category": "",
-      "detail": "$139.5K | $45K | 2 deals | 11 deals | 3 became SQL"
+      "detail": "$140K | $45K | 2 deals | 12 deals | 3 became SQL"
     },
     {
       "id": "RP-152",

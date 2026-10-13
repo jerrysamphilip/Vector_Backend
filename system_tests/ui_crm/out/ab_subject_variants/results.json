@@ -1,0 +1,60 @@
+{
+  "suite": "ui_crm ab_subject_variants",
+  "counts": {
+    "PASS": 7,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 42,
+  "cases": [
+    {
+      "id": "UIF-AB-01",
+      "title": "Subsequence tab: add variants A and B in the step editor -> rows shown, stored in the DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AB-02",
+      "title": "Editor: a disallowed phrase is refused with the compliance message; nothing stored",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AB-03",
+      "title": "Editor: edit variant B subject inline, add and delete a variant C (confirm)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AB-04",
+      "title": "Launch splits the step evenly (31 / 31); Schedule tab shows a variant badge per email",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AB-05",
+      "title": "Analytics tab: per-variant stats card; below 30 sends the card says no winner yet and offers no Promote",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AB-06",
+      "title": "Analytics: with 30 sends each the winner (A, highest open rate) is marked; \"Show emails by variant\" lists the variant column",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AB-07",
+      "title": "Promote winner (confirm) -> remaining unsent emails use A, card shows promoted, editor locked",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

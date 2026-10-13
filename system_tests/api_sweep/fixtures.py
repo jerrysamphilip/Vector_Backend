@@ -78,12 +78,15 @@ class Tenant:
 
     def dump(self):
         return {"label": self.label, "rid": self.rid, "tok": self.tok, "uid": self.uid, "email": self.email,
-                "password": self.password, "tenant_id": self.tenant_id, "ts": time.time()}
+                "password": self.password, "tenant_id": self.tenant_id, "ts": time.time(),
+                "register_status": self.register_status, "register_response": self.register_response}
 
     @classmethod
     def load(cls, d):
         t = cls(d["label"])
         t.__dict__.update({k: d[k] for k in ("rid", "tok", "uid", "email", "password", "tenant_id")})
+        # a cached workspace was registered by an earlier run: keep that run's sign-up result for the register case
+        t.register_status, t.register_response = d.get("register_status"), d.get("register_response")
         return t
 
 

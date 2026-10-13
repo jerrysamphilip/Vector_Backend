@@ -1,6 +1,6 @@
 # Outreach (BR-DF / §5.3 / §7) results
 
-PASS 100 · FAIL 3 · BLOCKED 0
+PASS 103 · FAIL 0 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -66,7 +66,7 @@ PASS 100 · FAIL 3 · BLOCKED 0
 | OUT-077 | Domain list does not show another workspace's mailboxes or campaigns | PASS |  |  |
 | OUT-075 | After the user resumes an auto-paused campaign it is judged on new sends (one bounce doesn't re-pause) | PASS |  |  |
 | OUT-072 | Two spam complaints auto-pause the campaign within 1 minute | PASS |  |  |
-| OUT-074 | Every domain that sent in the last 24h had its health recomputed within the last hour | FAIL | defect | stale=[] missing_rows=[['cswac0ef14617.example.com'], ['cswba047529e8.example.com'], ['cswaed00418d4.example.com'], ['cswb2e23d5961.example.com'], ['golf-8afcb4.example']] |
+| OUT-074 | Every domain that sent in the last 24h had its health recomputed by the hourly health pass | PASS |  |  |
 | OUT-078 | Pause freezes pending emails (PAUSED_BY_CAMPAIGN); resume releases them | PASS |  |  |
 | OUT-033 | Batch mode: batches of 2, 30 minutes apart | PASS |  |  |
 | OUT-030 | 500-contact campaign: all 500 enrolled and scheduled at launch (no stall near 330) | PASS |  |  |
@@ -74,7 +74,7 @@ PASS 100 · FAIL 3 · BLOCKED 0
 | OUT-032 | Launching the 500-contact campaign completes within 30 seconds | PASS |  |  |
 | OUT-036 | Inbox pace (60 s between emails) can reach the 500/day cap within a day | PASS |  |  |
 | OUT-051 | IMAP connection test succeeds against a reachable mailbox | PASS |  |  |
-| OUT-052 | Prospect reply is fetched and shown in the unified inbox thread | FAIL | defect | sync 200 {'status': 'success', 'message': 'IMAP sync for last 7 days completed.', 'inbox': 'replies-ea8e6b@reply-ea8e6b.example', 'imap_host': '172.18.0.1', 'last_sync_at': '2026-10-13T06:11:05'}; conversation=[{'id': '112eb79a-232e-4d39-b46e-1621e618905e', 'prospect_id': 'f019bc61-7e12-4435-aed8-af0c37d0a2f0', 'prospect_name': 'Pat Test', 'prospect_email': 'rep1-ea8e6b@acme-ea8e6b.example', 'inbox_email': 'replies-ea8e6b@reply-ea8e6b.example', 'subject': 'Re: hello', 'last_message_snippet': '<p |
+| OUT-052 | Prospect reply is fetched and shown in the unified inbox thread | PASS |  |  |
 | OUT-053 | Reply stops the sequence: enrollment REPLIED, follow-up cancelled | PASS |  |  |
 | OUT-054 | Out-of-office reply is visible but does not stop the sequence | PASS |  |  |
 | OUT-055 | Reply 'unsubscribe' unsubscribes the contact from every campaign | PASS |  |  |
@@ -97,7 +97,7 @@ PASS 100 · FAIL 3 · BLOCKED 0
 | OUT-120 | Prospect report export for a campaign returns a file with the campaign's contacts | PASS |  |  |
 | OUT-123 | Campaign audit trail records the launch | PASS |  |  |
 | OUT-130 | Owner signs in; campaigns, inboxes, unified inbox, prospects, lists, domain-health render without errors | PASS |  |  |
-| OUT-132 | Launched campaign detail page renders with the campaign name | FAIL | defect | {} |
+| OUT-132 | Launched campaign detail page renders with the campaign name | PASS |  |  |
 | OUT-131 | Recipient unsubscribes in the browser (confirm page -> success) and is suppressed | PASS |  |  |
 | OUT-058 | After a manual 'mark replied' the scheduler cancels the due follow-up | PASS |  |  |
 | OUT-088 | Send-time gate: a suppression added out-of-band stops the email | PASS |  |  |

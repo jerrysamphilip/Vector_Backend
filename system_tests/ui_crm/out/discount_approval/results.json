@@ -1,0 +1,53 @@
+{
+  "suite": "ui_crm discount_approval",
+  "counts": {
+    "PASS": 6,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 28,
+  "cases": [
+    {
+      "id": "UIF-DA-01",
+      "title": "Sales settings: admin sets the discount approval threshold to 15% (saved in the workspace settings)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-DA-02",
+      "title": "Quote above the limit: status change to Sent is refused with a message; DB status stays DRAFT",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-DA-03",
+      "title": "Quote modal shows \"Approval needed\"; owner submits with a note -> \"Awaiting approval\", DB PENDING, manager notified",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-DA-04",
+      "title": "Pipeline -> Discount approvals: manager sees the quote under \"Awaiting my approval\"; Reject is disabled without a reason; Approve -> DB APPROVED",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-DA-05",
+      "title": "Deal page shows the \"Discount approved\" badge and the quote can now be sent",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-DA-06",
+      "title": "Manager rejects from the quote modal with a reason; owner sees \"Discount rejected\" with the reason",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

@@ -1,50 +1,47 @@
 {
- "started_utc": "2026-10-13T05:58:16",
- "errors": [
-  {
-   "ep": "POST /templates/{template_id}/regenerations",
-   "status": 500,
-   "path": "/templates/9a96b6f3-4334-4344-bfa5-44afd3ec7b09/regenerations",
-   "query": null,
-   "body": "{\"template_id\": \"9a96b6f3-4334-4344-bfa5-44afd3ec7b09\", \"field\": \"subject\", \"campaign_description\": \"d\", \"persona_type\": \"MARKET_ACCESS\", \"product_name\": \"p\"}",
-   "who": "SUPER_ADMIN",
-   "tag": "happy",
-   "response": "{\"detail\": \"Failed to regenerate: 'NoneType' object has no attribute 'chat'\"}"
-  },
-  {
-   "ep": "POST /templates/{template_id}/regenerations",
-   "status": 500,
-   "path": "/templates/9e795b6a-f575-442c-8adf-4cff04353f13/regenerations",
-   "query": null,
-   "body": "{\"template_id\": \"9e795b6a-f575-442c-8adf-4cff04353f13\", \"field\": \"subject\", \"campaign_description\": \"d\", \"persona_type\": \"MARKET_ACCESS\", \"product_name\": \"p\"}",
-   "who": "SUPER_ADMIN",
-   "tag": "happy",
-   "response": "{\"detail\": \"Failed to regenerate: 'NoneType' object has no attribute 'chat'\"}"
-  }
- ],
+ "started_utc": "2026-10-13T11:19:59",
+ "errors": [],
  "slow": [
   {
-   "ep": "POST /campaigns/{campaign_id}/send-now",
-   "secs": 16.2,
+   "ep": "POST /inboxes",
+   "secs": 6.8,
    "tag": "happy",
-   "status": 200
+   "status": 201
   },
   {
    "ep": "POST /campaigns/{campaign_id}/send-now",
-   "secs": 15.2,
+   "secs": 11.6,
    "tag": "happy",
    "status": 200
   },
   {
    "ep": "POST /deliverability/domains/{domain_name}/scans",
-   "secs": 9.6,
+   "secs": 6.1,
+   "tag": "happy",
+   "status": 202
+  },
+  {
+   "ep": "POST /inboxes",
+   "secs": 6.9,
+   "tag": "happy",
+   "status": 201
+  },
+  {
+   "ep": "POST /campaigns/{campaign_id}/send-now",
+   "secs": 10.1,
+   "tag": "happy",
+   "status": 200
+  },
+  {
+   "ep": "POST /deliverability/domains/{domain_name}/scans",
+   "secs": 8.7,
    "tag": "happy",
    "status": 202
   }
  ],
- "calls": 5715,
- "requests": 5917,
- "secs": 481,
+ "calls": 5723,
+ "requests": 5927,
+ "secs": 432,
  "hits_ok": [
   "DELETE /accounts/{account_id}",
   "DELETE /api/company-profiles/{profile_id}",
@@ -73,6 +70,8 @@
   "DELETE /reports/custom/{report_id}",
   "DELETE /tasks/{task_id}",
   "DELETE /template-library/{template_id}",
+  "DELETE /templates/{template_id}",
+  "DELETE /templates/{template_id}/attachments/{attachment_id}",
   "DELETE /views/{view_id}",
   "DELETE /workflow/rules/{rule_id}",
   "GET /",
@@ -258,6 +257,7 @@
   "POST /campaigns/{campaign_id}/pause",
   "POST /campaigns/{campaign_id}/personas/{persona_type}/generations",
   "POST /campaigns/{campaign_id}/prospects",
+  "POST /campaigns/{campaign_id}/prospects/{prospect_id}/mark-opened",
   "POST /campaigns/{campaign_id}/prospects/{prospect_id}/mark-replied",
   "POST /campaigns/{campaign_id}/resume",
   "POST /campaigns/{campaign_id}/schedule/reschedule-date",

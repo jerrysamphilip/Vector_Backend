@@ -201,17 +201,28 @@ def phase_campaign(R, C):
     R.check("E2E-J1-17", "Enrolling the same list again is idempotent: nobody enrolled twice",
             s == 200 and e2.get("enrolled_count") == 0
             and scalar(f"SELECT COUNT(*) FROM campaign_prospects WHERE campaign_id={q(cid)}") == "16", f"{s} {str(e2)[:300]}")
-    s, l0 = launch(ws, cid)
-    R.check("E2E-J1-18", "Launch is refused while a step has no template (nothing scheduled)",
-            s == 400 and "Missing email templates" in str(l0)
-            and scalar(f"SELECT COUNT(*) FROM email_messages WHERE campaign_id={q(cid)}") == "0",
-            f"{s} {l0}", "defect" if per_step and sorted(per_step) != [1, 2, 3] else "test-issue")
-    made = add_missing_step_templates(ws, cid)
-    C["workaround_templates"] = made
-    t0 = utc_now()
-    s, lr = launch(ws, cid)
-    R.check("E2E-J1-19", "Launch (after adding the missing follow-up templates by hand) -> ACTIVE",
-            s == 200 and lr.get("new_status") == "ACTIVE", f"{s} {lr}")
+    if sorted(per_step) == [1, 2, 3]:
+        # the no-LLM fallback (starter templates) covers every step: nothing to add by hand, launch goes straight through
+        R.check("E2E-J1-18", "Every step already has a template, so no follow-up template has to be added by hand",
+                add_missing_step_templates(ws, cid) == 0
+                and scalar(f"SELECT COUNT(*) FROM email_messages WHERE campaign_id={q(cid)}") == "0", f"per_step={sorted(per_step)}")
+        C["workaround_templates"] = 0
+        t0 = utc_now()
+        s, lr = launch(ws, cid)
+        R.check("E2E-J1-19", "Launch with the fallback templates (none added by hand) -> ACTIVE",
+                s == 200 and lr.get("new_status") == "ACTIVE", f"{s} {lr}")
+    else:
+        s, l0 = launch(ws, cid)
+        R.check("E2E-J1-18", "Launch is refused while a step has no template (nothing scheduled)",
+                s == 400 and "Missing email templates" in str(l0)
+                and scalar(f"SELECT COUNT(*) FROM email_messages WHERE campaign_id={q(cid)}") == "0",
+                f"{s} {l0}", "defect")
+        made = add_missing_step_templates(ws, cid)
+        C["workaround_templates"] = made
+        t0 = utc_now()
+        s, lr = launch(ws, cid)
+        R.check("E2E-J1-19", "Launch (after adding the missing follow-up templates by hand) -> ACTIVE",
+                s == 200 and lr.get("new_status") == "ACTIVE", f"{s} {lr}")
     C["launched_at"] = t0.strftime("%Y-%m-%d %H:%M:%S")
     allm = msgs(cid)
     by_step = {k: [m for m in allm if m["step"] == str(k)] for k in (1, 2, 3)}
@@ -875,9 +886,16 @@ def phase_followups(R, C):
     R.check("E2E-J1-99", "Order and spacing: each step 2 was sent after its step 1, and step 3 is re-planned >= step-2 sent + 3 days",
             ord_ok and not spacing, f"order_ok={ord_ok} step3_too_early={spacing[:3]}")
     s2c = [c for c in cap2][0] if cap2 else None
-    R.check("E2E-J1-100", "Follow-up email content: its own template (subject 'Following up, <first name>'), contact personalised, footer + unsubscribe header present",
-            s2c and "Following up," in s2c.subject and "{{" not in s2c.text and C["postal"] in s2c.text and s2c.unsubscribe_url,
-            f"{s2c.subject if s2c else None}")
+    # the step-2 template is either the starter follow-up ("Following up for <company>") or, without starter templates,
+    # the hand-made one ("Following up, <first name>"); either way it is its own template, rendered for the contact
+    s2_db = rows(f"SELECT m.subject, p.first_name, p.company_name FROM email_messages m JOIN prospects p ON p.prospect_id=m.prospect_id "
+                 f"JOIN email_sequences s ON s.sequence_id=m.sequence_id WHERE m.campaign_id={q(cid)} AND s.step_number=2 "
+                 f"AND LOWER(p.email)={q(s2c.to.lower())}") if s2c else []
+    R.check("E2E-J1-100", "Follow-up email content: its own step-2 template ('Following up ...'), contact personalised, footer + unsubscribe header present",
+            s2c and s2_db and s2c.subject.lower().startswith("following up") and s2c.subject == s2_db[0][0]
+            and "{{" not in s2c.subject + s2c.text and (s2_db[0][1] in s2c.subject + s2c.text or s2_db[0][2] in s2c.subject + s2c.text)
+            and C["postal"] in s2c.text and s2c.unsubscribe_url,
+            f"{s2c.subject if s2c else None} db={s2_db[:1]}")
     # pause / resume with no burst
     travel_due(cid, 3)
     s, p, pause_secs = timed("POST", f"/campaigns/{cid}/pause", None, ws.token)

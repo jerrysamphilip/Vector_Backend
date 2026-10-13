@@ -1272,8 +1272,12 @@ def t_not_implemented():
     R.check("RP-106", "BR-SF-20 REST API documented (OpenAPI)", s == 200 and len(spec.get("paths", {})) > 100, "")
     R.record("RP-106b", "BR-SF-20 outbound webhooks for other systems", True if hooks else None,
              "" if hooks else "Only the inbound SES webhook exists; no webhook subscription API", None if hooks else "not-implemented")
-    R.record("RP-161", "KPI SQL-to-win rate and forecast accuracy (actual / committed per quarter) reported directly", None,
-             "No report returns these ratios; derivable from team-performance counts and forecast commit/won", "not-implemented")
+    tok = CTX["U"]["owner"]["token"]
+    s1, k1 = get(tok, "/sales-reports/sql-to-win", fy=2026)
+    s2, k2 = get(tok, "/sales-reports/forecast-accuracy", period_type="QUARTER", periods=4)
+    R.check("RP-161", "KPI SQL-to-win rate and forecast accuracy (actual / committed per quarter) reported directly",
+            s1 == 200 and isinstance(k1, dict) and "sql_to_win_rate" in k1 and s2 == 200 and isinstance(k2, dict),
+            f"sql-to-win {s1} {j(k1)[:120]} forecast-accuracy {s2} {j(k2)[:120]}")
 
 
 # ── NFR: performance / concurrency ──

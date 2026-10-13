@@ -1,11 +1,11 @@
 {
   "suite": "E2E journeys (real worker + SES stand-in + fake IMAP)",
   "counts": {
-    "PASS": 183,
-    "FAIL": 4,
+    "PASS": 187,
+    "FAIL": 0,
     "BLOCKED": 1
   },
-  "seconds": 1712.5,
+  "seconds": 148.0,
   "cases": [
     {
       "id": "E2E-J1-01",
@@ -108,9 +108,9 @@
     {
       "id": "E2E-J1-15",
       "title": "Fallback gives a usable 3-step sequence (a template for EVERY step)",
-      "status": "FAIL",
+      "status": "PASS",
       "category": "defect",
-      "detail": "templates exist only for steps [1]; GET /campaigns/{id}/sequences/2/emails -> {'subject': 'No subject', 'body': 'No body content'}"
+      "detail": ""
     },
     {
       "id": "E2E-J1-16",
@@ -128,14 +128,14 @@
     },
     {
       "id": "E2E-J1-18",
-      "title": "Launch is refused while a step has no template (nothing scheduled)",
+      "title": "Every step already has a template, so no follow-up template has to be added by hand",
       "status": "PASS",
-      "category": "defect",
+      "category": "",
       "detail": ""
     },
     {
       "id": "E2E-J1-19",
-      "title": "Launch (after adding the missing follow-up templates by hand) -> ACTIVE",
+      "title": "Launch with the fallback templates (none added by hand) -> ACTIVE",
       "status": "PASS",
       "category": "",
       "detail": ""
@@ -311,9 +311,9 @@
     {
       "id": "E2E-J1-44",
       "title": "Dashboard summary (tenant total) matches: 16 sent, 10 opened, 4 clicked, 1 bounced, 16 contacted",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "{'total_leads_contacted': 16, 'total_emails_sent': 16, 'total_opened': 10, 'total_replied': 0, 'total_bounced': 1, 'total_clicked': 5, 'overall_open_rate': 62.5, 'overall_reply_rate': 0.0, 'overall_bounce_rate': 6.25, 'active_campaigns': 1}"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J1-45",
@@ -619,9 +619,9 @@
     {
       "id": "E2E-J1-87b",
       "title": "Notifications for the deal moving to Won / for the manager (stage changes, win)",
-      "status": "FAIL",
+      "status": "PASS",
       "category": "not-implemented",
-      "detail": "no built-in notification is raised when a deal is won or changes stage (agent: ['ASSIGNED'], manager: 0 item(s)); only workflow rules can add one (see J6)"
+      "detail": ""
     },
     {
       "id": "E2E-J1-88",
@@ -709,7 +709,7 @@
     },
     {
       "id": "E2E-J1-100",
-      "title": "Follow-up email content: its own template (subject 'Following up, <first name>'), contact personalised, footer + unsubscribe header present",
+      "title": "Follow-up email content: its own step-2 template ('Following up ...'), contact personalised, footer + unsubscribe header present",
       "status": "PASS",
       "category": "",
       "detail": ""
@@ -836,9 +836,9 @@
     {
       "id": "E2E-J2-09",
       "title": "Owner is notified that the campaign was auto-paused (notification centre)",
-      "status": "FAIL",
+      "status": "PASS",
       "category": "not-implemented",
-      "detail": "notifications: {'items': [], 'unread': 0, 'email_enabled': True}; the pause is visible as a reputation alert (J2-08) and on the campaign, but no in-app notification is raised"
+      "detail": ""
     },
     {
       "id": "E2E-J2-10",

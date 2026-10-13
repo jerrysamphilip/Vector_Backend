@@ -284,3 +284,26 @@ None of the 12 is a product defect.
 - Email notification delivery (RP-087b; no mail sink).
 - Hourly worker jobs at their real cadence (SP-141, SP-142, RP-107, OUT-074).
 - The per-IP login limit and lockout on the shared stack (RP-140 to RP-142 are opt-in).
+
+---
+
+# Final status, 13 Oct (after the build-and-fix round)
+
+Everything below was run on 13 Oct against the rebuilt stack (alembic head `0013_revoked_access_tokens`, OpenAI key empty so nothing is spent). One runner covers all layers: `python3 scripts/test.py run <layer>` (see `docs/TESTING.md`).
+
+| Layer | Suites | Result (pass / fail / blocked) |
+|---|---|---|
+| Unit | `tests/unit` | 693 / 0 / 0 |
+| Functional | `tests/` (TestClient + MySQL, full migration chain) | 195 / 0 / 0 |
+| System: contract | frontend calls vs OpenAPI | 325 / 325 matched |
+| System: BRD suites | contacts, sales pipeline, outreach, reports | 96/0/1, 96/0/0, 103/0/0, 98/0/7 |
+| System: feature suites | new features, discount approval, A/B tests, webhooks, contact scoring, behaviour fixes, admin controls | 41/0/1, 30/0/0, 33/0/0, 23/0/0, 28/0/0, 19/0/0, run in UI layer |
+| System: API sweep | every endpoint: auth, roles, hierarchy, isolation, validation | 5,650 / 0 / 203 |
+| UI (Playwright) | outreach, CRM, a11y, mobile, sessions, platform admin, template library, admin controls, discount approval, A/B, scoring, webhooks, behaviour fixes | 196/0, 165/0, 81/0, 58/0, 21/0, 18/0, 17/0, 11/0, 6/0, 7/0, 8/0, 9/0, 6/0 |
+| End-to-end | journeys J1-J6 (real worker, SES stand-in, fake IMAP) | 187 / 0 / 1; J6 re-run twice, no duplicate-send flake |
+
+**Built in this round:** quote discount approval (RP-103), A/B subject tests (RP-104), outbound webhooks (RP-106b), contact scoring (CM-083), deal and auto-pause notifications, starter templates when AI is unavailable, list rename, invite resend, hierarchy fields, add sending domain, responsive layout with a mobile drawer, accessible dialogs everywhere, return-to-page after session expiry, suspended-workspace handling, platform-admin tenant/user views and scheduler control, logout revokes the access token, OpenAI spend cap of $0.20 per day.
+
+**Still BLOCKED (need outside accounts or are optional BRD items):** CM-082 company enrichment, RP-070 AI contact discovery, RP-105 Microsoft 365 sign-in, RP-087b email delivery to a real mail sink, RP-102b Google/Microsoft OAuth, RP-140..142 rate-limit lockout (opt-in), E2E-J1-67 positive-reply detection (needs an LLM), NF-048 (covered by E2E and pytest), API sweep cases needing a platform admin, OpenAI, AWS or OAuth.
+
+**Cannot be proven locally:** real SES delivery and events, DKIM/SPF/DMARC, SNS signatures, real IMAP/OAuth mailboxes, AI content, hourly jobs at their real cadence (they are triggered on demand in tests).

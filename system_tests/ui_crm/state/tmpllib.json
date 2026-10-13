@@ -1,0 +1,22 @@
+{
+ "tenantId": "10f0631a-6fa0-4d20-907d-f767a3e9b686",
+ "rid": "ce80d2",
+ "label": "tmpllib",
+ "users": {
+  "owner": {
+   "userId": "433bf9af-b442-4df6-9ebe-aff09a270ebc",
+   "email": "owner-ce80d2@uitest.example",
+   "first": "Owner"
+  },
+  "tara": {
+   "userId": "e8b585c9-1be1-4818-a903-a24b5a634e3d",
+   "email": "tara-ce80d2@uitest.example",
+   "first": "Tara"
+  },
+  "bea": {
+   "userId": "86a80b3f-ccc9-43ef-b6ea-a72ecbe7dc53",
+   "email": "bea-ce80d2@uitest.example",
+   "first": "Bea"
+  }
+ }
+}

@@ -1,6 +1,6 @@
 # reports_platform results
 
-PASS 93 · FAIL 0 · BLOCKED 12
+PASS 98 · FAIL 0 · BLOCKED 7
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -91,16 +91,16 @@ PASS 93 · FAIL 0 · BLOCKED 12
 | RP-102 | Calendar/email sync API is present: lists connections, refuses unknown provider (404) | PASS |  |  |
 | RP-102b | Connect Google/Microsoft account and sync calendar + email | BLOCKED | env | start -> 400 {"detail": "Google sync is not set up on the server. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_SYNC_REDIRECT_URI."} (OAuth client not configured on local stack; needs real Google/M365 accounts) |
 | RP-070 | BR-AI-01 AI contact discovery / enrichment endpoint exists | BLOCKED | not-implemented | No discovery/enrichment endpoint in /openapi.json (BRD marks it optional - C) |
-| RP-103 | BR-SF-17 discount above threshold routed for approval | BLOCKED | not-implemented | Quote lines accept any discount 0-100% with no approval step (quotes_router.set_lines) |
-| RP-104 | BR-SF-18 A/B test of email subject lines | BLOCKED | not-implemented | No A/B / variant endpoint in /openapi.json |
+| RP-103 | BR-SF-17 discount above threshold routed for approval | PASS |  |  |
+| RP-104 | BR-SF-18 A/B test of email subject lines | PASS |  |  |
 | RP-105 | BR-SF-19 single sign-on with Microsoft 365 | BLOCKED | not-implemented | Only /api/auth/google sign-in exists; Microsoft OAuth is for mailboxes/sync, not sign-in |
 | RP-106 | BR-SF-20 REST API documented (OpenAPI) | PASS |  |  |
-| RP-106b | BR-SF-20 outbound webhooks for other systems | BLOCKED | not-implemented | Only the inbound SES webhook exists; no webhook subscription API |
-| RP-107 | BR-SF-05 stale-deal alert notification raised by hourly job | BLOCKED | env | Job runs hourly in vector-worker (app/jobs.py); not waited for in an automated run - see manual case |
-| RP-161 | KPI SQL-to-win rate and forecast accuracy (actual / committed per quarter) reported directly | BLOCKED | not-implemented | No report returns these ratios; derivable from team-performance counts and forecast commit/won |
+| RP-106b | BR-SF-20 outbound webhooks for other systems | PASS |  |  |
+| RP-161 | KPI SQL-to-win rate and forecast accuracy (actual / committed per quarter) reported directly | PASS |  |  |
+| RP-107 | BR-SF-05 stale-deal alert notification raised by hourly job (triggered on demand) | PASS |  |  |
 | RP-130 | Dashboards and reports load in under 3 s (worst of 3, owner, seeded tenant) | PASS |  |  |
 | RP-150 | UI: owner signs in through the login form and lands in the app | PASS |  | http://localhost:8190/vector/app/dashboard |
-| RP-151 | UI: sales dashboard tiles show the same KPIs as the API (pipeline, won, counts) | PASS |  | $139.5K \| $45K \| 2 deals \| 11 deals \| 3 became SQL |
+| RP-151 | UI: sales dashboard tiles show the same KPIs as the API (pipeline, won, counts) | PASS |  | $140K \| $45K \| 2 deals \| 12 deals \| 3 became SQL |
 | RP-152 | UI: forecast tab shows quarter and FY figures equal to the API | PASS |  | 13 values matched |
 | RP-153 | UI: team performance lists every rep with revenue won as the API | PASS |  | 12 values matched |
 | RP-154 | UI: targets & leaderboard tab shows rep targets as the API | PASS |  | 5 values matched |

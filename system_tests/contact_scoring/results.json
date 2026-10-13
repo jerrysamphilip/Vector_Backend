@@ -1,0 +1,207 @@
+{
+  "suite": "contact_scoring",
+  "counts": {
+    "PASS": 28,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 7.9,
+  "cases": [
+    {
+      "id": "CS-001",
+      "title": "Admin reads the scoring model, seeded with default fit rules and 7 engagement signals",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-002",
+      "title": "Default fit rules cover seniority, size, revenue, industry, country, stage and email type",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-003",
+      "title": "Agents and managers cannot read, change or recompute the model (403)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-004",
+      "title": "Weights that do not add up to 100 are rejected (400)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-005",
+      "title": "Rule points outside -100..100 are rejected (422)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-006",
+      "title": "Oversize rule value is rejected (422)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-007",
+      "title": "Unknown rule property is rejected (400)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-008",
+      "title": "Grade thresholds that do not decrease are rejected (400)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-009",
+      "title": "Admin saves a custom model",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-010",
+      "title": "A new contact is scored straight away (score, fit, engagement, grade on the record)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-011",
+      "title": "Contact list sorts by score (desc)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-012",
+      "title": "Contact list sorts by score (asc)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-013",
+      "title": "Filter by grade A",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-014",
+      "title": "Filter by several grades",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-015",
+      "title": "Filter by score range",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-016",
+      "title": "Bad grade 400, out-of-range score 422, bad sort 422",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-017",
+      "title": "Score is an available list / export column",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-018",
+      "title": "Score breakdown shows which fit rules contributed",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-019",
+      "title": "Logging a meeting raises engagement and the score right away",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-020",
+      "title": "A grade change writes a property history row (D -> C, SYSTEM)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-021",
+      "title": "Email opens (one per email) and clicks count towards engagement",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-022",
+      "title": "Recompute now is accepted asynchronously (202, queued)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-023",
+      "title": "The background recompute rescores every contact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-024",
+      "title": "Rescoring does not change the contact's Last updated",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-025",
+      "title": "An agent reads the score of their own contact but not of others' (404)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-026",
+      "title": "Another workspace cannot read or recompute the score (404)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-027",
+      "title": "Each workspace has its own model",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CS-028",
+      "title": "An agent's score-sorted list holds only their own contacts",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

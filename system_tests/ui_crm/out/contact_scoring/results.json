@@ -1,0 +1,67 @@
+{
+  "suite": "ui_crm contact_scoring",
+  "counts": {
+    "PASS": 8,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 35,
+  "cases": [
+    {
+      "id": "UIF-CS-01",
+      "title": "Contacts list: Score column shows the grade chip and score for each contact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-CS-02",
+      "title": "Contacts list: clicking the Score header sorts by score (asc, then desc)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-CS-03",
+      "title": "Contacts list: grade filter and minimum score narrow the list",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-CS-04",
+      "title": "Contact record: Score card shows score, fit / engagement and the rules that contributed",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-CS-05",
+      "title": "Settings: admin adds a fit rule (Tags is any of \"vip\", +50) and saves; the model and scores follow",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-CS-06",
+      "title": "Settings: delete a rule, change weights and thresholds; invalid weights show an error and save nothing",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-CS-07",
+      "title": "Settings: Recompute now queues a background recalculation that rescores every contact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-CS-08",
+      "title": "Agent: no Contact scoring link in the sidebar; the page says admins only; own contacts still show a score",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

@@ -175,7 +175,7 @@ export const SCREENS = [
   { key: 'deals', name: 'Deals', route: () => 'deals', primary: p => p.getByRole('button', { name: /New opportunity/ }) },
   { key: 'pipeline', name: 'Pipeline', route: () => 'pipeline', primary: p => p.getByRole('button', { name: 'Proposal pipeline' }) },
   { key: 'sales-reports', name: 'Sales reports', route: () => 'sales-reports', primary: p => p.getByRole('button', { name: 'Forecast', exact: true }) },
-  { key: 'settings', name: 'Settings (analytics dashboard)', route: () => 'settings', primary: p => p.getByRole('button', { name: 'WEEKLY', exact: true }) },
+  { key: 'settings', name: 'Settings (analytics dashboard)', route: () => 'settings', primary: p => p.getByRole('button', { name: /^weekly$/i }) },
   { key: 'help', name: 'Help center', route: () => 'help', primary: p => p.getByPlaceholder('Search all help…') },
   { key: 'webhooks', name: 'Webhooks', route: () => 'webhooks', primary: p => p.getByTestId('webhook-add') },
   { key: 'contact-scoring', name: 'Contact scoring settings', route: () => 'contact-scoring', primary: p => p.getByTestId('scoring-save') },
