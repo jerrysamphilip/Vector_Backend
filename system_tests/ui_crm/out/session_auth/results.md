@@ -6,7 +6,7 @@ PASS 21 · FAIL 0 · BLOCKED 0
 |---|---|---|---|---|
 | UIF-SESS-01 | Signed out: /app/dashboard redirects to /login and shows no workspace data | PASS |  |  |
 | UIF-SESS-02 | Signed out: /app/contacts redirects to /login and shows no workspace data | PASS |  |  |
-| UIF-SESS-03 | Signed out: /app/contacts/06f1db77-bcb5-41f2-a327-ac1250e3b323 redirects to /login and shows no workspace data | PASS |  |  |
+| UIF-SESS-03 | Signed out: /app/contacts/6cfdf7c5-af55-4cb3-8e3c-79c131aefb9c redirects to /login and shows no workspace data | PASS |  |  |
 | UIF-SESS-04 | Signed out: /app/deals redirects to /login and shows no workspace data | PASS |  |  |
 | UIF-SESS-05 | Signed out: /app/templates redirects to /login and shows no workspace data | PASS |  |  |
 | UIF-SESS-06 | Signed out: /app/settings redirects to /login and shows no workspace data | PASS |  |  |

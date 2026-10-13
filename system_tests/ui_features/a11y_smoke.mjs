@@ -31,7 +31,7 @@ const MODALS = [
   // hand-built overlays moved onto useDialog / DialogPanel
   { name: 'New prospect list', route: 'prospects', title: 'New Prospect List', trigger: p => p.getByRole('button', { name: 'New List', exact: true }) },
   { name: 'Invite team member', route: 'team', title: 'Invite Team Member', trigger: p => p.getByRole('button', { name: 'Invite Member', exact: true }) },
-  { name: 'Connect mailbox', route: 'inboxes', title: 'Connect Private Inbox', trigger: p => p.getByRole('button', { name: 'Connect Mailbox', exact: true }) },
+  { name: 'Connect mailbox', route: 'inboxes', title: 'Connect Private Inbox', trigger: p => p.getByRole('button', { name: 'Connect Mailbox', exact: true }).first() },
   { name: 'Add sending domain', route: 'domain-health', title: 'Add sending domain', trigger: p => p.getByRole('button', { name: 'Add domain', exact: true }) },
   { name: 'Create automation rule', route: 'automation', title: 'Create Automation Rule', trigger: p => p.getByRole('button', { name: 'Create New Rule', exact: true }) },
 ];

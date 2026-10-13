@@ -1,11 +1,11 @@
 {
   "suite": "E2E journeys (real worker + SES stand-in + fake IMAP)",
   "counts": {
-    "PASS": 184,
-    "FAIL": 3,
+    "PASS": 187,
+    "FAIL": 0,
     "BLOCKED": 1
   },
-  "seconds": 1729.5,
+  "seconds": 148.0,
   "cases": [
     {
       "id": "E2E-J1-01",
@@ -128,17 +128,17 @@
     },
     {
       "id": "E2E-J1-18",
-      "title": "Launch is refused while a step has no template (nothing scheduled)",
-      "status": "FAIL",
-      "category": "test-issue",
-      "detail": "200 {'campaign_id': '06405402-02c5-4ad5-9e27-1dd4451bc38c', 'previous_status': 'DRAFT', 'new_status': 'ACTIVE', 'reason': None, 'changed_at': '2026-10-13T13:04:07.330875'}"
+      "title": "Every step already has a template, so no follow-up template has to be added by hand",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J1-19",
-      "title": "Launch (after adding the missing follow-up templates by hand) -> ACTIVE",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "400 {'detail': 'Cannot launch campaign with status: ACTIVE'}"
+      "title": "Launch with the fallback templates (none added by hand) -> ACTIVE",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J1-20",
@@ -709,10 +709,10 @@
     },
     {
       "id": "E2E-J1-100",
-      "title": "Follow-up email content: its own template (subject 'Following up, <first name>'), contact personalised, footer + unsubscribe header present",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "Following up for Echo Corp"
+      "title": "Follow-up email content: its own step-2 template ('Following up ...'), contact personalised, footer + unsubscribe header present",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J1-101",

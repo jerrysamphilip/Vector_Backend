@@ -1,6 +1,6 @@
 # E2E journeys (real worker + SES stand-in + fake IMAP) results
 
-PASS 184 · FAIL 3 · BLOCKED 1
+PASS 187 · FAIL 0 · BLOCKED 1
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -21,8 +21,8 @@ PASS 184 · FAIL 3 · BLOCKED 1
 | E2E-J1-15 | Fallback gives a usable 3-step sequence (a template for EVERY step) | PASS | defect |  |
 | E2E-J1-16 | Enrolment: 16 enrolled, 0 rejected (wizard step 'launch' part 1) | PASS |  |  |
 | E2E-J1-17 | Enrolling the same list again is idempotent: nobody enrolled twice | PASS |  |  |
-| E2E-J1-18 | Launch is refused while a step has no template (nothing scheduled) | FAIL | test-issue | 200 {'campaign_id': '06405402-02c5-4ad5-9e27-1dd4451bc38c', 'previous_status': 'DRAFT', 'new_status': 'ACTIVE', 'reason': None, 'changed_at': '2026-10-13T13:04:07.330875'} |
-| E2E-J1-19 | Launch (after adding the missing follow-up templates by hand) -> ACTIVE | FAIL | defect | 400 {'detail': 'Cannot launch campaign with status: ACTIVE'} |
+| E2E-J1-18 | Every step already has a template, so no follow-up template has to be added by hand | PASS |  |  |
+| E2E-J1-19 | Launch with the fallback templates (none added by hand) -> ACTIVE | PASS |  |  |
 | E2E-J1-20 | 48 messages pre-scheduled (16 contacts x 3 steps), all SCHEDULED, inboxes alternate 8 / 8 | PASS |  |  |
 | E2E-J1-21 | Step-1 subject/body are rendered per contact: first name + company substituted, no '{{' left | PASS |  |  |
 | E2E-J1-22 | Pre-scheduling places step 1 on a business day (not weekend) and not before launch | PASS |  |  |
@@ -104,7 +104,7 @@ PASS 184 · FAIL 3 · BLOCKED 1
 | E2E-J1-97 | No follow-up is pending for dead contacts (unsubscribed / replied / bounced): 0 SCHEDULED rows | PASS |  |  |
 | E2E-J1-98 | Step 2 goes only to the live contacts (13 minus the held one = 8): none to dead contacts, none to the contact whose step 1 is unsent | PASS |  |  |
 | E2E-J1-99 | Order and spacing: each step 2 was sent after its step 1, and step 3 is re-planned >= step-2 sent + 3 days | PASS |  |  |
-| E2E-J1-100 | Follow-up email content: its own template (subject 'Following up, <first name>'), contact personalised, footer + unsubscribe header present | FAIL | defect | Following up for Echo Corp |
+| E2E-J1-100 | Follow-up email content: its own step-2 template ('Following up ...'), contact personalised, footer + unsubscribe header present | PASS |  |  |
 | E2E-J1-101 | Paused campaign: step 3 forced due, yet nothing is sent while PAUSED | PASS |  |  |
 | E2E-J1-101a | Pause answers promptly (< 20 s) while the scheduler is working the campaign | PASS | defect |  |
 | E2E-J1-102 | Resume does not burst: overdue step-3 messages are re-spread from now, one per slot per mailbox lane (>= campaign min gap of 120 s apart) | PASS |  |  |

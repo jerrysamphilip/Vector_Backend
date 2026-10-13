@@ -90,6 +90,7 @@ await S.t(`${R}-01`, 'Automation empty state; Create rule modal validation (requ
   await page.getByRole('button', { name: /^Create Rule$/ }).click(); await sleep(600);
   if (!(await page.getByPlaceholder('e.g., Follow up after open').isVisible())) return 'modal closed with empty form';
 }, page);
+const ruleRow = (name) => page.locator('div').filter({ hasText: name }).filter({ has: page.locator('button[title="Delete Rule"]') }).last();
 const fillRule = async (name, trig, action) => {
   await page.getByPlaceholder('e.g., Follow up after open').fill(name);
   const sels = page.locator('div.fixed select');
@@ -130,9 +131,10 @@ await go(page, '/app/automation', { wait: 1000 });
 await S.t(`${R}-03`, 'Toggle rule off/on (the repaired PUT): DB is_active flips and UI reflects it', async () => {
   const get = () => sql(`SELECT is_active FROM automation_rules WHERE name=${q(RULE)}`);
   const a0 = get();
-  await page.locator('button[title="Pause Rule"]').first().click(); await sleep(1200);
+  // two rules exist (02 and 02b): act on this rule's own row, whatever order the API lists them in
+  await ruleRow(RULE).locator('button[title="Pause Rule"]').click(); await sleep(1200);
   if (get() === a0) return 'DB not changed after pause: ' + get();
-  await page.locator('button[title="Activate Rule"]').first().click(); await sleep(1200);
+  await ruleRow(RULE).locator('button[title="Activate Rule"]').click(); await sleep(1200);
   if (get() !== a0) return 'not restored';
   return await clean(page, w);
 }, page);
@@ -140,7 +142,7 @@ await S.t(`${R}-04`, 'Search filters rules; delete (confirm) removes row and DB 
   await page.getByPlaceholder('Search rules by name or trigger...').fill('nomatch'); await sleep(600);
   if ((await body(page)).includes(RULE)) return 'search ignored';
   await page.getByPlaceholder('Search rules by name or trigger...').fill('');
-  await page.locator('button[title="Delete Rule"]').first().click(); await sleep(1200);
+  await ruleRow(RULE).locator('button[title="Delete Rule"]').click(); await sleep(1200);
   if (sql(`SELECT COUNT(*) FROM automation_rules WHERE name=${q(RULE)}`) !== '0') return 'rule remains in DB';
   return await clean(page, w);
 }, page);

@@ -1,6 +1,6 @@
 # ui_crm a11y_smoke results
 
-PASS 66 · FAIL 0 · BLOCKED 0
+PASS 81 · FAIL 0 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -70,3 +70,18 @@ PASS 66 · FAIL 0 · BLOCKED 0
 | UIF-A11Y-53 | Add webhook endpoint modal: role=dialog named by its title, aria-modal="true" | PASS |  |  |
 | UIF-A11Y-54 | Add webhook endpoint modal: focus moves into the dialog and Tab / Shift+Tab stay inside it | PASS |  |  |
 | UIF-A11Y-55 | Add webhook endpoint modal: Escape closes it and focus returns to the control that opened it | PASS |  |  |
+| UIF-A11Y-56 | New prospect list modal: role=dialog named by its title, aria-modal="true" | PASS |  |  |
+| UIF-A11Y-57 | New prospect list modal: focus moves into the dialog and Tab / Shift+Tab stay inside it | PASS |  |  |
+| UIF-A11Y-58 | New prospect list modal: Escape closes it and focus returns to the control that opened it | PASS |  |  |
+| UIF-A11Y-81 | Invite team member modal: role=dialog named by its title, aria-modal="true" | PASS |  |  |
+| UIF-A11Y-82 | Invite team member modal: focus moves into the dialog and Tab / Shift+Tab stay inside it | PASS |  |  |
+| UIF-A11Y-83 | Invite team member modal: Escape closes it and focus returns to the control that opened it | PASS |  |  |
+| UIF-A11Y-84 | Connect mailbox modal: role=dialog named by its title, aria-modal="true" | PASS |  |  |
+| UIF-A11Y-85 | Connect mailbox modal: focus moves into the dialog and Tab / Shift+Tab stay inside it | PASS |  |  |
+| UIF-A11Y-86 | Connect mailbox modal: Escape closes it and focus returns to the control that opened it | PASS |  |  |
+| UIF-A11Y-87 | Add sending domain modal: role=dialog named by its title, aria-modal="true" | PASS |  |  |
+| UIF-A11Y-88 | Add sending domain modal: focus moves into the dialog and Tab / Shift+Tab stay inside it | PASS |  |  |
+| UIF-A11Y-89 | Add sending domain modal: Escape closes it and focus returns to the control that opened it | PASS |  |  |
+| UIF-A11Y-90 | Create automation rule modal: role=dialog named by its title, aria-modal="true" | PASS |  |  |
+| UIF-A11Y-91 | Create automation rule modal: focus moves into the dialog and Tab / Shift+Tab stay inside it | PASS |  |  |
+| UIF-A11Y-92 | Create automation rule modal: Escape closes it and focus returns to the control that opened it | PASS |  |  |
