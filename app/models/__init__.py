@@ -57,6 +57,7 @@ from app.models.provider_reputation import (
 from app.models.alert_center import AlertPreference, AlertEmailDispatch
 from app.models.subject_variant import EmailSubjectVariant  # noqa: F401  (BR-SF-18 A/B subjects)
 from app.models.webhook import WebhookEndpoint, WebhookDelivery  # noqa: F401  (BR-SF-20 outbound webhooks)
+from app.models.user_activity import UserActivityDay  # noqa: F401  (CRM adoption KPI)
 
 __all__ = [
     "Base",

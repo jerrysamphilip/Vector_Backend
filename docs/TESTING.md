@@ -29,7 +29,7 @@ Run them in this order. A failing unit or functional test is cheaper to diagnose
 |---|---|---|
 | unit | `unit` | `python3 scripts/test.py list` counts the test functions per file. Parametrised cases expand at run time. |
 | functional | `functional` | every `tests/test_*.py` |
-| system | `contract`, `new_features`, `contacts`, `sales_pipeline`, `outreach`, `api_sweep`, discovered `system_tests/*/run_*.py` (e.g. `ab_testing`, `behaviour_fixes`, `contact_scoring`, `discount_approval`, `webhooks`), `reports_platform` (always last) | about 6,300 recorded cases, 5,800 of them in the API sweep |
+| system | `contract`, `new_features`, `contacts`, `sales_pipeline`, `outreach`, `api_sweep`, discovered `system_tests/*/run_*.py` (e.g. `ab_testing`, `behaviour_fixes`, `contact_scoring`, `crm_kpis`, `discount_approval`, `webhooks`), `reports_platform` (always last) | about 6,300 recorded cases, 5,800 of them in the API sweep |
 | e2e | `e2e` (J1-J6) | 188 cases |
 | ui | `ui_outreach`, `ui_crm`, `ui_features.<name>` (one suite per `.mjs`) | about 360 cases + new features |
 
@@ -357,7 +357,7 @@ Every suite creates its own data. **No suite uses the demo data** (`seed_contact
 | unit | None |
 | functional | Its own tenants (`register_tenant`) in the throwaway schema, which is recreated before each runner run |
 | contract | None (reads source + OpenAPI) |
-| new_features, contacts, sales_pipeline, reports_platform, ab_testing, behaviour_fixes, contact_scoring, discount_approval, webhooks | Fresh workspaces through self sign-up on every run; role users inserted by SQL inside their own tenant |
+| new_features, contacts, sales_pipeline, reports_platform, ab_testing, behaviour_fixes, contact_scoring, crm_kpis, discount_approval, webhooks | Fresh workspaces through self sign-up on every run; role users inserted by SQL inside their own tenant |
 | e2e | Each journey signs up its own workspaces |
 
 The exceptions all reuse their own data or touch something shared, never demo data:

@@ -1,0 +1,60 @@
+{
+  "suite": "ui_crm crm_kpis",
+  "counts": {
+    "PASS": 7,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 18,
+  "cases": [
+    {
+      "id": "UIF-KPI-01",
+      "title": "Sales reports -> CRM KPIs: six tiles in BRD order; duplicate rate 50% of 4 contacts, target < 1%, off target",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-KPI-02",
+      "title": "The info button shows each KPI's formula and definition",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-KPI-03",
+      "title": "Forecast accuracy 80% (800 won / 1000 committed); adoption matches the API with 9 weekly bars; values equal the API",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-KPI-04",
+      "title": "Forecast tab: the forecast-accuracy card explains actual ÷ committed and shows 80% for the last quarter",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-KPI-05",
+      "title": "Sales head dashboard shows the CRM KPIs card",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-KPI-06",
+      "title": "Help: \"CRM KPIs explained\" defines all six KPIs",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-KPI-07",
+      "title": "Agent: duplicate rate and adoption are workspace-level (shown as —, with a note); team KPIs are shown",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

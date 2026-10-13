@@ -203,6 +203,10 @@ class ForecastSnapshot(Base):
     weighted = Column(Numeric(15, 2), nullable=False, default=0)
     forecast = Column(Numeric(15, 2), nullable=False, default=0)
     open_count = Column(Integer, nullable=False, default=0)
+    # Committed forecast (BR-SF-08, BRD section 8 forecast accuracy): open deals in the Commit
+    # category closing in the period, and closed won + that. NULL on snapshots from before 0014.
+    commit_open = Column(Numeric(15, 2), nullable=True)
+    committed = Column(Numeric(15, 2), nullable=True)
     source = Column(String(10), nullable=False, default="SCHEDULED")  # SCHEDULED / MANUAL
     taken_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
     taken_at = Column(TIMESTAMP, server_default=func.now())

@@ -194,6 +194,9 @@ def _issue_tokens(user: User, db: Session, device_info: str = None, first_login:
 
     user.last_login_at = datetime.utcnow()
     db.commit()
+    # Signing in counts as activity for the CRM adoption KPI
+    from app.services.user_activity import record_for
+    record_for(db, user)
 
     return {
         "access_token": access_token,
