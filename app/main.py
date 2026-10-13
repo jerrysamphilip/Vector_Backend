@@ -100,9 +100,18 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         request.url.path,
         [(".".join(str(p) for p in err.get("loc", ())), err.get("type")) for err in exc.errors()],
     )
+    # A field_validator's ValueError lands in err["ctx"]["error"] as the exception object itself,
+    # which JSONResponse cannot serialize (that turned every custom-validator 422 into a 500)
+    detail = []
+    for err in exc.errors():
+        err = dict(err)
+        if isinstance(err.get("ctx"), dict):
+            err["ctx"] = {k: (v if isinstance(v, (str, int, float, bool, type(None))) else str(v))
+                          for k, v in err["ctx"].items()}
+        detail.append(err)
     return JSONResponse(
         status_code=422,
-        content={"success": False, "error": "Validation Error", "detail": exc.errors(), "code": "VALIDATION_ERROR"},
+        content={"success": False, "error": "Validation Error", "detail": detail, "code": "VALIDATION_ERROR"},
     )
  
 # Kartik has changed this: Added global rate limiter and standard exception handlers
@@ -242,6 +251,9 @@ app.include_router(platform_admin_router)
 # Contact management (contacts across all lists, accounts, activities)
 from app.routers.contacts_router import router as contacts_router
 from app.routers.accounts_router import router as accounts_router
+# Contact scoring (BR-CM-43): before contacts_router so /contacts/scoring-model is not a contact id
+from app.routers.contact_scoring_router import router as contact_scoring_router
+app.include_router(contact_scoring_router)
 app.include_router(contacts_router)
 app.include_router(accounts_router)
 from app.routers.tasks_router import router as tasks_router
@@ -258,6 +270,8 @@ from app.routers.sales_router import router as sales_router
 from app.routers.sales_reports_router import router as sales_reports_router
 app.include_router(sales_router)
 app.include_router(sales_reports_router)
+from app.routers.sales_kpi_router import router as sales_kpi_router
+app.include_router(sales_kpi_router)
 from app.routers.sales_admin_router import router as sales_admin_router
 app.include_router(sales_admin_router)
 from app.routers.quotes_router import router as quotes_router
@@ -266,6 +280,12 @@ from app.routers.connections_router import router as connections_router
 app.include_router(quotes_router)
 app.include_router(custom_reports_router)
 app.include_router(connections_router)
+# A/B testing of email subject lines (BR-SF-18)
+from app.routers.subject_variant_router import router as subject_variant_router
+app.include_router(subject_variant_router)
+# Outbound webhooks for other systems (BR-SF-20)
+from app.routers.webhooks_router import router as webhooks_router
+app.include_router(webhooks_router)
  
  
 # =============================

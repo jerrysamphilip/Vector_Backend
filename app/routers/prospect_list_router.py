@@ -39,7 +39,7 @@ class ProspectListResponse(BaseModel):
     list_name: str
     source_type: str
     prospect_count: int
-    uploaded_at: datetime
+    uploaded_at: Optional[datetime] = None  # S10: column is nullable
 
     class Config:
         from_attributes = True
@@ -135,7 +135,7 @@ class ProspectInListResponse(BaseModel):
     poc_city: Optional[str] = None
     poc_state: Optional[str] = None
     poc_country: Optional[str] = None
-    consent_status: str
+    consent_status: Optional[str] = None  # S10: column is nullable
     notes: Optional[str] = None
     
     class Config:

@@ -115,10 +115,19 @@ export async function runLists(rec, browser) {
     eq(sql(`SELECT CONCAT_WS('|',list_name,description) FROM prospect_lists WHERE tenant_id='${t.tenantId}' AND list_name='Oct webinar'`), 'Oct webinar|Renamed');
     await p.getByRole('button', { name: 'Edit Hot leads' }).click();
     const m2 = modalLoc(p);
-    await m2.getByLabel('Operator').first().locator('xpath=following-sibling::*[1]').selectOption({ value: 'MQL' });
+    // FilterBuilder renders the value control as a text <input> until the option metadata (GET /contacts/meta) has
+    // loaded, then swaps it for a <select>; the old sibling-of-Operator locator raced that swap. Target the condition
+    // row's third <select> (Property, Operator, Value), which auto-waits until the options exist.
+    const row = m2.getByLabel('Property').first().locator('xpath=..');
+    eq(await row.getByLabel('Property').inputValue(), 'lifecycle_stage', 'saved criterion field');
+    const valueSel = row.locator('select').nth(2);
+    await valueSel.waitFor({ timeout: 10000 });
+    eq(await valueSel.inputValue(), 'LEAD', 'saved criterion value prefilled');
+    await valueSel.selectOption({ value: 'MQL' });
     await m2.getByText(/contacts? match right now/).waitFor();
     await m2.getByRole('button', { name: 'Save', exact: true }).click(); await settle(A, 900);
     ok((await listRow(p, 'Hot leads').innerText()).includes(String(cnt(t, `lifecycle_stage='MQL'`))), 'member count follows new criteria');
+    eq(sql(`SELECT JSON_UNQUOTE(JSON_EXTRACT(filters,'$.conditions[0].value')) FROM prospect_lists WHERE tenant_id='${t.tenantId}' AND list_name='Hot leads'`), 'MQL', 'criteria persisted');
   }, { u: A });
 
   await tc(rec, 'UIC-LST-09', 'Type tabs and search filter the lists', async () => {

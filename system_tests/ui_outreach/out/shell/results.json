@@ -5,7 +5,7 @@
     "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 239,
+  "seconds": 19,
   "cases": [
     {
       "id": "UIO-SHELL-SB-owner",
@@ -107,7 +107,7 @@
     },
     {
       "id": "UIO-SHELL-404",
-      "title": "Unknown routes (/app/does-not-exist, /vector/xyz, /app/campaigns/<bad id>) end on a safe page, no crash",
+      "title": "Unknown routes: /app/does-not-exist shows the 404 page (URL kept, link back Home works); /vector/xyz -> Home; /app/campaigns/<bad id> safe",
       "status": "PASS",
       "category": "",
       "detail": ""

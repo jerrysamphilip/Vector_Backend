@@ -1,22 +1,64 @@
 {
   "suite": "ui_crm lists_import",
   "counts": {
-    "PASS": 2,
+    "PASS": 8,
     "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 13,
+  "seconds": 38,
   "cases": [
     {
-      "id": "UIC-IMP-14",
-      "title": "Two columns mapped to the same property show the \"last one wins\" warning",
+      "id": "UIC-LST-01",
+      "title": "Lists page empty state, then headings/filters render",
       "status": "PASS",
       "category": "",
       "detail": ""
     },
     {
-      "id": "UIC-IMP-15",
-      "title": "Company-only import (no email column) creates companies",
+      "id": "UIC-LST-02",
+      "title": "New list: name required; create static list -> DB + opens Contacts filtered by it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-LST-03",
+      "title": "New list modal: cancel closes without creating",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-LST-04",
+      "title": "Active list: needs a criterion; live preview count equals DB; saved list has the same members",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-LST-05",
+      "title": "Active list membership follows data: changing a contact moves it in/out automatically",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-LST-06",
+      "title": "Static list: add members from Contacts bulk bar, remove from this list, counts match DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-LST-07",
+      "title": "Add contact modal can add the new contact to a static list",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-LST-08",
+      "title": "Edit list: rename + description persisted; active list criteria edit changes membership",
       "status": "PASS",
       "category": "",
       "detail": ""

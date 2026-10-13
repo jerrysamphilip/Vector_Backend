@@ -1,0 +1,95 @@
+{
+  "suite": "ui_crm new_features",
+  "counts": {
+    "PASS": 11,
+    "FAIL": 1,
+    "BLOCKED": 0
+  },
+  "seconds": 48,
+  "cases": [
+    {
+      "id": "UIC-NF-01",
+      "title": "Companies card: lists the primary company; Add a second company with a label (search + pick) -> card + DB",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-02",
+      "title": "Companies card: star makes the second company primary (badge moves, DB is_primary + contact account)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-03",
+      "title": "Companies card: removing the primary asks for the next primary (pre-selected), Cancel keeps it, Remove -> Alpha primary",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-04",
+      "title": "Company page shows association chips: label + \"Associated\" on the non-primary company; card link opens it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-05",
+      "title": "@mention: type \"@B\", pick Bianca with the keyboard, save -> highlighted in timeline; note_mentions + MENTION notification (not for author)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-06",
+      "title": "Mentioned colleague's bell shows the MENTION (unread), click opens the contact record and marks it read",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-07",
+      "title": "Mentioning an AGENT who does not own the contact: the notification link should open a record they can see",
+      "status": "FAIL",
+      "category": "defect-backend",
+      "detail": "[@mention lets you pick any active user (app/services/mentions.py mentionable_users/validate: 'Any active user of the workspace can be mentioned'), but an AGENT only sees own contacts: the MENTION notification links to /app/contacts/{id}, GET /contacts/{id} -> 404 and the page says 'Contact not found'. Either limit the picker/validation to users who can see the record or grant read access via the mention.] mentioned agent cannot open the record: GET /contacts/{id} -> 404, page shows \"Contact not"
+    },
+    {
+      "id": "UIC-NF-08",
+      "title": "Sales reports > Leads & SQLs: \"SQL to win\" card numbers match GET /sales-reports/sql-to-win (and the seeded data)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-09",
+      "title": "Forecast tab: \"Forecast accuracy\" card; admin \"Take snapshot now\" stores a MANUAL snapshot (DB) and the card shows it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-10",
+      "title": "Contact record \"+ Create deal\": form opens with the primary company pre-selected; Create -> deal linked to contact + company",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-11",
+      "title": "AccountDetail shows the Deals section (count, total, deal link); a company without deals shows the empty state",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIC-NF-12",
+      "title": "Recently deleted: select -> \"Delete forever\" -> confirm modal (Cancel keeps it) -> contact removed from DB + PURGE_CONTACT audit row",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

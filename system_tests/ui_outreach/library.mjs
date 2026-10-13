@@ -108,13 +108,23 @@ await S.t(`${R}-02`, 'Create Send-AI-Template rule: row appears; DB has trigger/
   if (r.join('|') !== '1|NO_REPLY|SEND_EMAIL|24') return 'DB row ' + r.join('|');
   return await clean(page, w);
 }, page);
-await S.t(`${R}-02b`, 'Create "Pause Campaign" rule (offered in the Action dropdown) succeeds', async () => {
+await S.t(`${R}-02b`, 'Create "Pause this contact" rule (PAUSE_PROSPECT, replaced "Pause Campaign"): option offered, no template picker, row listed, DB row persisted', async () => {
+  const NAMEP = 'Pause rule ' + ws.rid;
+  await go(page, '/app/automation', { wait: 1000 });
   await page.getByRole('button', { name: /Create New Rule/ }).click();
-  await fillRule('Pause rule ' + ws.rid, 'If Email Opened', 'Pause Campaign');
+  await page.getByPlaceholder('e.g., Follow up after open').waitFor();
+  const opts = (await page.locator('div.fixed select').nth(2).locator('option').allInnerTexts()).map(t => t.trim());
+  if (opts.includes('Pause Campaign')) return 'stale "Pause Campaign" option still offered: ' + opts.join(',');
+  if (!opts.includes('Pause this contact')) return 'Action options: ' + opts.join(',');
+  await fillRule(NAMEP, 'If Email Opened', 'Pause this contact');
+  if ((await page.locator('div.fixed select').nth(2).inputValue()) !== 'PAUSE_PROSPECT') return 'option value is not PAUSE_PROSPECT';
+  if (await page.getByText('Select Template').count()) return 'template picker still shown for a pause action';
   await page.getByRole('button', { name: /^Create Rule$/ }).click();
-  await sleep(1500);
-  w.drain([/.*/]);
-  if (sql(`SELECT COUNT(*) FROM automation_rules WHERE name='Pause rule ${ws.rid}'`) !== '1') return 'UI offers Pause Campaign but POST /automation-rules/ rejects action_type PAUSE_CAMPAIGN (422); user only sees "Failed to create rule. Please check the fields."';
+  await waitText(page, new RegExp(NAMEP));
+  const r = sql(`SELECT is_active,trigger_type,action_type,JSON_EXTRACT(trigger_config,'$.delay_hours'),campaign_id FROM automation_rules WHERE name=${q(NAMEP)} AND campaign_id=${q(cid)}`).split('\t');
+  if (r.slice(0, 4).join('|') !== '1|EMAIL_OPENED|PAUSE_PROSPECT|24') return 'DB row ' + r.join('|');
+  if (r[4] !== cid) return `rule campaign_id ${r[4]} != ${cid}`;
+  return await clean(page, w);
 }, page);
 await go(page, '/app/automation', { wait: 1000 });
 await S.t(`${R}-03`, 'Toggle rule off/on (the repaired PUT): DB is_active flips and UI reflects it', async () => {

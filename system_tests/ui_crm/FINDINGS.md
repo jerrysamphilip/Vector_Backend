@@ -29,9 +29,15 @@ Re-run: `node run_all.mjs` (all) or `node <area>.mjs`; `ONLY=<regex>` filters ca
 - Price list / quote unit prices are shown with 0 decimals (money() uses maximumFractionDigits 0): $49.50 displays as "$50" (Sales settings > Products).
 - Accessibility: Email subscription (Unsubscribe/Resubscribe) buttons sit inside a <label>, so their accessible name is the whole label text.
 
-### Not implemented (UI)
-No @mention in notes (UIC-CD-17); no create-deal on the contact record, only create-lead (UIC-CD-16); AccountDetail has no deals list (UIC-ACC-12);
-Recently deleted has no purge control (UIC-RD-03); Pipeline "kanban" is the Deals board (drag verified in UIC-SAL-10).
+### Not implemented (UI) - update Oct-13
+The four former gaps were built in the Oct-12 round and are now covered by new_features.mjs: @mention (UIC-NF-05/06), create deal on the
+contact record (UIC-NF-10), AccountDetail deals (UIC-NF-11), Recently deleted purge (UIC-NF-12); the BLOCKED placeholders UIC-CD-16/17,
+UIC-ACC-12, UIC-RD-03 were removed. Pipeline "kanban" is the Deals board (drag verified in UIC-SAL-10).
+
+### New defect (Oct-13)
+5. medium - @mention of a user who cannot see the record (UIC-NF-07): the picker and POST /contacts/{id}/activities accept any active user
+   (app/services/mentions.py), an AGENT who does not own the contact gets a MENTION notification whose link opens "Contact not found"
+   (GET /contacts/{id} -> 404). Limit mentionable users to those who can see the record, or show a clear message.
 
 ## Verified OK (selection)
 Filter builder AND/OR/nested vs SQL counts; saved views create/rename/delete; board drag; bulk actions incl. enrollment rejection reasons; CSV/XLSX export rows;

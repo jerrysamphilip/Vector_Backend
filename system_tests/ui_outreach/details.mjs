@@ -78,13 +78,37 @@ await S.t(`${A}-07`, 'Pause Campaign / Resume Campaign buttons change status (DB
   if (campStatus(cid) !== 'ACTIVE') return 'DB after resume ' + campStatus(cid);
   return await clean(page, w);
 }, page);
-await S.t(`${A}-08`, 'Send Now: confirm dialog, then result summary dialog; cancel path sends nothing', async () => {
+await S.t(`${A}-08`, 'Send Now: cancel at the confirm sends nothing; accept -> POST /send-now answered and the outcome is shown (result dialog or visible error)', async () => {
+  // Outcome-agnostic on purpose: while the e2e stack runs in SES-mock mode the per-message send can fail
+  // (inboxes point at smtp.invalid), so the case asserts what the user can observe, not that mail went out.
+  await go(page, '/app/campaigns/' + cid, { wait: 1200 });
+  if (campStatus(cid) !== 'ACTIVE') return 'precondition: campaign not ACTIVE (' + campStatus(cid) + ')';
+  const sentBefore = sql(`SELECT COUNT(*) FROM email_messages WHERE campaign_id=${q(cid)} AND status NOT IN ('QUEUED','SCHEDULED')`);
   dlg.stop(); const d1 = dialogs(page, 'dismiss');
-  await page.getByRole('button', { name: /Send Now/ }).click(); await sleep(500);
+  const reqs = []; const onReq = r => { if (/\/send-now$/.test(r.url())) reqs.push(r.url()); }; page.on('request', onReq);
+  await page.getByRole('button', { name: /Send Now/ }).click(); await sleep(800);
+  d1.stop();
   if (!d1.some(m => /Force Send Now/.test(m))) return 'no confirm shown';
-  d1.stop(); const d2 = dialogs(page, 'accept');
-  await page.getByRole('button', { name: /Send Now/ }).click(); await sleep(6000);
-  if (!d2.some(m => /Success|Error sending/.test(m))) return 'no result dialog: ' + d2.join('|');
+  if (reqs.length) return 'cancel at the confirm still called /send-now';
+  if (sql(`SELECT COUNT(*) FROM email_messages WHERE campaign_id=${q(cid)} AND status NOT IN ('QUEUED','SCHEDULED')`) !== sentBefore) return 'cancel changed message states';
+  page.off('request', onReq);
+  const d2 = dialogs(page, 'accept');
+  const respP = page.waitForResponse(r => /\/send-now$/.test(r.url()), { timeout: 90000 });
+  const tClick = Date.now();
+  await page.getByRole('button', { name: /Send Now/ }).click();
+  const resp = await respP.catch(() => null);
+  const took = Date.now() - tClick;
+  if (!resp) { d2.stop(); return 'POST /send-now not answered within 90 s; dialogs: ' + d2.join('|'); }
+  const t0 = Date.now(); while (d2.length < 2 && Date.now() - t0 < 5000) await sleep(200);
+  d2.stop(); dialogs(page, 'accept');
+  const status = resp.status(); let data = null; try { data = await resp.json(); } catch {}
+  console.log(`  DET-08 send-now -> HTTP ${status} in ${took} ms ${JSON.stringify(data).slice(0, 300)}`);
+  const result = d2.find(m => /Success!|Error sending/.test(m));
+  const visibleErr = /error|failed/i.test(await body(page));
+  if (!result && !visibleErr) return `HTTP ${status} but no result dialog or visible error; dialogs: ${d2.join('|')}`;
+  if (status === 200 && !/Success!/.test(result || '')) return `HTTP 200 but dialog is: ${result}`;
+  if (status === 200 && result && data && !result.includes(`Sent: ${data.sent}`)) return `dialog counts differ from API: ${result} vs ${JSON.stringify(data)}`;
+  if (status >= 400 && !/Error sending/.test(result || '')) return `HTTP ${status} not surfaced as error dialog`;
   w.drain([/.*/]);
 }, page);
 await S.t(`${A}-09`, 'Role AGENT cannot open a campaign by URL (redirect Home)', async () => {

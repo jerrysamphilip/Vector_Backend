@@ -258,6 +258,15 @@ class EmailSenderService:
         
         return re.sub(link_pattern, replace_link, html_body)
 
+    SIGN_OFF_PATTERN = r"(?i)(Best(\s+Regards)?|Regards|Thanks|Cheers|Sincerely)[,]?\s*\n\s*[A-Za-z0-9 ]+"
+
+    def has_sign_off(self, body: str) -> bool:
+        """Whether the body already ends with a sign-off ("Regards,\n<name>"). No '$' anchor:
+        the postal address and unsubscribe footer are appended after the body. Bodies finalized
+        at launch are HTML (<p>/<br>), so the check runs on a plain-text view; matching the raw
+        HTML missed them and every campaign email got a second sign-off."""
+        return bool(re.search(self.SIGN_OFF_PATTERN, self._html_to_plain_text(body or "")))
+
     def _html_to_plain_text(self, html: str) -> str:
         """Convert HTML to plain text for multipart/alternative emails."""
         if not html:
@@ -679,10 +688,8 @@ class EmailSenderService:
             # Replace explicit unsubscribe placeholder if template uses it
             body_content = body_content.replace("{{unsubscribe_link}}", unsubscribe_url)
 
-            # Ensure single signature. Remove the '$' anchor because 
-            # physical address and unsubscribe footer are appended AFTER the body.
-            signature_pattern = r"(?i)(Best(\s+Regards)?|Regards|Thanks|Cheers|Sincerely)[,]?\s*\n\s*[A-Za-z0-9 ]+"
-            if not re.search(signature_pattern, body_content):
+            # Ensure single signature.
+            if not self.has_sign_off(body_content):
                 body_content = body_content.rstrip() + f"\n\nRegards,\n{build_signature_block(sender_name, campaign_sender_title, identity.company_name)}"
 
             # body_content = normalize_paragraph_spacing(body_content)

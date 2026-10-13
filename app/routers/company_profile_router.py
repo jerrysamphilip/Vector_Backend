@@ -48,7 +48,7 @@ class CompanyProfileResponse(BaseModel):
     default_sender_name: Optional[str]
     default_cta_link: Optional[str]
     postal_address: Optional[str] = None
-    is_default: bool
+    is_default: Optional[bool] = None  # S10: column is nullable
     
     class Config:
         from_attributes = True

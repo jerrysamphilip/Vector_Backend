@@ -4,7 +4,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 # tests/ is the committed pytest suite (excluded from the image by .dockerignore)
-scripts
+# local helper scripts stay untracked, except the test runner
+scripts/*
+!scripts/test.py
 # C extensions
 *.so
 .dockerignore
@@ -114,7 +116,10 @@ original-*.gif
 # Frontend (Node.js) - EXCLUDED from Backend Repo
 frontend/
 
-docs/
+# local docs stay untracked, except the test documentation
+docs/*
+!docs/TESTING.md
+!docs/TRACEABILITY.md
 # Stray local artefacts (never commit; may contain logs/credentials)
 kill_locks.py
 =*
@@ -123,3 +128,5 @@ logs.txt
 output.txt
 alembic_error.txt
 uvicorn_*.txt
+# Test runner output (scripts/test.py): reports, logs, lock and rate-limit ledger
+reports/

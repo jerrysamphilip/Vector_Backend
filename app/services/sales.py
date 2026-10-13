@@ -254,6 +254,44 @@ def apply_stage(db: Session, opp: Opportunity, stage_id: str) -> SalesStage:
     return stage
 
 
+def stage_change_recipients(owner_id: Optional[str], manager_id: Optional[str],
+                            actor_id: Optional[str]) -> List[str]:
+    """Who hears about a deal moving: its owner and the owner's manager, never the person who moved it."""
+    return [u for u in dict.fromkeys((owner_id, manager_id)) if u and u != actor_id]
+
+
+def stage_change_message(deal_name: str, stage_name: str, status: str, actor_name: Optional[str],
+                         previous_stage: Optional[str] = None, reason: Optional[str] = None):
+    """(kind, title, body) for a deal won / lost / stage-change notification."""
+    deal_name = deal_name or "Deal"
+    who = actor_name or "Someone"
+    if status == "WON":
+        kind, title = "DEAL_WON", f"Deal won: {deal_name}"
+        body = f"{who} marked the deal won."
+    elif status == "LOST":
+        kind, title = "DEAL_LOST", f"Deal lost: {deal_name}"
+        body = f"{who} marked the deal lost."
+    else:
+        kind, title = "DEAL_STAGE", f"Deal moved to {stage_name}: {deal_name}"
+        body = f"{who} moved the deal" + (f" from {previous_stage}" if previous_stage else "") + f" to {stage_name}."
+    if reason and status in ("WON", "LOST"):
+        body += f" Reason: {reason}"
+    return kind, title, body
+
+
+def notify_stage_change(db: Session, opp: Opportunity, stage: SalesStage, actor: User,
+                        previous_stage: Optional[str] = None) -> int:
+    """In-app notification (and email, per preference) when a deal is won, lost or changes stage. Caller commits."""
+    from app.services.notifications import manager_of, notify
+    recipients = stage_change_recipients(opp.owner_id, manager_of(db, opp.owner_id), actor.user_id)
+    if not recipients:
+        return 0
+    actor_name = getattr(actor, "full_name", None) or actor.email
+    kind, title, body = stage_change_message(opp.name, stage.name, stage_status(stage), actor_name,
+                                             previous_stage, clean_str(opp.closed_reason))
+    return notify(db, opp.tenant_id, recipients, kind, title, body, f"/app/deals/{opp.opportunity_id}")
+
+
 def require_close_reason(db: Session, opp: Opportunity, stage: SalesStage, reason: Optional[str]) -> None:
     """A won or lost deal records why (BR-SF-05), unless the workspace turned that off."""
     from app.services.sales_settings import get_settings

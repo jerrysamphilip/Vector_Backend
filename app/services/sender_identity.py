@@ -115,6 +115,22 @@ def get_sender_identity(tenant_id: Optional[str], db: Optional[Session] = None,
     return identity
 
 
+def campaign_sender_name(db: Session, campaign) -> Optional[str]:
+    """The person campaign mail is signed by: the campaign's sender name, else its creator's
+    name (the same rule the scheduler uses for the From header). None only when neither is known."""
+    name = (getattr(campaign, "sender_name", None) or "").strip()
+    if name:
+        return name
+    from app.models.user import User
+    user = db.query(User.first_name, User.last_name).filter(
+        User.user_id == getattr(campaign, "created_by", None)).first()
+    if user:
+        full = f"{user.first_name or ''} {user.last_name or ''}".strip()
+        if full:
+            return full
+    return None
+
+
 def require_postal_address(db: Session, tenant_id: str) -> SenderIdentity:
     """Launch gate: CAN-SPAM requires the sender's postal address in every email."""
     identity = get_sender_identity(tenant_id, db, fresh=True)
@@ -162,7 +178,15 @@ class _BrandedCompletions:
                 {**m, "content": brand(m.get("content"))} if isinstance(m, dict) else m
                 for m in messages
             ]
-        return self._completions.create(*args, **kwargs)
+        from app.services.llm_budget import charge, settle
+        kwargs, reserved = charge(kwargs)
+        try:
+            response = self._completions.create(*args, **kwargs)
+        except Exception:
+            settle(reserved, None)
+            raise
+        settle(reserved, response)
+        return response
 
     def __getattr__(self, name):
         return getattr(self._completions, name)

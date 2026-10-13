@@ -17,7 +17,7 @@ export async function run(rec, browser) {
   await tc(rec, 'UIC-CD-01', 'Record page renders header, stats, 3 columns of cards', async () => {
     await go(A, `contacts/${id}`);
     await p.getByRole('heading', { name: 'Dana Detail' }).waitFor();
-    for (const h of ['About this contact', 'Details', 'Activity', 'Sales', 'Company', 'Tasks', 'Lists', 'Campaigns']) ok(await p.getByRole('heading', { name: new RegExp(`^${h}`) }).first().isVisible(), `card ${h}`);
+    for (const h of ['About this contact', 'Details', 'Activity', 'Sales', 'Companies', 'Tasks', 'Lists', 'Campaigns']) ok(await p.getByRole('heading', { name: new RegExp(`^${h}`) }).first().isVisible(), `card ${h}`);
     for (const s of ['Emails sent', 'Opened', 'Replies', 'Calls', 'Meetings', 'Open tasks']) ok(await p.getByText(s, { exact: true }).first().isVisible(), `stat ${s}`);
     ok(await p.getByText(c.email).first().isVisible(), 'email');
     ok(await p.getByText('Buyer').first().isVisible() && await p.getByText('Detail Co').first().isVisible(), 'title + company');
@@ -148,7 +148,8 @@ export async function run(rec, browser) {
     ok(await p.getByText('renewal pricing and discounts').first().isVisible(), 'edited text shown');
     ok(dbn(`SELECT COUNT(*) FROM contact_activities WHERE prospect_id='${id}' AND body LIKE '%and discounts%'`) === 1, 'edit persisted');
     await p.locator('li').filter({ hasText: 'and discounts' }).first().locator('button:has-text("Delete")').click(); await settle(A, 700);
-    eq(dbn(`SELECT COUNT(*) FROM contact_activities WHERE prospect_id='${id}' AND body LIKE '%renewal pricing%'`), 0, 'deleted');
+    // only the edited note is deleted (UIC-CD-09 may have left its own "renewal pricing" note on this contact)
+    eq(dbn(`SELECT COUNT(*) FROM contact_activities WHERE prospect_id='${id}' AND body LIKE '%and discounts%'`), 0, 'deleted');
   }, { u: A });
 
   await tc(rec, 'UIC-CD-13', 'Create task from record (overdue due date) -> card + Open tasks stat + DB; complete it', async () => {
@@ -193,8 +194,8 @@ export async function run(rec, browser) {
     eq(await p.getByRole('button', { name: '+ Create lead' }).count(), 0, 'no second create while open lead exists');
   }, { u: A });
 
-  skip(rec, 'UIC-CD-16', 'Create a deal directly from the contact record', 'Record page only offers "+ Create lead"; deals are created from a lead conversion or the Deals page', 'not-implemented');
-  skip(rec, 'UIC-CD-17', '@mention in notes', 'Composer has no @mention support', 'not-implemented');
+  // UIC-CD-16 (was BLOCKED not-implemented): the feature now exists and is covered by UIC-NF-10 in new_features.mjs
+  // UIC-CD-17 (was BLOCKED not-implemented): the feature now exists and is covered by UIC-NF-05/06 in new_features.mjs
 
   await tc(rec, 'UIC-CD-18', 'Associations: company link opens the company page; list + campaign cards link out', async () => {
     const sel = sql(`SELECT UUID()`);

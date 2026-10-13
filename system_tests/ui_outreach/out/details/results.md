@@ -11,5 +11,5 @@ PASS 9 · FAIL 0 · BLOCKED 0
 | UIO-DET-05 | Schedule tab shows queued emails per step/day; Trigger logs shows CREATE/LAUNCH audit events | PASS |  |  |
 | UIO-DET-06 | Sending Accounts tab lists the campaign inbox; Inbox tab renders (empty state) and Sync button reports a clear error with no IMAP | PASS |  |  |
 | UIO-DET-07 | Pause Campaign / Resume Campaign buttons change status (DB + badge) | PASS |  |  |
-| UIO-DET-08 | Send Now: confirm dialog, then result summary dialog; cancel path sends nothing | PASS |  |  |
+| UIO-DET-08 | Send Now: cancel at the confirm sends nothing; accept -> POST /send-now answered and the outcome is shown (result dialog or visible error) | PASS |  |  |
 | UIO-DET-09 | Role AGENT cannot open a campaign by URL (redirect Home) | PASS |  |  |

@@ -95,24 +95,26 @@ class AutomationRuleService:
             logger.error(f"[Automation] Prospect {prospect_id} not found")
             return
 
-        # Fetch invalid sequence ID (Required by EmailMessage)
-        # We rely on the campaign having at least one sequence or use a placeholder if appropriate.
-        # For now, grab the first sequence of the campaign.
-        from app.models.email_sequence import EmailSequence
-        sequence = db.query(EmailSequence).filter(
-            EmailSequence.campaign_id == rule.campaign_id
+        # The rule's mail is ad-hoc, not a sequence step: it carries no sequence_id, so the
+        # scheduler's step duplicate guard (send_key: campaign + step + address) does not
+        # cancel it against the contact's real step-1 email, and stop-on-reply does not apply.
+        # De-duplicate per rule template instead: one such mail per contact.
+        already = db.query(EmailMessage.message_id).filter(
+            EmailMessage.campaign_id == rule.campaign_id,
+            EmailMessage.prospect_id == prospect_id,
+            EmailMessage.template_id == template_id,
+            EmailMessage.sequence_id.is_(None),
+            EmailMessage.status.notin_(["CANCELLED", "FAILED"]),
         ).first()
-
-        if not sequence:
-            logger.error(f"[Automation] Campaign {rule.campaign_id} has no sequence for context")
-            # Fallback or return? Return for now to avoid constraint error.
+        if already:
+            logger.info(f"[Automation] Rule {rule.name}: template {template_id} already queued/sent "
+                        f"to prospect {prospect_id}; not sending again")
             return
 
         # Create message scheduled for NOW
         msg = EmailMessage(
             campaign_id=rule.campaign_id,
             prospect_id=prospect_id,
-            sequence_id=sequence.sequence_id,
             template_id=template_id,
             status="QUEUED",
             scheduled_at=datetime.utcnow(),
@@ -120,6 +122,7 @@ class AutomationRuleService:
             to_email=prospect.email  # Required field
         )
         db.add(msg)
+        db.flush()  # visible to the de-duplication check if the rule fires again in this session
         logger.info(f"[Automation] Scheduled email (Template {template_id}) from Rule {rule.name}")
 
     def _action_change_step(self, rule: AutomationRule, prospect_id: str, db: Session):

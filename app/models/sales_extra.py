@@ -7,7 +7,7 @@ Google / Microsoft connections for calendar and email sync.
 """
 import uuid
 
-from sqlalchemy import JSON, TIMESTAMP, Boolean, Column, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import JSON, TIMESTAMP, Boolean, Column, Date, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.sql import func
 
 from app.core.encrypted_type import EncryptedText
@@ -184,5 +184,30 @@ class UserConnection(Base):
 
     __table_args__ = (
         Index("uq_user_connections", "user_id", "provider", unique=True),
+        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
+    )
+
+
+class ForecastSnapshot(Base):
+    """The forecast (closed won + weighted open pipeline closing in the period) per owner,
+    taken at the start of a month or fiscal quarter, for forecast accuracy (BRD section 8)."""
+    __tablename__ = "forecast_snapshots"
+
+    snapshot_id = Column(String(36), primary_key=True, default=_uuid)
+    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
+    period_type = Column(String(10), nullable=False)    # MONTH / QUARTER
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)           # exclusive
+    owner_id = Column(String(36), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
+    won = Column(Numeric(15, 2), nullable=False, default=0)
+    weighted = Column(Numeric(15, 2), nullable=False, default=0)
+    forecast = Column(Numeric(15, 2), nullable=False, default=0)
+    open_count = Column(Integer, nullable=False, default=0)
+    source = Column(String(10), nullable=False, default="SCHEDULED")  # SCHEDULED / MANUAL
+    taken_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    taken_at = Column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        Index("uq_forecast_snapshots", "tenant_id", "period_type", "period_start", "owner_id", unique=True),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )

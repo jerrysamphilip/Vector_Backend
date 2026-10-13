@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
-from common import WEB, Results, Workspace, req, sql  # noqa: E402
+from common import WEB, Results, Workspace, req, run_job, sql  # noqa: E402
 
 R = Results("Sales hierarchy, daily limit, leads & pipeline (BRD 5.4-5.7)", HERE)
 NO_UI = "--no-ui" in sys.argv
@@ -1222,13 +1222,15 @@ def _():
         R.record("SP-141", "Worker recycles a disqualified lead on its recycle date", None, "skipped (--no-worker)", "test-issue")
         return
     sql(f"UPDATE leads SET recycle_at = UTC_TIMESTAMP() - INTERVAL 1 MINUTE WHERE lead_id='{L['dq']}'")
-    back = poll(lambda: sql(f"SELECT stage FROM leads WHERE lead_id='{L['dq']}'") == "NEW")
+    # the recycle pass is hourly in the worker: trigger one sales_jobs iteration now (fresh process)
+    ok, out = run_job("sales_jobs")
+    back = poll(lambda: sql(f"SELECT stage FROM leads WHERE lead_id='{L['dq']}'") == "NEW", timeout=60)
     notes = must(req("GET", "/notifications?limit=100", token=U["ag1a"]["token"]))["items"]
     hist = must(req("GET", f"/leads/{L['dq']}", token=U["ag1a"]["token"]))["history"]
     R.check("SP-141", "Worker reopens the disqualified lead (→ NEW), notifies the owner and logs the change",
             bool(back) and any(n.get("kind") == "LEAD_RECYCLED" for n in notes)
             and any(h["field"] == "stage" and h["new_value"] == "NEW" for h in hist),
-            f"back={back} kinds={[n.get('kind') for n in notes][:5]}")
+            f"back={back} kinds={[n.get('kind') for n in notes][:5]}" + ("" if ok else f" job_out={out[-300:]}"))
 
 
 @guarded("SP-142", "Worker alerts the owner about a stale/overdue deal")
@@ -1236,10 +1238,11 @@ def _():
     if NO_WORKER:
         R.record("SP-142", "Worker alerts the owner about a stale/overdue deal", None, "skipped (--no-worker)", "test-issue")
         return
+    ok, out = run_job("sales_jobs")   # stale-deal alerts are hourly in the worker: trigger one pass now
     got = poll(lambda: any(n.get("kind") == "STALE_DEAL" and P["overdue"] in (n.get("link") or "")
                            for n in must(req("GET", "/notifications?limit=100", token=U["ag1a"]["token"]))["items"]))
     R.check("SP-142", "Overdue deal raises a STALE_DEAL notification for its owner within a worker cycle",
-            bool(got), "no STALE_DEAL notification within 170 s")
+            bool(got), "no STALE_DEAL notification within 170 s" + ("" if ok else f" (job run failed: {out[-300:]})"))
 
 
 # ═══════════════════════ UI (Playwright) ═══════════════════════

@@ -47,6 +47,8 @@ def create_access_token(
         "role": role,
         "exp": expire,
         "type": "access",
+        # Unique id: sign-out puts it on the revoked_access_tokens list (app/services/token_revocation.py)
+        "jti": secrets.token_urlsafe(16),
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 

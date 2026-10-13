@@ -168,6 +168,38 @@ def test_logout_revokes_and_clears_cookies(client):
     assert client.post("/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]}).status_code == 401
 
 
+def test_logout_revokes_the_access_token(client):
+    """A copy of the access token taken before sign-out is refused afterwards (not valid until expiry);
+    other sessions of the same user and a new sign-in keep working."""
+    t = register_tenant(client, "ck6")
+    c = browser()
+    cookie_login(c, t["email"], t["password"])
+    stolen = c.cookies.get("access_token")
+    assert client.get("/api/auth/me", headers=auth(stolen)).status_code == 200
+    other = client.post("/api/auth/login", json={"email": t["email"], "password": t["password"]}).json()
+
+    assert c.post("/api/auth/logout", headers=csrf(c)).status_code == 204
+    assert client.get("/api/auth/me", headers=auth(stolen)).status_code == 401
+    jti = sql("SELECT COUNT(*) FROM revoked_access_tokens r JOIN users u ON u.user_id = r.user_id WHERE u.email = :e",
+              e=t["email"])
+    assert int(jti) == 1
+    # Only that token: the user's other session is untouched
+    assert client.get("/api/auth/me", headers=auth(other["access_token"])).status_code == 200
+
+    # Token mode: logout with the bearer access token + refresh token in the body revokes both
+    assert client.post("/api/auth/logout", json={"refresh_token": other["refresh_token"]},
+                       headers=auth(other["access_token"])).status_code == 204
+    assert client.get("/api/auth/me", headers=auth(other["access_token"])).status_code == 401
+    assert client.post("/api/auth/refresh", json={"refresh_token": other["refresh_token"]}).status_code == 401
+
+    # Signing in again issues a fresh, working session
+    c2 = browser()
+    cookie_login(c2, t["email"], t["password"])
+    assert c2.get("/api/auth/session").status_code == 200
+    r = c2.post("/api/auth/refresh", headers=csrf(c2))
+    assert r.status_code == 200 and c2.get("/api/auth/session").status_code == 200
+
+
 # ── Two-factor ──
 
 def test_mfa_login_flow_replay_and_recovery_codes(client):

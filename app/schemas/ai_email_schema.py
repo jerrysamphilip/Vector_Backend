@@ -3,7 +3,7 @@
 Pydantic schemas for AI Email Generation endpoints.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -72,6 +72,12 @@ class BlueprintResponse(BaseModel):
     tone_rules: Optional[Dict[str, Any]]
     is_active: bool
     created_at: datetime
+
+    @field_validator("openers", "value_angles", "ctas", mode="before")
+    @classmethod
+    def _null_list_is_empty(cls, v):
+        # The model columns are nullable; one blueprint without them must not 500 the whole list
+        return [] if v is None else v
 
     class Config:
         from_attributes = True

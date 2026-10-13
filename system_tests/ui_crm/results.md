@@ -1,48 +1,9 @@
-# ui_crm results (final)
+# ui_crm (CRM + Sales functional UI) results
 
-PASS 150 · FAIL 3 · BLOCKED 4
+PASS 164 · FAIL 1 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
-| UIC-ACC-01 | Companies list renders with count, columns and revenue formatting | PASS |  |  |
-| UIC-ACC-02 | Sort by Company asc/desc and by Contacts | PASS |  |  |
-| UIC-ACC-03 | Search by name / domain / industry; empty state; owner segments | PASS |  |  |
-| UIC-ACC-04 | New company: name required (button disabled), full create -> detail page + DB | PASS |  |  |
-| UIC-ACC-05 | Domain must be unique per workspace: duplicate shows message, nothing created | PASS |  |  |
-| UIC-ACC-06 | Company detail: stats, contacts listing, "Open in Contacts" filter chip | PASS |  |  |
-| UIC-ACC-07 | Edit company (cancel path then rename + fields) -> DB, contacts get new company name, history row | PASS |  |  |
-| UIC-ACC-08 | Owner change on company detail persists | PASS |  |  |
-| UIC-ACC-09 | Add contact from company page: company prefilled, linked, contact count increments | PASS |  |  |
-| UIC-ACC-10 | Link contacts by company (backfill) shows a notice and links contacts without a company record | PASS |  |  |
-| UIC-ACC-11 | Pagination across 25 per page | PASS |  |  |
-| UIC-ACC-12 | AccountDetail lists the company's deals | BLOCKED | not-implemented | AccountDetail shows contacts and history only; deals appear on the Deals screen |
-| UIC-ACC-13 | Delete company (confirm): contacts kept, appears in Recently deleted > Companies, restore works | PASS |  |  |
-| UIC-ACC-14 | AGENT: sees only own companies; no backfill button, owner read-only, no delete | PASS |  |  |
-| UIC-ACC-15 | AGENT cannot open another user's company (not found) and API refuses | PASS |  |  |
-| UIC-ACC-16 | Companies API failure: page keeps its shell | PASS |  |  |
-| UIC-CD-01 | Record page renders header, stats, 3 columns of cards | PASS |  |  |
-| UIC-CD-02 | Change lifecycle stage inline -> persisted, appears as property change with old/new | PASS |  |  |
-| UIC-CD-03 | Change lead status inline persisted | PASS |  |  |
-| UIC-CD-04 | Edit details: save changes (name, phone, title, company, location) -> DB; Cancel discards | PASS |  |  |
-| UIC-CD-05 | Edit details: invalid email shows an error and saves nothing | PASS |  |  |
-| UIC-CD-06 | Tags: add and remove in header persists | PASS |  |  |
-| UIC-CD-07 | Owner change inline persists and is recorded in history | PASS |  |  |
-| UIC-CD-08 | Unsubscribe then resubscribe (with confirm) updates consent + global unsubscribe list | PASS |  |  |
-| UIC-CD-09 | Log a note -> timeline entry + DB activity | PASS |  |  |
-| UIC-CD-10 | Log a call (subject, outcome, duration) -> timeline + Calls stat | PASS |  |  |
-| UIC-CD-11 | Log an email and a meeting | PASS |  |  |
-| UIC-CD-12 | Edit a logged activity then delete it (confirm) | PASS |  |  |
-| UIC-CD-13 | Create task from record (overdue due date) -> card + Open tasks stat + DB; complete it | PASS |  |  |
-| UIC-CD-14 | Timeline filters: Notes / Calls / Changes / All and user filter | PASS |  |  |
-| UIC-CD-15 | Create lead from the record -> redirected to lead, lead in DB, Sales card lists it | PASS |  |  |
-| UIC-CD-16 | Create a deal directly from the contact record | BLOCKED | not-implemented | Record page only offers "+ Create lead"; deals are created from a lead conversion or the Deals page |
-| UIC-CD-17 | @mention in notes | BLOCKED | not-implemented | Composer has no @mention support |
-| UIC-CD-18 | Associations: company link opens the company page; list + campaign cards link out | PASS |  |  |
-| UIC-CD-19 | Unknown contact id shows "Contact not found" with back link | PASS |  |  |
-| UIC-CD-20 | Property save API failure shows the error and keeps the old value | PASS |  |  |
-| UIC-CD-21 | AGENT on own contact: can edit/log note, owner shown read-only, no Delete | PASS |  |  |
-| UIC-CD-22 | Non-admin manager cannot move lifecycle stage backwards (forward only message) | PASS |  |  |
-| UIC-CD-23 | Delete contact (confirm) -> back to list; listed in Recently deleted; restore brings it back | PASS |  |  |
 | UIC-CON-01 | Contacts list renders 25/60 with pager text and header | PASS |  |  |
 | UIC-CON-02 | Pagination next/prev/last page counts and disabled state | PASS |  |  |
 | UIC-CON-03 | Sort by name asc/desc matches API order | PASS |  |  |
@@ -72,7 +33,7 @@ PASS 150 · FAIL 3 · BLOCKED 4
 | UIC-CON-27 | Add contact: email of a deleted contact -> restore hint (Recently deleted) | PASS |  |  |
 | UIC-CON-28 | Add contact modal: Cancel / X close paths, no row created | PASS |  |  |
 | UIC-CON-29 | Properties modal: create NUMBER and SELECT custom fields; appear in DB and Add form | PASS |  |  |
-| UIC-CON-30 | Properties modal: blank label disables Add; duplicate label error | FAIL | defect-backend | low: duplicate property labels accepted (contacts_router.py create_field_definition ~L1076) |
+| UIC-CON-30 | Properties modal: blank label disables Add; duplicate label error | PASS |  |  |
 | UIC-CON-31 | Create contact with custom property values; shown in table column + detail; filterable | PASS |  |  |
 | UIC-CON-32 | Properties modal: delete a custom field | PASS |  |  |
 | UIC-CON-33 | Bulk: select-all-on-page shows "25 selected", Clear selection works | PASS |  |  |
@@ -89,11 +50,59 @@ PASS 150 · FAIL 3 · BLOCKED 4
 | UIC-CON-44 | AGENT: direct API refused for bulk/export/merge; own-contact create works without owner field | PASS |  |  |
 | UIC-CON-45 | AGENT: cannot open someone else's contact by URL ("Contact not found") | PASS |  |  |
 | UIC-CON-46 | List API 500 -> page does not crash (graceful state) | PASS |  |  |
+| UIC-CD-01 | Record page renders header, stats, 3 columns of cards | PASS |  |  |
+| UIC-CD-02 | Change lifecycle stage inline -> persisted, appears as property change with old/new | PASS |  |  |
+| UIC-CD-03 | Change lead status inline persisted | PASS |  |  |
+| UIC-CD-04 | Edit details: save changes (name, phone, title, company, location) -> DB; Cancel discards | PASS |  |  |
+| UIC-CD-05 | Edit details: invalid email shows an error and saves nothing | PASS |  |  |
+| UIC-CD-06 | Tags: add and remove in header persists | PASS |  |  |
+| UIC-CD-07 | Owner change inline persists and is recorded in history | PASS |  |  |
+| UIC-CD-08 | Unsubscribe then resubscribe (with confirm) updates consent + global unsubscribe list | PASS |  |  |
+| UIC-CD-09 | Log a note -> timeline entry + DB activity | PASS |  |  |
+| UIC-CD-10 | Log a call (subject, outcome, duration) -> timeline + Calls stat | PASS |  |  |
+| UIC-CD-11 | Log an email and a meeting | PASS |  |  |
+| UIC-CD-12 | Edit a logged activity then delete it (confirm) | PASS |  |  |
+| UIC-CD-13 | Create task from record (overdue due date) -> card + Open tasks stat + DB; complete it | PASS |  |  |
+| UIC-CD-14 | Timeline filters: Notes / Calls / Changes / All and user filter | PASS |  |  |
+| UIC-CD-15 | Create lead from the record -> redirected to lead, lead in DB, Sales card lists it | PASS |  |  |
+| UIC-CD-18 | Associations: company link opens the company page; list + campaign cards link out | PASS |  |  |
+| UIC-CD-19 | Unknown contact id shows "Contact not found" with back link | PASS |  |  |
+| UIC-CD-20 | Property save API failure shows the error and keeps the old value | PASS |  |  |
+| UIC-CD-21 | AGENT on own contact: can edit/log note, owner shown read-only, no Delete | PASS |  |  |
+| UIC-CD-22 | Non-admin manager cannot move lifecycle stage backwards (forward only message) | PASS |  |  |
+| UIC-CD-23 | Delete contact (confirm) -> back to list; listed in Recently deleted; restore brings it back | PASS |  |  |
+| UIC-ACC-01 | Companies list renders with count, columns and revenue formatting | PASS |  |  |
+| UIC-ACC-02 | Sort by Company asc/desc and by Contacts | PASS |  |  |
+| UIC-ACC-03 | Search by name / domain / industry; empty state; owner segments | PASS |  |  |
+| UIC-ACC-04 | New company: name required (button disabled), full create -> detail page + DB | PASS |  |  |
+| UIC-ACC-05 | Domain must be unique per workspace: duplicate shows message, nothing created | PASS |  |  |
+| UIC-ACC-06 | Company detail: stats, contacts listing, "Open in Contacts" filter chip | PASS |  |  |
+| UIC-ACC-07 | Edit company (cancel path then rename + fields) -> DB, contacts get new company name, history row | PASS |  |  |
+| UIC-ACC-08 | Owner change on company detail persists | PASS |  |  |
+| UIC-ACC-09 | Add contact from company page: company prefilled, linked, contact count increments | PASS |  |  |
+| UIC-ACC-10 | Link contacts by company (backfill) shows a notice and links contacts without a company record | PASS |  |  |
+| UIC-ACC-11 | Pagination across 25 per page | PASS |  |  |
+| UIC-ACC-13 | Delete company (confirm): contacts kept, appears in Recently deleted > Companies, restore works | PASS |  |  |
+| UIC-ACC-14 | AGENT: sees only own companies; no backfill button, owner read-only, no delete | PASS |  |  |
+| UIC-ACC-15 | AGENT cannot open another user's company (not found) and API refuses | PASS |  |  |
+| UIC-ACC-16 | Companies API failure: page keeps its shell | PASS |  |  |
+| UIC-LST-01 | Lists page empty state, then headings/filters render | PASS |  |  |
+| UIC-LST-02 | New list: name required; create static list -> DB + opens Contacts filtered by it | PASS |  |  |
+| UIC-LST-03 | New list modal: cancel closes without creating | PASS |  |  |
+| UIC-LST-04 | Active list: needs a criterion; live preview count equals DB; saved list has the same members | PASS |  |  |
+| UIC-LST-05 | Active list membership follows data: changing a contact moves it in/out automatically | PASS |  |  |
+| UIC-LST-06 | Static list: add members from Contacts bulk bar, remove from this list, counts match DB | PASS |  |  |
+| UIC-LST-07 | Add contact modal can add the new contact to a static list | PASS |  |  |
+| UIC-LST-08 | Edit list: rename + description persisted; active list criteria edit changes membership | PASS |  |  |
+| UIC-LST-09 | Type tabs and search filter the lists | PASS |  |  |
+| UIC-LST-10 | AGENT: can see lists but cannot create/edit/delete (buttons hidden, API refuses) | PASS |  |  |
+| UIC-LST-11 | Delete list (confirm) removes it, contacts are kept | PASS |  |  |
+| UIC-LST-12 | Lists API failure keeps page shell | PASS |  |  |
 | UIC-IMP-01 | Import page renders drop zone + options hidden until a file is chosen | PASS |  |  |
 | UIC-IMP-02 | CSV preview: row/column count, suggested mapping, sample values | PASS |  |  |
 | UIC-IMP-03 | Run import with defaults: result counts, DB rows, owner = me, company linked | PASS |  |  |
 | UIC-IMP-04 | Re-import same file: update_existing OFF leaves records untouched; ON updates (no duplicates) | PASS |  |  |
-| UIC-IMP-04B | With update_existing OFF the result card must report 0 contacts updated | FAIL | defect-backend | low: import result reports contacts_updated/companies_updated even when update_existing=false and nothing was written |
+| UIC-IMP-04B | With update_existing OFF the result card must report 0 contacts updated | PASS |  |  |
 | UIC-IMP-05 | Blank cells never overwrite existing values | PASS |  |  |
 | UIC-IMP-06 | Mapping: create a new custom property from a column (type Number) -> property + values stored | PASS |  |  |
 | UIC-IMP-07 | Options: add to a new list, set owner to Alice | PASS |  |  |
@@ -109,23 +118,17 @@ PASS 150 · FAIL 3 · BLOCKED 4
 | UIC-IMP-17 | Cancel resets the wizard | PASS |  |  |
 | UIC-IMP-18 | "Import another file" after a run starts over | PASS |  |  |
 | UIC-IMP-19 | 1,000-row CSV imports in one run (DB count + time) | PASS |  |  |
-| UIC-IMP-20 | AGENT without manage_prospects cannot use import (route redirected, API 403) | FAIL | defect-backend | medium: GET /imports returns 200 for a user without manage_prospects (import history: file names, counts); preview/run are 403 |
+| UIC-IMP-20 | AGENT without manage_prospects cannot use import (route redirected, API 403) | PASS |  |  |
 | UIC-IMP-21 | Preview API failure shows an error message | PASS |  |  |
-| UIC-LST-01 | Lists page empty state, then headings/filters render | PASS |  |  |
-| UIC-LST-02 | New list: name required; create static list -> DB + opens Contacts filtered by it | PASS |  |  |
-| UIC-LST-03 | New list modal: cancel closes without creating | PASS |  |  |
-| UIC-LST-04 | Active list: needs a criterion; live preview count equals DB; saved list has the same members | PASS |  |  |
-| UIC-LST-05 | Active list membership follows data: changing a contact moves it in/out automatically | PASS |  |  |
-| UIC-LST-06 | Static list: add members from Contacts bulk bar, remove from this list, counts match DB | PASS |  |  |
-| UIC-LST-07 | Add contact modal can add the new contact to a static list | PASS |  |  |
-| UIC-LST-08 | Edit list: rename + description persisted; active list criteria edit changes membership | PASS |  |  |
-| UIC-LST-09 | Type tabs and search filter the lists | PASS |  |  |
-| UIC-LST-10 | AGENT: can see lists but cannot create/edit/delete (buttons hidden, API refuses) | PASS |  |  |
-| UIC-LST-11 | Delete list (confirm) removes it, contacts are kept | PASS |  |  |
-| UIC-LST-12 | Lists API failure keeps page shell | PASS |  |  |
+| UIC-TSK-01 | Tasks page: counters and list equal DB | PASS |  |  |
+| UIC-TSK-02 | Date filters: overdue / next 7 days / no due date; status Done/All | PASS |  |  |
+| UIC-TSK-03 | New task: title required; create with type/priority/due/assignee -> DB and visible to assignee | PASS |  |  |
+| UIC-TSK-04 | Complete, reopen and delete (confirm) a task | PASS |  |  |
+| UIC-TSK-05 | Task linked to a contact shows a link to it | PASS |  |  |
+| UIC-TSK-06 | AGENT: no "Everyone" scope, only own tasks; cannot modify others' task via API | PASS |  |  |
+| UIC-TSK-07 | Empty state and API failure | PASS |  |  |
 | UIC-RD-01 | Recently deleted lists deleted contacts (30 minus purged-window one), paginated, days remaining | PASS |  |  |
 | UIC-RD-02 | Search, select-all restore and single restore update DB and the Contacts list | PASS |  |  |
-| UIC-RD-03 | Manual purge of a deleted record | BLOCKED | not-implemented | No purge/permanent-delete control on Recently deleted (items expire after 90 days) |
 | UIC-RD-04 | AGENT without manage_prospects: page not reachable, API refused | PASS |  |  |
 | UIC-SAL-01 | Leads split view lists open leads; stage chips filter; counts equal DB | PASS |  |  |
 | UIC-SAL-02 | Leads list mode + board mode render with per-stage counts | PASS |  |  |
@@ -154,10 +157,15 @@ PASS 150 · FAIL 3 · BLOCKED 4
 | UIC-SAL-25 | AGENT visibility: sees only own leads/deals; peer's record by URL is not found | PASS |  |  |
 | UIC-SAL-26 | Stale-deal notification job creates a bell notification for the owner | PASS |  |  |
 | UIC-SAL-27 | Deals API failure keeps the page shell | PASS |  |  |
-| UIC-TSK-01 | Tasks page: counters and list equal DB | PASS |  |  |
-| UIC-TSK-02 | Date filters: overdue / next 7 days / no due date; status Done/All | PASS |  |  |
-| UIC-TSK-03 | New task: title required; create with type/priority/due/assignee -> DB and visible to assignee | PASS |  |  |
-| UIC-TSK-04 | Complete, reopen and delete (confirm) a task | PASS |  |  |
-| UIC-TSK-05 | Task linked to a contact shows a link to it | PASS |  |  |
-| UIC-TSK-06 | AGENT: no "Everyone" scope, only own tasks; cannot modify others' task via API | PASS |  |  |
-| UIC-TSK-07 | Empty state and API failure | PASS |  |  |
+| UIC-NF-01 | Companies card: lists the primary company; Add a second company with a label (search + pick) -> card + DB | PASS |  |  |
+| UIC-NF-02 | Companies card: star makes the second company primary (badge moves, DB is_primary + contact account) | PASS |  |  |
+| UIC-NF-03 | Companies card: removing the primary asks for the next primary (pre-selected), Cancel keeps it, Remove -> Alpha primary | PASS |  |  |
+| UIC-NF-04 | Company page shows association chips: label + "Associated" on the non-primary company; card link opens it | PASS |  |  |
+| UIC-NF-05 | @mention: type "@B", pick Bianca with the keyboard, save -> highlighted in timeline; note_mentions + MENTION notification (not for author) | PASS |  |  |
+| UIC-NF-06 | Mentioned colleague's bell shows the MENTION (unread), click opens the contact record and marks it read | PASS |  |  |
+| UIC-NF-07 | Mentioning an AGENT who does not own the contact: the notification link should open a record they can see | FAIL | defect-backend | [@mention lets you pick any active user (app/services/mentions.py mentionable_users/validate: 'Any active user of the workspace can be mentioned'), but an AGENT only sees own contacts: the MENTION notification links to /app/contacts/{id}, GET /contacts/{id} -> 404 and the page says 'Contact not found'. Either limit the picker/validation to users who can see the record or grant read access via the mention.] mentioned agent cannot open the record: GET /contacts/{id} -> 404, page shows "Contact not |
+| UIC-NF-08 | Sales reports > Leads & SQLs: "SQL to win" card numbers match GET /sales-reports/sql-to-win (and the seeded data) | PASS |  |  |
+| UIC-NF-09 | Forecast tab: "Forecast accuracy" card; admin "Take snapshot now" stores a MANUAL snapshot (DB) and the card shows it | PASS |  |  |
+| UIC-NF-10 | Contact record "+ Create deal": form opens with the primary company pre-selected; Create -> deal linked to contact + company | PASS |  |  |
+| UIC-NF-11 | AccountDetail shows the Deals section (count, total, deal link); a company without deals shows the empty state | PASS |  |  |
+| UIC-NF-12 | Recently deleted: select -> "Delete forever" -> confirm modal (Cancel keeps it) -> contact removed from DB + PURGE_CONTACT audit row | PASS |  |  |

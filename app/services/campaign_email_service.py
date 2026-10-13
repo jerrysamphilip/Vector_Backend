@@ -30,6 +30,9 @@ from app.utils.email_utils import (
 )
 
 
+REMOVED_BY_USER = "Removed from campaign by user"
+
+
 class CampaignEmailService:
     """
     Handles all email-related campaign operations:
@@ -274,17 +277,20 @@ class CampaignEmailService:
         ).first()
         if not campaign_prospect:
             return False
+        if (campaign_prospect.status == "PAUSED"
+                and campaign_prospect.stopped_reason == REMOVED_BY_USER):
+            return False  # already removed: a repeated DELETE is a 404
 
         self.db.query(EmailMessage).filter(
             EmailMessage.campaign_id == campaign_id,
             EmailMessage.prospect_id == prospect_id,
             EmailMessage.status.in_(["QUEUED", "SCHEDULED", "PAUSED_BY_CAMPAIGN"]),
         ).update(
-            {"status": "CANCELLED", "failure_reason": "Removed from campaign by user"},
+            {"status": "CANCELLED", "failure_reason": REMOVED_BY_USER},
             synchronize_session=False,
         )
 
-        set_prospect_status(campaign_prospect, "PAUSED", stopped_reason="Removed from campaign by user")
+        set_prospect_status(campaign_prospect, "PAUSED", stopped_reason=REMOVED_BY_USER)
 
         self.audit.log_action(
             tenant_id=campaign.tenant_id,
@@ -331,17 +337,22 @@ class CampaignEmailService:
         prospects = self.db.query(Prospect).filter(Prospect.prospect_id.in_(prospect_ids)).all()
         prospect_map = {p.prospect_id: p for p in prospects}
 
+        from app.services.sender_identity import campaign_sender_name
+        sender_name = campaign_sender_name(self.db, campaign)
+
         updated = 0
         for msg in pending_messages:
             prospect = prospect_map.get(msg.prospect_id)
             if not prospect:
                 continue
 
-            final_subject = self.substitute_placeholders(
-                template.subject or "", prospect, campaign.sender_name, campaign.cta_link, campaign.sender_title
+            # An email in a subject A/B test keeps its variant's subject (BR-SF-18);
+            # only its body follows the template.
+            final_subject = msg.subject if msg.subject_variant else self.substitute_placeholders(
+                template.subject or "", prospect, sender_name, campaign.cta_link, campaign.sender_title
             )
             final_body = self.substitute_placeholders(
-                template.body or "", prospect, campaign.sender_name, campaign.cta_link, campaign.sender_title
+                template.body or "", prospect, sender_name, campaign.cta_link, campaign.sender_title
             )
             if not has_effective_cta_link(campaign.cta_link):
                 final_body = strip_cta_content_no_link(final_body)
@@ -510,6 +521,9 @@ class CampaignEmailService:
             except Exception as e:
                 logger.error(f"Error parsing campaign start date: {e}")
 
+        from app.services.sender_identity import campaign_sender_name
+        sender_name = campaign_sender_name(self.db, campaign)
+
         messages_created = 0
         # Keep ordering stable so spread/batch scheduling is deterministic.
         prospects = sorted(prospects, key=lambda cp: (cp.prospect_id or ""))
@@ -544,6 +558,19 @@ class CampaignEmailService:
             ).all()
         }
 
+        # A/B subject test (BR-SF-18): pick each new email's subject variant up
+        # front, balanced against the step's existing assignments. Emails that
+        # already exist keep theirs (the idempotency guard below skips them).
+        from app.services.subject_variant_service import SubjectVariantService
+        needed_by_seq = {}
+        for cp in prospects:
+            if cp.prospect_id not in prospect_by_id:
+                continue
+            for seq in sequences:
+                if (cp.prospect_id, seq.sequence_id) not in existing_message_keys:
+                    needed_by_seq.setdefault(seq.sequence_id, []).append(cp.prospect_id)
+        variant_by_key = SubjectVariantService(self.db).assignments_for_new_messages(campaign_id, needed_by_seq)
+
         for prospect_index, cp in enumerate(prospects):
             prospect = prospect_by_id.get(cp.prospect_id)
 
@@ -551,6 +578,7 @@ class CampaignEmailService:
                 continue
 
             cumulative_wait_days = 0
+            prev_scheduled_at = None  # planned time of this prospect's previous step
             assigned_inbox = active_inboxes[prospect_index % len(active_inboxes)] if active_inboxes else None
 
             # Daily batch throttle: shift prospect's base_time by N business days
@@ -579,6 +607,12 @@ class CampaignEmailService:
                 # Per-step base time (after cumulative waits). The window planner then
                 # places each prospect inside the configured send window/mode.
                 step_base_time = prospect_base_time + timedelta(days=cumulative_wait_days)
+                # A follow-up's gap counts from the previous step's planned time, the
+                # same rule the scheduler applies after a real send (B01): when step 1
+                # was pushed (weekend/holiday launch, send window), later steps move too.
+                if prev_scheduled_at is not None:
+                    step_base_time = max(step_base_time,
+                                         prev_scheduled_at + timedelta(days=seq.wait_days or 0))
                 scheduled_at = schedule_email_in_window(
                     base_utc=step_base_time,
                     timezone_str=prospect_timezone or campaign.campaign_timezone,
@@ -591,6 +625,7 @@ class CampaignEmailService:
                     batch_size=campaign.batch_size,
                     batch_gap_minutes=max(int(campaign.batch_gap_minutes or 30), 1),
                 )
+                prev_scheduled_at = scheduled_at
 
                 from app.services.ai_email_service import classify_prospect
 
@@ -613,17 +648,18 @@ class CampaignEmailService:
                 if not template:
                     continue
 
+                variant = variant_by_key.get((cp.prospect_id, seq.sequence_id))
                 final_subject = self.substitute_placeholders(
-                    template.subject or f"[Step {seq.step_number}] Email",
+                    (variant.subject if variant else None) or template.subject or f"[Step {seq.step_number}] Email",
                     prospect,
-                    campaign.sender_name,
+                    sender_name,
                     campaign.cta_link,
                     campaign.sender_title
                 )
                 final_body = self.substitute_placeholders(
                     template.body or "",
                     prospect,
-                    campaign.sender_name,
+                    sender_name,
                     campaign.cta_link,
                     campaign.sender_title
                 )
@@ -646,7 +682,8 @@ class CampaignEmailService:
                     status="SCHEDULED",
                     scheduled_at=scheduled_at,
                     sent_at=None,
-                    template_id=template.template_id
+                    template_id=template.template_id,
+                    subject_variant=variant.label if variant else None,
                 )
                 self.db.add(email_msg)
                 messages_created += 1

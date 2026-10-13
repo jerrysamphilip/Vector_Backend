@@ -15,7 +15,7 @@ import io
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -29,18 +29,20 @@ from app.models.account import Account
 from app.models.campaign import Campaign, CampaignProspect
 from app.models.contact_activity import ACTIVITY_TYPES, ContactActivity
 from app.models.contact_field import FIELD_TYPES, ContactFieldDefinition
-from app.models.crm import CrmTask, PropertyChange
+from app.models.crm import ContactCompany, CrmTask, PropertyChange
 from app.models.email_message import EmailEvent, EmailMessage
 from app.models.prospect import GlobalUnsubscribe, Prospect
 from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.prospect_persona import ProspectPersona
 from app.models.user import User
-from app.services import crm
+from app.services import contact_companies, crm, mentions
+from app.services import contact_scoring  # BR-CM-43
 from app.services.contact_service import (
     MERGE_CHOOSABLE,
     can_access_contact,
     can_manage_contacts,
     can_see_owner,
+    delete_contacts,
     scope,
     visible_user_ids,
     clean_str,
@@ -61,6 +63,7 @@ SORT_COLUMNS = {
     "lead_status": (Prospect.lead_status,),
     "created_at": (Prospect.created_at,),
     "updated_at": (Prospect.updated_at,),
+    "score": (Prospect.score,),  # BR-CM-43
 }
 
 EVENT_LABELS = {
@@ -89,6 +92,7 @@ COLUMNS = {
     "poc_country": "Country", "timezone": "Time zone", "consent_status": "Email subscription",
     "legal_basis": "Legal basis", "linkedin_url": "LinkedIn", "last_activity_at": "Last activity",
     "last_contacted_at": "Last contacted", "created_at": "Create date", "updated_at": "Last updated",
+    "score": "Score",  # BR-CM-43: fit + engagement score with its grade
 }
 
 
@@ -129,6 +133,9 @@ class ContactUpdate(ContactWrite):
     email: Optional[EmailStr] = None
 
 
+UserId = Annotated[str, Field(min_length=1, max_length=36)]
+
+
 class ActivityWrite(BaseModel):
     activity_type: str = "NOTE"
     subject: Optional[str] = Field(None, max_length=255)
@@ -136,6 +143,8 @@ class ActivityWrite(BaseModel):
     outcome: Optional[str] = Field(None, max_length=100)
     duration_minutes: Optional[int] = Field(None, ge=0, le=24 * 60)
     occurred_at: Optional[datetime] = None
+    # Colleagues @mentioned in a note (BR-CM-16); the body keeps the "@First Last" text
+    mentioned_user_ids: Optional[List[UserId]] = Field(None, max_length=mentions.MAX_MENTIONS)
 
 
 class ActivityUpdate(BaseModel):
@@ -144,6 +153,18 @@ class ActivityUpdate(BaseModel):
     outcome: Optional[str] = Field(None, max_length=100)
     duration_minutes: Optional[int] = Field(None, ge=0, le=24 * 60)
     occurred_at: Optional[datetime] = None
+    mentioned_user_ids: Optional[List[UserId]] = Field(None, max_length=mentions.MAX_MENTIONS)
+
+
+class CompanyLinkCreate(BaseModel):
+    account_id: str = Field(..., min_length=1, max_length=36)
+    label: Optional[str] = Field(None, max_length=100)
+    make_primary: bool = False
+
+
+class CompanyLinkUpdate(BaseModel):
+    label: Optional[str] = Field(None, max_length=100)
+    is_primary: Optional[bool] = None  # true makes this the primary company; to demote, promote another
 
 
 class BulkAction(BaseModel):
@@ -295,6 +316,12 @@ def _summaries(db: Session, prospects: List[Prospect]) -> List[dict]:
         "is_valid_email": p.is_valid_email,
         "custom_fields": p.custom_fields or {},
         "quality_flags": crm.quality_flags(p),
+        # Contact score (BR-CM-43); None until first scored
+        "score": p.score,
+        "fit_score": p.fit_score,
+        "engagement_score": p.engagement_score,
+        "score_grade": p.score_grade,
+        "scored_at": p.scored_at,
         "last_activity_at": last_activity.get(p.prospect_id),
         "last_contacted_at": last_contacted.get(p.prospect_id),
         "created_at": p.created_at,
@@ -471,7 +498,8 @@ def search_condition(q: str):
 
 def _filtered_query(db: Session, user: User, q=None, owner=None, account_id=None, tag=None, list_id=None,
                     campaign_id=None, consent_status=None, email_valid=None, has_phone=None, country=None,
-                    industry=None, lifecycle_stage=None, lead_status=None, filters=None):
+                    industry=None, lifecycle_stage=None, lead_status=None, filters=None,
+                    grade=None, score_min=None, score_max=None):
     query = _visible(db, user)
     # Owner filters narrow within what the user may already see
     if owner == "me":
@@ -487,7 +515,8 @@ def _filtered_query(db: Session, user: User, q=None, owner=None, account_id=None
         query = query.filter(search_condition(q))
 
     if account_id:
-        query = query.filter(Prospect.account_id == account_id)
+        # Primary company or any other associated company (CM-014)
+        query = query.filter(contact_companies.company_condition(db, account_id))
     if tag:
         query = query.filter(func.json_contains(Prospect.tags, func.json_quote(tag)) == 1)
     if list_id:
@@ -515,6 +544,16 @@ def _filtered_query(db: Session, user: User, q=None, owner=None, account_id=None
         query = query.filter(Prospect.lifecycle_stage == lifecycle_stage)
     if lead_status:
         query = query.filter(Prospect.lead_status == lead_status)
+    # Contact score (BR-CM-43): grade(s) "A" or "A,B", and a 0-100 range
+    if grade:
+        grades = [g for g in (x.strip().upper() for x in grade.split(",")) if g in ("A", "B", "C", "D")]
+        if not grades:
+            raise HTTPException(status_code=400, detail="grade must be A, B, C or D (comma-separated)")
+        query = query.filter(Prospect.score_grade.in_(grades))
+    if score_min is not None:
+        query = query.filter(Prospect.score >= score_min)
+    if score_max is not None:
+        query = query.filter(Prospect.score <= score_max)
     if filters:
         try:
             clause = crm.filter_clause(db, crm.parse_filter_param(filters), user)
@@ -560,15 +599,19 @@ def list_contacts(
     lifecycle_stage: Optional[str] = None,
     lead_status: Optional[str] = None,
     filters: Optional[str] = Query(None, description="JSON AND/OR filter, see app/services/crm.py"),
-    sort_by: str = Query("created_at", pattern="^(name|email|company|lifecycle_stage|lead_status|created_at|updated_at)$"),
+    sort_by: str = Query("created_at", pattern="^(name|email|company|lifecycle_stage|lead_status|created_at|updated_at|score)$"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
+    grade: Optional[str] = Query(None, max_length=20, description="Score grade(s): A, B, C, D, comma-separated"),
+    score_min: Optional[int] = Query(None, ge=0, le=100),
+    score_max: Optional[int] = Query(None, ge=0, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(tenant_user),
 ):
     query = _filtered_query(db, current_user, q, owner, account_id, tag, list_id, campaign_id, consent_status,
-                            email_valid, has_phone, country, industry, lifecycle_stage, lead_status, filters)
+                            email_valid, has_phone, country, industry, lifecycle_stage, lead_status, filters,
+                            grade=grade, score_min=score_min, score_max=score_max)
     direction = (lambda c: c.asc()) if sort_order == "asc" else (lambda c: c.desc())
     order = [direction(c) for c in SORT_COLUMNS[sort_by]] + [direction(Prospect.prospect_id)]
     if q and q.strip():
@@ -676,9 +719,13 @@ def create_contact(
             raise HTTPException(status_code=400, detail="Static list not found")
         db.add(ProspectListMember(list_id=target.list_id, prospect_id=prospect.prospect_id, is_new_prospect=True))
 
+    contact_companies.sync_primary(db, prospect, current_user.user_id)
     db.add(PropertyChange(tenant_id=current_user.tenant_id, object_type="CONTACT", object_id=prospect.prospect_id,
                           field="created", new_value="Contact created", source="UI", changed_by=current_user.user_id))
+    from app.services import webhooks
+    webhooks.emit_event(db, current_user.tenant_id, "contact.created", webhooks.contact_data(prospect))
     db.commit()
+    contact_scoring.rescore(db, current_user.tenant_id, [prospect.prospect_id])  # BR-CM-43
     return _contact_detail(db, current_user, prospect)
 
 
@@ -721,6 +768,26 @@ def contact_owners(db: Session = Depends(get_db), current_user: User = Depends(t
     if visible is not None:  # hierarchy users pick owners from their own team (BR-SH-02)
         users = [u for u in users if u.user_id in visible]
     return [{"user_id": u.user_id, "name": _user_name(u), "email": u.email, "role": u.role} for u in users]
+
+
+@router.get("/mentionable-users")
+def mentionable_users(q: Optional[str] = Query(None, max_length=100), limit: int = Query(20, ge=1, le=50),
+                      prospect_id: Optional[str] = Query(None, max_length=36),
+                      opportunity_id: Optional[str] = Query(None, max_length=36),
+                      db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    """
+    Colleagues who can be @mentioned in a note: any active user of the workspace (BR-CM-16).
+    With prospect_id (contact notes) or opportunity_id (deal notes), only those who can see that
+    record, matching the check made when the note is saved.
+    """
+    if prospect_id:
+        prospect = _get_contact(db, current_user, prospect_id)
+        return mentions.mentionable_users(db, current_user, q, limit, prospect.owner_id, True)
+    if opportunity_id:
+        from app.services import sales as sales_svc
+        opp = sales_svc.get_opp(db, current_user, opportunity_id)
+        return mentions.mentionable_users(db, current_user, q, limit, opp.owner_id, True)
+    return mentions.mentionable_users(db, current_user, q, limit)
 
 
 @router.get("/export")
@@ -834,6 +901,7 @@ def bulk_update(
             p.account_id = account.account_id if account else None
             if account:
                 p.company_name = account.name
+            contact_companies.sync_primary(db, p, current_user.user_id)
         tracked(link, ("account_id", "company_name"))
     elif action == "set_property":
         field = payload.field or ""
@@ -951,6 +1019,20 @@ def restore(payload: RestoreRequest, db: Session = Depends(get_db), current_user
     return {"status": "restored", "restored": count}
 
 
+@router.post("/purge")
+def purge_deleted(payload: RestoreRequest, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    """Delete forever: permanently remove contacts that are in Recently deleted (same visibility
+    as the list and restore). Uses the erase path; each contact leaves an audit row."""
+    _require_manager(current_user)
+    query = db.query(Prospect.prospect_id).filter(
+        Prospect.tenant_id == current_user.tenant_id, Prospect.prospect_id.in_(payload.prospect_ids),
+        Prospect.deleted_at.isnot(None), Prospect.merged_into_id.is_(None))
+    ids = [r[0] for r in scope(query, db, current_user, Prospect.owner_id).all()]
+    delete_contacts(db, ids, actor_id=current_user.user_id, reason="PURGE_CONTACT")
+    db.commit()
+    return {"status": "purged", "purged": len(ids)}
+
+
 # =============================
 # DUPLICATES & MERGE
 # =============================
@@ -1046,6 +1128,7 @@ def merge(
     moved = merge_contacts(db, primary, duplicates, current_user.user_id, payload.choices)
     crm.record_changes(db, current_user.tenant_id, "CONTACT", primary.prospect_id, before,
                        crm.snapshot(primary, TRACKED_FIELDS), current_user.user_id, "MERGE")
+    contact_companies.sync_primary(db, primary, current_user.user_id)
     db.commit()
     db.refresh(primary)
     return {"status": "merged", "merged": len(duplicates), "moved": moved,
@@ -1153,8 +1236,9 @@ def delete_field(field_id: str, db: Session = Depends(get_db), current_user: Use
 # ACTIVITIES (by id)
 # =============================
 
-def _activity_dict(a: ContactActivity, authors: Dict[str, User]) -> dict:
+def _activity_dict(a: ContactActivity, authors: Dict[str, User], mentioned: Optional[List[dict]] = None) -> dict:
     return {
+        "mentions": mentioned or [],
         "activity_id": a.activity_id,
         "prospect_id": a.prospect_id,
         "activity_type": a.activity_type,
@@ -1185,14 +1269,24 @@ def _get_activity(db: Session, user: User, activity_id: str) -> ContactActivity:
 def update_activity(activity_id: str, payload: ActivityUpdate, db: Session = Depends(get_db),
                     current_user: User = Depends(tenant_user)):
     activity = _get_activity(db, current_user, activity_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "mentioned_user_ids" in data:
+        mentioned_ids = data.pop("mentioned_user_ids") or []
+        if mentioned_ids and activity.activity_type != "NOTE":
+            raise HTTPException(status_code=400, detail="You can only mention people in notes")
+        prospect = _get_contact(db, current_user, activity.prospect_id)
+        mentions.save(db, current_user, activity,
+                      mentions.validate(db, current_user, mentioned_ids, prospect.owner_id, True),
+                      prospect.full_name or prospect.email, f"/app/contacts/{prospect.prospect_id}", replace=True)
+    for field, value in data.items():
         if field == "occurred_at":
             if value is None:
                 continue
             value = _utc_naive(value)
         setattr(activity, field, clean_str(value) if isinstance(value, str) else value)
     db.commit()
-    return _activity_dict(activity, {current_user.user_id: current_user})
+    return _activity_dict(activity, {current_user.user_id: current_user},
+                          mentions.for_activities(db, [activity.activity_id]).get(activity.activity_id))
 
 
 @router.delete("/activities/{activity_id}")
@@ -1226,6 +1320,7 @@ def _contact_detail(db: Session, user: User, p: Prospect) -> dict:
         "contact_count": db.query(func.count(Prospect.prospect_id)).filter(
             Prospect.account_id == account.account_id, Prospect.deleted_at.is_(None)).scalar(),
     } if account else None
+    detail["companies"] = contact_companies.links(db, p)
 
     static = [{
         "list_id": l.list_id, "list_name": l.list_name, "list_type": "STATIC", "added_at": m.added_at, "notes": m.notes,
@@ -1309,7 +1404,10 @@ def update_contact(
     _apply_fields(db, current_user, prospect, data)
     crm.record_changes(db, current_user.tenant_id, "CONTACT", prospect.prospect_id, before,
                        crm.snapshot(prospect, TRACKED_FIELDS), current_user.user_id, "UI")
+    if before.get("account_id") != prospect.account_id:
+        contact_companies.sync_primary(db, prospect, current_user.user_id)
     db.commit()
+    contact_scoring.rescore(db, current_user.tenant_id, [prospect.prospect_id])  # BR-CM-43
     db.refresh(prospect)
     return _contact_detail(db, current_user, prospect)
 
@@ -1326,11 +1424,117 @@ def delete_contact(prospect_id: str, db: Session = Depends(get_db), current_user
     return {"status": "deleted", "prospect_id": prospect_id, "restorable_days": crm.RESTORE_WINDOW_DAYS}
 
 
+# =============================
+# ASSOCIATED COMPANIES (CM-014)
+# =============================
+
+def _set_primary(db: Session, user: User, prospect: Prospect, account: Account):
+    """Make account the primary company (prospects.account_id); the old primary stays associated."""
+    before = crm.snapshot(prospect, ("account_id", "company_name"))
+    for row in db.query(ContactCompany).filter(ContactCompany.prospect_id == prospect.prospect_id,
+                                               ContactCompany.account_id != account.account_id):
+        row.is_primary = False
+    prospect.account_id, prospect.company_name = account.account_id, account.name
+    crm.record_changes(db, user.tenant_id, "CONTACT", prospect.prospect_id, before,
+                       crm.snapshot(prospect, ("account_id", "company_name")), user.user_id, "UI")
+    contact_companies.sync_primary(db, prospect, user.user_id)
+
+
+def _association(db: Session, user: User, prospect: Prospect, field_value: dict):
+    db.add(PropertyChange(tenant_id=user.tenant_id, object_type="CONTACT", object_id=prospect.prospect_id,
+                          field="company_association", source="UI", changed_by=user.user_id, **field_value))
+
+
+def _get_link(db: Session, prospect: Prospect, account_id: str) -> ContactCompany:
+    link = db.query(ContactCompany).filter(ContactCompany.prospect_id == prospect.prospect_id,
+                                           ContactCompany.account_id == account_id).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="This contact is not associated with that company")
+    return link
+
+
+def _companies_response(db: Session, prospect: Prospect) -> dict:
+    return {"prospect_id": prospect.prospect_id, "items": contact_companies.links(db, prospect)}
+
+
+@router.get("/{prospect_id}/companies")
+def list_contact_companies(prospect_id: str, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    """Every company the contact is associated with, with its label; the primary one first."""
+    return _companies_response(db, _get_contact(db, current_user, prospect_id))
+
+
+@router.post("/{prospect_id}/companies", status_code=201)
+def add_contact_company(prospect_id: str, payload: CompanyLinkCreate, db: Session = Depends(get_db),
+                        current_user: User = Depends(tenant_user)):
+    prospect = _get_contact(db, current_user, prospect_id)
+    account = _get_account(db, current_user, payload.account_id)
+    contact_companies.sync_primary(db, prospect, current_user.user_id)
+    if db.query(ContactCompany.link_id).filter(ContactCompany.prospect_id == prospect.prospect_id,
+                                               ContactCompany.account_id == account.account_id).first():
+        raise HTTPException(status_code=409, detail="This contact is already associated with that company")
+    db.add(ContactCompany(tenant_id=current_user.tenant_id, prospect_id=prospect.prospect_id,
+                          account_id=account.account_id, label=clean_str(payload.label), is_primary=False,
+                          created_by=current_user.user_id))
+    db.flush()
+    _association(db, current_user, prospect, {"new_value": account.account_id})
+    # The first company is always the primary one
+    if payload.make_primary or not prospect.account_id:
+        _set_primary(db, current_user, prospect, account)
+    prospect.updated_at = func.now()
+    db.commit()
+    return _companies_response(db, prospect)
+
+
+@router.patch("/{prospect_id}/companies/{account_id}")
+def update_contact_company(prospect_id: str, account_id: str, payload: CompanyLinkUpdate,
+                           db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    prospect = _get_contact(db, current_user, prospect_id)
+    contact_companies.sync_primary(db, prospect, current_user.user_id)
+    link = _get_link(db, prospect, account_id)
+    data = payload.model_dump(exclude_unset=True)
+    if "label" in data:
+        link.label = clean_str(data["label"])
+    if data.get("is_primary") is True and prospect.account_id != account_id:
+        _set_primary(db, current_user, prospect, _get_account(db, current_user, account_id))
+    elif data.get("is_primary") is False and prospect.account_id == account_id:
+        raise HTTPException(status_code=400, detail="Make another company primary instead")
+    prospect.updated_at = func.now()
+    db.commit()
+    return _companies_response(db, prospect)
+
+
+@router.delete("/{prospect_id}/companies/{account_id}")
+def remove_contact_company(prospect_id: str, account_id: str,
+                           new_primary_id: Optional[str] = Query(None, max_length=36,
+                                                                 description="Required when removing the primary company"),
+                           db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    """Remove an association. The primary company can only go once another one is chosen as primary."""
+    prospect = _get_contact(db, current_user, prospect_id)
+    contact_companies.sync_primary(db, prospect, current_user.user_id)
+    link = _get_link(db, prospect, account_id)
+    if prospect.account_id == account_id:
+        others = [r.account_id for r in db.query(ContactCompany.account_id).filter(
+            ContactCompany.prospect_id == prospect.prospect_id, ContactCompany.account_id != account_id)]
+        if not others:
+            raise HTTPException(status_code=400, detail=(
+                "This is the contact's only company. Add another company first, or clear the Company field."))
+        if not new_primary_id or new_primary_id not in others:
+            raise HTTPException(status_code=400, detail="Choose which associated company becomes primary (new_primary_id)")
+        _set_primary(db, current_user, prospect, _get_account(db, current_user, new_primary_id))
+    db.delete(link)
+    _association(db, current_user, prospect, {"old_value": account_id})
+    prospect.updated_at = func.now()
+    db.commit()
+    return _companies_response(db, prospect)
+
+
 def _history_label(field: str, defs: Dict[str, str]) -> str:
     if field.startswith("custom."):
         return defs.get(field[len("custom."):], field[len("custom."):])
-    return COLUMNS.get(field, {"account_id": "Company", "owner_id": "Owner", "emp_band": "Employees",
-                               "deleted": "Deleted", "created": "Created"}.get(field, field.replace("_", " ").capitalize()))
+    return COLUMNS.get(field, {"account_id": "Company", "company_association": "Associated company",
+                               "owner_id": "Owner", "emp_band": "Employees",
+                               "deleted": "Deleted", "created": "Created",
+                               "score_grade": "Score grade"}.get(field, field.replace("_", " ").capitalize()))
 
 
 def _history_value(field: str, value: Optional[str], users: Dict[str, str], companies: Dict[str, str]):
@@ -1338,7 +1542,7 @@ def _history_value(field: str, value: Optional[str], users: Dict[str, str], comp
         return None
     if field == "owner_id":
         return users.get(value, value)
-    if field == "account_id":
+    if field in ("account_id", "company_association"):
         return companies.get(value, value)
     if field == "lifecycle_stage":
         return crm.LIFECYCLE_STAGES.get(value, value)
@@ -1371,7 +1575,8 @@ def _history_items(db: Session, user: User, rows: List[PropertyChange]) -> List[
     user_ids = {r.changed_by for r in rows} | {r.old_value for r in rows if r.field == "owner_id"} | \
                {r.new_value for r in rows if r.field == "owner_id"}
     users = {u.user_id: _user_name(u) for u in db.query(User).filter(User.user_id.in_({i for i in user_ids if i}))}
-    company_ids = {v for r in rows if r.field == "account_id" for v in (r.old_value, r.new_value) if v}
+    company_ids = {v for r in rows if r.field in ("account_id", "company_association")
+                   for v in (r.old_value, r.new_value) if v}
     companies = {a.account_id: a.name for a in db.query(Account).filter(Account.account_id.in_(company_ids))} if company_ids else {}
     return [{
         "change_id": r.change_id, "field": r.field, "label": _history_label(r.field, defs),
@@ -1406,10 +1611,12 @@ def contact_timeline(
     activities = activity_query.order_by(ContactActivity.occurred_at.desc()).limit(limit).all()
     author_ids = {a.created_by for a in activities if a.created_by}
     authors = {u.user_id: u for u in db.query(User).filter(User.user_id.in_(author_ids))} if author_ids else {}
+    mentioned = mentions.for_activities(db, [a.activity_id for a in activities if a.activity_type == "NOTE"])
     for a in activities:
         kind = "EMAIL_LOGGED" if a.activity_type == "EMAIL" else a.activity_type
         if want(a.activity_type):
-            items.append({"kind": kind, "at": a.occurred_at, "activity": _activity_dict(a, authors),
+            items.append({"kind": kind, "at": a.occurred_at,
+                          "activity": _activity_dict(a, authors, mentioned.get(a.activity_id)),
                           "user_id": a.created_by,
                           "can_edit": a.created_by == current_user.user_id or can_manage_contacts(current_user)})
 
@@ -1443,7 +1650,7 @@ def contact_timeline(
                 "kind": "EMAIL_RECEIVED" if inbound else "EMAIL_SENT",
                 "at": m.sent_at or m.scheduled_at,
                 "email": {
-                    "message_id": m.message_id, "subject": m.subject,
+                    "message_id": m.message_id, "subject": m.subject, "subject_variant": m.subject_variant,
                     "snippet": (m.body_text or "")[:400], "status": m.status, "final_status": m.final_status, "failure_reason": m.failure_reason,
                     "from_email": m.from_email, "to_email": m.to_email,
                     "campaign_id": m.campaign_id, "campaign_name": campaign_name,
@@ -1504,6 +1711,9 @@ def log_activity(
         raise HTTPException(status_code=400, detail=f"activity_type must be one of {list(ACTIVITY_TYPES)}")
     if not clean_str(payload.body) and not clean_str(payload.subject):
         raise HTTPException(status_code=400, detail="Add a subject or some details")
+    if payload.mentioned_user_ids and activity_type != "NOTE":
+        raise HTTPException(status_code=400, detail="You can only mention people in notes")
+    mentioned_users = mentions.validate(db, current_user, payload.mentioned_user_ids, prospect.owner_id, True)
     activity = ContactActivity(
         tenant_id=current_user.tenant_id,
         prospect_id=prospect.prospect_id,
@@ -1523,6 +1733,13 @@ def log_activity(
             else "ATTEMPTED_TO_CONTACT"
         crm.record_changes(db, current_user.tenant_id, "CONTACT", prospect.prospect_id, before,
                            crm.snapshot(prospect, ("lead_status",)), current_user.user_id, "SYSTEM")
+    if mentioned_users:
+        db.flush()
+        mentions.save(db, current_user, activity, mentioned_users, prospect.full_name or prospect.email,
+                      f"/app/contacts/{prospect.prospect_id}")
     prospect.updated_at = func.now()
     db.commit()
-    return _activity_dict(activity, {current_user.user_id: current_user})
+    if activity_type in ("CALL", "MEETING"):
+        contact_scoring.rescore(db, current_user.tenant_id, [prospect.prospect_id])  # BR-CM-43 engagement
+    return _activity_dict(activity, {current_user.user_id: current_user},
+                          [{"user_id": u.user_id, "name": _user_name(u)} for u in mentioned_users])

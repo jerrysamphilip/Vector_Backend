@@ -106,6 +106,10 @@ def suppress(
 
     contacts = db.query(Prospect).filter(Prospect.tenant_id == tenant_id, func.lower(Prospect.email) == email_l).all()
     ids = [p.prospect_id for p in contacts]
+    # Outbound webhooks (BR-SF-20): email.bounced / email.unsubscribed (a repeat unsubscribe is not re-sent)
+    from app.services import webhooks
+    webhooks.suppressed(db, tenant_id, email_l, kind, reason, source, ids,
+                        already=entry is not None and all(p.consent_status == "UNSUBSCRIBED" for p in contacts))
     if kind in ("UNSUBSCRIBE", "COMPLAINT"):
         for p in contacts:
             if p.consent_status != "UNSUBSCRIBED":

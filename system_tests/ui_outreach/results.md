@@ -1,8 +1,8 @@
 # UI outreach/admin functional results
 
-PASS 193 | FAIL 3 | BLOCKED 0
+PASS 195 | FAIL 1 | BLOCKED 0
 
-Failures by category: {"defect-backend":3}
+Failures by category: {"defect-backend":1}
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -63,7 +63,7 @@ Failures by category: {"defect-backend":3}
 | UIO-SHELL-GUARD-admin-owner | OWNER opening /vector/admin/... is redirected to Home | PASS |  |  |
 | UIO-SHELL-GUARD-admin-agent | AGENT opening /vector/admin/... is redirected to Home | PASS |  |  |
 | UIO-SHELL-GUARD-api | Server also refuses AGENT on team/inbox/campaign management endpoints (403), not just the UI | PASS |  |  |
-| UIO-SHELL-404 | Unknown routes (/app/does-not-exist, /vector/xyz, /app/campaigns/<bad id>) end on a safe page, no crash | PASS |  |  |
+| UIO-SHELL-404 | Unknown routes: /app/does-not-exist shows the 404 page (URL kept, link back Home works); /vector/xyz -> Home; /app/campaigns/<bad id> safe | PASS |  |  |
 | UIO-SHELL-HELP-01 | Help button opens panel for the current screen; Close button and Esc close it | PASS |  |  |
 | UIO-SHELL-HELP-02 | ? and F1 keyboard shortcuts toggle help; ? is ignored while typing in a field | PASS |  |  |
 | UIO-SHELL-HELP-03 | Help panel search finds articles, opens one, Back returns; "Open in Help Center" deep-links | PASS |  |  |
@@ -134,7 +134,7 @@ Failures by category: {"defect-backend":3}
 | UIO-DET-05 | Schedule tab shows queued emails per step/day; Trigger logs shows CREATE/LAUNCH audit events | PASS |  |  |
 | UIO-DET-06 | Sending Accounts tab lists the campaign inbox; Inbox tab renders (empty state) and Sync button reports a clear error with no IMAP | PASS |  |  |
 | UIO-DET-07 | Pause Campaign / Resume Campaign buttons change status (DB + badge) | PASS |  |  |
-| UIO-DET-08 | Send Now: confirm dialog, then result summary dialog; cancel path sends nothing | PASS |  |  |
+| UIO-DET-08 | Send Now: cancel at the confirm sends nothing; accept -> POST /send-now answered and the outcome is shown (result dialog or visible error) | PASS |  |  |
 | UIO-DET-09 | Role AGENT cannot open a campaign by URL (redirect Home) | PASS |  |  |
 | UIO-TPL-01 | Template library empty state renders; New template opens modal; Cancel closes without saving | PASS |  |  |
 | UIO-TPL-02 | Create template: merge-field insert, save -> row in list and in DB with subject/body/category/shared | PASS |  |  |
@@ -144,7 +144,7 @@ Failures by category: {"defect-backend":3}
 | UIO-TPL-06 | Delete: dismissing confirm keeps it; accepting removes row and DB record | PASS |  |  |
 | UIO-AUTO-01 | Automation empty state; Create rule modal validation (required fields) keeps modal open | PASS |  |  |
 | UIO-AUTO-02 | Create Send-AI-Template rule: row appears; DB has trigger/action/template/delay and is active | PASS |  |  |
-| UIO-AUTO-02b | Create "Pause Campaign" rule (offered in the Action dropdown) succeeds | FAIL | defect-backend | UI Action dropdown offers PAUSE_CAMPAIGN but ActionType enum (app/models/automation_rule.py:21-25) has only SEND_EMAIL/CHANGE_CAMPAIGN_STEP/PAUSE_PROSPECT/MARK_INTERESTED -> POST /automation-rules/ 422; UI shows only 'Fa |
+| UIO-AUTO-02b | Create "Pause this contact" rule (PAUSE_PROSPECT, replaced "Pause Campaign"): option offered, no template picker, row listed, DB row persisted | PASS |  |  |
 | UIO-AUTO-03 | Toggle rule off/on (the repaired PUT): DB is_active flips and UI reflects it | PASS |  |  |
 | UIO-AUTO-04 | Search filters rules; delete (confirm) removes row and DB record | PASS |  |  |
 | UIO-AIGEN-01 | AI generator: Classify disabled until designation entered; classification shows persona + confidence | PASS |  |  |
@@ -165,7 +165,7 @@ Failures by category: {"defect-backend":3}
 | UIO-MBX-03 | Filters and search: Warmup On hides the (warmup-off) inbox, Warmup Off shows it, search by email narrows, no-match empty state | PASS |  |  |
 | UIO-MBX-04 | Warmup toggle on the row flips warmup_enabled in the DB and back | PASS |  |  |
 | UIO-MBX-05 | Detail drawer: Overview/Connection/Settings/Activity tabs render; Test sending sign-in against an unreachable SMTP host reports a clear failure | PASS |  |  |
-| UIO-MBX-06 | Settings tab: change daily limit / delay and Save Settings persists to DB; invalid value rejected | FAIL | defect-backend | PUT /inboxes/{id} accepts negative max_emails_per_day/daily_limit (200, stored -5/-3); app/routers/inbox_router.py update + schemas/inbox_schema.py lack ge=0/1 validation; UI number input has no min either. |
+| UIO-MBX-06 | Settings tab: change daily limit / delay and Save Settings persists to DB; invalid value rejected | PASS |  | PUT /inboxes/{id} accepts negative max_emails_per_day/daily_limit (200, stored -5/-3); app/routers/inbox_router.py update + schemas/inbox_schema.py lack ge=0/1 validation; UI number input has no min either. |
 | UIO-MBX-07 | Connect Mailbox wizard: provider step -> SMTP form; validation for empty / invalid email and missing host | PASS |  |  |
 | UIO-MBX-08 | Connect SMTP mailbox with unreachable host: ends in a clear result (connected-unverified or explicit error), row appears iff created; no crash | PASS |  |  |
 | UIO-MBX-09 | Microsoft 365 connect button when MS365 is not configured shows a clear message (no redirect to undefined) | PASS |  |  |

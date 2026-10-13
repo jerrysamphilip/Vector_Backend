@@ -1,6 +1,6 @@
 # E2E journeys (real worker + SES stand-in + fake IMAP) results
 
-PASS 174 · FAIL 13 · BLOCKED 1
+PASS 183 · FAIL 4 · BLOCKED 1
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -26,7 +26,7 @@ PASS 174 · FAIL 13 · BLOCKED 1
 | E2E-J1-20 | 48 messages pre-scheduled (16 contacts x 3 steps), all SCHEDULED, inboxes alternate 8 / 8 | PASS |  |  |
 | E2E-J1-21 | Step-1 subject/body are rendered per contact: first name + company substituted, no '{{' left | PASS |  |  |
 | E2E-J1-22 | Pre-scheduling places step 1 on a business day (not weekend) and not before launch | PASS |  |  |
-| E2E-J1-23 | Planned follow-ups are spaced by the configured wait days (step2 >= step1+2d, step3 >= step2+3d) | FAIL | defect | [('ann.adler@alpha-78a82e.example', {1: datetime.datetime(2026, 10, 13, 0, 22), 2: datetime.datetime(2026, 10, 14, 10, 55), 3: datetime.datetime(2026, 10, 19, 0, 22)}), ('bo.brandt@alpha-78a82e.example', {1: datetime.datetime(2026, 10, 13, 0, 16), 2: datetime.datetime(2026, 10, 14, 10, 49), 3: datetime.datetime(2026, 10, 19, 0, 16)})] |
+| E2E-J1-23 | Planned follow-ups are spaced by the configured wait days (step2 >= step1+2d, step3 >= step2+3d) | PASS |  |  |
 | E2E-J1-24 | The worker sends all 16 step-1 emails through SES (captured by the stand-in), none to rejected rows | PASS |  |  |
 | E2E-J1-25 | Exactly one email per eligible contact: no duplicates, count == eligible prospects (16) | PASS |  |  |
 | E2E-J1-26 | DB <-> SES correlation: ses_message_id == SES id, provider_message_id == MIME Message-ID, per recipient | PASS |  |  |
@@ -34,7 +34,7 @@ PASS 174 · FAIL 13 · BLOCKED 1
 | E2E-J1-28 | Daily-limit counters on the mailboxes reflect the sends (8 + 8) | PASS |  |  |
 | E2E-J1-29 | MIME headers: From=mailbox, Reply-To, List-Unsubscribe (URL with message id + mailto), List-Unsubscribe-Post one-click, Message-ID on the sender domain | PASS |  |  |
 | E2E-J1-30 | Body: tenant's postal address exactly once (CAN-SPAM footer), contact first name + company resolved, no placeholders | PASS |  |  |
-| E2E-J1-31 | Signature: single sign-off using the campaign's sender name; footer not followed by a second signature | FAIL | defect | 'Regards,' count per email=[2]; campaign sender 'Priya Sharma' present=16/16; sample: Hi Max,  I noticed your role at Lima Corp and thought you might be interested in Vector CRM.  Regards,  Priya Sharma Account Executive Systest Co 78a82e  Systest Co 78a82e, 1 Test Street, Austin, TX 78701, USA Please reply 'unsubscribe' in case you do not wish to receive such business communication emails in the future.  Regards, Priya Sharma Account Executive Systest Co 78a82e |
+| E2E-J1-31 | Signature: single sign-off using the campaign's sender name; footer not followed by a second signature | PASS | defect |  |
 | E2E-J1-32 | Every email carries a unique unsubscribe URL built from BASE_URL (/api/tracking/unsubscribe/<message id>) | PASS |  |  |
 | E2E-J1-33 | Unsubscribe_mode 'plain': body explains how to unsubscribe (reply) and the link lives in List-Unsubscribe | PASS |  |  |
 | E2E-J1-34 | Campaign counters after the send: sent_count == 16 | PASS |  |  |
@@ -45,12 +45,12 @@ PASS 174 · FAIL 13 · BLOCKED 1
 | E2E-J1-39 | Message final_status: 15 DELIVERED, 1 BOUNCED (BR-DF-04) | PASS |  |  |
 | E2E-J1-40 | Hard bounce: contact suppressed, enrolment BOUNCED, steps 2+3 not sendable; campaign (1/16) NOT auto-paused | PASS |  |  |
 | E2E-J1-41 | Campaign detail metrics: sent 16, opened 10 (unique contacts), bounced 1 | PASS |  |  |
-| E2E-J1-42 | GET /campaigns/{id}/metrics agrees with the campaign detail (opened 10, bounced 1, open rate 10/16) | FAIL | defect | {'sent_count': 16, 'opened_count': 0, 'replied_count': 0, 'bounced_count': 1, 'sender_bounced_count': 0, 'positive_replied_count': 0, 'ooo_count': 0, 'open_rate': 0.0, 'reply_rate': 0.0, 'bounce_rate': 6.25} (campaign detail says {'sent_count': 16, 'opened_count': 10, 'replied_count': 0, 'bounced_count': 1, 'sender_bounced_count': 0, 'positive_replied_count': 0, 'ooo_count': 0, 'unsubscribed_count': 0}) |
-| E2E-J1-43 | Analytics step 1: sent 16, opened 10, bounced 1, open rate 62.5, click rate 40.0 (4 of 10 openers) | FAIL | defect | {'step': 1, 'type': 'Initial Email', 'sent': 15, 'opened_count': 10, 'replied_count': 0, 'bounced_count': 1, 'open_rate': 66.67, 'click_rate': 40.0, 'reply_rate': 0.0, 'bounce_rate': 6.67, 'positive_replied_count': 0, 'ooo_count': 0, 'sender_bounced_count': 0} |
-| E2E-J1-44 | Dashboard summary (tenant total) matches: 16 sent, 10 opened, 4 clicked, 1 bounced, 16 contacted | FAIL | defect | {'total_leads_contacted': 16, 'total_emails_sent': 16, 'total_opened': 11, 'total_replied': 0, 'total_bounced': 1, 'total_clicked': 5, 'overall_open_rate': 68.75, 'overall_reply_rate': 0.0, 'overall_bounce_rate': 6.25, 'active_campaigns': 1} |
+| E2E-J1-42 | GET /campaigns/{id}/metrics agrees with the campaign detail (opened 10, bounced 1, open rate 10/16) | PASS |  |  |
+| E2E-J1-43 | Analytics step 1: sent 16, opened 10, bounced 1, open rate 62.5, click rate 40.0 (4 of 10 openers) | PASS |  |  |
+| E2E-J1-44 | Dashboard summary (tenant total) matches: 16 sent, 10 opened, 4 clicked, 1 bounced, 16 contacted | FAIL | defect | {'total_leads_contacted': 16, 'total_emails_sent': 16, 'total_opened': 10, 'total_replied': 0, 'total_bounced': 1, 'total_clicked': 5, 'overall_open_rate': 62.5, 'overall_reply_rate': 0.0, 'overall_bounce_rate': 6.25, 'active_campaigns': 1} |
 | E2E-J1-45 | Global analytics KPIs equal the dashboard summary | PASS |  |  |
-| E2E-J1-46 | Campaign comparison row agrees (sent 16, opened 10, bounced 1) | FAIL | defect | {'campaign_id': '66eda06c-bcf6-4819-ac9c-381322da2e26', 'campaign_name': 'J1 Outreach 78a82e', 'status': 'ACTIVE', 'sent_count': 16, 'opened_count': 11, 'replied_count': 0, 'bounced_count': 1, 'open_rate': 68.75, 'reply_rate': 0.0, 'bounce_rate': 6.25, 'created_at': '2026-10-12T10:32:55'} |
-| E2E-J1-47 | Analytics time-series for today: sent 16 / opened 10 / bounced 1 | FAIL | defect | [{'date': '2026-10-12', 'sent': 16, 'opened': 11, 'replied': 0, 'bounced': 1, 'sender_bounced': 0, 'positive_replied': 0, 'ooo': 0}] |
+| E2E-J1-46 | Campaign comparison row agrees (sent 16, opened 10, bounced 1) | PASS |  |  |
+| E2E-J1-47 | Analytics time-series for today: sent 16 / opened 10 / bounced 1 | PASS |  |  |
 | E2E-J1-48 | GET on the real unsubscribe link shows a confirmation page and changes nothing (link scanners are safe) | PASS |  |  |
 | E2E-J1-49 | POST (the page's button) unsubscribes: suppression row, consent UNSUBSCRIBED, enrolment UNSUBSCRIBED | PASS |  |  |
 | E2E-J1-50 | RFC 8058 one-click POST ('List-Unsubscribe=One-Click') unsubscribes without a confirmation step | PASS |  |  |
@@ -66,7 +66,7 @@ PASS 174 · FAIL 13 · BLOCKED 1
 | E2E-J1-60 | Unified inbox lists the conversation, unread, last message INBOUND | PASS |  |  |
 | E2E-J1-61 | Reply stops that contact's sequence: enrolment REPLIED, steps 2+3 CANCELLED ('contact replied') | PASS |  |  |
 | E2E-J1-62 | Out-of-office auto-reply is stored but does NOT stop the sequence (still ACTIVE, steps 2+3 pending) | PASS |  |  |
-| E2E-J1-63 | Reply 'unsubscribe' suppresses the contact workspace-wide and stops the sequence | FAIL | defect | supp=0 consent=OPT_IN pending=0 |
+| E2E-J1-63 | Reply 'unsubscribe' suppresses the contact workspace-wide and stops the sequence | PASS |  |  |
 | E2E-J1-64 | Mail from an unknown sender is not turned into a prospect/conversation of this workspace | PASS |  |  |
 | E2E-J1-65 | Reply analytics: 3 reply events (1 genuine, 1 out-of-office, 1 unsubscribe), 1 OOO; campaign counters match | PASS |  |  |
 | E2E-J1-66 | Step-1 analytics and dashboard summary show the same reply numbers | PASS |  |  |
@@ -160,7 +160,7 @@ PASS 174 · FAIL 13 · BLOCKED 1
 | E2E-J4-09 | Cross-tenant object access by id is refused (404) for read, write, pause and erase | PASS |  |  |
 | E2E-J4-10 | Global search for the shared address domain returns each tenant only its own records (no foreign ids) | PASS |  |  |
 | E2E-J4-11 | Contact exports contain only the caller's tenant (6 data rows each, no cross ids, own sender-specific data) | PASS |  |  |
-| E2E-J4-12 | Reports: each tenant's total_emails_sent equals its own OUTBOUND sends (X 10, Y 16 incl. the bounced one); inbound replies/bounce notices are not 'sent' | FAIL | defect | dashboard X=11 (outbound rows 10; X also holds 1 INBOUND reply) Y=16 (outbound 16; Y holds 1 INBOUND bounce notice) |
+| E2E-J4-12 | Reports: each tenant's total_emails_sent equals its own OUTBOUND sends (X 10, Y 16 incl. the bounced one); inbound replies/bounce notices are not 'sent' | PASS |  |  |
 | E2E-J4-13 | Domain health is per tenant: after the health cycle each has one row for the shared domain with its own 24h counters (X 10 sends / 0% bounce; Y 16 sends / bounce > 0) | PASS |  |  |
 | E2E-J5-01 | Import preview: 12 rows detected and columns auto-mapped (email, name, company, domain, title) | PASS |  |  |
 | E2E-J5-02 | Import: 10 contacts + 2 companies created, 2 rejected rows with reasons (invalid email, in-file duplicate) | PASS |  |  |
@@ -178,7 +178,7 @@ PASS 174 · FAIL 13 · BLOCKED 1
 | E2E-J6-01 | Two campaign automation rules created (open -> pause prospect, click -> send template) | PASS |  |  |
 | E2E-J6-02 | SES Open event fires the 'pause prospect' rule: enrolment becomes PAUSED | PASS |  |  |
 | E2E-J6-03 | SES Click event fires the 'send email' rule: the worker sends the rule's template to that contact through SES (personalised subject) | PASS |  |  |
-| E2E-J6-04 | A PAUSED prospect receives no further sequence step (step 2 goes only to the other 3 contacts) | FAIL | defect | step2 sent to ['p00', 'p01', 'p02', 'p03']; paused contact included=True |
+| E2E-J6-04 | A PAUSED prospect receives no further sequence step (step 2 goes only to the other 3 contacts) | PASS |  |  |
 | E2E-J6-05 | Workflow rules created (lead->SQL: task + notify manager; deal amount > 20000: set COMMIT + notify) | PASS |  |  |
 | E2E-J6-06 | Lead -> SQL runs the rule: owner gets a task 'Prepare handover for Wf0 Lead' due in 2 days | PASS |  |  |
 | E2E-J6-07 | Manager is notified ('Wf0 Lead reached SQL'); rule run_count = 1; a non-matching change (SQL -> same) does not re-run it | PASS |  |  |

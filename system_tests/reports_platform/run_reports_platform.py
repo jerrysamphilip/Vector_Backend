@@ -1230,6 +1230,25 @@ def t_connections():
              f"start -> {s2} {j(b2)[:160]} (OAuth client not configured on local stack; needs real Google/M365 accounts)", "env")
 
 
+@safe("RP-107", "Stale-deal alert")
+def t_stale_deal():
+    # The stale-deal pass is hourly in the worker: create an overdue deal, trigger one sales_jobs pass now.
+    from common import run_job
+    U, uid, ST = CTX["U"], CTX["uid"], CTX["ST"]
+    s, d = req("POST", "/opportunities", {"name": f"RP stale {CTX['ws'].rid}", "owner_id": uid["ex1"], "amount": 500,
+                                          "stage_id": ST["Qualification"]["stage_id"], "close_date": "2026-11-30"},
+               U["owner"]["token"])
+    assert s == 201, (s, d)
+    oid = d["opportunity_id"]
+    sql(f"UPDATE opportunities SET close_date = UTC_DATE() - INTERVAL 3 DAY WHERE opportunity_id='{oid}'")
+    ok, out = run_job("sales_jobs")
+    n = get(U["ex1"]["token"], "/notifications", limit=100)[1]
+    hit = [i for i in n.get("items", []) if i.get("kind") == "STALE_DEAL" and oid in (i.get("link") or "")]
+    R.check("RP-107", "BR-SF-05 stale-deal alert notification raised by hourly job (triggered on demand)",
+            ok and bool(hit), f"job_ok={ok} hits={len(hit)}" + ("" if ok else f" out={out[-300:]}"))
+    req("PATCH", f"/opportunities/{oid}", {"close_date": "2026-12-31"}, U["owner"]["token"])
+
+
 @safe("RP-070", "Not implemented checks")
 def t_not_implemented():
     s, spec = req("GET", "/openapi.json")
@@ -1253,8 +1272,6 @@ def t_not_implemented():
     R.check("RP-106", "BR-SF-20 REST API documented (OpenAPI)", s == 200 and len(spec.get("paths", {})) > 100, "")
     R.record("RP-106b", "BR-SF-20 outbound webhooks for other systems", True if hooks else None,
              "" if hooks else "Only the inbound SES webhook exists; no webhook subscription API", None if hooks else "not-implemented")
-    R.record("RP-107", "BR-SF-05 stale-deal alert notification raised by hourly job", None,
-             "Job runs hourly in vector-worker (app/jobs.py); not waited for in an automated run - see manual case", "env")
     R.record("RP-161", "KPI SQL-to-win rate and forecast accuracy (actual / committed per quarter) reported directly", None,
              "No report returns these ratios; derivable from team-performance counts and forecast commit/won", "not-implemented")
 
@@ -1440,6 +1457,7 @@ def main():
     t_period_boundary()
     t_connections()
     t_not_implemented()
+    t_stale_deal()
     t_latency()
     if "--skip-ui" not in ARGS:
         t_ui()

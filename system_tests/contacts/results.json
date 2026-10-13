@@ -1,11 +1,11 @@
 {
   "suite": "Contact Management (BRD \u00a75.2)",
   "counts": {
-    "PASS": 92,
-    "FAIL": 1,
+    "PASS": 93,
+    "FAIL": 0,
     "BLOCKED": 4
   },
-  "seconds": 173.6,
+  "seconds": 162.9,
   "cases": [
     {
       "id": "CM-001",
@@ -332,9 +332,9 @@
     {
       "id": "CM-046b",
       "title": "Campaign wizard list endpoint GET /campaigns/lists is reachable (BR-CM-24)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "GET /campaigns/lists -> 500 'Campaign not found' (shadowed by GET /campaigns/{campaign_id})"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "CM-046",

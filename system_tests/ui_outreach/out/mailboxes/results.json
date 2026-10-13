@@ -1,11 +1,11 @@
 {
   "suite": "UI outreach/admin - mailboxes",
   "counts": {
-    "PASS": 11,
-    "FAIL": 1,
+    "PASS": 12,
+    "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 62,
+  "seconds": 72,
   "cases": [
     {
       "id": "UIO-MBX-01",
@@ -45,9 +45,9 @@
     {
       "id": "UIO-MBX-06",
       "title": "Settings tab: change daily limit / delay and Save Settings persists to DB; invalid value rejected",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "negative limit stored"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIO-MBX-07",

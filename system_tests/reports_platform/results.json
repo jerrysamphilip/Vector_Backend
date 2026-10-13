@@ -1,11 +1,11 @@
 {
   "suite": "reports_platform",
   "counts": {
-    "PASS": 92,
-    "FAIL": 1,
+    "PASS": 93,
+    "FAIL": 0,
     "BLOCKED": 12
   },
-  "seconds": 139.2,
+  "seconds": 174.0,
   "cases": [
     {
       "id": "RP-001",
@@ -268,7 +268,7 @@
     },
     {
       "id": "RP-052",
-      "title": "Default forecast year is the current FY (2026) for today 2026-10-11",
+      "title": "Default forecast year is the current FY (2026) for today 2026-10-13",
       "status": "PASS",
       "category": "",
       "detail": ""
@@ -551,7 +551,7 @@
       "title": "Email notification actually delivered to the user's mailbox",
       "status": "BLOCKED",
       "category": "env",
-      "detail": "SENDER_EMAIL is set in the worker; local stack has no mail sink - verify in UAT"
+      "detail": "SENDER_EMAIL is empty in the worker; local stack has no mail sink - verify in UAT"
     },
     {
       "id": "RP-091",
@@ -717,9 +717,9 @@
     {
       "id": "RP-131",
       "title": "25 concurrent users x 60s mixed reads: 0% errors and p95 < 3 s",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "{\"users\": 25, \"seconds\": 60, \"requests\": 2799, \"rps\": 46.6, \"p50_ms\": 3, \"p95_ms\": 1080, \"max_ms\": 2962, \"error_rate_pct\": 56.13, \"errors_sample\": [\"/contacts?page_size=50:exc RemoteDisconnected\", \"/sales-reports/funnel:exc RemoteDisconnected\", \"/sales-reports/leaderboard:exc RemoteDisconnected\", \"/opportunities?page_size=50:exc RemoteDisconnected\", \"/sales-reports/forecast:exc RemoteDisconnected\""
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "RP-140",

@@ -625,18 +625,20 @@ def t_complaints():
 
 @safe("OUT-074", "Domain health refreshed hourly")
 def t_hourly():
-    stale = rows("SELECT d.domain_name, IFNULL(d.health_checked_at,'never') FROM sending_domains d "
-                 "WHERE d.domain_name IN (SELECT DISTINCT SUBSTRING_INDEX(from_email,'@',-1) FROM email_messages "
-                 "WHERE sent_at >= UTC_TIMESTAMP() - INTERVAL 24 HOUR AND from_email LIKE '%@%') "
-                 "AND (d.health_checked_at IS NULL OR d.health_checked_at < UTC_TIMESTAMP() - INTERVAL 65 MINUTE) "
-                 # a domain first used within the hour can't have had its hourly check yet
-                 "AND EXISTS (SELECT 1 FROM email_messages m2 WHERE SUBSTRING_INDEX(m2.from_email,'@',-1) = d.domain_name "
-                 "AND m2.sent_at < UTC_TIMESTAMP() - INTERVAL 65 MINUTE)")
-    missing = rows("SELECT DISTINCT SUBSTRING_INDEX(from_email,'@',-1) FROM email_messages "
-                   "WHERE sent_at >= UTC_TIMESTAMP() - INTERVAL 24 HOUR AND sent_at < UTC_TIMESTAMP() - INTERVAL 65 MINUTE "
-                   "AND from_email LIKE '%@%' AND SUBSTRING_INDEX(from_email,'@',-1) NOT IN (SELECT domain_name FROM sending_domains)")
-    rec("OUT-074", "Every domain that sent in the last 24h had its health recomputed within the last hour",
-        not stale and not missing, f"stale={stale[:5]} missing_rows={missing[:5]}")
+    # The health cycle is hourly in the worker; trigger one send_safety pass now (fresh process runs the hourly part)
+    # and check this workspace's outbound domains (other tenants on a shared dev DB are out of scope).
+    from common import run_job
+    t0 = scalar("SELECT UTC_TIMESTAMP() - INTERVAL 5 SECOND")
+    ok, out = run_job("send_safety")
+    sent = rows("SELECT DISTINCT LOWER(SUBSTRING_INDEX(m.from_email,'@',-1)) FROM email_messages m "
+                f"JOIN sending_inboxes i ON i.inbox_id = m.inbox_id WHERE i.tenant_id={q(A.tenant_id)} "
+                "AND m.direction='OUTBOUND' AND m.sent_at >= UTC_TIMESTAMP() - INTERVAL 24 HOUR AND m.from_email LIKE '%@%'")
+    doms = [r[0] if isinstance(r, (list, tuple)) else r for r in sent]
+    stale = [d for d in doms if (scalar(
+        f"SELECT COUNT(*) FROM sending_domains WHERE tenant_id={q(A.tenant_id)} AND LOWER(domain_name)={q(d)} "
+        f"AND health_checked_at >= {q(t0)}") or "0") == "0"]
+    rec("OUT-074", "Every domain that sent in the last 24h had its health recomputed by the hourly health pass",
+        ok and bool(doms) and not stale, f"job_ok={ok} domains={doms[:5]} stale={stale[:5]}" + ("" if ok else f" out={out[-300:]}"))
 
 
 @safe("OUT-078", "Pause freezes and resume restores the queue")
@@ -1026,7 +1028,10 @@ def check_background(bg):
 
 UI_SCRIPT = r"""
 import { chromium } from 'playwright';
-const [web, email, password, unsubUrl] = process.argv.slice(2);
+// argv after the script: web, email, password, unsubUrl, (unused), campaignId, campaignName.
+// OUT-132: the campaign id is argv.slice(2)[5] (process.argv[7]); reading process.argv[6] picked up the
+// empty placeholder, so the campaign-detail capture was skipped and came back empty.
+const [web, email, password, unsubUrl, , campaignId, campaignName] = process.argv.slice(2);
 const out = {pages: {}, errors: [], unsub: null, campaign: null};
 const browser = await chromium.launch({executablePath: process.env.CHROMIUM || undefined});
 const page = await browser.newPage();
@@ -1047,12 +1052,12 @@ try {
     out.pages[p] = {url: page.url(), chars: text.length, crashed: /something went wrong|unexpected application error/i.test(text),
                     snippet: text.slice(0, 120).replace(/\s+/g, ' ')};
   }
-  if (process.argv[6]) {
+  if (campaignId) {
     current = 'campaign-detail';
-    await page.goto(`${web}/app/campaigns/${process.argv[6]}`, {waitUntil: 'networkidle'});
-    await page.waitForTimeout(1500);
+    await page.goto(`${web}/app/campaigns/${campaignId}`, {waitUntil: 'networkidle'});
+    await page.getByText(campaignName || '@@').first().waitFor({timeout: 15000}).catch(() => {});
     const text = await page.locator('body').innerText();
-    out.campaign = {chars: text.length, hasName: text.includes(process.argv[7] || '@@'),
+    out.campaign = {chars: text.length, hasName: text.includes(campaignName || '@@'),
                     crashed: /something went wrong|unexpected application error/i.test(text)};
   }
   current = 'unsubscribe';

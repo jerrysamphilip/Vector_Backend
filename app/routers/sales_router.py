@@ -11,10 +11,10 @@ Phase 2 sales API (BRD v2.0):
 Everything is limited to the records of the user and their team.
 """
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -26,7 +26,7 @@ from app.models.prospect import Prospect
 from app.models.sales import (CLIENT_TYPES, LEAD_STAGES, OPEN_LEAD_STAGES, PROPOSAL_STATUSES, SQL_CRITERIA, Lead,
                               Opportunity, Proposal, SalesStage)
 from app.models.user import User
-from app.services import crm
+from app.services import crm, quote_approval
 from app.services import sales as svc
 from app.services.contact_service import (SALES_LEVELS, can_access_contact, clean_str, sees_everything,
                                           team_user_ids, visible_user_ids)
@@ -56,8 +56,8 @@ def _history(db: Session, object_type: str, object_id: str) -> List[dict]:
 # =============================================================
 
 class HierarchyUpdate(BaseModel):
-    sales_level: Optional[int] = None
-    manager_id: Optional[str] = None
+    sales_level: Optional[int] = None  # 1..4, checked in set_hierarchy (400, not 422)
+    manager_id: Optional[str] = Field(None, max_length=36)
 
 
 @router.get("/team/hierarchy")
@@ -714,16 +714,21 @@ def update_opp(opportunity_id: str, payload: OppWrite, db: Session = Depends(get
             opp.forecast_category_manual = False
             current = db.query(SalesStage).filter(SalesStage.stage_id == opp.stage_id).first()
             opp.forecast_category = svc.category_for(current) if current else "PIPELINE"
+    moved_to = None
     if data.get("stage_id") and data["stage_id"] != opp.stage_id:
         stage = svc.apply_stage(db, opp, data["stage_id"])
         svc.require_close_reason(db, opp, stage, opp.closed_reason)
         if stage.is_won and opp.prospect_id:
             prospect = db.query(Prospect).filter(Prospect.prospect_id == opp.prospect_id).first()
             svc.sync_contact_lifecycle(db, prospect, "CUSTOMER", current_user.user_id)
+        moved_to = stage
     after = crm.snapshot(opp, svc.OPP_FIELDS)
     if before.get("stage_id") != after.get("stage_id"):
         names = {s.stage_id: s.name for s in svc.stages(db, current_user.tenant_id, True)}
         before["stage_id"], after["stage_id"] = names.get(before["stage_id"]), names.get(after["stage_id"])
+    if moved_to is not None:
+        # Owner and their manager hear about won / lost / stage moves (E2E-J1-87b)
+        svc.notify_stage_change(db, opp, moved_to, current_user, before.get("stage_id"))
     _record(db, current_user, "DEAL", opp.opportunity_id, before, after)
     db.commit()
     return get_opp(opportunity_id, db, current_user)
@@ -749,6 +754,8 @@ class DealActivity(BaseModel):
     duration_minutes: Optional[int] = None
     occurred_at: Optional[datetime] = None
     add_to_calendar: bool = False
+    # Colleagues @mentioned in a note (BR-CM-16)
+    mentioned_user_ids: Optional[List[Annotated[str, Field(min_length=1, max_length=36)]]] = Field(None, max_length=20)
 
 
 @router.post("/opportunities/{opportunity_id}/activities", status_code=201)
@@ -760,12 +767,19 @@ def log_deal_activity(opportunity_id: str, payload: DealActivity, db: Session = 
         raise HTTPException(status_code=400, detail=f"activity_type must be one of {list(ACTIVITY_TYPES)}")
     if not (clean_str(payload.subject) or clean_str(payload.body)):
         raise HTTPException(status_code=400, detail="Add a subject or some notes")
+    from app.services import mentions
+    if payload.mentioned_user_ids and payload.activity_type != "NOTE":
+        raise HTTPException(status_code=400, detail="You can only mention people in notes")
+    mentioned_users = mentions.validate(db, current_user, payload.mentioned_user_ids, opp.owner_id, True)
     a = ContactActivity(tenant_id=current_user.tenant_id, prospect_id=opp.prospect_id, opportunity_id=opp.opportunity_id,
                         activity_type=payload.activity_type, subject=clean_str(payload.subject), body=payload.body,
                         outcome=clean_str(payload.outcome), duration_minutes=payload.duration_minutes,
                         occurred_at=_naive(payload.occurred_at) or datetime.utcnow(), created_by=current_user.user_id,
                         source="MANUAL")
     db.add(a)
+    if mentioned_users:
+        db.flush()
+        mentions.save(db, current_user, a, mentioned_users, opp.name, f"/app/deals/{opp.opportunity_id}")
     opp.updated_at = datetime.utcnow()
     db.commit()
     if payload.add_to_calendar and payload.activity_type == "MEETING":
@@ -789,8 +803,11 @@ def deal_timeline(opportunity_id: str, db: Session = Depends(get_db), current_us
     acts = acts.filter(ContactActivity.occurred_at >= (opp.created_at or datetime.utcnow()) - timedelta(days=30)) \
         .order_by(ContactActivity.occurred_at.desc()).limit(200).all()
     names.update(svc.user_names(db, [a.created_by for a in acts]))
+    from app.services import mentions
+    mentioned = mentions.for_activities(db, [a.activity_id for a in acts if a.activity_type == "NOTE"])
     for a in acts:
         items.append({"kind": a.activity_type, "at": a.occurred_at, "activity": {
+            "mentions": mentioned.get(a.activity_id, []),
             "activity_id": a.activity_id, "activity_type": a.activity_type, "subject": a.subject, "body": a.body,
             "outcome": a.outcome, "duration_minutes": a.duration_minutes, "source": a.source,
             "created_by_name": names.get(a.created_by), "on_deal": a.opportunity_id == opp.opportunity_id}})
@@ -828,7 +845,9 @@ def _proposal_dict(p: Proposal, opp: Optional[dict] = None) -> dict:
     d = {"proposal_id": p.proposal_id, "opportunity_id": p.opportunity_id, "title": p.title,
          "amount": svc.as_float(p.amount) if p.amount is not None else None, "status": p.status,
          "status_label": PROPOSAL_STATUSES.get(p.status), "valid_until": p.valid_until, "notes": p.notes,
-         "sent_at": p.sent_at, "decided_at": p.decided_at, "created_at": p.created_at}
+         "sent_at": p.sent_at, "decided_at": p.decided_at, "created_at": p.created_at,
+         "approval_status": p.approval_status or "NOT_REQUIRED", "approval_reason": p.approval_reason,
+         "approval_decided_at": p.approval_decided_at}
     if opp:
         d.update({"opportunity_name": opp["name"], "company_name": opp["company_name"],
                   "owner_id": opp["owner_id"], "owner_name": opp["owner_name"], "client_type": opp["client_type"]})
@@ -911,6 +930,7 @@ def update_proposal(proposal_id: str, payload: ProposalWrite, db: Session = Depe
         if f in data:
             setattr(p, f, data[f])
     if data.get("status"):
+        quote_approval.ensure_can_send(db, p, data["status"])  # BR-SF-17: discount above the limit needs approval
         _set_proposal_status(p, data["status"])
     if p.status != old_status:
         _record(db, current_user, "DEAL", p.opportunity_id, {"proposal": f"{p.title}: {old_status.lower()}"},

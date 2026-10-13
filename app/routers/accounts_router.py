@@ -19,12 +19,12 @@ from sqlalchemy.orm import Session
 from app.core.auth import require_role
 from app.core.database import get_db
 from app.models.account import Account
-from app.models.crm import CrmTask, PropertyChange
+from app.models.crm import ContactCompany, CrmTask, PropertyChange
 from app.models.email_message import EmailMessage
 from app.models.prospect import Prospect
 from app.models.user import User
 from app.routers.contacts_router import _history_items, _summaries, _user_name
-from app.services import crm
+from app.services import contact_companies, crm
 from app.services.contact_service import can_manage_contacts, can_see_owner, clean_str, scope, sees_everything, visible_user_ids
 from app.services.sales_settings import can_see_amounts, masked_for
 
@@ -72,7 +72,7 @@ def _can_see_account(db: Session, user: User, account: Account) -> bool:
     if sees_everything(user) or (account.owner_id and can_see_owner(db, user, account.owner_id)):
         return True
     return db.query(Prospect.prospect_id).filter(
-        Prospect.account_id == account.account_id, Prospect.deleted_at.is_(None),
+        contact_companies.company_condition(db, account.account_id), Prospect.deleted_at.is_(None),
         Prospect.owner_id.in_(visible_user_ids(db, user) or {"-"})).first() is not None
 
 
@@ -148,9 +148,16 @@ def list_accounts(
 ):
     if sort_by == "annual_revenue" and not can_see_amounts(db, current_user):
         sort_by = "name"  # sorting by a hidden amount would reveal it (BR-SF-12)
-    counts = _visible_contacts(db, current_user).with_entities(
-        Prospect.account_id, func.count(Prospect.prospect_id).label("n")
-    ).filter(Prospect.account_id.isnot(None)).group_by(Prospect.account_id).subquery()
+    # Contacts per company: primary company plus other associated companies (CM-014)
+    visible_contacts = _visible_contacts(db, current_user)
+    primary_pairs = visible_contacts.with_entities(Prospect.prospect_id.label("pid"), Prospect.account_id.label("aid")) \
+        .filter(Prospect.account_id.isnot(None))
+    other_pairs = visible_contacts.join(ContactCompany, ContactCompany.prospect_id == Prospect.prospect_id).filter(
+        ContactCompany.is_primary.is_(False)).with_entities(Prospect.prospect_id.label("pid"),
+                                                          ContactCompany.account_id.label("aid"))
+    pairs = primary_pairs.union(other_pairs).subquery()
+    counts = db.query(pairs.c.aid.label("account_id"), func.count(pairs.c.pid).label("n")) \
+        .group_by(pairs.c.aid).subquery()
 
     query = db.query(Account, func.coalesce(counts.c.n, 0)).outerjoin(
         counts, counts.c.account_id == Account.account_id
@@ -272,7 +279,7 @@ def restore_account(account_id: str, db: Session = Depends(get_db), current_user
 @router.get("/{account_id}")
 def get_account(account_id: str, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
     account = _get_account(db, current_user, account_id)
-    contacts = _visible_contacts(db, current_user).filter(Prospect.account_id == account_id).order_by(
+    contacts = _visible_contacts(db, current_user).filter(contact_companies.company_condition(db, account_id)).order_by(
         Prospect.first_name, Prospect.last_name).limit(500).all()
     if not contacts and not _can_see_account(db, current_user, account):
         raise HTTPException(status_code=404, detail="Company not found")
@@ -289,6 +296,11 @@ def get_account(account_id: str, db: Session = Depends(get_db), current_user: Us
     owner = db.query(User).filter(User.user_id == account.owner_id).first() if account.owner_id else None
     result = _account_dict(account, owner, len(contacts))
     result["contacts"] = _summaries(db, contacts)
+    # How each contact is associated with this company (CM-014)
+    labels = contact_companies.labels_for_company(db, account_id, contact_ids)
+    for c in result["contacts"]:
+        c["association_label"] = labels.get(c["prospect_id"])
+        c["is_primary_company"] = c["account_id"] == account_id
     result["stats"] = {"contacts": len(contacts), "emails_sent": emails_sent, "replies": replies,
                        "open_tasks": db.query(func.count(CrmTask.task_id)).filter(
                            CrmTask.account_id == account_id, CrmTask.status == "OPEN").scalar() or 0}

@@ -38,8 +38,23 @@ export async function startSuite(name) {
   };
   S.shot = async (page, id) => { try { await page.screenshot({ path: path.join(SHOTS, `${name}-${id}.png`), fullPage: false }); } catch {} };
   /** Run a step; failure takes a screenshot of `getPage()`. */
-  S.t = async (id, title, fn, page) => step(rec, id, title, fn, page ? (i) => S.shot(typeof page === 'function' ? page() : page, i) : undefined);
-  S.done = async () => { for (const c of ctxs) await c.close().catch(() => {}); await browser.close().catch(() => {}); const c = rec.write(); console.log(`\n[${name}]`, JSON.stringify(c)); return c; };
+  // ONLY=<regex>: run just the matching case ids; results are merged into the suite's previous results.json.
+  const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
+  S.only = ONLY;
+  S.want = id => !ONLY || ONLY.test(id);
+  S.t = async (id, title, fn, page) => { if (!S.want(id)) return; return step(rec, id, title, fn, page ? (i) => S.shot(typeof page === 'function' ? page() : page, i) : undefined); };
+  S.done = async () => {
+    for (const c of ctxs) await c.close().catch(() => {}); await browser.close().catch(() => {});
+    if (ONLY) {
+      let prev = [];
+      try { prev = JSON.parse(fs.readFileSync(path.join(rec.outDir, 'results.json'), 'utf8')).cases || []; } catch { /* none */ }
+      const fresh = new Map(rec.cases.map(c => [c.id, c]));
+      const merged = prev.map(c => fresh.get(c.id) || c);
+      for (const c of rec.cases) if (!prev.some(p => p.id === c.id)) merged.push(c);
+      rec.cases = merged;
+    }
+    const c = rec.write(); console.log(`\n[${name}]`, JSON.stringify(c)); return c;
+  };
   return S;
 }
 

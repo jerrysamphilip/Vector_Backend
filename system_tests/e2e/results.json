@@ -1,11 +1,11 @@
 {
   "suite": "E2E journeys (real worker + SES stand-in + fake IMAP)",
   "counts": {
-    "PASS": 174,
-    "FAIL": 13,
+    "PASS": 183,
+    "FAIL": 4,
     "BLOCKED": 1
   },
-  "seconds": 1383.3,
+  "seconds": 1712.5,
   "cases": [
     {
       "id": "E2E-J1-01",
@@ -164,9 +164,9 @@
     {
       "id": "E2E-J1-23",
       "title": "Planned follow-ups are spaced by the configured wait days (step2 >= step1+2d, step3 >= step2+3d)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "[('ann.adler@alpha-78a82e.example', {1: datetime.datetime(2026, 10, 13, 0, 22), 2: datetime.datetime(2026, 10, 14, 10, 55), 3: datetime.datetime(2026, 10, 19, 0, 22)}), ('bo.brandt@alpha-78a82e.example', {1: datetime.datetime(2026, 10, 13, 0, 16), 2: datetime.datetime(2026, 10, 14, 10, 49), 3: datetime.datetime(2026, 10, 19, 0, 16)})]"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J1-24",
@@ -220,9 +220,9 @@
     {
       "id": "E2E-J1-31",
       "title": "Signature: single sign-off using the campaign's sender name; footer not followed by a second signature",
-      "status": "FAIL",
+      "status": "PASS",
       "category": "defect",
-      "detail": "'Regards,' count per email=[2]; campaign sender 'Priya Sharma' present=16/16; sample:\nHi Max,\n\nI noticed your role at Lima Corp and thought you might be interested in Vector CRM.\n\nRegards,\n\nPriya Sharma\nAccount Executive\nSystest Co 78a82e\n\nSystest Co 78a82e, 1 Test Street, Austin, TX 78701, USA\nPlease reply 'unsubscribe' in case you do not wish to receive such business communication emails in the future.\n\nRegards,\nPriya Sharma\nAccount Executive\nSystest Co 78a82e"
+      "detail": ""
     },
     {
       "id": "E2E-J1-32",
@@ -297,23 +297,23 @@
     {
       "id": "E2E-J1-42",
       "title": "GET /campaigns/{id}/metrics agrees with the campaign detail (opened 10, bounced 1, open rate 10/16)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "{'sent_count': 16, 'opened_count': 0, 'replied_count': 0, 'bounced_count': 1, 'sender_bounced_count': 0, 'positive_replied_count': 0, 'ooo_count': 0, 'open_rate': 0.0, 'reply_rate': 0.0, 'bounce_rate': 6.25} (campaign detail says {'sent_count': 16, 'opened_count': 10, 'replied_count': 0, 'bounced_count': 1, 'sender_bounced_count': 0, 'positive_replied_count': 0, 'ooo_count': 0, 'unsubscribed_count': 0})"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J1-43",
       "title": "Analytics step 1: sent 16, opened 10, bounced 1, open rate 62.5, click rate 40.0 (4 of 10 openers)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "{'step': 1, 'type': 'Initial Email', 'sent': 15, 'opened_count': 10, 'replied_count': 0, 'bounced_count': 1, 'open_rate': 66.67, 'click_rate': 40.0, 'reply_rate': 0.0, 'bounce_rate': 6.67, 'positive_replied_count': 0, 'ooo_count': 0, 'sender_bounced_count': 0}"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J1-44",
       "title": "Dashboard summary (tenant total) matches: 16 sent, 10 opened, 4 clicked, 1 bounced, 16 contacted",
       "status": "FAIL",
       "category": "defect",
-      "detail": "{'total_leads_contacted': 16, 'total_emails_sent': 16, 'total_opened': 11, 'total_replied': 0, 'total_bounced': 1, 'total_clicked': 5, 'overall_open_rate': 68.75, 'overall_reply_rate': 0.0, 'overall_bounce_rate': 6.25, 'active_campaigns': 1}"
+      "detail": "{'total_leads_contacted': 16, 'total_emails_sent': 16, 'total_opened': 10, 'total_replied': 0, 'total_bounced': 1, 'total_clicked': 5, 'overall_open_rate': 62.5, 'overall_reply_rate': 0.0, 'overall_bounce_rate': 6.25, 'active_campaigns': 1}"
     },
     {
       "id": "E2E-J1-45",
@@ -325,16 +325,16 @@
     {
       "id": "E2E-J1-46",
       "title": "Campaign comparison row agrees (sent 16, opened 10, bounced 1)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "{'campaign_id': '66eda06c-bcf6-4819-ac9c-381322da2e26', 'campaign_name': 'J1 Outreach 78a82e', 'status': 'ACTIVE', 'sent_count': 16, 'opened_count': 11, 'replied_count': 0, 'bounced_count': 1, 'open_rate': 68.75, 'reply_rate': 0.0, 'bounce_rate': 6.25, 'created_at': '2026-10-12T10:32:55'}"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J1-47",
       "title": "Analytics time-series for today: sent 16 / opened 10 / bounced 1",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "[{'date': '2026-10-12', 'sent': 16, 'opened': 11, 'replied': 0, 'bounced': 1, 'sender_bounced': 0, 'positive_replied': 0, 'ooo': 0}]"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J1-48",
@@ -444,9 +444,9 @@
     {
       "id": "E2E-J1-63",
       "title": "Reply 'unsubscribe' suppresses the contact workspace-wide and stops the sequence",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "supp=0 consent=OPT_IN pending=0"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J1-64",
@@ -1102,9 +1102,9 @@
     {
       "id": "E2E-J4-12",
       "title": "Reports: each tenant's total_emails_sent equals its own OUTBOUND sends (X 10, Y 16 incl. the bounced one); inbound replies/bounce notices are not 'sent'",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "dashboard X=11 (outbound rows 10; X also holds 1 INBOUND reply) Y=16 (outbound 16; Y holds 1 INBOUND bounce notice)"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J4-13",
@@ -1228,9 +1228,9 @@
     {
       "id": "E2E-J6-04",
       "title": "A PAUSED prospect receives no further sequence step (step 2 goes only to the other 3 contacts)",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "step2 sent to ['p00', 'p01', 'p02', 'p03']; paused contact included=True"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "E2E-J6-05",

@@ -35,6 +35,9 @@ x-api-env: &api-env
   ATTACHMENTS_DIR: /app/uploads/attachments
   # Integrations: optional, taken from .env when set (features that need them log errors and skip otherwise)
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MAX_USD_PER_DAY: ${OPENAI_MAX_USD_PER_DAY:-0.20}
+  OPENAI_MAX_CALLS_PER_DAY: ${OPENAI_MAX_CALLS_PER_DAY:-100}
+  OPENAI_MAX_OUTPUT_TOKENS: ${OPENAI_MAX_OUTPUT_TOKENS:-1500}
   OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
   AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}

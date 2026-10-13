@@ -522,6 +522,9 @@ class CampaignActionService:
             reason=reason,
         )
         self.db.add(event)
+        # Outbound webhooks (BR-SF-20): campaign.paused
+        from app.services import webhooks
+        webhooks.campaign_state_changed(self.db, campaign_id, from_state, to_state, reason)
     
     def _get_creator_name(self, user_id: str) -> Optional[str]:
         """Get creator's full name."""

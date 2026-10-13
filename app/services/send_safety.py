@@ -122,8 +122,35 @@ def auto_pause(db: Session, campaign: Campaign, reason: str) -> bool:
     ).update({"status": "PAUSED_BY_CAMPAIGN"}, synchronize_session=False)
     db.add(CampaignStateEvent(id=str(uuid.uuid4()), campaign_id=campaign.campaign_id,
                               from_state="ACTIVE", to_state="PAUSED", reason=campaign.paused_reason))
+    from app.services import webhooks  # outbound webhooks (BR-SF-20)
+    webhooks.campaign_state_changed(db, campaign.campaign_id, "ACTIVE", "PAUSED", campaign.paused_reason)
     logger.warning(f"[AutoPause] Campaign {campaign.campaign_id} ({campaign.campaign_name}) paused: {reason}")
+    notify_auto_pause(db, campaign, reason)
     return True
+
+
+def auto_pause_recipients(db: Session, campaign: Campaign) -> List[str]:
+    """The campaign owner and the workspace's active admins."""
+    from app.models.user import User
+    admins = [uid for (uid,) in db.query(User.user_id).filter(
+        User.tenant_id == campaign.tenant_id, User.role.in_(("SUPER_ADMIN", "ADMIN")),
+        User.status == "ACTIVE").all()]
+    return [u for u in dict.fromkeys([campaign.created_by, *admins]) if u]
+
+
+def notify_auto_pause(db: Session, campaign: Campaign, reason: str) -> int:
+    """Tell the owner and admins that a campaign was paused automatically, and why (E2E-J2-09). Never raises."""
+    try:
+        from app.services.notifications import notify
+        name = campaign.campaign_name or "Campaign"
+        return notify(db, campaign.tenant_id, auto_pause_recipients(db, campaign), "CAMPAIGN_AUTO_PAUSED",
+                      f"Campaign paused automatically: {name}",
+                      f"Sending was paused to protect deliverability: {reason}. "
+                      "Review the campaign before resuming it.",
+                      f"/app/campaigns/{campaign.campaign_id}")
+    except Exception as exc:  # a notification problem never stops the pause
+        logger.warning(f"[AutoPause] Could not notify about campaign {campaign.campaign_id}: {exc}")
+        return 0
 
 
 def check_campaign_health(db: Session, campaign_id: Optional[str], trigger: str = "") -> bool:

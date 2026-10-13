@@ -35,7 +35,12 @@ class Conversation(Base):
     tenant = relationship("Tenant")
     prospect = relationship("Prospect")
     inbox = relationship("SendingInbox")
-    messages = relationship("EmailMessage", back_populates="conversation", order_by="EmailMessage.sent_at")
+    # Chronological; on a sent_at tie (second precision) the outbound message
+    # comes before the reply to it ('OUTBOUND' > 'INBOUND').
+    messages = relationship(
+        "EmailMessage", back_populates="conversation",
+        order_by="[EmailMessage.sent_at, EmailMessage.direction.desc()]",
+    )
 
     __table_args__ = (
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},

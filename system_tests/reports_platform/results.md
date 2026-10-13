@@ -1,6 +1,6 @@
 # reports_platform results
 
-PASS 92 · FAIL 1 · BLOCKED 12
+PASS 93 · FAIL 0 · BLOCKED 12
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -41,7 +41,7 @@ PASS 92 · FAIL 1 · BLOCKED 12
 | RP-049 | Forecast member filter (BD head) = that head's team only | PASS |  |  |
 | RP-050 | Forecast is scoped to the caller's hierarchy (BD, executive, report, L1) | PASS |  |  |
 | RP-051 | Forecast carries quarter/FY targets and attainment = won / target x 100 | PASS |  |  |
-| RP-052 | Default forecast year is the current FY (2026) for today 2026-10-11 | PASS |  |  |
+| RP-052 | Default forecast year is the current FY (2026) for today 2026-10-13 | PASS |  |  |
 | RP-053 | Invalid fy parameter is rejected (422) | PASS |  |  |
 | RP-060 | Team scorecard per rep: activities, emails, leads, SQLs, deals, won, lost, pipeline exact | PASS |  |  |
 | RP-061 | Team totals and stage conversion rates (lead->SQL, SQL->opportunity, win rate) exact | PASS |  |  |
@@ -81,7 +81,7 @@ PASS 92 · FAIL 1 · BLOCKED 12
 | RP-084b | Stale deals: no activity for N days or past close date are flagged (list filter + flag) | PASS |  |  |
 | RP-086 | In-app notifications: assignment alerts reach the new owner; mark-as-read lowers unread count | PASS |  |  |
 | RP-087 | Email notifications: preference saved and the worker's email loop processes the notification | PASS |  |  |
-| RP-087b | Email notification actually delivered to the user's mailbox | BLOCKED | env | SENDER_EMAIL is set in the worker; local stack has no mail sink - verify in UAT |
+| RP-087b | Email notification actually delivered to the user's mailbox | BLOCKED | env | SENDER_EMAIL is empty in the worker; local stack has no mail sink - verify in UAT |
 | RP-091 | Template library: merge fields fill from the contact; shared within tenant, 404 across tenants, only owner/admin may edit | PASS |  |  |
 | RP-080 | One-click lead from a campaign reply: lead linked to contact, owner and campaign; duplicate refused | PASS |  |  |
 | RP-081 | Disqualified lead keeps its reason and a recycle date (30 days) and shows in the report | PASS |  |  |
@@ -105,7 +105,7 @@ PASS 92 · FAIL 1 · BLOCKED 12
 | RP-153 | UI: team performance lists every rep with revenue won as the API | PASS |  | 12 values matched |
 | RP-154 | UI: targets & leaderboard tab shows rep targets as the API | PASS |  | 5 values matched |
 | RP-155 | UI: dashboard and every report tab render without page errors or 5xx responses | PASS |  |  |
-| RP-131 | 25 concurrent users x 60s mixed reads: 0% errors and p95 < 3 s | FAIL | defect | {"users": 25, "seconds": 60, "requests": 2799, "rps": 46.6, "p50_ms": 3, "p95_ms": 1080, "max_ms": 2962, "error_rate_pct": 56.13, "errors_sample": ["/contacts?page_size=50:exc RemoteDisconnected", "/sales-reports/funnel:exc RemoteDisconnected", "/sales-reports/leaderboard:exc RemoteDisconnected", "/opportunities?page_size=50:exc RemoteDisconnected", "/sales-reports/forecast:exc RemoteDisconnected" |
+| RP-131 | 25 concurrent users x 60s mixed reads: 0% errors and p95 < 3 s | PASS |  |  |
 | RP-140 | Login lockout (opt-in: set RP_RATELIMIT=1) | BLOCKED | env | skipped: would lock the shared client IP out of logins |
 | RP-141 | Per-IP login limit (opt-in: set RP_RATELIMIT=1) | BLOCKED | env | skipped: would lock the shared client IP out of logins |
 | RP-142 | X-Forwarded-For spoofing (opt-in: set RP_RATELIMIT=1) | BLOCKED | env | skipped: would lock the shared client IP out of logins |

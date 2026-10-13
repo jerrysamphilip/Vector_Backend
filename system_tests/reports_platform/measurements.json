@@ -1,35 +1,29 @@
 {
   "latency": {
-    "/sales-reports/dashboard": 0.112,
-    "/sales-reports/funnel": 0.024,
-    "/sales-reports/leads": 0.027,
-    "/sales-reports/pipeline": 0.021,
-    "/sales-reports/forecast": 0.057,
-    "/sales-reports/team-performance": 0.049,
-    "/sales-reports/targets": 0.038,
-    "/sales-reports/leaderboard": 0.045,
-    "/sales-reports/campaign-roi": 0.032,
-    "/opportunities": 0.042,
-    "/pipeline/revenue": 0.085
+    "/sales-reports/dashboard": 0.102,
+    "/sales-reports/funnel": 0.032,
+    "/sales-reports/leads": 0.024,
+    "/sales-reports/pipeline": 0.018,
+    "/sales-reports/forecast": 0.04,
+    "/sales-reports/team-performance": 0.032,
+    "/sales-reports/targets": 0.018,
+    "/sales-reports/leaderboard": 0.031,
+    "/sales-reports/campaign-roi": 0.022,
+    "/opportunities": 0.028,
+    "/pipeline/revenue": 0.015
   },
   "load": {
     "users": 25,
     "seconds": 60,
-    "requests": 2799,
-    "rps": 46.6,
-    "p50_ms": 3,
-    "p95_ms": 1080,
-    "max_ms": 2962,
-    "error_rate_pct": 56.13,
-    "errors_sample": [
-      "/contacts?page_size=50:exc RemoteDisconnected",
-      "/sales-reports/funnel:exc RemoteDisconnected",
-      "/sales-reports/leaderboard:exc RemoteDisconnected",
-      "/opportunities?page_size=50:exc RemoteDisconnected",
-      "/sales-reports/forecast:exc RemoteDisconnected"
-    ]
+    "requests": 2206,
+    "rps": 36.8,
+    "p50_ms": 446,
+    "p95_ms": 832,
+    "max_ms": 1387,
+    "error_rate_pct": 0.0,
+    "errors_sample": []
   },
   "lockout": null,
   "ip_limit": null,
-  "health_ms": 60
+  "health_ms": 147
 }

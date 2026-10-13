@@ -29,7 +29,7 @@ from app.models import (
     Campaign,
 )
 from app.services.ai_email_service import classify_prospect, PERSONA_DISPLAY_NAMES
-from app.services.sequence_generator import generate_sequence_with_llm
+from app.services.sequence_generator import AI_FALLBACK_NOTICE, builtin_sequence_emails, generate_sequence_with_llm
 from app.prompts.llm_system_prompts import get_sequence_generation_system_prompt
 from app.utils.email_utils import normalize_cta_link, has_effective_cta_link, finalize_email_body
 from app.utils.email_context_detector import detect_email_context, EMAIL_CONTEXT_CONFERENCE
@@ -179,6 +179,9 @@ def generate_template_for_persona(
         PersonaBlueprint.is_active == True
     ).first()
 
+    num_emails = len(sequence_steps) if sequence_steps else 4  # Default to 4
+    sequence = None
+    fallback_reason = None
     # Generate template using LLM
     try:
         # IMPORTANT: Pass ALL available placeholder tokens
@@ -206,8 +209,6 @@ def generate_template_for_persona(
         }
 
         # Call LLM if blueprint exists
-        num_emails = len(sequence_steps) if sequence_steps else 4  # Default to 4
-        sequence = None
         if blueprint:
             sequence = generate_sequence_with_llm(
                 prospect_data=prospect_data,
@@ -220,118 +221,86 @@ def generate_template_for_persona(
                 creative_email=creative_email,
                 email_context=email_context,
             )
-
-        # Process emails from sequence - only as many as user configured
-        all_emails = []
-        if sequence:
-            for i in range(1, num_emails + 1):  # email_1 through email_N
-                email_key = f"email_{i}"
-                if email_key in sequence:
-                    email_data = sequence[email_key]
-
-                    # Save each email as a template with step number
-                    template = EmailTemplate(
-                        template_id=str(uuid.uuid4()),
-                        campaign_id=campaign_id,
-                        sequence_id=step_to_seq_id.get(i), # Link to sequence
-                        designation=persona_type,
-                        subject=email_data.get("subject", ""),
-                        body=finalize_email_body(email_data.get("body", "")),
-                        cta_text=email_data.get("cta", ""),
-                        cta_link=cta_link,
-                        is_ai_generated=True,
-                        ai_model="gpt-4o-mini",
-                        model_settings={
-                            "persona": persona_type,
-                            "method": "LLM_AUTO",
-                            "step_number": i,
-                            "schedule_day": sequence_steps[i-1]["wait_days"] if sequence_steps and len(sequence_steps) >= i else (i-1)*2
-                        },
-                        generated_at=datetime.utcnow(),
-                    )
-                    db.add(template)
-
-                    # Calculate cumulative day (Day 1, then add wait_days for each subsequent step)
-                    # wait_days = delay after previous email, so we need to sum all previous wait_days
-                    cumulative_day = 1  # Start at Day 1
-                    if sequence_steps and len(sequence_steps) >= i:
-                        for step_idx in range(i):  # Sum wait_days from step 0 to current step
-                            cumulative_day += sequence_steps[step_idx].get("wait_days", 0)
-                    else:
-                        cumulative_day = 1 + (i-1) * 2  # Default: Day 1, 3, 5, 7
-
-                    schedule_label = f"Day {cumulative_day}"
-
-                    all_emails.append({
-                        "step_number": i,
-                        "template_id": template.template_id,
-                        "subject": email_data.get("subject", ""),
-                        "body": email_data.get("body", ""),
-                        "cta": email_data.get("cta", ""),
-                        "cta_link": cta_link,
-                        "schedule": schedule_label
-                    })
-
-        if all_emails:
-            return {
-                "persona_type": persona_type,
-                "persona_label": PERSONA_DISPLAY_NAMES.get(persona_type, persona_type),
-                "prospect_count": len(prospects),
-                "template": all_emails[0],  # First email for backwards compatibility
-                "all_emails": all_emails,   # All emails in sequence
-                "sequence_count": len(all_emails)
-            }
+            if not sequence:
+                fallback_reason = "AI generation unavailable"
         else:
-            # No LLM result - use fallback
-            raise Exception("No LLM result available")
-
+            fallback_reason = "No persona blueprint for AI generation"
     except Exception as e:
         print(f"Error generating template for {persona_type}: {e}")
-        # Fallback - use generic template
-        fallback_subject = f"Question for {{{{first_name}}}}"
-        fallback_body = f"""Hi {{{{first_name}}}},
-I noticed your role at {{{{company_name}}}} and thought you might be interested in {product_name}.
-"""
-        fallback_cta_text = ""
-        if cta_enabled:
-            fallback_cta_text = "Would you be open to a quick chat?"
-            fallback_body = f"{fallback_body}\n{fallback_cta_text}: {cta_link}"
-        fallback_body = f"{fallback_body}\n\nRegards,\n{{{{signature_block}}}}"
+        sequence = None
+        fallback_reason = f"AI generation failed: {e}"
 
-        fallback_template = EmailTemplate(
+    # Every configured step gets a template: the AI's copy where it produced one, otherwise a
+    # built-in starter template (D1: launch needs one template per step).
+    builtin = None
+    all_emails = []
+    fallback_steps = []
+    for i in range(1, num_emails + 1):  # email_1 through email_N
+        email_data = (sequence or {}).get(f"email_{i}") if isinstance(sequence, dict) else None
+        ai_written = isinstance(email_data, dict) and bool(email_data.get("subject") or email_data.get("body"))
+        if not ai_written:
+            if builtin is None:
+                builtin = builtin_sequence_emails(num_emails, cta_enabled, include_first_name_in_subject)
+            email_data = builtin[i - 1]
+            fallback_steps.append(i)
+
+        # Save each email as a template with step number
+        template = EmailTemplate(
             template_id=str(uuid.uuid4()),
             campaign_id=campaign_id,
-            sequence_id=step_to_seq_id.get(1), # Link to first step sequence
+            sequence_id=step_to_seq_id.get(i),  # Link to sequence
             designation=persona_type,
-            subject=fallback_subject,
-            body=finalize_email_body(fallback_body),
-            cta_text=fallback_cta_text,
+            subject=email_data.get("subject", ""),
+            body=finalize_email_body(email_data.get("body", "")),
+            cta_text=email_data.get("cta", ""),
             cta_link=cta_link,
-            is_ai_generated=False,
-            model_settings={"persona": persona_type, "method": "FALLBACK"},
+            is_ai_generated=ai_written,
+            ai_model="gpt-4o-mini" if ai_written else None,
+            model_settings={
+                "persona": persona_type,
+                "method": "LLM_AUTO" if ai_written else "BUILTIN_FALLBACK",
+                "step_number": i,
+                "schedule_day": sequence_steps[i-1]["wait_days"] if sequence_steps and len(sequence_steps) >= i else (i-1)*2
+            },
             generated_at=datetime.utcnow(),
         )
-        db.add(fallback_template)
+        db.add(template)
 
-        fallback_email = {
-            "step_number": 1,
-            "template_id": fallback_template.template_id,
-            "subject": fallback_subject,
-            "body": fallback_body,
-            "cta": fallback_cta_text,
+        # Calculate cumulative day (Day 1, then add wait_days for each subsequent step)
+        # wait_days = delay after previous email, so we need to sum all previous wait_days
+        cumulative_day = 1  # Start at Day 1
+        if sequence_steps and len(sequence_steps) >= i:
+            for step_idx in range(i):  # Sum wait_days from step 0 to current step
+                cumulative_day += sequence_steps[step_idx].get("wait_days", 0)
+        else:
+            cumulative_day = 1 + (i-1) * 2  # Default: Day 1, 3, 5, 7
+
+        all_emails.append({
+            "step_number": i,
+            "template_id": template.template_id,
+            "subject": email_data.get("subject", ""),
+            "body": email_data.get("body", ""),
+            "cta": email_data.get("cta", ""),
             "cta_link": cta_link,
-            "schedule": "Day 1",
-        }
-        return {
-            "persona_type": persona_type,
-            "persona_label": PERSONA_DISPLAY_NAMES.get(persona_type, persona_type),
-            "prospect_count": len(prospects),
-            "template_id": fallback_template.template_id,
-            "template": fallback_email,  # kept for backwards compatibility
-            "all_emails": [fallback_email],
-            "sequence_count": 1,
-            "error": str(e)
-        }
+            "schedule": f"Day {cumulative_day}",
+            "is_ai_generated": ai_written,
+        })
+
+    result = {
+        "persona_type": persona_type,
+        "persona_label": PERSONA_DISPLAY_NAMES.get(persona_type, persona_type),
+        "prospect_count": len(prospects),
+        "template_id": all_emails[0]["template_id"],
+        "template": all_emails[0],  # First email for backwards compatibility
+        "all_emails": all_emails,   # All emails in sequence
+        "sequence_count": len(all_emails),
+        "fallback_used": bool(fallback_steps),
+        "fallback_steps": fallback_steps,
+    }
+    if fallback_steps:
+        result["notice"] = AI_FALLBACK_NOTICE
+        result["error"] = fallback_reason or "AI generation returned no email for some steps"
+    return result
 
 
 def generate_templates_per_persona(
@@ -491,4 +460,7 @@ def process_prospect_list(
         "templates_generated": templates,
         "sample_prospects": sample_prospects,
         "creative_email_used": creative_email,
+        # D1: tell the wizard when starter templates stood in for AI copy
+        "ai_fallback_used": any(t.get("fallback_used") for t in templates),
+        "notice": AI_FALLBACK_NOTICE if any(t.get("fallback_used") for t in templates) else None,
     }

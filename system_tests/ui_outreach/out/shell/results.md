@@ -18,7 +18,7 @@ PASS 38 · FAIL 0 · BLOCKED 0
 | UIO-SHELL-GUARD-admin-owner | OWNER opening /vector/admin/... is redirected to Home | PASS |  |  |
 | UIO-SHELL-GUARD-admin-agent | AGENT opening /vector/admin/... is redirected to Home | PASS |  |  |
 | UIO-SHELL-GUARD-api | Server also refuses AGENT on team/inbox/campaign management endpoints (403), not just the UI | PASS |  |  |
-| UIO-SHELL-404 | Unknown routes (/app/does-not-exist, /vector/xyz, /app/campaigns/<bad id>) end on a safe page, no crash | PASS |  |  |
+| UIO-SHELL-404 | Unknown routes: /app/does-not-exist shows the 404 page (URL kept, link back Home works); /vector/xyz -> Home; /app/campaigns/<bad id> safe | PASS |  |  |
 | UIO-SHELL-HELP-01 | Help button opens panel for the current screen; Close button and Esc close it | PASS |  |  |
 | UIO-SHELL-HELP-02 | ? and F1 keyboard shortcuts toggle help; ? is ignored while typing in a field | PASS |  |  |
 | UIO-SHELL-HELP-03 | Help panel search finds articles, opens one, Back returns; "Open in Help Center" deep-links | PASS |  |  |
