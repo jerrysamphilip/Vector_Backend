@@ -1,0 +1,88 @@
+{
+  "suite": "ui_crm admin_controls",
+  "counts": {
+    "PASS": 11,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 59,
+  "cases": [
+    {
+      "id": "UIF-AC-01",
+      "title": "Lists: the pencil opens \"Edit list\"; renaming and describing a list is saved",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AC-02",
+      "title": "Contacts filtered by a list: \"Rename list\" on the List chip renames it and updates the chip",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AC-03",
+      "title": "Prospect lists: \"Rename\" on an uploaded list saves the new name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AC-04",
+      "title": "Team: \"Resend invite\" on a pending invite issues a new invitation (old one revoked) and shows the result banner",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AC-05",
+      "title": "Team: \"Hierarchy\" sets Sales level 3 reporting to an L2 manager; Reports to never offers the person themselves",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AC-06",
+      "title": "Team: a manager cannot be put under someone in their own team (descendants are not offered)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AC-07",
+      "title": "Team: inviting with Sales level 4 and Reports to stores the hierarchy for the new account",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AC-08",
+      "title": "Team: \"Team tree\" opens the read-only hierarchy (Sales team)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AC-09",
+      "title": "Domain health: \"Add domain\" validates the name, then shows the SPF / DKIM / DMARC records to publish",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AC-10",
+      "title": "DNS panel: \"Check status\" runs the diagnostics and refreshes SPF / DMARC from UNKNOWN",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-AC-11",
+      "title": "Domain card: Details -> \"DNS records\" reopens the records for that domain",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

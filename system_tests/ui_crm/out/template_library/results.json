@@ -1,0 +1,130 @@
+{
+  "suite": "ui_crm template_library",
+  "counts": {
+    "PASS": 17,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 56,
+  "cases": [
+    {
+      "id": "UIF-TL-01",
+      "title": "Sidebar Templates opens /app/templates: heading, New template button and the empty state on a new workspace",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-02",
+      "title": "Validation: empty name, then empty subject / body -> server message in the modal; nothing stored",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-03",
+      "title": "Create: merge-field buttons insert at the cursor of subject / body; row shows name, category, owner, Used 0; DB row shared",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-04",
+      "title": "Edit: modal opens pre-filled; rename + new subject -> row and DB updated",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-05",
+      "title": "Category filter lists the categories and narrows the list; search box filters by name / subject",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-06",
+      "title": "Preview: modal with the template name and sample values substituted (no {{tokens}} left)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-07",
+      "title": "Render for a real contact (API): contact values substituted, sample=false; unknown contact -> 404",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-08",
+      "title": "Usage count: two renders with count_use -> Used 2 in the list and the template sorts first",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-09",
+      "title": "AGENT sees shared templates with Preview only (no Edit / Delete); API edit / delete of an admin template -> 403",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-10",
+      "title": "AGENT creates a private template: \"private\" marker, own Edit / Delete; another agent cannot see or open it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-11",
+      "title": "Category dropdown only offers categories of templates the user can see (no category of another user's private template)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-12",
+      "title": "Admin can edit a template an AGENT shared (Edit shown, rename saved)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-13",
+      "title": "Save fails (API 500): modal stays open with the error, nothing stored",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-14",
+      "title": "Delete fails (API 500): the row stays and the user is told the delete failed",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-15",
+      "title": "List fails (API 500): an error is shown, not the \"No templates yet\" empty state",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-16",
+      "title": "Delete (confirm): row gone, DB row removed; Preview / Edit of a deleted template id via API -> 404",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-TL-17",
+      "title": "Deleting every visible template brings the empty state back",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

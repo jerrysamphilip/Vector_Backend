@@ -1,0 +1,53 @@
+{
+  "suite": "ui_crm behaviour_fixes",
+  "counts": {
+    "PASS": 6,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 37,
+  "cases": [
+    {
+      "id": "UIF-BF-01",
+      "title": "U21: Unsubscribe / Resubscribe are buttons with their own accessible names; confirm -> DB consent flips",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-BF-02",
+      "title": "Create deal from the contact record shows the linked contact (read-only) and links the deal to it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-BF-03",
+      "title": "Contact note @mention picker asks for prospect_id and offers only people who can see the contact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-BF-04",
+      "title": "Deal note @mention picker asks for opportunity_id",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-BF-05",
+      "title": "Send Now: confirm -> batches continue with a cursor until done -> one result summary (Sent/Failed/Skipped)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-BF-06",
+      "title": "Campaign wizard: when the generation response says starter templates were used, the \"AI unavailable\" notice is shown (and only then)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

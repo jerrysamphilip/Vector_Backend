@@ -1,0 +1,417 @@
+{
+  "suite": "ui_crm mobile_layout",
+  "counts": {
+    "PASS": 58,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 105,
+  "cases": [
+    {
+      "id": "UIF-MOB-01",
+      "title": "Login at phone 390x844: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-21",
+      "title": "Login at phone 390x844: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-02",
+      "title": "Home at phone 390x844: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-22",
+      "title": "Home at phone 390x844: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-03",
+      "title": "Contacts list at phone 390x844: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-23",
+      "title": "Contacts list at phone 390x844: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-04",
+      "title": "Contact record at phone 390x844: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-24",
+      "title": "Contact record at phone 390x844: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-05",
+      "title": "Campaigns list at phone 390x844: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-25",
+      "title": "Campaigns list at phone 390x844: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-06",
+      "title": "Deals at phone 390x844: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-26",
+      "title": "Deals at phone 390x844: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-07",
+      "title": "Pipeline at phone 390x844: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-27",
+      "title": "Pipeline at phone 390x844: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-08",
+      "title": "Sales reports at phone 390x844: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-28",
+      "title": "Sales reports at phone 390x844: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-09",
+      "title": "Settings (analytics dashboard) at phone 390x844: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-29",
+      "title": "Settings (analytics dashboard) at phone 390x844: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-10",
+      "title": "Help center at phone 390x844: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-30",
+      "title": "Help center at phone 390x844: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-11",
+      "title": "Webhooks at phone 390x844: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-31",
+      "title": "Webhooks at phone 390x844: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-12",
+      "title": "Contact scoring settings at phone 390x844: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-32",
+      "title": "Contact scoring settings at phone 390x844: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-41",
+      "title": "Login at tablet 768x1024: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-61",
+      "title": "Login at tablet 768x1024: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-42",
+      "title": "Home at tablet 768x1024: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-62",
+      "title": "Home at tablet 768x1024: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-43",
+      "title": "Contacts list at tablet 768x1024: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-63",
+      "title": "Contacts list at tablet 768x1024: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-44",
+      "title": "Contact record at tablet 768x1024: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-64",
+      "title": "Contact record at tablet 768x1024: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-45",
+      "title": "Campaigns list at tablet 768x1024: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-65",
+      "title": "Campaigns list at tablet 768x1024: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-46",
+      "title": "Deals at tablet 768x1024: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-66",
+      "title": "Deals at tablet 768x1024: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-47",
+      "title": "Pipeline at tablet 768x1024: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-67",
+      "title": "Pipeline at tablet 768x1024: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-48",
+      "title": "Sales reports at tablet 768x1024: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-68",
+      "title": "Sales reports at tablet 768x1024: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-49",
+      "title": "Settings (analytics dashboard) at tablet 768x1024: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-69",
+      "title": "Settings (analytics dashboard) at tablet 768x1024: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-50",
+      "title": "Help center at tablet 768x1024: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-70",
+      "title": "Help center at tablet 768x1024: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-51",
+      "title": "Webhooks at tablet 768x1024: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-71",
+      "title": "Webhooks at tablet 768x1024: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-52",
+      "title": "Contact scoring settings at tablet 768x1024: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-72",
+      "title": "Contact scoring settings at tablet 768x1024: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-81",
+      "title": "Navigation reachable at phone 390px: menu toggle opens the nav (or the sidebar link is on screen) and navigates",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-82",
+      "title": "Navigation reachable at tablet 768px: menu toggle opens the nav (or the sidebar link is on screen) and navigates",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-83",
+      "title": "Phone 390px: the page content keeps at least 70% of the width (the sidebar collapses)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-84",
+      "title": "Tablet 768px: the page content keeps at least 60% of the width",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-85",
+      "title": "Add contact modal at phone 390x844: fits the viewport, its main button is on screen",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-86",
+      "title": "Add contact modal at tablet 768x1024: fits the viewport, its main button is on screen",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-87",
+      "title": "New opportunity modal at phone 390x844: fits the viewport, its main button is on screen",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-88",
+      "title": "New opportunity modal at tablet 768x1024: fits the viewport, its main button is on screen",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-89",
+      "title": "Change password modal at phone 390x844: fits the viewport, its main button is on screen",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-90",
+      "title": "Change password modal at tablet 768x1024: fits the viewport, its main button is on screen",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

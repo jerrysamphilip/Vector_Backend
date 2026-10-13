@@ -1,0 +1,158 @@
+{
+  "suite": "ui_crm session_auth",
+  "counts": {
+    "PASS": 21,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 53,
+  "cases": [
+    {
+      "id": "UIF-SESS-01",
+      "title": "Signed out: /app/dashboard redirects to /login and shows no workspace data",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-02",
+      "title": "Signed out: /app/contacts redirects to /login and shows no workspace data",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-03",
+      "title": "Signed out: /app/contacts/06f1db77-bcb5-41f2-a327-ac1250e3b323 redirects to /login and shows no workspace data",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-04",
+      "title": "Signed out: /app/deals redirects to /login and shows no workspace data",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-05",
+      "title": "Signed out: /app/templates redirects to /login and shows no workspace data",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-06",
+      "title": "Signed out: /app/settings redirects to /login and shows no workspace data",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-07",
+      "title": "Signed out: /app/webhooks redirects to /login and shows no workspace data",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-08",
+      "title": "Signed out: /admin redirects to /login and shows no workspace data",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-11",
+      "title": "Signing in after the redirect returns to the page that was requested (/app/deals)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-12",
+      "title": "API without credentials -> 401 (no cookie, garbage bearer, tampered token)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-13",
+      "title": "Access cookie expires mid-use: navigating to Contacts refreshes silently (one POST /auth/refresh 200), page stays and shows data",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-14",
+      "title": "Access cookie expires while a form is open: submit is retried after the refresh with the new X-CSRF-Token; contact saved, no login page",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-15",
+      "title": "Several parallel 401s (full reload of a contact record without the access cookie) share ONE refresh; the record renders",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-16",
+      "title": "CSRF: a cookie-authenticated POST without / with a wrong X-CSRF-Token -> 403, nothing created; GET needs no token",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-17",
+      "title": "Signed-in user opening /login is sent to /app/dashboard",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-18",
+      "title": "Session fully expired (access cookie gone, refresh token revoked): next action ends on /login with the stored user cleared",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-19",
+      "title": "After a session expiry, signing in again returns to the page the user was on (not the dashboard)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-20",
+      "title": "Sign out (profile menu): /login, stored user cleared, auth cookies removed, the refresh token is revoked",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-21",
+      "title": "Back button after sign-out does not show the contact record (stays on / returns to /login)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-22",
+      "title": "The access token captured before sign-out no longer works afterwards",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-SESS-23",
+      "title": "Sign out in one tab: the other tab of the same browser ends on /login at its next action and shows no data",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

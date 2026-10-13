@@ -1,13 +1,11 @@
 {
   "suite": "UI outreach/admin",
   "counts": {
-    "PASS": 195,
-    "FAIL": 1,
+    "PASS": 196,
+    "FAIL": 0,
     "BLOCKED": 0
   },
-  "failuresByCategory": {
-    "defect-backend": 1
-  },
+  "failuresByCategory": {},
   "cases": [
     {
       "id": "UIO-AUTH-01",
@@ -1029,9 +1027,9 @@
     {
       "id": "UIO-WIZ-05",
       "title": "Process & Generate (LLM absent): templates generated for EVERY sequence step (2 emails)",
-      "status": "FAIL",
-      "category": "defect-backend",
-      "detail": "1 template(s) stored for a 2-step sequence (follow-up step has no content)",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "wizard",
       "note": "POST /campaigns/{id}/generations with a 2-step sequence stores 1 template (follow-up step has no content) when the LLM is absent; launch then proceeds. app/routers/campaign_wizard_router.py:~300-330 -> services (generate for list). Evidence: email_sequences=2, email_templates=1 for the campaign."
     },

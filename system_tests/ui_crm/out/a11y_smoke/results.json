@@ -1,0 +1,473 @@
+{
+  "suite": "ui_crm a11y_smoke",
+  "counts": {
+    "PASS": 66,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 174,
+  "cases": [
+    {
+      "id": "UIF-A11Y-01",
+      "title": "Login: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-21",
+      "title": "Login: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-61",
+      "title": "Login: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-02",
+      "title": "Home: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-22",
+      "title": "Home: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-62",
+      "title": "Home: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-03",
+      "title": "Contacts list: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-23",
+      "title": "Contacts list: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-63",
+      "title": "Contacts list: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-04",
+      "title": "Contact record: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-24",
+      "title": "Contact record: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-64",
+      "title": "Contact record: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-05",
+      "title": "Campaigns list: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-25",
+      "title": "Campaigns list: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-65",
+      "title": "Campaigns list: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-06",
+      "title": "Deals: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-26",
+      "title": "Deals: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-66",
+      "title": "Deals: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-07",
+      "title": "Pipeline: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-27",
+      "title": "Pipeline: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-67",
+      "title": "Pipeline: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-08",
+      "title": "Sales reports: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-28",
+      "title": "Sales reports: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-68",
+      "title": "Sales reports: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-09",
+      "title": "Settings (analytics dashboard): every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-29",
+      "title": "Settings (analytics dashboard): exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-69",
+      "title": "Settings (analytics dashboard): Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-10",
+      "title": "Help center: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-30",
+      "title": "Help center: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-70",
+      "title": "Help center: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-11",
+      "title": "Webhooks: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-31",
+      "title": "Webhooks: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-71",
+      "title": "Webhooks: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-12",
+      "title": "Contact scoring settings: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-32",
+      "title": "Contact scoring settings: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-72",
+      "title": "Contact scoring settings: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-13",
+      "title": "Template library: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-33",
+      "title": "Template library: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-73",
+      "title": "Template library: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-14",
+      "title": "Tasks: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-34",
+      "title": "Tasks: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-15",
+      "title": "Companies: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-35",
+      "title": "Companies: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-16",
+      "title": "Leads: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-36",
+      "title": "Leads: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-76",
+      "title": "Leads: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-17",
+      "title": "Sales settings: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-37",
+      "title": "Sales settings: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-77",
+      "title": "Sales settings: Tab from the top of the page reaches the primary action",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-18",
+      "title": "Account security: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-38",
+      "title": "Account security: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-41",
+      "title": "Add contact modal: role=dialog named by its title, aria-modal=\"true\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-42",
+      "title": "Add contact modal: focus moves into the dialog and Tab / Shift+Tab stay inside it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-43",
+      "title": "Add contact modal: Escape closes it and focus returns to the control that opened it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-44",
+      "title": "New opportunity modal: role=dialog named by its title, aria-modal=\"true\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-45",
+      "title": "New opportunity modal: focus moves into the dialog and Tab / Shift+Tab stay inside it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-46",
+      "title": "New opportunity modal: Escape closes it and focus returns to the control that opened it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-47",
+      "title": "Change password modal: role=dialog named by its title, aria-modal=\"true\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-48",
+      "title": "Change password modal: focus moves into the dialog and Tab / Shift+Tab stay inside it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-49",
+      "title": "Change password modal: Escape closes it and focus returns to the control that opened it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-50",
+      "title": "New template modal: role=dialog named by its title, aria-modal=\"true\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-51",
+      "title": "New template modal: focus moves into the dialog and Tab / Shift+Tab stay inside it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-52",
+      "title": "New template modal: Escape closes it and focus returns to the control that opened it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-53",
+      "title": "Add webhook endpoint modal: role=dialog named by its title, aria-modal=\"true\"",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-54",
+      "title": "Add webhook endpoint modal: focus moves into the dialog and Tab / Shift+Tab stay inside it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-55",
+      "title": "Add webhook endpoint modal: Escape closes it and focus returns to the control that opened it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

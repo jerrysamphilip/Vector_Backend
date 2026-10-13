@@ -5,7 +5,7 @@
     "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 10,
+  "seconds": 13,
   "cases": [
     {
       "id": "UIO-DET-01",

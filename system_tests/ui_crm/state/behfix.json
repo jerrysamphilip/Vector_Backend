@@ -1,0 +1,22 @@
+{
+ "tenantId": "41f39158-67cd-4ab1-a1a7-4be2e546a504",
+ "rid": "693da1",
+ "label": "behfix",
+ "users": {
+  "owner": {
+   "userId": "28338f0c-e513-44f5-b416-87d9af8664eb",
+   "email": "owner-693da1@uitest.example",
+   "first": "Owner"
+  },
+  "aaron": {
+   "userId": "b94d532b-a041-4cc1-9f1b-e9a7ef5b14d5",
+   "email": "aaron-693da1@uitest.example",
+   "first": "Aaron"
+  },
+  "zed": {
+   "userId": "5908950b-3eb9-47b7-9dfc-0f8a715326ef",
+   "email": "zed-693da1@uitest.example",
+   "first": "Zed"
+  }
+ }
+}

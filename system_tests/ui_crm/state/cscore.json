@@ -1,0 +1,17 @@
+{
+ "tenantId": "e9a91aff-f4e4-402f-a82b-07549c6b256b",
+ "rid": "facb7c",
+ "label": "cscore",
+ "users": {
+  "owner": {
+   "userId": "84ca6843-0235-4965-a2e6-8e5efd59bae9",
+   "email": "owner-facb7c@uitest.example",
+   "first": "Owner"
+  },
+  "ari": {
+   "userId": "9844e358-d7af-44f5-b960-a8ebab3c6061",
+   "email": "ari-facb7c@uitest.example",
+   "first": "Ari"
+  }
+ }
+}

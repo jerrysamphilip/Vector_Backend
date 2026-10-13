@@ -1,11 +1,11 @@
 {
   "suite": "ui_crm (CRM + Sales functional UI)",
   "counts": {
-    "PASS": 164,
-    "FAIL": 1,
+    "PASS": 165,
+    "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 621,
+  "seconds": 684,
   "cases": [
     {
       "id": "UIC-CON-01",
@@ -1122,10 +1122,10 @@
     },
     {
       "id": "UIC-NF-07",
-      "title": "Mentioning an AGENT who does not own the contact: the notification link should open a record they can see",
-      "status": "FAIL",
-      "category": "defect-backend",
-      "detail": "[@mention lets you pick any active user (app/services/mentions.py mentionable_users/validate: 'Any active user of the workspace can be mentioned'), but an AGENT only sees own contacts: the MENTION notification links to /app/contacts/{id}, GET /contacts/{id} -> 404 and the page says 'Contact not found'. Either limit the picker/validation to users who can see the record or grant read access via the mention.] mentioned agent cannot open the record: GET /contacts/{id} -> 404, page shows \"Contact not"
+      "title": "Mentioning an AGENT who cannot see the contact is refused (400) and creates no notification; the picker does not offer them",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "UIC-NF-08",

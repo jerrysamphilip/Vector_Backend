@@ -1,0 +1,22 @@
+{
+ "tenantId": "1d8da67f-1e37-4765-8ad0-4e4c5d5f5446",
+ "rid": "e989da",
+ "label": "discappr",
+ "users": {
+  "owner": {
+   "userId": "faab5366-290a-4288-a8a8-0ced19d0114a",
+   "email": "owner-e989da@uitest.example",
+   "first": "Owner"
+  },
+  "mona": {
+   "userId": "e2722cbf-0de7-41f5-8691-48ebdbd00d81",
+   "email": "mona-e989da@uitest.example",
+   "first": "Mona"
+  },
+  "remy": {
+   "userId": "099e2abc-c170-4a3a-9ae6-c35b8118b683",
+   "email": "remy-e989da@uitest.example",
+   "first": "Remy"
+  }
+ }
+}

@@ -1,0 +1,17 @@
+{
+ "tenantId": "010e67ae-9b8f-451e-af1a-8a42d522fdca",
+ "rid": "20f698",
+ "label": "padmin",
+ "users": {
+  "owner": {
+   "userId": "96712f99-d3ea-4d7d-9644-3c15cbb83970",
+   "email": "owner-20f698@uitest.example",
+   "first": "Owner"
+  },
+  "pat": {
+   "userId": "8a071cbe-5eb5-49f7-8841-28479a1372d5",
+   "email": "pat-20f698@uitest.example",
+   "first": "Pat"
+  }
+ }
+}

@@ -1,0 +1,22 @@
+{
+ "tenantId": "7a784966-fe4c-49ea-a9e5-01a6c6f21496",
+ "rid": "dc6df6",
+ "label": "admctl",
+ "users": {
+  "owner": {
+   "userId": "9e5906cb-39d2-4e31-91e0-d4bcb9a25587",
+   "email": "owner-dc6df6@uitest.example",
+   "first": "Owner"
+  },
+  "marta": {
+   "userId": "59567feb-1999-4e67-bc57-6875e6607ebf",
+   "email": "marta-dc6df6@uitest.example",
+   "first": "Marta"
+  },
+  "rafael": {
+   "userId": "3b545387-af29-4e5d-a1ac-bbc66934dcba",
+   "email": "rafael-dc6df6@uitest.example",
+   "first": "Rafael"
+  }
+ }
+}

@@ -95,7 +95,9 @@ export async function run(rec, browser) {
     const list = p.getByRole('listbox', { name: 'Mention a colleague' });
     await list.waitFor({ timeout: 8000 });
     const names = (await list.getByRole('option').allInnerTexts()).map(s => s.split('\n')[0].trim());
-    ok(names.includes('Bianca Test') && names.includes('Bram Test'), 'picker lists matching colleagues: ' + names.join(','));
+    // only colleagues who can see this contact are offered (mentions.mentionable_users check_owner): Bram is a
+    // MANAGER outside the owner's sales hierarchy, so he cannot open the owner's contact and is not listed
+    ok(names.includes('Bianca Test') && !names.includes('Bram Test'), 'picker lists matching colleagues who can see the record: ' + names.join(','));
     eq(await ta.getAttribute('aria-expanded'), 'true', 'textarea aria-expanded');
     // keyboard: move down through the list until Bianca is active, then Enter
     for (let i = 0; i < names.length; i++) {
@@ -138,21 +140,14 @@ export async function run(rec, browser) {
     ok(await pb.getByRole('button', { name: /^Notifications$/ }).isVisible(), 'badge cleared');
   }, { u: B });
 
-  await tc(rec, 'UIC-NF-07', 'Mentioning an AGENT who does not own the contact: the notification link should open a record they can see', async () => {
-    // Any active user can be mentioned (app/services/mentions.py); agents only see their own contacts.
-    await must(t.token, 'POST', `/contacts/${id}/activities`, { activity_type: 'NOTE', body: `@Aaron Test FYI ${t.rid}`, mentioned_user_ids: [aaron.userId] });
-    eq(dbn(`SELECT COUNT(*) FROM notifications WHERE user_id='${aaron.userId}' AND kind='MENTION'`), 1, 'agent notified');
-    const G = await ui(browser, aaron);
-    try {
-      await go(G, 'dashboard');
-      await G.page.getByRole('button', { name: /^Notifications, 1 unread$/ }).click();
-      await G.page.getByRole('button', { name: /mentioned you in a note on Cara Companies/ }).click();
-      await G.page.waitForURL(new RegExp(`/app/contacts/${id}$`), { timeout: 8000 }); await settle(G, 800);
-      const api = (await call(await t.tk('aaron'), 'GET', `/contacts/${id}`)).status;
-      const notFound = await G.page.getByText('Contact not found').isVisible();
-      G.w.drain();
-      ok(!notFound && api === 200, `mentioned agent cannot open the record: GET /contacts/{id} -> ${api}, page shows "Contact not found"`);
-    } finally { await G.ctx.close(); }
+  await tc(rec, 'UIC-NF-07', 'Mentioning an AGENT who cannot see the contact is refused (400) and creates no notification; the picker does not offer them', async () => {
+    // mentions.validate(check_owner): a notification linking to a record the person cannot open would only lead to a 404
+    const r = await call(t.token, 'POST', `/contacts/${id}/activities`, { activity_type: 'NOTE', body: `@Aaron Test FYI ${t.rid}`, mentioned_user_ids: [aaron.userId] });
+    eq(r.status, 400, 'mention of an agent who cannot see the record');
+    ok(/cannot see this record/.test(JSON.stringify(r.data || r.body || '')), 'error explains why: ' + JSON.stringify(r.data || r.body || '').slice(0, 200));
+    eq(dbn(`SELECT COUNT(*) FROM notifications WHERE user_id='${aaron.userId}' AND kind='MENTION'`), 0, 'agent not notified');
+    const opts = await must(t.token, 'GET', `/contacts/mentionable-users?q=Aaron&prospect_id=${id}`);
+    ok(!JSON.stringify(opts).includes(aaron.userId), 'picker does not offer the agent');
   });
 
   // ---------- (3) KPI cards ----------
@@ -230,7 +225,9 @@ export async function run(rec, browser) {
     await p.waitForURL(/\/app\/deals\/[0-9a-f-]{36}$/, { timeout: 10000 });
     const did = p.url().split('/').pop();
     eq(sql(`SELECT CONCAT_WS('|',prospect_id,account_id,ROUND(amount),owner_id) FROM opportunities WHERE opportunity_id='${did}'`), `${id}|${alpha.account_id}|25000|${t.owner.userId}`, 'deal row');
-    ok(await p.getByRole('link', { name: 'Cara Companies' }).first().isVisible(), 'deal page links the contact');
+    const contactLink = p.getByRole('link', { name: 'Cara Companies' }).first();
+    await contactLink.waitFor({ timeout: 10000 }).catch(() => {});   // the deal page loads after the redirect
+    ok(await contactLink.isVisible(), 'deal page links the contact');
   }, { u: A });
 
   await tc(rec, 'UIC-NF-11', 'AccountDetail shows the Deals section (count, total, deal link); a company without deals shows the empty state', async () => {

@@ -1,0 +1,12 @@
+{
+ "tenantId": "2e3fc34a-1fa8-4ff7-83bc-5ecd10bc7ca1",
+ "rid": "e4ae53",
+ "label": "session",
+ "users": {
+  "owner": {
+   "userId": "291ba3b3-20ed-4013-9f34-1d0bcf1d8265",
+   "email": "owner-e4ae53@uitest.example",
+   "first": "Owner"
+  }
+ }
+}

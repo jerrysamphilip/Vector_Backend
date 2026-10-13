@@ -593,7 +593,9 @@ export async function run(rec, browser) {
     const wantPhone = keepIsA ? '+14155550222' : '+14155550111';
     const phoneRow = m.locator('tr').filter({ hasText: /^Phone/ });
     await phoneRow.locator('label').filter({ hasText: wantPhone }).getByRole('radio').check();
-    await m.getByRole('button', { name: /^Merge 1/ }).click(); await settle(A, 1000);
+    const merged = p.waitForResponse(r => /\/contacts\/merge/.test(r.url()) && r.request().method() === 'POST', { timeout: 15000 });
+    await m.getByRole('button', { name: /^Merge 1/ }).click();
+    await merged; await settle(A, 500);   // read the DB only after the merge request has committed
     const keptId = a.prospect_id;
     const keeper = sql(`SELECT CONCAT_WS('|',phone,deleted_at IS NULL) FROM prospects WHERE prospect_id IN ('${keptId}','${bId}') AND deleted_at IS NULL`);
     const survivors = dbn(`SELECT COUNT(*) FROM prospects WHERE prospect_id IN ('${keptId}','${bId}') AND deleted_at IS NULL`);
