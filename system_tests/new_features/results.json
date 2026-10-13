@@ -1,0 +1,298 @@
+{
+  "suite": "new_features",
+  "counts": {
+    "PASS": 40,
+    "FAIL": 0,
+    "BLOCKED": 1
+  },
+  "seconds": 9.2,
+  "cases": [
+    {
+      "id": "NF-001",
+      "title": "A contact with one company lists it as the primary link",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-002",
+      "title": "Add a second company with a label",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-003",
+      "title": "Linking the same company twice is 409",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-004",
+      "title": "Another workspace's company is rejected (400/403/404/422)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-005",
+      "title": "Label over 100 characters is 422",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-006",
+      "title": "Contact detail returns both companies with labels",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-007",
+      "title": "Contact list filtered by a linked (non-primary) company finds the contact",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-008",
+      "title": "Company page lists the associated contact with its label",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-009",
+      "title": "Make the second company primary and relabel it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-010",
+      "title": "Removing the primary company without a replacement is refused (400)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-011",
+      "title": "Removing the primary with a replacement works",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-012",
+      "title": "Property history records company association changes",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-013",
+      "title": "An agent who cannot see the contact cannot link companies (403/404)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-014",
+      "title": "Merging contacts moves the duplicate's company links to the survivor",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-020",
+      "title": "A note with a mention is accepted",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-021",
+      "title": "The mentioned colleague gets a MENTION notification",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-022",
+      "title": "The author is not notified of their own mention",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-023",
+      "title": "Mentioning a user id that does not exist is 400",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-024",
+      "title": "Mentioning a user from another workspace is 400",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-025",
+      "title": "More than 20 mentions is rejected (400/422)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-026",
+      "title": "Mentions are only allowed on notes (400)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-027",
+      "title": "Mentionable-users lists active colleagues matching the search",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-028",
+      "title": "Contact timeline returns the mentions on the note",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-040",
+      "title": "SQL-to-win returns the documented fields",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-041",
+      "title": "SQL-to-win over an empty period is 200 with zero rate, not an error",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-042",
+      "title": "SQL-to-win with a bad date is 422",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-043",
+      "title": "Forecast accuracy returns history list and average",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-044",
+      "title": "Unknown period type is 422",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-045",
+      "title": "An agent cannot take a forecast snapshot (403)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-046",
+      "title": "An admin can take a forecast snapshot",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-047",
+      "title": "The snapshot is stored for the workspace",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-048",
+      "title": "SQL-to-win equals the value computed from the database for a built dataset",
+      "status": "BLOCKED",
+      "category": "test-gap",
+      "detail": "needs lead qualification flow details; covered by the E2E journeys and the developer's pytest tests"
+    },
+    {
+      "id": "NF-060",
+      "title": "Purge ignores a contact that is not in the recycle bin",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-061",
+      "title": "An agent without manage_prospects cannot purge (403)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-062",
+      "title": "Another workspace cannot purge it",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-063",
+      "title": "Purging a deleted contact removes it and writes an audit row",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-064",
+      "title": "Import history needs manage_prospects (403 for a plain agent)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-065",
+      "title": "Deleting an already inactive user again is 404",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-066",
+      "title": "A property with a duplicate label is 409",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-067",
+      "title": "Oversize value gives 422/409, never 500",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "NF-068",
+      "title": "NUL character is rejected with 422",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

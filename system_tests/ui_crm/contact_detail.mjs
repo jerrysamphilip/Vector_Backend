@@ -17,7 +17,7 @@ export async function run(rec, browser) {
   await tc(rec, 'UIC-CD-01', 'Record page renders header, stats, 3 columns of cards', async () => {
     await go(A, `contacts/${id}`);
     await p.getByRole('heading', { name: 'Dana Detail' }).waitFor();
-    for (const h of ['About this contact', 'Details', 'Activity', 'Sales', 'Company', 'Tasks', 'Lists', 'Campaigns']) ok(await p.getByRole('heading', { name: new RegExp(`^${h}`) }).first().isVisible(), `card ${h}`);
+    for (const h of ['About this contact', 'Details', 'Activity', 'Sales', 'Companies', 'Tasks', 'Lists', 'Campaigns']) ok(await p.getByRole('heading', { name: new RegExp(`^${h}`) }).first().isVisible(), `card ${h}`);
     for (const s of ['Emails sent', 'Opened', 'Replies', 'Calls', 'Meetings', 'Open tasks']) ok(await p.getByText(s, { exact: true }).first().isVisible(), `stat ${s}`);
     ok(await p.getByText(c.email).first().isVisible(), 'email');
     ok(await p.getByText('Buyer').first().isVisible() && await p.getByText('Detail Co').first().isVisible(), 'title + company');

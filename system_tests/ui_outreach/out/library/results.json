@@ -5,7 +5,7 @@
     "FAIL": 1,
     "BLOCKED": 0
   },
-  "seconds": 40,
+  "seconds": 59,
   "cases": [
     {
       "id": "UIO-TPL-01",
@@ -68,7 +68,7 @@
       "title": "Create \"Pause Campaign\" rule (offered in the Action dropdown) succeeds",
       "status": "FAIL",
       "category": "defect",
-      "detail": "UI offers Pause Campaign but POST /automation-rules/ rejects action_type PAUSE_CAMPAIGN (422); user only sees \"Failed to create rule. Please check the fields.\""
+      "detail": "locator.selectOption: Timeout 12000ms exceeded."
     },
     {
       "id": "UIO-AUTO-03",

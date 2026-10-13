@@ -41,7 +41,7 @@ PASS 93 · FAIL 0 · BLOCKED 12
 | RP-049 | Forecast member filter (BD head) = that head's team only | PASS |  |  |
 | RP-050 | Forecast is scoped to the caller's hierarchy (BD, executive, report, L1) | PASS |  |  |
 | RP-051 | Forecast carries quarter/FY targets and attainment = won / target x 100 | PASS |  |  |
-| RP-052 | Default forecast year is the current FY (2026) for today 2026-10-12 | PASS |  |  |
+| RP-052 | Default forecast year is the current FY (2026) for today 2026-10-13 | PASS |  |  |
 | RP-053 | Invalid fy parameter is rejected (422) | PASS |  |  |
 | RP-060 | Team scorecard per rep: activities, emails, leads, SQLs, deals, won, lost, pipeline exact | PASS |  |  |
 | RP-061 | Team totals and stage conversion rates (lead->SQL, SQL->opportunity, win rate) exact | PASS |  |  |

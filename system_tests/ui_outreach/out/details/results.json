@@ -1,11 +1,11 @@
 {
   "suite": "UI outreach/admin - details",
   "counts": {
-    "PASS": 9,
-    "FAIL": 0,
+    "PASS": 8,
+    "FAIL": 1,
     "BLOCKED": 0
   },
-  "seconds": 35,
+  "seconds": 42,
   "cases": [
     {
       "id": "UIO-DET-01",
@@ -59,9 +59,9 @@
     {
       "id": "UIO-DET-08",
       "title": "Send Now: confirm dialog, then result summary dialog; cancel path sends nothing",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "no result dialog: confirm: ⚠️ Force Send Now?\n\nThis will bypass all schedules/office hours and immediately send the next email to all queued prospects.\n\nAre you sure?"
     },
     {
       "id": "UIO-DET-09",

@@ -1,11 +1,11 @@
 {
   "suite": "Outreach (BR-DF / \u00a75.3 / \u00a77)",
   "counts": {
-    "PASS": 98,
-    "FAIL": 5,
+    "PASS": 100,
+    "FAIL": 3,
     "BLOCKED": 0
   },
-  "seconds": 503.2,
+  "seconds": 479.8,
   "cases": [
     {
       "id": "OUT-001",
@@ -446,7 +446,7 @@
       "title": "Every domain that sent in the last 24h had its health recomputed within the last hour",
       "status": "FAIL",
       "category": "defect",
-      "detail": "stale=[] missing_rows=[['recipients-0283b0.example'], ['golf-fc83a4.example'], ['foxtrot-fc83a4.example'], ['delta-fc83a4.example'], ['echo-fc83a4.example']]"
+      "detail": "stale=[] missing_rows=[['cswac0ef14617.example.com'], ['cswba047529e8.example.com'], ['cswaed00418d4.example.com'], ['cswb2e23d5961.example.com'], ['golf-8afcb4.example']]"
     },
     {
       "id": "OUT-078",
@@ -472,9 +472,9 @@
     {
       "id": "OUT-031",
       "title": "Configured pace (100 new contacts/day) spreads 500 contacts over 5 business days",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "per day: [['2026-11-02', '200'], ['2026-11-03', '100'], ['2026-11-04', '100'], ['2026-11-05', '100']]"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "OUT-032",
@@ -502,7 +502,7 @@
       "title": "Prospect reply is fetched and shown in the unified inbox thread",
       "status": "FAIL",
       "category": "defect",
-      "detail": "sync 200 {'status': 'success', 'message': 'IMAP sync for last 7 days completed.', 'inbox': 'replies-1db48a@reply-1db48a.example', 'imap_host': '172.18.0.1', 'last_sync_at': '2026-10-12T13:18:32'}; conversation=[{'id': '0fb34669-35a7-4201-998a-fdb0fcda3330', 'prospect_id': '331930d3-90ac-4013-bd51-b53c355d94ab', 'prospect_name': 'Pat Test', 'prospect_email': 'rep1-1db48a@acme-1db48a.example', 'inbox_email': 'replies-1db48a@reply-1db48a.example', 'subject': 'Re: hello', 'last_message_snippet': '<p"
+      "detail": "sync 200 {'status': 'success', 'message': 'IMAP sync for last 7 days completed.', 'inbox': 'replies-ea8e6b@reply-ea8e6b.example', 'imap_host': '172.18.0.1', 'last_sync_at': '2026-10-13T06:11:05'}; conversation=[{'id': '112eb79a-232e-4d39-b46e-1621e618905e', 'prospect_id': 'f019bc61-7e12-4435-aed8-af0c37d0a2f0', 'prospect_name': 'Pat Test', 'prospect_email': 'rep1-ea8e6b@acme-ea8e6b.example', 'inbox_email': 'replies-ea8e6b@reply-ea8e6b.example', 'subject': 'Re: hello', 'last_message_snippet': '<p"
     },
     {
       "id": "OUT-053",
@@ -633,9 +633,9 @@
     {
       "id": "OUT-119",
       "title": "Campaign analytics reflect sent emails and events",
-      "status": "FAIL",
-      "category": "defect",
-      "detail": "200 db_sent=7 total_sent=5 metrics={\"sent_count\": 5, \"opened_count\": 1, \"clicked_count\": 1, \"replied_count\": 0, \"positive_replied_count\": 0, \"ooo_count\": 0, \"bounced_count\": 1, \"sender_bounced_count\": 1, \"unsubscribed_count\": 1, \"open_"
+      "status": "PASS",
+      "category": "",
+      "detail": ""
     },
     {
       "id": "OUT-120",

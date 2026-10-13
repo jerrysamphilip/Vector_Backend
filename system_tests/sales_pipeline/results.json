@@ -1,11 +1,11 @@
 {
   "suite": "Sales hierarchy, daily limit, leads & pipeline (BRD 5.4-5.7)",
   "counts": {
-    "PASS": 92,
-    "FAIL": 4,
+    "PASS": 93,
+    "FAIL": 3,
     "BLOCKED": 0
   },
-  "seconds": 721.8,
+  "seconds": 549.6,
   "cases": [
     {
       "id": "SP-001",
@@ -598,16 +598,16 @@
     {
       "id": "SP-139",
       "title": "Worker: 501st new contact's first email is held (QUEUED, DAILY_NEW_CONTACT_LIMIT) and rescheduled to tomorrow",
-      "status": "FAIL",
+      "status": "PASS",
       "category": "defect",
-      "detail": "row=QUEUED|-|2026-10-12|-"
+      "detail": ""
     },
     {
       "id": "SP-140",
       "title": "Worker: a follow-up for the same user at the limit is not held by the daily limit (it proceeds to send)",
       "status": "FAIL",
       "category": "test-issue",
-      "detail": "follow-up never processed within 120 s: QUEUED|-|2026-10-12|-"
+      "detail": "follow-up never processed within 120 s: SENDING|SSL validation failed for https://email.us-east-1.|2026-10-13|-"
     },
     {
       "id": "SP-141",

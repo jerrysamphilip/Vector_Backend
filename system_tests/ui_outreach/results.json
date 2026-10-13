@@ -1,12 +1,13 @@
 {
   "suite": "UI outreach/admin",
   "counts": {
-    "PASS": 193,
-    "FAIL": 3,
+    "PASS": 192,
+    "FAIL": 4,
     "BLOCKED": 0
   },
   "failuresByCategory": {
-    "defect-backend": 3
+    "unclassified": 2,
+    "defect-backend": 2
   },
   "cases": [
     {
@@ -525,9 +526,9 @@
     {
       "id": "UIO-SHELL-404",
       "title": "Unknown routes (/app/does-not-exist, /vector/xyz, /app/campaigns/<bad id>) end on a safe page, no crash",
-      "status": "PASS",
-      "category": "",
-      "detail": "",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "unknown /app route -> http://localhost:8190/vector/app/does-not-exist",
       "suite": "shell",
       "note": ""
     },
@@ -1164,9 +1165,9 @@
     {
       "id": "UIO-DET-08",
       "title": "Send Now: confirm dialog, then result summary dialog; cancel path sends nothing",
-      "status": "PASS",
-      "category": "",
-      "detail": "",
+      "status": "FAIL",
+      "category": "unclassified",
+      "detail": "no result dialog: confirm: ⚠️ Force Send Now?\n\nThis will bypass all schedules/office hours and immediately send the next email to all queued prospects.\n\nAre you sure?",
       "suite": "details",
       "note": ""
     },
@@ -1256,7 +1257,7 @@
       "title": "Create \"Pause Campaign\" rule (offered in the Action dropdown) succeeds",
       "status": "FAIL",
       "category": "defect-backend",
-      "detail": "UI offers Pause Campaign but POST /automation-rules/ rejects action_type PAUSE_CAMPAIGN (422); user only sees \"Failed to create rule. Please check the fields.\"",
+      "detail": "locator.selectOption: Timeout 12000ms exceeded.",
       "suite": "library",
       "note": "UI Action dropdown offers PAUSE_CAMPAIGN but ActionType enum (app/models/automation_rule.py:21-25) has only SEND_EMAIL/CHANGE_CAMPAIGN_STEP/PAUSE_PROSPECT/MARK_INTERESTED -> POST /automation-rules/ 422; UI shows only 'Failed to create rule' (UI/API contract mismatch; fix either side)."
     },
@@ -1443,9 +1444,9 @@
     {
       "id": "UIO-MBX-06",
       "title": "Settings tab: change daily limit / delay and Save Settings persists to DB; invalid value rejected",
-      "status": "FAIL",
-      "category": "defect-backend",
-      "detail": "negative limit stored",
+      "status": "PASS",
+      "category": "",
+      "detail": "",
       "suite": "mailboxes",
       "note": "PUT /inboxes/{id} accepts negative max_emails_per_day/daily_limit (200, stored -5/-3); app/routers/inbox_router.py update + schemas/inbox_schema.py lack ge=0/1 validation; UI number input has no min either."
     },

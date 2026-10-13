@@ -8,6 +8,13 @@
   "seconds": 7,
   "cases": [
     {
+      "id": "UIC-CD-01",
+      "title": "Record page renders header, stats, 3 columns of cards",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
       "id": "UIC-CD-16",
       "title": "Create a deal directly from the contact record",
       "status": "BLOCKED",
@@ -20,13 +27,6 @@
       "status": "BLOCKED",
       "category": "not-implemented",
       "detail": "Composer has no @mention support"
-    },
-    {
-      "id": "UIC-CD-18",
-      "title": "Associations: company link opens the company page; list + campaign cards link out",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Outreach (BR-DF / §5.3 / §7) results
 
-PASS 98 · FAIL 5 · BLOCKED 0
+PASS 100 · FAIL 3 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -66,15 +66,15 @@ PASS 98 · FAIL 5 · BLOCKED 0
 | OUT-077 | Domain list does not show another workspace's mailboxes or campaigns | PASS |  |  |
 | OUT-075 | After the user resumes an auto-paused campaign it is judged on new sends (one bounce doesn't re-pause) | PASS |  |  |
 | OUT-072 | Two spam complaints auto-pause the campaign within 1 minute | PASS |  |  |
-| OUT-074 | Every domain that sent in the last 24h had its health recomputed within the last hour | FAIL | defect | stale=[] missing_rows=[['recipients-0283b0.example'], ['golf-fc83a4.example'], ['foxtrot-fc83a4.example'], ['delta-fc83a4.example'], ['echo-fc83a4.example']] |
+| OUT-074 | Every domain that sent in the last 24h had its health recomputed within the last hour | FAIL | defect | stale=[] missing_rows=[['cswac0ef14617.example.com'], ['cswba047529e8.example.com'], ['cswaed00418d4.example.com'], ['cswb2e23d5961.example.com'], ['golf-8afcb4.example']] |
 | OUT-078 | Pause freezes pending emails (PAUSED_BY_CAMPAIGN); resume releases them | PASS |  |  |
 | OUT-033 | Batch mode: batches of 2, 30 minutes apart | PASS |  |  |
 | OUT-030 | 500-contact campaign: all 500 enrolled and scheduled at launch (no stall near 330) | PASS |  |  |
-| OUT-031 | Configured pace (100 new contacts/day) spreads 500 contacts over 5 business days | FAIL | defect | per day: [['2026-11-02', '200'], ['2026-11-03', '100'], ['2026-11-04', '100'], ['2026-11-05', '100']] |
+| OUT-031 | Configured pace (100 new contacts/day) spreads 500 contacts over 5 business days | PASS |  |  |
 | OUT-032 | Launching the 500-contact campaign completes within 30 seconds | PASS |  |  |
 | OUT-036 | Inbox pace (60 s between emails) can reach the 500/day cap within a day | PASS |  |  |
 | OUT-051 | IMAP connection test succeeds against a reachable mailbox | PASS |  |  |
-| OUT-052 | Prospect reply is fetched and shown in the unified inbox thread | FAIL | defect | sync 200 {'status': 'success', 'message': 'IMAP sync for last 7 days completed.', 'inbox': 'replies-1db48a@reply-1db48a.example', 'imap_host': '172.18.0.1', 'last_sync_at': '2026-10-12T13:18:32'}; conversation=[{'id': '0fb34669-35a7-4201-998a-fdb0fcda3330', 'prospect_id': '331930d3-90ac-4013-bd51-b53c355d94ab', 'prospect_name': 'Pat Test', 'prospect_email': 'rep1-1db48a@acme-1db48a.example', 'inbox_email': 'replies-1db48a@reply-1db48a.example', 'subject': 'Re: hello', 'last_message_snippet': '<p |
+| OUT-052 | Prospect reply is fetched and shown in the unified inbox thread | FAIL | defect | sync 200 {'status': 'success', 'message': 'IMAP sync for last 7 days completed.', 'inbox': 'replies-ea8e6b@reply-ea8e6b.example', 'imap_host': '172.18.0.1', 'last_sync_at': '2026-10-13T06:11:05'}; conversation=[{'id': '112eb79a-232e-4d39-b46e-1621e618905e', 'prospect_id': 'f019bc61-7e12-4435-aed8-af0c37d0a2f0', 'prospect_name': 'Pat Test', 'prospect_email': 'rep1-ea8e6b@acme-ea8e6b.example', 'inbox_email': 'replies-ea8e6b@reply-ea8e6b.example', 'subject': 'Re: hello', 'last_message_snippet': '<p |
 | OUT-053 | Reply stops the sequence: enrollment REPLIED, follow-up cancelled | PASS |  |  |
 | OUT-054 | Out-of-office reply is visible but does not stop the sequence | PASS |  |  |
 | OUT-055 | Reply 'unsubscribe' unsubscribes the contact from every campaign | PASS |  |  |
@@ -93,7 +93,7 @@ PASS 98 · FAIL 5 · BLOCKED 0
 | OUT-117 | Open pixel returns an image and records an open event | PASS |  |  |
 | OUT-118a | Click tracking does not redirect to an unrecognised destination (no open redirect) | PASS |  |  |
 | OUT-118b | Click on a link that is in the email is recorded and redirected (302) | PASS |  |  |
-| OUT-119 | Campaign analytics reflect sent emails and events | FAIL | defect | 200 db_sent=7 total_sent=5 metrics={"sent_count": 5, "opened_count": 1, "clicked_count": 1, "replied_count": 0, "positive_replied_count": 0, "ooo_count": 0, "bounced_count": 1, "sender_bounced_count": 1, "unsubscribed_count": 1, "open_ |
+| OUT-119 | Campaign analytics reflect sent emails and events | PASS |  |  |
 | OUT-120 | Prospect report export for a campaign returns a file with the campaign's contacts | PASS |  |  |
 | OUT-123 | Campaign audit trail records the launch | PASS |  |  |
 | OUT-130 | Owner signs in; campaigns, inboxes, unified inbox, prospects, lists, domain-health render without errors | PASS |  |  |

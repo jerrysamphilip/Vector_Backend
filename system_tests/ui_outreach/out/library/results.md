@@ -12,7 +12,7 @@ PASS 13 · FAIL 1 · BLOCKED 0
 | UIO-TPL-06 | Delete: dismissing confirm keeps it; accepting removes row and DB record | PASS |  |  |
 | UIO-AUTO-01 | Automation empty state; Create rule modal validation (required fields) keeps modal open | PASS |  |  |
 | UIO-AUTO-02 | Create Send-AI-Template rule: row appears; DB has trigger/action/template/delay and is active | PASS |  |  |
-| UIO-AUTO-02b | Create "Pause Campaign" rule (offered in the Action dropdown) succeeds | FAIL | defect | UI offers Pause Campaign but POST /automation-rules/ rejects action_type PAUSE_CAMPAIGN (422); user only sees "Failed to create rule. Please check the fields." |
+| UIO-AUTO-02b | Create "Pause Campaign" rule (offered in the Action dropdown) succeeds | FAIL | defect | locator.selectOption: Timeout 12000ms exceeded. |
 | UIO-AUTO-03 | Toggle rule off/on (the repaired PUT): DB is_active flips and UI reflects it | PASS |  |  |
 | UIO-AUTO-04 | Search filters rules; delete (confirm) removes row and DB record | PASS |  |  |
 | UIO-AIGEN-01 | AI generator: Classify disabled until designation entered; classification shows persona + confidence | PASS |  |  |
