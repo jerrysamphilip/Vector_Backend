@@ -251,7 +251,8 @@ def redeliver(endpoint_id: str, delivery_id: str, db: Session = Depends(get_db),
         raise HTTPException(status_code=409, detail="This delivery is still being retried")
     copy = WebhookDelivery(delivery_id=str(uuid.uuid4()), tenant_id=ep.tenant_id, endpoint_id=ep.endpoint_id,
                            event_id=original.event_id, event_type=original.event_type, payload=original.payload,
-                           status="PENDING", attempts=0, next_attempt_at=datetime.utcnow(),
+                           status="PENDING", attempts=0,
+                           next_attempt_at=datetime.utcnow().replace(microsecond=0),  # MySQL rounds fractions up
                            is_test=False, redelivery_of=original.delivery_id)
     db.add(copy)
     db.commit()

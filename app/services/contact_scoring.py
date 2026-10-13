@@ -37,6 +37,8 @@ BATCH_SIZE = 500            # contacts scored per transaction
 JOB_CAP = 5000              # contacts refreshed per worker pass
 TENANT_CAP = 200_000        # contacts per full workspace recompute
 STALE_AFTER_HOURS = 24      # the worker rescores contacts last scored before this
+OOO_SCAN_CHARS = 500        # subject / body characters checked for out-of-office markers
+REPLY_SCAN_CAP = 50_000     # inbound messages read per scoring batch
 
 _PROSPECT_COLUMNS = (
     Prospect.prospect_id, Prospect.tenant_id, Prospect.email, Prospect.email_type, Prospect.designation,
@@ -167,10 +169,18 @@ def _activity_inputs(db: Session, ids: List[str], since: datetime) -> Dict[str, 
             EmailEvent.event_time >= since).group_by(EmailMessage.prospect_id, EmailEvent.message_id, EmailEvent.event_type):
         if at is not None:
             activity[pid][event_signal[etype]].append((at, 1))
-    # Replies: emails received from the contact
-    for pid, day, n in db.query(EmailMessage.prospect_id, func.date(EmailMessage.sent_at), func.count()).filter(
+    # Replies: emails received from the contact, except out-of-office / vacation auto-replies
+    # (same subject/body markers the IMAP sync uses; the Auto-Submitted header is not stored)
+    replies: Dict[tuple, int] = defaultdict(int)
+    for pid, sent_at, subject, body in db.query(
+            EmailMessage.prospect_id, EmailMessage.sent_at, func.substr(EmailMessage.subject, 1, OOO_SCAN_CHARS),
+            func.substr(EmailMessage.body_text, 1, OOO_SCAN_CHARS)).filter(
             EmailMessage.prospect_id.in_(ids), EmailMessage.direction == "INBOUND",
-            EmailMessage.sent_at >= since).group_by(EmailMessage.prospect_id, func.date(EmailMessage.sent_at)):
+            EmailMessage.sent_at >= since).limit(REPLY_SCAN_CAP):
+        if sent_at is None or is_auto_reply(subject, body):
+            continue
+        replies[(pid, sent_at.date())] += 1
+    for (pid, day), n in replies.items():
         activity[pid]["email_replied"].append((day, n))
     # Meetings and calls logged against the contact
     kinds = {"MEETING": "meeting", "CALL": "call"}
@@ -186,6 +196,32 @@ def _activity_inputs(db: Session, ids: List[str], since: datetime) -> Dict[str, 
             CrmTask.prospect_id, func.date(CrmTask.completed_at)):
         activity[pid]["task_completed"].append((day, n))
     return activity
+
+
+def is_auto_reply(subject: Optional[str], body: Optional[str]) -> bool:
+    """An out-of-office / vacation auto-response (not real engagement)."""
+    from app.utils.reply_classifier import is_out_of_office
+    return is_out_of_office(subject or "", body or "")
+
+
+def _latest_grades(db: Session, tenant_id: str, ids: List[str]) -> Dict[str, Optional[str]]:
+    """The new_value of each contact's most recent score_grade history row."""
+    latest: Dict[str, Optional[str]] = {}
+    if not ids:
+        return latest
+    rows = db.query(PropertyChange.object_id, PropertyChange.new_value).filter(
+        PropertyChange.tenant_id == tenant_id, PropertyChange.object_type == "CONTACT",
+        PropertyChange.field == "score_grade", PropertyChange.object_id.in_(ids)
+    ).order_by(PropertyChange.changed_at, PropertyChange.change_id)
+    for pid, value in rows:
+        latest[pid] = value  # ordered oldest first, so the last one wins
+    return latest
+
+
+def grade_history_needed(stored_grade: Optional[str], new_grade: Optional[str], latest_logged: Optional[str]) -> bool:
+    """Write a history row only when an existing grade changes and the latest row does not
+    already record this same new grade (two overlapping runs must not log it twice)."""
+    return bool(stored_grade) and stored_grade != new_grade and latest_logged != new_grade
 
 
 def _load_rows(db: Session, tenant_id: str, ids: Iterable[str]) -> List[Any]:
@@ -221,13 +257,17 @@ def score_contacts(db: Session, tenant_id: str, ids: Iterable[str], model: Optio
     contacts = _contact_inputs(db, rows)
     activity = _activity_inputs(db, [r.prospect_id for r in rows], now - timedelta(days=model["lookback_days"]))
     table = Prospect.__table__
+    results = {r.prospect_id: engine.compute_score(model, contacts[r.prospect_id], activity[r.prospect_id], now)
+               for r in rows}
+    changed = [r.prospect_id for r in rows if r.score_grade and r.score_grade != results[r.prospect_id]["grade"]]
+    latest = _latest_grades(db, tenant_id, changed)
     for r in rows:
-        result = engine.compute_score(model, contacts[r.prospect_id], activity[r.prospect_id], now)
+        result = results[r.prospect_id]
         # Core UPDATE that sets updated_at to itself: a score is not an edit of the contact
         db.execute(table.update().where(table.c.prospect_id == r.prospect_id).values(
             score=result["score"], fit_score=result["fit"], engagement_score=result["engagement"],
             score_grade=result["grade"], scored_at=now, updated_at=table.c.updated_at))
-        if r.score_grade and r.score_grade != result["grade"]:
+        if grade_history_needed(r.score_grade, result["grade"], latest.get(r.prospect_id)):
             db.add(PropertyChange(tenant_id=tenant_id, object_type="CONTACT", object_id=r.prospect_id,
                                   field="score_grade", old_value=r.score_grade, new_value=result["grade"],
                                   source="SYSTEM", changed_by=changed_by))
@@ -321,9 +361,19 @@ def run_scoring_job(cap: int = JOB_CAP, tenant_id: Optional[str] = None) -> Dict
         for stale_tenant, pid in stale_q.limit(cap).all():
             by_tenant[stale_tenant].append(pid)
         for stale_tenant, ids in by_tenant.items():
-            model = get_model(db, stale_tenant)
-            now = _now()
-            for i in range(0, len(ids), BATCH_SIZE):
-                stats["refreshed"] += score_contacts(db, stale_tenant, ids[i:i + BATCH_SIZE], model=model, now=now)
-                db.commit()
+            # Same per-workspace lock as recompute_tenant: a sweep never overlaps a full recompute
+            # (or another worker's sweep) of the workspace; it is picked up on the next pass instead.
+            lock = f"score:{stale_tenant}"
+            conn = _try_lock(lock)
+            if conn is None:
+                stats["skipped_locked"] = stats.get("skipped_locked", 0) + 1
+                continue
+            try:
+                model = get_model(db, stale_tenant)
+                now = _now()
+                for i in range(0, len(ids), BATCH_SIZE):
+                    stats["refreshed"] += score_contacts(db, stale_tenant, ids[i:i + BATCH_SIZE], model=model, now=now)
+                    db.commit()
+            finally:
+                _release(conn, lock)
     return stats

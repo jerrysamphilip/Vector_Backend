@@ -56,8 +56,8 @@ def _history(db: Session, object_type: str, object_id: str) -> List[dict]:
 # =============================================================
 
 class HierarchyUpdate(BaseModel):
-    sales_level: Optional[int] = None
-    manager_id: Optional[str] = None
+    sales_level: Optional[int] = None  # 1..4, checked in set_hierarchy (400, not 422)
+    manager_id: Optional[str] = Field(None, max_length=36)
 
 
 @router.get("/team/hierarchy")

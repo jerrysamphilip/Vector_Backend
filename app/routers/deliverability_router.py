@@ -7,10 +7,13 @@ API Router for Deliverability and Reputation Monitoring.
 from typing import List
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.auth import require_role
+from app.core.config import settings
 from app.models.user import User
 from app.models.domain_reputation import SendingDomain, ReputationAlert
 from app.models.provider_reputation import ExternalReputationMetric, ExternalFeedbackEvent
@@ -31,7 +34,8 @@ from app.schemas.deliverability_schema import (
 from app.services.deliverability_service import deliverability_service
 from app.services.provider_ingestion_service import provider_ingestion_service
 from app.services.alert_center_service import alert_center_service
-from app.services.domain_tenancy import get_tenant_domain, tenant_has_domain, tenant_message_criterion
+from app.services.domain_tenancy import (dns_record_guidance, get_or_create_tenant_domain, get_tenant_domain,
+                                         normalize_domain_name, tenant_has_domain, tenant_message_criterion)
 
 # Kartik has changed this: Removed prefix to support explicit REST boundaries
 router = APIRouter(tags=["Deliverability"])
@@ -177,6 +181,95 @@ def delete_domain(
     db.delete(domain)  # snapshots and alerts go with it
     db.commit()
     return None
+
+
+MAX_TENANT_DOMAINS = 200  # sending domains one workspace can add
+
+
+class DomainCreate(BaseModel):
+    domain_name: str = Field(..., min_length=1, max_length=300)
+
+
+def _ses_dkim_tokens(domain_name: str, create: bool) -> list:
+    """The SES DKIM tokens for the domain ([] when SES is unreachable or has none).
+    create=True asks SES to start DKIM verification (idempotent, account-level identity)."""
+    try:
+        if create:
+            tokens = deliverability_service.ses_v1.verify_domain_dkim(Domain=domain_name).get("DkimTokens", [])
+        else:
+            attrs = deliverability_service.ses_v1.get_identity_dkim_attributes(Identities=[domain_name])
+            tokens = attrs.get("DkimAttributes", {}).get(domain_name, {}).get("DkimTokens", [])
+        return [str(t)[:100] for t in (tokens or [])][:10]
+    except Exception as exc:  # no AWS credentials / network: guidance without tokens
+        logger.info("[Deliverability] SES DKIM tokens unavailable for %s: %s", domain_name, type(exc).__name__)
+        return []
+
+
+def _domain_payload(db: Session, tenant_id: str, domain_name: str) -> dict | None:
+    return next((d for d in deliverability_service.get_all_domains_enriched(db, tenant_id)
+                 if d["domain_name"] == domain_name), None)
+
+
+@router.post("/deliverability/domains", status_code=status.HTTP_201_CREATED)
+def add_domain(
+    payload: DomainCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
+):
+    """
+    Add a sending domain to the workspace (admins). Validates the hostname, refuses a
+    duplicate within the workspace (another workspace may add the same name), starts SES
+    DKIM verification when SES is reachable, and returns the DNS records to publish.
+    Nothing is verified here: "Run Diagnostics" (POST .../scans) checks SPF/DKIM/DMARC.
+    """
+    domain_name = normalize_domain_name(payload.domain_name)
+    if not domain_name:
+        raise HTTPException(status_code=400, detail="Enter a domain name like example.com (no http://, @ or path)")
+    if get_tenant_domain(db, current_user.tenant_id, domain_name):
+        raise HTTPException(status_code=409, detail="This domain is already in your workspace")
+    count = db.query(SendingDomain).filter(SendingDomain.tenant_id == current_user.tenant_id).count()
+    if count >= MAX_TENANT_DOMAINS:
+        raise HTTPException(status_code=400, detail=f"A workspace can have at most {MAX_TENANT_DOMAINS} sending domains")
+    try:
+        get_or_create_tenant_domain(db, current_user.tenant_id, domain_name, spf_status="UNKNOWN",
+                                    dkim_status="UNKNOWN", dmarc_status="UNKNOWN", warmup_status="WARMING",
+                                    safety_threshold=70)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="This domain is already in your workspace")
+    tokens = _ses_dkim_tokens(domain_name, create=True)
+    if tokens:
+        row = get_tenant_domain(db, current_user.tenant_id, domain_name)
+        if row is not None and row.dkim_status != "PASS":
+            row.dkim_status = "PENDING"
+            db.commit()
+    return {
+        "domain": _domain_payload(db, current_user.tenant_id, domain_name),
+        "dns_records": dns_record_guidance(domain_name, tokens, settings.AWS_REGION),
+        "dkim_tokens_available": bool(tokens),
+    }
+
+
+@router.get("/deliverability/domains/{domain_name}/dns-records")
+def get_domain_dns_records(
+    domain_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")),
+):
+    """DNS records to publish for this workspace domain (guidance only) and its last checked statuses."""
+    domain_name = _require_tenant_domain(db, current_user, domain_name)
+    tokens = _ses_dkim_tokens(domain_name, create=False)
+    row = get_tenant_domain(db, current_user.tenant_id, domain_name)
+    return {
+        "domain_name": domain_name,
+        "dns_records": dns_record_guidance(domain_name, tokens, settings.AWS_REGION),
+        "dkim_tokens_available": bool(tokens),
+        "spf_status": row.spf_status if row else "UNKNOWN",
+        "dkim_status": row.dkim_status if row else "UNKNOWN",
+        "dmarc_status": row.dmarc_status if row else "UNKNOWN",
+        "checked_at": row.updated_at if row else None,
+    }
 
 
 @router.get("/deliverability/domains/{domain_name}/sent-log", response_model=List[SentEmailLogEntry])

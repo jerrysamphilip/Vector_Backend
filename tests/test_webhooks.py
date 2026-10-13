@@ -66,6 +66,15 @@ def ws(client):
     return {"owner": t, "h": t["headers"], "tid": t["tenant_id"], "agent": agent, "admin": admin, "other": other}
 
 
+@pytest.fixture(autouse=True)
+def _fresh_endpoints(client, ws):
+    """Each test starts with no endpoints in the shared workspace: the module shares one tenant and
+    the per-workspace cap (MAX_ENDPOINTS_PER_TENANT) would otherwise be hit part-way through."""
+    yield
+    for ep in client.get(BASE, headers=ws["h"]).json().get("items", []):
+        client.delete(f"{BASE}/{ep['endpoint_id']}", headers=ws["h"])
+
+
 _n = iter(range(10 ** 6))
 
 

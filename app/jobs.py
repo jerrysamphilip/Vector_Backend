@@ -214,10 +214,12 @@ async def sales_jobs_iteration() -> None:
 
 async def contact_scoring_iteration() -> None:
     # Contact scores (BR-CM-43): full recomputes an admin asked for, then stale / unscored
-    # contacts (at most JOB_CAP per pass, in batches), which also applies recency decay
+    # contacts (at most JOB_CAP per pass, in batches), which also applies recency decay.
+    # Both take the per-workspace named lock "score:<tenant_id>"; a workspace whose lock is
+    # held is skipped this pass (counted in skipped_locked) and refreshed on the next one.
     from app.services.contact_scoring import run_scoring_job
     stats = await _run_in_thread(run_scoring_job)
-    if stats.get("refreshed") or stats.get("recomputed_tenants"):
+    if stats.get("refreshed") or stats.get("recomputed_tenants") or stats.get("skipped_locked"):
         logger.info("Contact scoring: %s", stats)
 
 

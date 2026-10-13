@@ -100,9 +100,18 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         request.url.path,
         [(".".join(str(p) for p in err.get("loc", ())), err.get("type")) for err in exc.errors()],
     )
+    # A field_validator's ValueError lands in err["ctx"]["error"] as the exception object itself,
+    # which JSONResponse cannot serialize (that turned every custom-validator 422 into a 500)
+    detail = []
+    for err in exc.errors():
+        err = dict(err)
+        if isinstance(err.get("ctx"), dict):
+            err["ctx"] = {k: (v if isinstance(v, (str, int, float, bool, type(None))) else str(v))
+                          for k, v in err["ctx"].items()}
+        detail.append(err)
     return JSONResponse(
         status_code=422,
-        content={"success": False, "error": "Validation Error", "detail": exc.errors(), "code": "VALIDATION_ERROR"},
+        content={"success": False, "error": "Validation Error", "detail": detail, "code": "VALIDATION_ERROR"},
     )
  
 # Kartik has changed this: Added global rate limiter and standard exception handlers

@@ -40,7 +40,12 @@ const STATE = path.join(HERE, 'state'); fs.mkdirSync(STATE, { recursive: true })
 const WIPE_TABLES = ['accounts', 'campaigns', 'contact_activities', 'contact_field_definitions', 'crm_tasks', 'global_unsubscribes', 'import_jobs', 'leads',
   'notifications', 'opportunities', 'products', 'property_changes', 'proposals', 'prospect_lists', 'prospects', 'sales_settings', 'sales_stages', 'sales_targets',
   'saved_reports', 'saved_views', 'user_connections', 'workflow_rules', 'conversations', 'message_templates',
-  'contact_companies', 'note_mentions', 'forecast_snapshots'];
+  'contact_companies', 'note_mentions', 'forecast_snapshots',
+  // newer feature tables: A/B subject variants, outbound webhooks, the workspace scoring model (reset to defaults on next use)
+  'email_subject_variants', 'webhook_deliveries', 'webhook_endpoints', 'contact_scoring_models'];
+// Child rows without a tenant_id, removed through their tenant-owned parent before the parents go
+// (proposal quote lines; a proposal's discount-approval state lives on the proposals row itself).
+const WIPE_CHILDREN = [['proposal_lines', 'proposal_id', 'proposals']];
 const readJson = (f, d = null) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 function jwtExp(tok) { try { return JSON.parse(Buffer.from(tok.split('.')[1], 'base64url').toString()).exp * 1000; } catch { return 0; } }
 
@@ -72,7 +77,7 @@ export class Tenant {
     return t;
   }
   wipe() {
-    sql(`SET FOREIGN_KEY_CHECKS=0; ${WIPE_TABLES.map(tb => `DELETE FROM ${tb} WHERE tenant_id=${q(this.tenantId)};`).join(' ')} SET FOREIGN_KEY_CHECKS=1;`);
+    sql(`SET FOREIGN_KEY_CHECKS=0; ${WIPE_CHILDREN.map(([tb, col, parent]) => `DELETE FROM ${tb} WHERE ${col} IN (SELECT ${col} FROM ${parent} WHERE tenant_id=${q(this.tenantId)});`).join(' ')} ${WIPE_TABLES.map(tb => `DELETE FROM ${tb} WHERE tenant_id=${q(this.tenantId)};`).join(' ')} SET FOREIGN_KEY_CHECKS=1;`);
     sql(`UPDATE users SET manager_id=NULL, sales_level=NULL, custom_permissions=NULL, status='ACTIVE' WHERE tenant_id=${q(this.tenantId)}`);
   }
   get token() { return this.users.owner.token; }

@@ -210,6 +210,20 @@ rec.write();
 
 Pace your logins: the API allows 60 per 5 minutes per IP. `session()` caches cookies, and `crm_common` paces logins to 25 per 5 minutes.
 
+#### Cross-screen UI suites
+
+These suites follow the ui_crm convention and share `system_tests/ui_features/_ui_extra.mjs` (not a suite: the `_` prefix keeps it out of discovery). It provides uncached form logins (`freshLogin`), signed-out contexts, the overflow and accessible-name probes, and the `SCREENS` list (key screens with their primary action).
+
+| Suite | Ids | Tenant | What it covers |
+|---|---|---|---|
+| `ui_features.template_library` | `UIF-TL-01..17` | `tmpllib` | Template library: CRUD, merge fields, validation, category filter and search, preview, render for a contact, usage count, AGENT vs admin rights, private templates, API failures |
+| `ui_features.platform_admin` | `UIF-PA-01..17` | `padmin`, `pa_victim` | `/admin` console as a PLATFORM_ADMIN created by SQL (removed at the end): roster, detail, suspend and reactivate, create tenant, stats, route guards, and the scheduler switch through the API. The suite saves `platform_flags.scheduler_paused` first and restores it in a `finally` block. It deletes the tenant it creates. |
+| `ui_features.mobile_layout` | `UIF-MOB-01..90` | `mobile` | 12 key screens at 390x844 and 768x1024: horizontal overflow (the detail names the offending elements), primary action, nav, content width, modal fit. Screenshots go to `ui_crm/shots/mobile_layout/`. |
+| `ui_features.a11y_smoke` | `UIF-A11Y-01..78` | `a11y` | Accessible names from Chromium's AX tree (CDP), one h1, Tab reaches the primary action, and modal dialog semantics, focus trap, Escape and focus return. To check another screen, add it to `ROUTES` or `MODALS`. |
+| `ui_features.session_auth` | `UIF-SESS-01..23` | `session` | Signed-out redirects, silent refresh when the access cookie is gone (including a form submit retried with the rotated CSRF token), CSRF 403, dead session, and sign-out (state, cookies, refresh token, Back button, other tab). It uses fresh logins only, so the shared cookie cache is never touched. |
+
+Run one with `python3 scripts/test.py run ui --suite ui_features.mobile_layout`, or `node system_tests/ui_features/mobile_layout.mjs`. Set `ONLY=<regex>` to run only the matching case ids.
+
 ## 4. Case ids, results and comparison
 
 ### Case-id conventions

@@ -154,3 +154,14 @@ class Results:
         with open(os.path.join(self.out_dir, "results.md"), "w") as f:
             f.write("\n".join(lines) + "\n")
         return counts
+
+
+def run_job(name, timeout=240):
+    """Run one background-job iteration now (fresh process in the API container, so hourly parts run too) via
+    system_tests/e2e/helpers.run_job. Lets suites check hourly jobs without waiting an hour. Returns (ok, output)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "e2e_helpers_jobs", os.path.join(os.path.dirname(os.path.abspath(__file__)), "e2e", "helpers.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.run_job(name, timeout=timeout)

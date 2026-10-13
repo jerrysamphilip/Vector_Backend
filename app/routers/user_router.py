@@ -16,6 +16,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, require_role, require_permission
@@ -488,6 +489,122 @@ def list_users(
     ]
 
 
+def _issue_invite(db: Session, request: Request, current_user: User, email: str, role: str,
+                  existing: User | None, keep_permissions: bool = False) -> dict:
+    """
+    Create (or reissue on `existing`) the invited account with a fresh temporary password,
+    a new sign-in link and a PENDING invitation, then email it. Callers have already checked
+    the role and revoked the previous pending invitation / links. Used by invite and resend.
+    """
+    first_name, last_name = _derive_name_from_email(email)
+    temporary_password = _generate_temporary_password()
+
+    if existing:
+        user = existing
+        user.password_hash = hash_password(temporary_password)
+        user.role = role
+        if not keep_permissions:
+            user.custom_permissions = None
+        user.status = "INVITED"
+        user.invited_by = current_user.user_id
+    else:
+        user = User(
+            tenant_id=current_user.tenant_id,
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            password_hash=hash_password(temporary_password),
+            role=role,
+            auth_provider="local",
+            email_verified=True,
+            status="INVITED",
+            invited_by=current_user.user_id,
+        )
+        db.add(user)
+    db.flush()
+
+    raw_magic_token = secrets.token_urlsafe(48)
+    magic_login_link = _build_magic_login_link_for_origin(raw_magic_token, request)
+    magic_token = MagicLoginToken(
+        user_id=user.user_id,
+        token_hash=hash_token(raw_magic_token),
+        expires_at=datetime.utcnow() + timedelta(hours=settings.MAGIC_LOGIN_EXPIRE_HOURS),
+    )
+    db.add(magic_token)
+
+    # The invitation stays PENDING until the invitee first signs in (or uses
+    # /accept-invite with the emailed link's token); revoking it while pending
+    # deactivates the invited account.
+    invitation = Invitation(
+        tenant_id=current_user.tenant_id,
+        invited_by=current_user.user_id,
+        email=email,
+        role=role,
+        token=hash_token(raw_magic_token),
+        status="PENDING",
+        expires_at=datetime.utcnow() + timedelta(days=7),
+    )
+    db.add(invitation)
+    db.commit()
+
+    tenant = db.query(Tenant).filter(Tenant.tenant_id == current_user.tenant_id).first()
+    tenant_name = tenant.tenant_name if tenant and tenant.tenant_name else "your workspace"
+    inviter_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email
+
+    email_delivery = {
+        "attempted": True,
+        "sent": False,
+        "ses_message_id": None,
+        "error": None,
+    }
+    try:
+        send_result = _send_invitation_email(
+            to_email=email,
+            temporary_password=temporary_password,
+            magic_login_link=magic_login_link,
+            role=role,
+            tenant_name=tenant_name,
+            inviter_name=inviter_name,
+        )
+        email_delivery.update(send_result)
+    except (ClientError, BotoCoreError, RuntimeError) as exc:
+        email_delivery["error"] = "Invitation email could not be sent"
+        logger.error(f"Invitation email failed for {email}: {exc}")
+    except Exception as exc:
+        email_delivery["error"] = "Invitation email could not be sent"
+        logger.exception(f"Unexpected invitation email failure for {email}: {exc}")
+
+    if email_delivery.get("sent"):
+        logger.info(f"Invitation email sent: {email} as {role} by {current_user.email}")
+    else:
+        logger.warning(
+            f"Invitation created but email not sent: {email} as {role} by {current_user.email}. "
+            f"Reason: {email_delivery.get('error')}"
+        )
+
+    # Never hand the sign-in link/password to the inviting admin (SEC-15); only a local
+    # development setup without email gets them back so invites can still be tested.
+    expose_credentials = (
+        not email_delivery.get("sent")
+        and (settings.ENVIRONMENT or "").strip().lower() in ("development", "dev", "local")
+        and not is_deployed()
+    )
+    return {
+        "invitation_id": invitation.invitation_id,
+        "user_id": user.user_id,
+        "email": email,
+        "role": role,
+        "invite_token": None,
+        "expires_at": invitation.expires_at.isoformat(),
+        "email_delivery": email_delivery,
+        "manual_credentials": {
+            "email": email,
+            "password": temporary_password,
+            "magic_login_link": magic_login_link,
+        } if expose_credentials else None,
+    }
+
+
 @router.post("/invite", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("manage_team"))])
 def invite_user(
     body: InviteRequest,
@@ -529,112 +646,52 @@ def invite_user(
     if pending:
         pending.status = "REVOKED"
 
-    first_name, last_name = _derive_name_from_email(body.email)
-    temporary_password = _generate_temporary_password()
+    return _issue_invite(db, request, current_user, body.email, body.role, existing)
 
-    if existing:
-        user = existing
-        user.password_hash = hash_password(temporary_password)
-        user.role = body.role
-        user.custom_permissions = None
-        user.status = "INVITED"
-        user.invited_by = current_user.user_id
-    else:
-        user = User(
-            tenant_id=current_user.tenant_id,
-            first_name=first_name,
-            last_name=last_name,
-            email=body.email,
-            password_hash=hash_password(temporary_password),
-            role=body.role,
-            auth_provider="local",
-            email_verified=True,
-            status="INVITED",
-            invited_by=current_user.user_id,
-        )
-        db.add(user)
-    db.flush()
 
-    raw_magic_token = secrets.token_urlsafe(48)
-    magic_login_link = _build_magic_login_link_for_origin(raw_magic_token, request)
-    magic_token = MagicLoginToken(
-        user_id=user.user_id,
-        token_hash=hash_token(raw_magic_token),
-        expires_at=datetime.utcnow() + timedelta(hours=settings.MAGIC_LOGIN_EXPIRE_HOURS),
-    )
-    db.add(magic_token)
+RESEND_COOLDOWN_SECONDS = 60  # one resend per invited user per minute
 
-    # The invitation stays PENDING until the invitee first signs in (or uses
-    # /accept-invite with the emailed link's token); revoking it while pending
-    # deactivates the invited account.
-    invitation = Invitation(
-        tenant_id=current_user.tenant_id,
-        invited_by=current_user.user_id,
-        email=body.email,
-        role=body.role,
-        token=hash_token(raw_magic_token),
-        status="PENDING",
-        expires_at=datetime.utcnow() + timedelta(days=7),
-    )
-    db.add(invitation)
-    db.commit()
 
-    tenant = db.query(Tenant).filter(Tenant.tenant_id == current_user.tenant_id).first()
-    tenant_name = tenant.tenant_name if tenant and tenant.tenant_name else "your workspace"
-    inviter_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email
+def resend_wait_seconds(seconds_since_last: int | None, cooldown: int = RESEND_COOLDOWN_SECONDS) -> int:
+    """Seconds to wait before the invitation can be sent again (0 = now). None = never sent."""
+    if seconds_since_last is None:
+        return 0
+    if seconds_since_last < 0:  # created "in the future" (clock skew): treat as just sent
+        return cooldown
+    return max(0, cooldown - int(seconds_since_last))
 
-    email_delivery = {
-        "attempted": True,
-        "sent": False,
-        "ses_message_id": None,
-        "error": None,
-    }
-    try:
-        send_result = _send_invitation_email(
-            to_email=body.email,
-            temporary_password=temporary_password,
-            magic_login_link=magic_login_link,
-            role=body.role,
-            tenant_name=tenant_name,
-            inviter_name=inviter_name,
-        )
-        email_delivery.update(send_result)
-    except (ClientError, BotoCoreError, RuntimeError) as exc:
-        email_delivery["error"] = "Invitation email could not be sent"
-        logger.error(f"Invitation email failed for {body.email}: {exc}")
-    except Exception as exc:
-        email_delivery["error"] = "Invitation email could not be sent"
-        logger.exception(f"Unexpected invitation email failure for {body.email}: {exc}")
 
-    if email_delivery.get("sent"):
-        logger.info(f"Invitation email sent: {body.email} as {body.role} by {current_user.email}")
-    else:
-        logger.warning(
-            f"Invitation created but email not sent: {body.email} as {body.role} by {current_user.email}. "
-            f"Reason: {email_delivery.get('error')}"
-        )
-
-    # Never hand the sign-in link/password to the inviting admin (SEC-15); only a local
-    # development setup without email gets them back so invites can still be tested.
-    expose_credentials = (
-        not email_delivery.get("sent")
-        and (settings.ENVIRONMENT or "").strip().lower() in ("development", "dev", "local")
-        and not is_deployed()
-    )
-    return {
-        "invitation_id": invitation.invitation_id,
-        "user_id": user.user_id,
-        "email": body.email,
-        "role": body.role,
-        "invite_token": None,
-        "expires_at": invitation.expires_at.isoformat(),
-        "email_delivery": email_delivery,
-        "manual_credentials": {
-            "email": body.email,
-            "password": temporary_password,
-            "magic_login_link": magic_login_link,
-        } if expose_credentials else None,
-    }
+@router.post("/{user_id}/resend-invite", dependencies=[Depends(require_permission("manage_team"))])
+def resend_invite(
+    user_id: str,
+    request: Request,
+    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
+    db: Session = Depends(get_db),
+):
+    """
+    Send a pending invitation again: a new temporary password and a new sign-in link; the
+    previous invitation and links stop working. Only for accounts still INVITED, at most
+    once a minute per user. Same guards as invite (tenant, role, manage_team).
+    """
+    user = db.query(User).filter(User.user_id == user_id, User.tenant_id == current_user.tenant_id,
+                                 User.role != "PLATFORM_ADMIN").first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.status != "INVITED":
+        raise HTTPException(status_code=409, detail="Only a pending invitation can be resent")
+    if user.role == "SUPER_ADMIN" and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="Only a Super Admin can invite another Super Admin")
+    # Measured on the database clock (created_at is set by the database)
+    since_last = db.query(func.min(func.timestampdiff(text("SECOND"), Invitation.created_at, func.now()))).filter(
+        Invitation.tenant_id == user.tenant_id, Invitation.email == user.email).scalar()
+    wait = resend_wait_seconds(None if since_last is None else int(since_last))
+    if wait:
+        raise HTTPException(status_code=429, detail=f"The invitation was just sent. Try again in {wait} seconds.",
+                            headers={"Retry-After": str(wait)})
+    _revoke_pending_invitations(db, user)
+    result = _issue_invite(db, request, current_user, user.email, user.role, user, keep_permissions=True)
+    result["resent"] = True
+    return result
 
 
 @router.post("/accept-invite", status_code=status.HTTP_201_CREATED)

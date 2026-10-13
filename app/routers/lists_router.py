@@ -34,7 +34,7 @@ class ListWrite(BaseModel):
     list_name: Optional[str] = Field(None, max_length=255)
     list_type: Optional[str] = None  # STATIC / ACTIVE (create only)
     filters: Optional[Any] = None
-    description: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=2000)
 
 
 class Members(BaseModel):

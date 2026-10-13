@@ -17,7 +17,7 @@ approved puts the quote back to PENDING; bringing it within the threshold
 clears a PENDING / REJECTED request.
 
 The pure helpers at the top have no database access (unit-tested in
-tests/unit/test_discount_approval.py).
+tests/unit/test_discount_approval_rules.py).
 """
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
