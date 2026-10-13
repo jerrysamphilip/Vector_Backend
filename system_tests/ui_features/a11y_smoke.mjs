@@ -3,8 +3,8 @@
 //                      (Chromium's computed accessibility tree via CDP; the detail lists role, selector and HTML of the offenders)
 //               21-38  exactly one level-1 heading
 //               61-78  keyboard: Tab from the top of the page reaches the screen's primary action (screens that have one)
-//   per modal   41-55  (3 per modal) role=dialog named by its title + aria-modal; focus moves in and Tab / Shift+Tab stay
-//                      inside (focus trap); Escape closes it and focus returns to the element that opened it
+//   per modal   41-58, then 81+  (3 per modal) role=dialog named by its title + aria-modal; focus moves in and
+//                      Tab / Shift+Tab stay inside (focus trap); Escape closes it and focus returns to the element that opened it
 // Desktop 1440x900. Uses the ui_crm helpers (own reusable tenant "a11y", wiped on every run).   node a11y_smoke.mjs
 import { ui, go, settle, tc, ok, must, standalone, isMain, Tenant, WEB } from '../ui_crm/crm_common.mjs';
 import { SCREENS, anon, unnamedControls, overlay, focusInside, activeDesc } from './_ui_extra.mjs';
@@ -28,7 +28,15 @@ const MODALS = [
     trigger: p => p.getByRole('button', { name: /Change password/ }), returnTo: p => p.getByRole('button', { name: 'Account' }) },
   { name: 'New template', route: 'templates', title: 'New template', trigger: p => p.getByRole('button', { name: /New template/ }) },
   { name: 'Add webhook endpoint', route: 'webhooks', title: 'Add webhook endpoint', trigger: p => p.getByTestId('webhook-add') },
+  // hand-built overlays moved onto useDialog / DialogPanel
+  { name: 'New prospect list', route: 'prospects', title: 'New Prospect List', trigger: p => p.getByRole('button', { name: 'New List', exact: true }) },
+  { name: 'Invite team member', route: 'team', title: 'Invite Team Member', trigger: p => p.getByRole('button', { name: 'Invite Member', exact: true }) },
+  { name: 'Connect mailbox', route: 'inboxes', title: 'Connect Private Inbox', trigger: p => p.getByRole('button', { name: 'Connect Mailbox', exact: true }) },
+  { name: 'Add sending domain', route: 'domain-health', title: 'Add sending domain', trigger: p => p.getByRole('button', { name: 'Add domain', exact: true }) },
+  { name: 'Create automation rule', route: 'automation', title: 'Create Automation Rule', trigger: p => p.getByRole('button', { name: 'Create New Rule', exact: true }) },
 ];
+// test-id base of modal k: 41, 44 ... 56 for the first six, then 81, 84 ... (61-78 are the per-screen keyboard checks)
+const modalBase = k => (k < 6 ? 41 + 3 * k : 81 + 3 * (k - 6));
 
 async function isFocused(loc) { return loc.evaluate(el => el === document.activeElement || el.contains(document.activeElement)).catch(() => false); }
 
@@ -82,7 +90,7 @@ export async function run(rec, browser) {
   }
 
   for (const [k, M] of MODALS.entries()) {
-    const base = 41 + 3 * k; const p = A.page;
+    const base = modalBase(k); const p = A.page;
     const open = async () => {
       await go(A, M.route, { wait: 800 });
       if (M.pre) await M.pre(p);
