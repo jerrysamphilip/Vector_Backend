@@ -1,11 +1,11 @@
 {
   "suite": "new_features",
   "counts": {
-    "PASS": 40,
-    "FAIL": 0,
+    "PASS": 37,
+    "FAIL": 3,
     "BLOCKED": 1
   },
-  "seconds": 9.2,
+  "seconds": 9.6,
   "cases": [
     {
       "id": "NF-001",
@@ -108,16 +108,16 @@
     {
       "id": "NF-020",
       "title": "A note with a mention is accepted",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "(400, {'detail': 'Nora Test cannot see this record, so cannot be mentioned'})"
     },
     {
       "id": "NF-021",
       "title": "The mentioned colleague gets a MENTION notification",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "0"
     },
     {
       "id": "NF-022",
@@ -164,9 +164,9 @@
     {
       "id": "NF-028",
       "title": "Contact timeline returns the mentions on the note",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "(200, '{\"items\": [{\"kind\": \"PROPERTY_CHANGE\", \"at\": \"2026-10-13T10:40:34.346891\", \"change\": {\"change_id\": \"1a17713e-cd33-4adf-ae63-2aa623329bb3\", \"field\": \"created\", \"label\": \"Created\", \"old_value\": null, \"n')"
     },
     {
       "id": "NF-040",

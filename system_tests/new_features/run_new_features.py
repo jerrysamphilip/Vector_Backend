@@ -96,11 +96,15 @@ R.check("NF-014", "Merging contacts moves the duplicate's company links to the s
         sm in (200, 201) and any(c.get("label") == "Advisor" for c in (d or {}).get("companies", [])), (sm, bm, (d or {}).get("companies")))
 
 # ── @mentions ───────────────────────────────────────────────────────
-note_c = mk_contact(OWNER, "noted", first_name="Nate", last_name="Noted", owner_id=ADMIN["user_id"])
+# owned by Nora: since 4ff87f7 a mention is refused when the mentioned user cannot see the record (NF-020b)
+note_c = mk_contact(OWNER, "noted", first_name="Nate", last_name="Noted", owner_id=AGENT2["user_id"])
 npid = note_c["prospect_id"]
 s, a = req("POST", f"/contacts/{npid}/activities", {"activity_type": "NOTE", "subject": "hi", "body": f"@Nora ping {rid}",
                                                     "mentioned_user_ids": [AGENT2["user_id"]]}, OWNER)
 R.check("NF-020", "A note with a mention is accepted", s in (200, 201), (s, a))
+s, b = req("POST", f"/contacts/{npid}/activities", {"activity_type": "NOTE", "subject": "x", "body": "@Nolan x",
+                                                    "mentioned_user_ids": [AGENT["user_id"]]}, OWNER)
+R.check("NF-020b", "Mentioning an agent who cannot see the record is refused (400)", s == 400, (s, b))
 n = sql(f"SELECT COUNT(*) FROM notifications WHERE user_id='{AGENT2['user_id']}' AND kind='MENTION'")
 R.check("NF-021", "The mentioned colleague gets a MENTION notification", n == "1", n)
 n2 = sql(f"SELECT COUNT(*) FROM notifications WHERE user_id='{W.user_id}' AND kind='MENTION'")
