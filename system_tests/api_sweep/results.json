@@ -10323,7 +10323,7 @@
       "title": "POST /api/auth/mfa/setup as SUPER_ADMIN: allowed",
       "status": "PASS",
       "category": "",
-      "detail": "SUPER_ADMIN expected allowed (not 403), got 200: {\"secret\": \"525EEWYIGDRQJIPKQTH4L7WQZPUI7PZ6\", \"otpauth_uri\": \"otpauth://totp/Outreach360:owner-swa-09f626@systest.example?secret=525EEWYIGDRQJIPKQTH4L7WQZPUI7P..."
+      "detail": "SUPER_ADMIN expected allowed (not 403), got 200: {\"secret\": \"<redacted>\", \"otpauth_uri\": \"otpauth://totp/Outreach360:owner-swa-09f626@systest.example?secret=<redacted>..."
     },
     {
       "id": "API-POST-api-auth-mfa-recovery-codes-ROLE-MANAGER",
@@ -10344,7 +10344,7 @@
       "title": "POST /api/auth/mfa/setup as ADMIN: allowed",
       "status": "PASS",
       "category": "",
-      "detail": "ADMIN expected allowed (not 403), got 200: {\"secret\": \"JV3H2S52JNEGUELBQ6ZQC3TJE224TTMK\", \"otpauth_uri\": \"otpauth://totp/Outreach360:swadmin-09f626@systest.example?secret=JV3H2S52JNEGUELBQ6ZQC3TJE224TTMK..."
+      "detail": "ADMIN expected allowed (not 403), got 200: {\"secret\": \"<redacted>\", \"otpauth_uri\": \"otpauth://totp/Outreach360:swadmin-09f626@systest.example?secret=<redacted>..."
     },
     {
       "id": "API-POST-api-auth-mfa-recovery-codes-ROLE-AGENT",
@@ -10365,7 +10365,7 @@
       "title": "POST /api/auth/mfa/setup as MANAGER: allowed",
       "status": "PASS",
       "category": "",
-      "detail": "MANAGER expected allowed (not 403), got 200: {\"secret\": \"I5SVDNWF3BRZUKZ7BZT2FEDP4SC5J5OX\", \"otpauth_uri\": \"otpauth://totp/Outreach360:swmanager-09f626@systest.example?secret=I5SVDNWF3BRZUKZ7BZT2FEDP4SC5J5..."
+      "detail": "MANAGER expected allowed (not 403), got 200: {\"secret\": \"<redacted>\", \"otpauth_uri\": \"otpauth://totp/Outreach360:swmanager-09f626@systest.example?secret=<redacted>..."
     },
     {
       "id": "API-POST-api-auth-mfa-recovery-codes-ROLE-AGENT_NOPERM",
@@ -10386,7 +10386,7 @@
       "title": "POST /api/auth/mfa/setup as AGENT: allowed",
       "status": "PASS",
       "category": "",
-      "detail": "AGENT expected allowed (not 403), got 200: {\"secret\": \"JNK2WAZMB7SWATZ2FQUR3GPSD36RAE5J\", \"otpauth_uri\": \"otpauth://totp/Outreach360:swagent-09f626@systest.example?secret=JNK2WAZMB7SWATZ2FQUR3GPSD36RAE5J..."
+      "detail": "AGENT expected allowed (not 403), got 200: {\"secret\": \"<redacted>\", \"otpauth_uri\": \"otpauth://totp/Outreach360:swagent-09f626@systest.example?secret=<redacted>..."
     },
     {
       "id": "API-GET-api-auth-session-ROLE-SUPER_ADMIN",
@@ -10407,7 +10407,7 @@
       "title": "POST /api/auth/mfa/setup as AGENT_NOPERM: allowed",
       "status": "PASS",
       "category": "",
-      "detail": "AGENT_NOPERM expected allowed (not 403), got 200: {\"secret\": \"5SDBAQI67Q6W66XZGWKOYIDNP7E62KZZ\", \"otpauth_uri\": \"otpauth://totp/Outreach360:swnoperm-09f626@systest.example?secret=5SDBAQI67Q6W66XZGWKOYIDNP7E62KZ..."
+      "detail": "AGENT_NOPERM expected allowed (not 403), got 200: {\"secret\": \"<redacted>\", \"otpauth_uri\": \"otpauth://totp/Outreach360:swnoperm-09f626@systest.example?secret=<redacted>..."
     },
     {
       "id": "API-GET-api-auth-session-ROLE-ADMIN",
@@ -24001,7 +24001,7 @@
       "title": "POST /api/auth/login body-missing-required-email",
       "status": "PASS",
       "category": "",
-      "detail": " expected 4xx rejection, got 422: {\"success\": false, \"error\": \"Validation Error\", \"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"email\"], \"msg\": \"Field required\", \"input\": {\"password\": \"Sweep-Passw0rd-9x!\"}}], \"code\": \"VALIDATION_ERR... | req: drop email"
+      "detail": " expected 4xx rejection, got 422: {\"success\": false, \"error\": \"Validation Error\", \"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"email\"], \"msg\": \"Field required\", \"input\": {\"password\": \"<redacted>\"}}], \"code\": \"VALIDATION_ERR... | req: drop email"
     },
     {
       "id": "API-POST-api-auth-google-callback-VAL-body-wrong-type-credential",
@@ -24239,7 +24239,7 @@
       "title": "POST /api/auth/reset-password body-missing-required-token",
       "status": "PASS",
       "category": "",
-      "detail": " expected 4xx rejection, got 422: {\"success\": false, \"error\": \"Validation Error\", \"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"token\"], \"msg\": \"Field required\", \"input\": {\"new_password\": \"Sweep-Passw0rd-9x!\"}}], \"code\": \"VALIDATION... | req: drop token"
+      "detail": " expected 4xx rejection, got 422: {\"success\": false, \"error\": \"Validation Error\", \"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"token\"], \"msg\": \"Field required\", \"input\": {\"new_password\": \"<redacted>\"}}], \"code\": \"VALIDATION... | req: drop token"
     },
     {
       "id": "API-POST-api-auth-mfa-verify-VAL-body-wrong-type-recovery_code",
@@ -24260,7 +24260,7 @@
       "title": "POST /api/auth/reset-password body-missing-required-new_password",
       "status": "PASS",
       "category": "",
-      "detail": " expected 4xx rejection, got 422: {\"success\": false, \"error\": \"Validation Error\", \"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"new_password\"], \"msg\": \"Field required\", \"input\": {\"token\": \"sweep-09f6261\"}}], \"code\": \"VALIDATION_ERRO... | req: drop new_password"
+      "detail": " expected 4xx rejection, got 422: {\"success\": false, \"error\": \"Validation Error\", \"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"new_password\"], \"msg\": \"Field required\", \"input\": {\"token\": \"<redacted>\"}}], \"code\": \"VALIDATION_ERRO... | req: drop new_password"
     },
     {
       "id": "API-POST-api-auth-mfa-verify-VAL-body-oversize-strings",
@@ -24638,7 +24638,7 @@
       "title": "POST /api/users/accept-invite body-missing-required-first_name",
       "status": "PASS",
       "category": "",
-      "detail": " expected 4xx rejection, got 422: {\"success\": false, \"error\": \"Validation Error\", \"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"first_name\"], \"msg\": \"Field required\", \"input\": {\"token\": \"sweep-09f6261\", \"last_name\": \"Sweep last_name... | req: drop first_name"
+      "detail": " expected 4xx rejection, got 422: {\"success\": false, \"error\": \"Validation Error\", \"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"first_name\"], \"msg\": \"Field required\", \"input\": {\"token\": \"<redacted>\", \"last_name\": \"Sweep last_name... | req: drop first_name"
     },
     {
       "id": "API-DELETE-api-users-invitations-invitation-id-VAL-path-nonexistent-id",
@@ -24659,7 +24659,7 @@
       "title": "POST /api/users/accept-invite body-missing-required-last_name",
       "status": "PASS",
       "category": "",
-      "detail": " expected 4xx rejection, got 422: {\"success\": false, \"error\": \"Validation Error\", \"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"last_name\"], \"msg\": \"Field required\", \"input\": {\"token\": \"sweep-09f6261\", \"first_name\": \"Sweep first_nam... | req: drop last_name"
+      "detail": " expected 4xx rejection, got 422: {\"success\": false, \"error\": \"Validation Error\", \"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"last_name\"], \"msg\": \"Field required\", \"input\": {\"token\": \"<redacted>\", \"first_name\": \"Sweep first_nam... | req: drop last_name"
     },
     {
       "id": "API-POST-api-users-invite-VAL-body-empty-object",
@@ -34599,7 +34599,7 @@
       "title": "GET /template-library query-str-sqli",
       "status": "PASS",
       "category": "",
-      "detail": " expected no 5xx, got 200: {\"items\": [], \"categories\": [\"General\"], \"merge_fields\": [{\"token\": \"{{first_name}}\", \"label\": \"First name\"}, {\"token\": \"{{last_name}}\", \"label\": \"Last name\"}, {\"token\": \"{{full_name}}\", \"label\": \"Ful... | req: query ['q', 'category']"
+      "detail": " expected no 5xx, got 200: {\"items\": [], \"categories\": [\"General\"], \"merge_fields\": [{\"token\": \"<redacted>\", \"label\": \"First name\"}, {\"token\": \"<redacted>\", \"label\": \"Last name\"}, {\"token\": \"<redacted>\", \"label\": \"Ful... | req: query ['q', 'category']"
     },
     {
       "id": "API-PATCH-tasks-task-id-VAL-body-wrong-type-due_at",
@@ -34620,7 +34620,7 @@
       "title": "GET /template-library query-str-long",
       "status": "PASS",
       "category": "",
-      "detail": " expected no 5xx, got 200: {\"items\": [], \"categories\": [\"General\"], \"merge_fields\": [{\"token\": \"{{first_name}}\", \"label\": \"First name\"}, {\"token\": \"{{last_name}}\", \"label\": \"Last name\"}, {\"token\": \"{{full_name}}\", \"label\": \"Ful... | req: query ['q', 'category']"
+      "detail": " expected no 5xx, got 200: {\"items\": [], \"categories\": [\"General\"], \"merge_fields\": [{\"token\": \"<redacted>\", \"label\": \"First name\"}, {\"token\": \"<redacted>\", \"label\": \"Last name\"}, {\"token\": \"<redacted>\", \"label\": \"Ful... | req: query ['q', 'category']"
     },
     {
       "id": "API-PATCH-tasks-task-id-VAL-body-wrong-type-reminder_at",
@@ -34641,7 +34641,7 @@
       "title": "GET /template-library query-str-special",
       "status": "PASS",
       "category": "",
-      "detail": " expected no 5xx, got 200: {\"items\": [], \"categories\": [\"General\"], \"merge_fields\": [{\"token\": \"{{first_name}}\", \"label\": \"First name\"}, {\"token\": \"{{last_name}}\", \"label\": \"Last name\"}, {\"token\": \"{{full_name}}\", \"label\": \"Ful... | req: query ['q', 'category']"
+      "detail": " expected no 5xx, got 200: {\"items\": [], \"categories\": [\"General\"], \"merge_fields\": [{\"token\": \"<redacted>\", \"label\": \"First name\"}, {\"token\": \"<redacted>\", \"label\": \"Last name\"}, {\"token\": \"<redacted>\", \"label\": \"Ful... | req: query ['q', 'category']"
     },
     {
       "id": "API-PATCH-tasks-task-id-VAL-body-wrong-type-owner_id",

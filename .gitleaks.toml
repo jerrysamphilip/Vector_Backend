@@ -18,4 +18,11 @@ paths = [
   '''^system_tests/ui_crm/state/tok-[^/]+\.json$''',
   '''^system_tests/e2e/\.state/[^/]+\.json$''',
   '''^system_tests/api_sweep/sweep_cases\.json$''',
+  # The API sweep's committed report (commit 60abd20) captured TOTP secrets and tokens of throwaway
+  # test users from the same local stack. The sweep now redacts them before recording (sweeplib.redact)
+  # and the current files are clean; this entry covers the historical copy only.
+  '''^system_tests/api_sweep/results\.(json|md)$''',
 ]
+# "field_key" is the key of a custom contact property (e.g. "cf_..."), not a credential.
+regexTarget = "line"
+regexes = ['''field_key\\?["']?\s*:''']

@@ -16,6 +16,27 @@ sys.path.insert(0, os.path.dirname(HERE))
 import common  # noqa: E402
 from common import API, sql, login, run_id, Workspace, Results  # noqa: E402,F401
 
+
+# Values that must never be written to committed result files (they are credentials of throwaway test
+# users, but the secret scan rightly treats them as secrets): JSON fields like "secret"/"access_token",
+# otpauth "secret=" query values and bare JWTs are replaced by a placeholder before a case is recorded.
+_SENSITIVE_FIELD = re.compile(
+    r'((?:\\?["\'])(?:secret|access_token|refresh_token|mfa_token|token|password|new_password|current_password|'
+    r'temp_password|temporary_password|recovery_codes?|backup_codes?|api_key|client_secret)(?:\\?["\'])\s*:\s*(?:\\?["\']))'
+    r'([^"\'\\]{4,})', re.I)
+_OTP_SECRET = re.compile(r'(secret=)[A-Za-z0-9%]{8,}', re.I)
+_JWT = re.compile(r'eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}')
+
+
+def redact(text):
+    """Strip credentials from a recorded detail/evidence string (keeps the rest readable)."""
+    if not isinstance(text, str):
+        return text
+    text = _JWT.sub("<jwt>", text)
+    text = _SENSITIVE_FIELD.sub(lambda m: m.group(1) + "<redacted>", text)
+    return _OTP_SECRET.sub(lambda m: m.group(1) + "<redacted>", text)
+
+
 # ───────────────────────── HTTP ─────────────────────────
 # The API has a per-client-IP ceiling of 1200 req/min shared by every suite on this machine; stay well below it.
 MIN_INTERVAL = float(os.environ.get("SWEEP_MIN_INTERVAL", "0.055"))
@@ -337,9 +358,11 @@ class Recorder:
             category = ""
         elif ok is False and not category:
             category = "defect"
+        detail = redact(str(detail))
+        evidence = redact(evidence) if isinstance(evidence, str) else evidence
         self.R.record(cid, title or f"{method} {path} {check} {kind or ''}".strip(), ok, detail, category)
         row = self.R.rows[-1]
-        row["detail"] = str(detail)[:900]
+        row["detail"] = detail[:900]
         self.last_id = cid
         self.meta[cid] = {"ep": ep_id, "check": check, "kind": kind, "status": row["status"], "category": category or "",
                           "evidence": evidence}
