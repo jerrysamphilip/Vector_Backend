@@ -179,6 +179,10 @@ class Settings(BaseSettings):
     MAX_ATTACHMENT_SIZE_MB: int = 10
     MAX_ATTACHMENTS_PER_TEMPLATE: int = 10
 
+    # Mailbox SMTP/IMAP TLS (app/core/tls.py). Certificates and host names are always verified;
+    # false is a local dev/test escape hatch for self-signed fake servers and is refused in production.
+    MAIL_TLS_VERIFY: bool = True
+
     # Warmup engine
     WARMUP_INTERVAL_SECONDS: int = 900
     WARMUP_MAX_SENDS_PER_CYCLE: int = 3
@@ -362,3 +366,7 @@ settings = get_settings()
 # Refuse the public default JWT secret when deployed (BR-DF-09)
 from app.core.secrets_guard import resolve_jwt_secret  # noqa: E402
 settings.JWT_SECRET_KEY = resolve_jwt_secret(settings.JWT_SECRET_KEY)
+
+# Mailbox passwords must never cross an unverified TLS connection in production
+if not settings.MAIL_TLS_VERIFY and settings.is_production:
+    raise RuntimeError("MAIL_TLS_VERIFY=false is for local development only and is refused in production.")

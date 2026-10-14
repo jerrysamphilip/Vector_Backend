@@ -11,6 +11,7 @@ from sqlalchemy import or_
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.auth import require_role, require_permission
+from app.core.tls import open_imap, open_smtp, tls_error_message
 from app.models.user import User
 from app.models.sending_inbox import SendingInbox
 from app.models.conversation import Conversation
@@ -122,14 +123,14 @@ def ms365_callback(
     except ms365_oauth.OAuthError as exc:
         return back(ms365="error", message=str(exc), inbox=inbox.inbox_id)
     # Check the mailbox actually accepts the token over IMAP before reporting success
-    import imaplib
     try:
-        mail = imaplib.IMAP4_SSL(inbox.imap_host, inbox.imap_port or 993)
+        mail = open_imap(inbox.imap_host, inbox.imap_port, timeout=20)
         ms365_oauth.imap_login(mail, inbox.imap_username or inbox.email_address, ms365_oauth.imap_secret(db, inbox))
         mail.logout()
     except Exception as exc:  # any IMAP failure is reported back to the user on the inbox
         logger.warning("IMAP check after Microsoft sign-in failed for inbox %s: %s", inbox.inbox_id, exc)
-        inbox.oauth_error = f"Signed in, but IMAP rejected the token: {exc}. Check IMAP is enabled for the mailbox."[:2000]
+        inbox.oauth_error = (tls_error_message(exc) or
+                             f"Signed in, but IMAP rejected the token: {exc}. Check IMAP is enabled for the mailbox.")[:2000]
         db.commit()
         return back(ms365="error", message=inbox.oauth_error, inbox=inbox.inbox_id)
     return back(ms365="connected", inbox=inbox.inbox_id)
@@ -430,7 +431,7 @@ def test_imap_connection(
 
     try:
         from app.services.ms365_oauth import imap_login, imap_secret
-        mail = imaplib.IMAP4_SSL(inbox.imap_host, inbox.imap_port or 993, timeout=20)
+        mail = open_imap(inbox.imap_host, inbox.imap_port, timeout=20)
         imap_login(mail, inbox.imap_username or inbox.email_address, imap_secret(db, inbox))
         result["status"] = "connected"
 
@@ -489,7 +490,7 @@ def test_imap_connection(
     except Exception as e:  # connection test: report any failure to the caller
         logger.info("IMAP connection test failed for %s: %s", inbox.imap_host, e)
         result["status"] = "connection_failed"
-        result["error"] = str(e)
+        result["error"] = tls_error_message(e) or str(e)
 
     return result
 
@@ -522,13 +523,7 @@ def test_smtp_connection(
     host, port = inbox.smtp_host, inbox.smtp_port or 587
     username = inbox.smtp_username or inbox.email_address
     try:
-        if inbox.smtp_use_ssl or port == 465:
-            server = smtplib.SMTP_SSL(host, port, timeout=20)
-        else:
-            server = smtplib.SMTP(host, port, timeout=20)
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
+        server = open_smtp(host, port, use_ssl=bool(inbox.smtp_use_ssl or port == 465), timeout=20)
         try:
             smtp_login(server, username, smtp_secret(db, inbox))
         finally:
@@ -542,7 +537,7 @@ def test_smtp_connection(
         return {"status": "connection_failed", "error": f"Timed out connecting to {host}:{port}."}
     except Exception as e:  # connection test: report any failure to the caller
         logger.info("SMTP connection test failed for %s:%s: %s", host, port, e)
-        return {"status": "connection_failed", "error": str(e)}
+        return {"status": "connection_failed", "error": tls_error_message(e) or str(e)}
     return {"status": "connected", "smtp_host": host, "smtp_port": port, "smtp_username": username}
 
 
