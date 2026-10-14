@@ -20,6 +20,7 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from jose import JWTError
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import or_
@@ -53,7 +54,7 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.refresh_token import RefreshToken
 from app.models.tenant import Tenant
 from app.models.user import User
-from app.services import token_revocation
+from app.services import session_limits, token_revocation
 
 logger = logging.getLogger(__name__)
 
@@ -183,8 +184,13 @@ def _user_dict(user: User) -> dict:
     }
 
 
-def _issue_tokens(user: User, db: Session, device_info: str = None, first_login: bool = False) -> dict:
-    """Create access + refresh tokens and persist the refresh token."""
+def _issue_tokens(user: User, db: Session, device_info: str = None, first_login: bool = False,
+                  lineage: session_limits.SessionLineage | None = None) -> dict:
+    """Create access + refresh tokens and persist the refresh token.
+
+    lineage: the session a rotated token belongs to (refresh); None starts a new session (sign-in)."""
+    now = datetime.utcnow()
+    lineage = lineage or session_limits.new_lineage(now)
     access_token = create_access_token(user.user_id, user.tenant_id, user.role)
     raw_refresh = generate_refresh_token()
 
@@ -192,7 +198,12 @@ def _issue_tokens(user: User, db: Session, device_info: str = None, first_login:
         user_id=user.user_id,
         token_hash=hash_token(raw_refresh),
         device_info=device_info,
-        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        expires_at=session_limits.refresh_expiry(
+            now=now, session_started_at=lineage.session_started_at,
+            refresh_ttl=session_limits.refresh_ttl(), absolute=session_limits.absolute_limit()),
+        session_id=lineage.session_id,
+        session_started_at=lineage.session_started_at,
+        last_activity_at=lineage.last_activity_at,
     )
     db.add(rt)
 
@@ -439,28 +450,34 @@ def refresh_token(
     body: RefreshRequest | None = None,
     db: Session = Depends(get_db),
 ):
-    """Exchange a valid refresh token (body or cookie) for a new access + refresh token pair."""
+    """Exchange a valid refresh token (body or cookie) for a new access + refresh token pair.
+
+    Session limits (ADR 0007, app/services/session_limits.py): refused with 401 and the session
+    cookies cleared once the session passed SESSION_ABSOLUTE_HOURS since sign-in or
+    SESSION_IDLE_MINUTES without user activity, and when an already-rotated token is replayed (which
+    also revokes the whole session). The SPA reports user activity in the X-User-Activity header
+    (seconds since the last interaction); a refresh without it does not count as activity."""
     raw = _refresh_token_from(request, body, csrf=True)
     if not raw:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
-    token_hash = hash_token(raw)
-    rt = db.query(RefreshToken).filter(
-        RefreshToken.token_hash == token_hash,
-        RefreshToken.revoked_at.is_(None),
-    ).first()
-
-    if not rt or rt.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+    try:
+        rt, lineage = session_limits.begin_refresh(
+            db, hash_token(raw), request.headers.get(session_limits.ACTIVITY_HEADER))
+    except session_limits.SessionRefused as refused:
+        result = JSONResponse(status_code=401, content={"detail": refused.detail})
+        if refused.clear_cookies:
+            clear_auth_cookies(result)
+        return result
 
     user = db.query(User).filter(User.user_id == rt.user_id).first()
     if not user or user.status != "ACTIVE":
         raise HTTPException(status_code=401, detail="User not found or inactive")
     ensure_tenant_active(db, user)
 
-    # Revoke old refresh token (rotation)
-    rt.revoked_at = datetime.utcnow()
+    # Revoke old refresh token (rotation); the new one stays in the same session
+    session_limits.mark_rotated(rt)
 
-    return _deliver_tokens(_issue_tokens(user, db), request, response)
+    return _deliver_tokens(_issue_tokens(user, db, lineage=lineage), request, response)
 
 
 def _revoke_presented_access_token(request: Request, db: Session) -> None:
@@ -497,6 +514,7 @@ def logout(
         ).first()
         if rt:
             rt.revoked_at = datetime.utcnow()
+            rt.revoked_reason = session_limits.REASON_LOGOUT
             db.commit()
     _revoke_presented_access_token(request, db)
     result = Response(status_code=status.HTTP_204_NO_CONTENT)

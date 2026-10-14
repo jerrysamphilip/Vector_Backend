@@ -120,6 +120,8 @@ frontend/
 docs/*
 !docs/TESTING.md
 !docs/TRACEABILITY.md
+!docs/ARCHITECTURE.md
+!docs/adr/
 # Stray local artefacts (never commit; may contain logs/credentials)
 kill_locks.py
 =*

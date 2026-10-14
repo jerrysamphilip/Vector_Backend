@@ -125,6 +125,17 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Session limits (ADR 0007, app/services/session_limits.py), enforced when the refresh token is
+    # exchanged, so they take effect within one access-token lifetime (ACCESS_TOKEN_EXPIRE_MINUTES).
+    # SESSION_ABSOLUTE_HOURS: a sign-in lasts at most this long, however active the user is.
+    # SESSION_IDLE_MINUTES: refresh is refused when the user has not interacted for this long
+    #   (activity is reported by the SPA in the X-User-Activity header; background polling is not activity).
+    # REFRESH_REUSE_GRACE_SECONDS: a token rotated this recently may be presented again without being
+    #   treated as theft (two tabs refreshing at once); later reuse revokes the whole session.
+    SESSION_ABSOLUTE_HOURS: int = 12
+    SESSION_IDLE_MINUTES: int = 30
+    REFRESH_REUSE_GRACE_SECONDS: int = 30
+
     # Encrypts mailbox (SMTP/IMAP) passwords at rest. Required when deployed; keep it stable.
     CREDENTIALS_ENCRYPTION_KEY: str = ""
 
