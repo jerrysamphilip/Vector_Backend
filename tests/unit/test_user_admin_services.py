@@ -85,3 +85,22 @@ def test_inv_u06_text_body_has_credentials():
                                               magic_login_link="https://l", tenant_name="Acme",
                                               support_email="help@x.com")
     assert "Hi Jane," in body and "Password: P@ss1" in body and "https://l" in body and "help@x.com" in body
+
+
+def test_role_defaults_have_one_source_and_agent_manages_campaigns():
+    import asyncio
+
+    from app.core import auth
+    from app.routers import auth_router
+
+    assert auth.ROLE_DEFAULT_PERMISSIONS["AGENT"] == ("manage_campaigns",)
+    for role, perms in auth.ROLE_DEFAULT_PERMISSIONS.items():
+        assert user_admin_service.DEFAULT_PERMISSIONS[role] == list(perms)
+        assert auth_router._DEFAULT_PERMS[role] == list(perms)
+        assert auth._DEFAULT_PERMS[role] == frozenset(perms)
+
+    agent = SimpleNamespace(role="AGENT", custom_permissions=None)
+    asyncio.run(auth.require_permission("manage_campaigns")(current_user=agent))
+    with pytest.raises(Exception) as exc:
+        asyncio.run(auth.require_permission("manage_team")(current_user=agent))
+    assert getattr(exc.value, "status_code", None) == 403

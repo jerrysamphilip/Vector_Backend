@@ -177,16 +177,20 @@ def require_role(*allowed_roles: str) -> Callable[..., Any]:
     return _role_checker
 
 
-# Default permissions per role, enforced by require_permission. app/services/user_admin_service.py
-# (DEFAULT_PERMISSIONS) shows the defaults in the user admin API; keep the two consistent
-# (SUPER_ADMIN always passes here; AGENT has no enforced default).
-_DEFAULT_PERMS: dict[str, frozenset] = {
-    "PLATFORM_ADMIN": frozenset(["manage_platform"]),          # platform-only
-    "SUPER_ADMIN":    frozenset(["manage_campaigns", "manage_templates", "manage_inboxes",
-                                 "manage_prospects", "view_analytics", "export_data", "manage_team"]),
-    "ADMIN":          frozenset(["manage_campaigns", "manage_templates", "manage_inboxes",
-                                 "manage_prospects", "view_analytics", "export_data", "manage_team"]),
-    "MANAGER":        frozenset(["manage_campaigns", "manage_templates", "view_analytics"]),
+# Default feature permissions per role: the single source of truth. require_permission enforces
+# them, /auth/me and the user admin API report them (SUPER_ADMIN always passes the check).
+ROLE_DEFAULT_PERMISSIONS: dict[str, tuple[str, ...]] = {
+    "PLATFORM_ADMIN": ("manage_platform",),          # platform-only
+    "SUPER_ADMIN":    ("manage_campaigns", "manage_templates", "manage_inboxes",
+                       "manage_prospects", "view_analytics", "export_data", "manage_team"),
+    "ADMIN":          ("manage_campaigns", "manage_templates", "manage_inboxes",
+                       "manage_prospects", "view_analytics", "export_data", "manage_team"),
+    "MANAGER":        ("manage_campaigns", "manage_templates", "view_analytics"),
+    "AGENT":          ("manage_campaigns",),
+}
+
+_DEFAULT_PERMS: dict[str, frozenset[str]] = {
+    role: frozenset(perms) for role, perms in ROLE_DEFAULT_PERMISSIONS.items()
 }
 
 

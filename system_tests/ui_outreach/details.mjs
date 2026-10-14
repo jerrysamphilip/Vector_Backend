@@ -111,9 +111,9 @@ await S.t(`${A}-08`, 'Send Now: cancel at the confirm sends nothing; accept -> P
   if (status >= 400 && !/Error sending/.test(result || '')) return `HTTP ${status} not surfaced as error dialog`;
   w.drain([/.*/]);
 }, page);
-await S.t(`${A}-09`, 'Role AGENT cannot open a campaign by URL (redirect Home)', async () => {
+await S.t(`${A}-09`, 'Role AGENT (manage_campaigns by default) can open a campaign by URL', async () => {
   const a = await S.open(ws, 'agent');
   await go(a.page, '/app/campaigns/' + cid);
-  if (!/\/app\/dashboard$/.test(new URL(a.page.url()).pathname)) return a.page.url();
+  if (!new URL(a.page.url()).pathname.endsWith('/app/campaigns/' + cid)) return 'redirected: ' + a.page.url();
 }, page);
 await S.done();

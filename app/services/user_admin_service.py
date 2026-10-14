@@ -2,8 +2,7 @@
 """
 Team management: roles, feature permissions, deactivate / reactivate and permanent delete.
 
-The role defaults here must stay in sync with app/core/auth.py (_DEFAULT_PERMS), which
-enforces them. Errors are domain errors (app/core/errors.py).
+Role defaults come from app/core/auth.py (ROLE_DEFAULT_PERMISSIONS), which enforces them. Errors are domain errors (app/core/errors.py).
 """
 
 import logging
@@ -12,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.auth import ROLE_DEFAULT_PERMISSIONS
 from app.core.errors import BadRequestError, ConflictError, NotFoundError, PermissionDenied
 from app.models.audit import AuditLog
 from app.models.campaign import Campaign
@@ -41,12 +41,7 @@ ALL_PERMISSIONS = {
 
 # Default permissions granted when no custom override is set
 DEFAULT_PERMISSIONS: dict[str, list[str]] = {
-    "PLATFORM_ADMIN": ["manage_platform"],
-    "SUPER_ADMIN":    list(ALL_PERMISSIONS),
-    "ADMIN":          ["manage_campaigns", "manage_templates", "manage_inboxes",
-                       "manage_prospects", "view_analytics", "export_data", "manage_team"],
-    "MANAGER":        ["manage_campaigns", "manage_templates", "view_analytics"],
-    "AGENT":          ["manage_campaigns"],
+    role: list(perms) for role, perms in ROLE_DEFAULT_PERMISSIONS.items()
 }
 
 # Records that keep a non-nullable reference to their creator: a user who has any of them

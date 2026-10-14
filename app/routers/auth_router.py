@@ -26,7 +26,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core import rate_limit, totp
-from app.core.auth import ensure_tenant_active, get_current_user, require_role
+from app.core.auth import ROLE_DEFAULT_PERMISSIONS, ensure_tenant_active, get_current_user, require_role
 from app.core.auth_cookies import (
     ACCESS_COOKIE,
     REFRESH_COOKIE,
@@ -142,12 +142,7 @@ class MfaTenantPolicyRequest(BaseModel):
 # ── Helpers ───────────────────────────────────────────────
 
 _DEFAULT_PERMS: dict[str, list[str]] = {
-    "PLATFORM_ADMIN": ["manage_platform"],
-    "SUPER_ADMIN":    ["manage_campaigns", "manage_templates", "manage_inboxes",
-                       "manage_prospects", "view_analytics", "export_data", "manage_team"],
-    "ADMIN":          ["manage_campaigns", "manage_templates", "manage_inboxes",
-                       "manage_prospects", "view_analytics", "export_data", "manage_team"],
-    "MANAGER":        ["manage_campaigns", "manage_templates", "view_analytics"],
+    role: list(perms) for role, perms in ROLE_DEFAULT_PERMISSIONS.items()
 }
 
 

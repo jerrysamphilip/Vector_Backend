@@ -14,7 +14,7 @@ const EXPECT = {
   owner:   { 'Campaign analytics': 1, Campaigns: 1, 'Email accounts': 1, Reports: 1, 'Prospect lists': 1, Team: 1, 'Sales settings': 1, Templates: 1, 'Domain health': 1 },
   admin:   { 'Campaign analytics': 1, Campaigns: 1, 'Email accounts': 1, Reports: 1, 'Prospect lists': 1, Team: 1, 'Sales settings': 1, Templates: 1, 'Domain health': 1 },
   manager: { 'Campaign analytics': 1, Campaigns: 1, 'Email accounts': 0, Reports: 1, 'Prospect lists': 0, Team: 0, 'Sales settings': 0, Templates: 1, 'Domain health': 1 },
-  agent:   { 'Campaign analytics': 0, Campaigns: 0, 'Email accounts': 0, Reports: 0, 'Prospect lists': 0, Team: 0, 'Sales settings': 0, Templates: 1, 'Domain health': 1 },
+  agent:   { 'Campaign analytics': 0, Campaigns: 1, 'Email accounts': 0, Reports: 0, 'Prospect lists': 0, Team: 0, 'Sales settings': 0, Templates: 1, 'Domain health': 1 },
 };
 const GROUPS = ['OUTREACH', 'CRM', 'SALES', 'WORKSPACE'];
 
@@ -95,7 +95,7 @@ for (const r of ROLES) {
 }
 
 // ---------- Route guards ----------
-const GUARDED = { agent: ['/app/campaigns', '/app/campaigns/new', '/app/prospects', '/app/prospects/validate', '/app/inboxes', '/app/team', '/app/reports', '/app/recently-deleted', '/app/import'],
+const GUARDED = { agent: ['/app/prospects', '/app/prospects/validate', '/app/inboxes', '/app/team', '/app/reports', '/app/recently-deleted', '/app/import'],
                   manager: ['/app/prospects', '/app/inboxes', '/app/team', '/app/recently-deleted', '/app/import'] };
 for (const r of ['agent', 'manager']) {
   const { page, w } = P[r];
@@ -127,9 +127,9 @@ for (const r of ['agent', 'manager']) {
 }
 { // API-level enforcement matches UI guards (agent token on admin endpoints)
   const t = ws.users.agent.token;
-  await S.t(`${A}-GUARD-api`, 'Server also refuses AGENT on team/inbox/campaign management endpoints (403), not just the UI', async () => {
+  await S.t(`${A}-GUARD-api`, 'Server also refuses AGENT on team/inbox endpoints and campaign launch (403), not just the UI', async () => {
     const out = [];
-    for (const [m, p] of [['GET', '/api/users'], ['POST', '/api/users/invite'], ['GET', '/inboxes'], ['POST', '/campaigns'], ['GET', '/api/admin/tenants'], ['GET', '/reports/global-analytics']]) {
+    for (const [m, p] of [['GET', '/api/users'], ['POST', '/api/users/invite'], ['GET', '/inboxes'], ['POST', '/campaigns/1/launch'], ['GET', '/api/admin/tenants'], ['GET', '/reports/global-analytics']]) {
       const r = await api(m, p, { token: t, body: m === 'POST' ? {} : undefined });
       if (![401, 403, 422].includes(r.status) ) out.push(`${m} ${p} -> ${r.status}`);
       if (r.status === 422) out.push(`${m} ${p} -> 422 (validated before authorization)`);

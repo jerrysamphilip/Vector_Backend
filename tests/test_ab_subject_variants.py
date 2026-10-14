@@ -1,7 +1,7 @@
 """A/B testing of email subject lines (BRD v2.0 BR-SF-18 / RP-104), in-process API tests.
 
 Own workspace: the owner (SUPER_ADMIN, campaign creator), a MANAGER who did not create the
-campaign and an AGENT, plus an unrelated workspace. A two-step campaign gets subject
+campaign and an AGENT without manage_campaigns, plus an unrelated workspace. A two-step campaign gets subject
 variants A/B on step 1; emails are pre-scheduled with the real planner
 (CampaignEmailService._preschedule_all_emails), "sent" and opened/clicked/replied through
 direct DB writes (the scheduler and SES are not started in tests).
@@ -19,7 +19,7 @@ from tests.conftest import RUN, SessionLocal, auth, login, register_tenant, sql
 STATE: dict = {}
 
 
-def _member(client, tenant_id: str, label: str, role: str) -> dict:
+def _member(client, tenant_id: str, label: str, role: str, custom_permissions=None) -> dict:
     from app.core.security import hash_password
     from app.models.user import User
 
@@ -28,7 +28,7 @@ def _member(client, tenant_id: str, label: str, role: str) -> dict:
     with SessionLocal() as db:
         user = User(tenant_id=tenant_id, first_name=label.capitalize(), last_name="Tester", email=email,
                     password_hash=hash_password(password), role=role, status="ACTIVE", auth_provider="local",
-                    email_verified=True)
+                    email_verified=True, custom_permissions=custom_permissions)
         db.add(user)
         db.commit()
         user_id = user.user_id
@@ -90,7 +90,8 @@ def ab(client):
     other = register_tenant(client, "abx")
     h = owner["headers"]
     manager = _member(client, owner["tenant_id"], "abmgr", "MANAGER")
-    agent = _member(client, owner["tenant_id"], "abagent", "AGENT")
+    # AGENT holds manage_campaigns by default; this one has it revoked to exercise the permission check
+    agent = _member(client, owner["tenant_id"], "abagent", "AGENT", custom_permissions=[])
 
     r = client.post("/campaigns", headers=h, json={"campaign_name": f"AB Campaign {RUN}"})
     assert r.status_code == 201, r.text
