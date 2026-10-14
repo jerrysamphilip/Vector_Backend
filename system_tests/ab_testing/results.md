@@ -12,7 +12,7 @@ PASS 33 · FAIL 0 · BLOCKED 0
 | AB-S006 | A multi-line subject (header injection) is refused (422) | PASS |  |  |
 | AB-S007 | At most four variants per step (fifth is 409) | PASS |  |  |
 | AB-S008 | Unsent variants can be deleted (204) | PASS |  |  |
-| AB-S010 | An agent cannot change variants (403) | PASS |  |  |
+| AB-S010 | An agent without manage_campaigns cannot change variants (403) | PASS |  |  |
 | AB-S011 | An agent can read the variant stats (200) | PASS |  |  |
 | AB-S012 | Another workspace gets 404 on list / stats / create | PASS |  |  |
 | AB-S020 | Campaign launches (start date in the future) | PASS |  |  |

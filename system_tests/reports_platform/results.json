@@ -5,7 +5,7 @@
     "FAIL": 0,
     "BLOCKED": 7
   },
-  "seconds": 174.4,
+  "seconds": 128.2,
   "cases": [
     {
       "id": "RP-001",
@@ -268,7 +268,7 @@
     },
     {
       "id": "RP-052",
-      "title": "Default forecast year is the current FY (2026) for today 2026-10-13",
+      "title": "Default forecast year is the current FY (2026) for today 2026-10-14",
       "status": "PASS",
       "category": "",
       "detail": ""

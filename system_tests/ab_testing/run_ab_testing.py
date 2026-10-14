@@ -19,7 +19,8 @@ R = Results("ab_testing", os.path.dirname(os.path.abspath(__file__)))
 W = Workspace("ab")
 OWNER = W.token
 MANAGER = W.add_user("MANAGER", "Abby")
-AGENT = W.add_user("AGENT", "Abe")
+# AGENT holds manage_campaigns by default; this one has it revoked to exercise the permission check
+AGENT = W.add_user("AGENT", "Abe", custom_permissions="[]")
 W2 = Workspace("ab-b")
 rid = W.rid
 FUTURE = (date.today() + timedelta(days=20)).isoformat()
@@ -101,7 +102,7 @@ R.check("AB-S008", "Unsent variants can be deleted (204)", s1 == 204 and s2 == 2
 
 # ── AB-S010..: tenancy and permissions ──────────────────────────────
 s, d = req("POST", URL, {"subject": "Agent subject"}, AGENT["token"])
-R.check("AB-S010", "An agent cannot change variants (403)", s == 403, (s, d))
+R.check("AB-S010", "An agent without manage_campaigns cannot change variants (403)", s == 403, (s, d))
 s, d = req("GET", URL + "/stats", None, AGENT["token"])
 R.check("AB-S011", "An agent can read the variant stats (200)", s == 200, (s, d))
 s1, _ = req("GET", URL, None, W2.token)

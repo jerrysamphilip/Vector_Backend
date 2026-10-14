@@ -5,7 +5,7 @@
     "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 69,
+  "seconds": 68,
   "cases": [
     {
       "id": "UIO-DET-01",
@@ -65,7 +65,7 @@
     },
     {
       "id": "UIO-DET-09",
-      "title": "Role AGENT cannot open a campaign by URL (redirect Home)",
+      "title": "Role AGENT (manage_campaigns by default) can open a campaign by URL",
       "status": "PASS",
       "category": "",
       "detail": ""

@@ -1,29 +1,47 @@
 {
- "started_utc": "2026-10-13T17:47:24",
+ "started_utc": "2026-10-14T07:21:11",
  "errors": [],
  "slow": [
   {
    "ep": "POST /inboxes",
-   "secs": 9.7,
+   "secs": 11.3,
    "tag": "happy",
    "status": 201
   },
   {
    "ep": "POST /campaigns/{campaign_id}/send-now",
-   "secs": 9.8,
+   "secs": 16.9,
    "tag": "happy",
    "status": 200
   },
   {
+   "ep": "POST /deliverability/domains/{domain_name}/scans",
+   "secs": 7.0,
+   "tag": "happy",
+   "status": 202
+  },
+  {
+   "ep": "POST /inboxes",
+   "secs": 7.5,
+   "tag": "happy",
+   "status": 201
+  },
+  {
    "ep": "POST /campaigns/{campaign_id}/send-now",
-   "secs": 21.4,
+   "secs": 6.7,
    "tag": "happy",
    "status": 200
+  },
+  {
+   "ep": "POST /deliverability/domains/{domain_name}/scans",
+   "secs": 6.0,
+   "tag": "happy",
+   "status": 202
   }
  ],
  "calls": 6407,
  "requests": 6611,
- "secs": 477,
+ "secs": 470,
  "hits_ok": [
   "DELETE /accounts/{account_id}",
   "DELETE /api/company-profiles/{profile_id}",
@@ -255,6 +273,7 @@
   "POST /campaigns/{campaign_id}/schedule/reschedule-date",
   "POST /campaigns/{campaign_id}/send-now",
   "POST /campaigns/{campaign_id}/sequences",
+  "POST /campaigns/{campaign_id}/sequences/{step}/subject-variants",
   "POST /campaigns/{campaign_id}/templates/approve-all",
   "POST /campaigns/{campaign_id}/templates/{template_id}/approve",
   "POST /campaigns/{campaign_id}/templates/{template_id}/regenerate",

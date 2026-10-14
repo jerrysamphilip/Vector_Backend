@@ -513,7 +513,7 @@
     },
     {
       "id": "UIO-SHELL-GUARD-api",
-      "title": "Server also refuses AGENT on team/inbox/campaign management endpoints (403), not just the UI",
+      "title": "Server also refuses AGENT on team/inbox endpoints and campaign launch (403), not just the UI",
       "status": "PASS",
       "category": "",
       "detail": "",
@@ -1170,7 +1170,7 @@
     },
     {
       "id": "UIO-DET-09",
-      "title": "Role AGENT cannot open a campaign by URL (redirect Home)",
+      "title": "Role AGENT (manage_campaigns by default) can open a campaign by URL",
       "status": "PASS",
       "category": "",
       "detail": "",

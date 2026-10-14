@@ -5,7 +5,7 @@
     "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 13.3,
+  "seconds": 10.6,
   "cases": [
     {
       "id": "AB-S001",
@@ -65,7 +65,7 @@
     },
     {
       "id": "AB-S010",
-      "title": "An agent cannot change variants (403)",
+      "title": "An agent without manage_campaigns cannot change variants (403)",
       "status": "PASS",
       "category": "",
       "detail": ""

@@ -5,7 +5,7 @@
     "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 239,
+  "seconds": 243,
   "cases": [
     {
       "id": "UIO-SHELL-SB-owner",
@@ -100,7 +100,7 @@
     },
     {
       "id": "UIO-SHELL-GUARD-api",
-      "title": "Server also refuses AGENT on team/inbox/campaign management endpoints (403), not just the UI",
+      "title": "Server also refuses AGENT on team/inbox endpoints and campaign launch (403), not just the UI",
       "status": "PASS",
       "category": "",
       "detail": ""
