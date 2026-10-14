@@ -163,6 +163,11 @@ def reactivate(db: Session, actor: User, user_id: str) -> None:
     target = get_member(db, actor, user_id)
     if target.status == "ACTIVE":
         raise BadRequestError("User is already active")
+    if target.status == "INVITED":
+        # Activating an invited user would bypass the invitation (and leave its links live)
+        raise BadRequestError("User has a pending invitation; resend the invitation instead")
+    if target.role == "SUPER_ADMIN" and actor.role != "SUPER_ADMIN":
+        raise PermissionDenied("Only a Super Admin can reactivate a Super Admin")
     if actor.role == "ADMIN" and target.role == "ADMIN":
         raise PermissionDenied("Admins cannot reactivate other admins")
     target.status = "ACTIVE"

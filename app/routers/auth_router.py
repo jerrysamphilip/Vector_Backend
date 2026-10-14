@@ -146,6 +146,15 @@ _DEFAULT_PERMS: dict[str, list[str]] = {
 }
 
 
+def _has_live_invite_link(db: Session, user: User) -> bool:
+    """An INVITED account may sign in only while its emailed sign-in link is unused and unexpired."""
+    return db.query(MagicLoginToken.token_id).filter(
+        MagicLoginToken.user_id == user.user_id,
+        MagicLoginToken.used_at.is_(None),
+        MagicLoginToken.expires_at > datetime.utcnow(),
+    ).first() is not None
+
+
 def _user_dict(user: User) -> dict:
     tenant = getattr(user, "tenant", None) if user.tenant_id and user.role != "PLATFORM_ADMIN" else None
     effective_permissions = (
@@ -399,6 +408,10 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
 
     if user.status not in ("ACTIVE", "INVITED"):
         raise HTTPException(status_code=403, detail="Account is suspended or inactive")
+    if user.status == "INVITED" and not _has_live_invite_link(db, user):
+        # The temporary password is only valid while the invitation's sign-in link is
+        raise HTTPException(status_code=403,
+                            detail="Your invitation has expired. Ask your administrator to resend it.")
     ensure_tenant_active(db, user)
 
     # Activate invited user on first login
