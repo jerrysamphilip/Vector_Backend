@@ -486,12 +486,19 @@ def _required_missing(db: Session, tenant_id: str, prospect: Prospect) -> List[s
     return [d.label for d in required if values.get(d.field_key) in (None, "", [])]
 
 
+_PHONE_QUERY = re.compile(r"[\d\s+().\-/]+")
+
+
 def search_condition(q: str):
-    """Match name, email, company, title or phone (digits only, formatting ignored)."""
+    """Match name, email, company, title or phone (digits only, formatting ignored).
+
+    The digits-only phone match applies only when the query looks like a phone number (digits and
+    phone punctuation, e.g. "737 555 0188", "+1 (737) 555-0188"). Otherwise a mixed query such as
+    "zorblax66034" would also match every record whose text merely contains "66034"."""
     term = q.strip().lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     conditions = [Prospect.search_text.like(f"%{term}%")]
     digits = phone_digits(q)
-    if len(digits) >= 4 and digits != term:
+    if len(digits) >= 4 and digits != term and _PHONE_QUERY.fullmatch(q.strip()):
         conditions.append(Prospect.search_text.like(f"%{digits}%"))
     return or_(*conditions)
 

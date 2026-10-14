@@ -29,7 +29,7 @@ Run them in this order. A failing unit or functional test is cheaper to diagnose
 |---|---|---|
 | unit | `unit` | `python3 scripts/test.py list` counts the test functions per file. Parametrised cases expand at run time. |
 | functional | `functional` | every `tests/test_*.py` |
-| system | `contract`, `new_features`, `contacts`, `sales_pipeline`, `outreach`, `api_sweep`, discovered `system_tests/*/run_*.py` (e.g. `ab_testing`, `behaviour_fixes`, `contact_scoring`, `discount_approval`, `webhooks`), `reports_platform` (always last) | about 6,300 recorded cases, 5,800 of them in the API sweep |
+| system | `contract`, `new_features`, `contacts`, `sales_pipeline`, `outreach`, `api_sweep`, discovered `system_tests/*/run_*.py` (e.g. `ab_testing`, `behaviour_fixes`, `contact_scoring`, `crm_kpis`, `discount_approval`, `webhooks`), `reports_platform` (always last) | about 6,300 recorded cases, 5,800 of them in the API sweep |
 | e2e | `e2e` (J1-J6) | 188 cases |
 | ui | `ui_outreach`, `ui_crm`, `ui_features.<name>` (one suite per `.mjs`) | about 360 cases + new features |
 
@@ -218,8 +218,8 @@ These suites follow the ui_crm convention and share `system_tests/ui_features/_u
 |---|---|---|---|
 | `ui_features.template_library` | `UIF-TL-01..17` | `tmpllib` | Template library: CRUD, merge fields, validation, category filter and search, preview, render for a contact, usage count, AGENT vs admin rights, private templates, API failures |
 | `ui_features.platform_admin` | `UIF-PA-01..17` | `padmin`, `pa_victim` | `/admin` console as a PLATFORM_ADMIN created by SQL (removed at the end): roster, detail, suspend and reactivate, create tenant, stats, route guards, and the scheduler switch through the API. The suite saves `platform_flags.scheduler_paused` first and restores it in a `finally` block. It deletes the tenant it creates. |
-| `ui_features.mobile_layout` | `UIF-MOB-01..90` | `mobile` | 12 key screens at 390x844 and 768x1024: horizontal overflow (the detail names the offending elements), primary action, nav, content width, modal fit. Screenshots go to `ui_crm/shots/mobile_layout/`. |
-| `ui_features.a11y_smoke` | `UIF-A11Y-01..78` | `a11y` | Accessible names from Chromium's AX tree (CDP), one h1, Tab reaches the primary action, and modal dialog semantics, focus trap, Escape and focus return. To check another screen, add it to `ROUTES` or `MODALS`. |
+| `ui_features.mobile_layout` | `UIF-MOB-01..90` | `mobile` | 13 key screens (incl. the Sales reports CRM KPIs tab) at 390x844 and 768x1024: horizontal overflow (the detail names the offending elements), primary action, nav, content width, modal fit. Screenshots go to `ui_crm/shots/mobile_layout/`. |
+| `ui_features.a11y_smoke` | `UIF-A11Y-01..92` | `a11y` | 19 screens (incl. the Sales reports CRM KPIs tab): accessible names from Chromium's AX tree (CDP), one h1, Tab reaches the primary action, and modal dialog semantics, focus trap, Escape and focus return. To check another screen, add it to `ROUTES` or `MODALS`. |
 | `ui_features.session_auth` | `UIF-SESS-01..23` | `session` | Signed-out redirects, silent refresh when the access cookie is gone (including a form submit retried with the rotated CSRF token), CSRF 403, dead session, and sign-out (state, cookies, refresh token, Back button, other tab). It uses fresh logins only, so the shared cookie cache is never touched. |
 
 Run one with `python3 scripts/test.py run ui --suite ui_features.mobile_layout`, or `node system_tests/ui_features/mobile_layout.mjs`. Set `ONLY=<regex>` to run only the matching case ids.
@@ -357,7 +357,7 @@ Every suite creates its own data. **No suite uses the demo data** (`seed_contact
 | unit | None |
 | functional | Its own tenants (`register_tenant`) in the throwaway schema, which is recreated before each runner run |
 | contract | None (reads source + OpenAPI) |
-| new_features, contacts, sales_pipeline, reports_platform, ab_testing, behaviour_fixes, contact_scoring, discount_approval, webhooks | Fresh workspaces through self sign-up on every run; role users inserted by SQL inside their own tenant |
+| new_features, contacts, sales_pipeline, reports_platform, ab_testing, behaviour_fixes, contact_scoring, crm_kpis, discount_approval, webhooks | Fresh workspaces through self sign-up on every run; role users inserted by SQL inside their own tenant |
 | e2e | Each journey signs up its own workspaces |
 
 The exceptions all reuse their own data or touch something shared, never demo data:

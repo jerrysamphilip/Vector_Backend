@@ -1,0 +1,235 @@
+{
+  "suite": "crm_kpis",
+  "counts": {
+    "PASS": 32,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 17.7,
+  "cases": [
+    {
+      "id": "CK-001",
+      "title": "Schema is at alembic 0014_crm_kpis: committed columns on forecast_snapshots and the user_activity_days table",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-002",
+      "title": "Owner gets all six KPIs in BRD order with value, numerator, denominator, target, period, note and definition",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-003",
+      "title": "Only the duplicate rate has a BRD target (< 1%)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-004",
+      "title": "Agents and level-2 managers get the workspace KPIs (duplicate rate, adoption) as unavailable",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-005",
+      "title": "The Sales Head (level 1) sees the workspace KPIs",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-006",
+      "title": "Bad filters: quarter without fy 400, fy out of range 422, member outside your team 404, no token 401",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-010",
+      "title": "Duplicate contact rate: numerator / denominator match the BRD rules applied to the rows from SQL",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-011",
+      "title": "The dataset's duplicates: similar name at the same company, Gmail dots/+tag, same phone (6 of 8 live; deleted one ignored)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-012",
+      "title": "The contacts counted are exactly those the Duplicates page groups",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-013",
+      "title": "member= narrows the duplicate rate to that person's contacts (their duplicate partner is someone else's)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-014",
+      "title": "Merging a duplicate group resolves it: 4 of 7",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-020",
+      "title": "Leads from a reply (one-click, source 'Campaign reply'), by hand after a reply, and unrelated leads are created",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-021",
+      "title": "Reply-to-lead: leads from replies / contacts with a positive reply match SQL (3 / 4 = 75%)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-022",
+      "title": "An agent's reply-to-lead covers their own leads and contacts (2 / 3)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-023",
+      "title": "No positive replies: value null with a note (the stack runs without an AI classifier key)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-030",
+      "title": "Lead-to-SQL: SQLs among the period's new leads / new leads match SQL (3 / 7)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-031",
+      "title": "SQL-to-win: won SQLs / SQLs match SQL and the SQL-to-win report (2 / 3)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-032",
+      "title": "Lead-to-SQL equals the Leads & SQLs report's rate",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-040",
+      "title": "Forecast accuracy for the last finished quarter = won in it / committed at its start, from SQL (3000 / 4000 = 75%)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-041",
+      "title": "Forecast accuracy can exceed 100% (rep 1: 1200 won / 1000 committed = 120%)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-042",
+      "title": "The forecast-accuracy report uses the same BRD formula (accuracy = actual / committed) and keeps the weighted measure as secondary",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-043",
+      "title": "A snapshot stores committed = won to date + open Commit deals (stage default or set by hand; Omitted excluded)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-044",
+      "title": "The current quarter by fy/quarter is in progress: won so far / committed, with a note",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-045",
+      "title": "A quarter with nothing committed in scope gives null with a note",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-046",
+      "title": "Hidden amounts: an agent sees the accuracy % but not revenue or committed amounts",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-050",
+      "title": "Adoption this week = users active this week / licensed seats, from SQL (5 / 5; the deactivated user is no seat)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-051",
+      "title": "Adoption trend: 9 weeks, last week 2 / 5 = 40% (deactivated user ignored), Sunday counted in its own week",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-052",
+      "title": "member= narrows adoption to that team's seats (manager + rep 1)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-053",
+      "title": "Signing in and using the API records one activity row per user per day",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-060",
+      "title": "Another workspace sees only its own numbers (1 seat, no contacts, no leads)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-061",
+      "title": "Another workspace cannot report on this workspace's people (404)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "CK-062",
+      "title": "The KPI call answers quickly (< 3 s)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

@@ -137,6 +137,9 @@ async def get_current_user(
             detail={"code": "MFA_SETUP_REQUIRED",
                     "message": "Your workspace requires two-factor authentication. Set it up to continue."},
         )
+    # CRM adoption KPI: one activity row per user per day (cached, so normally a dict lookup)
+    from app.services.user_activity import record_for
+    record_for(db, user)
     return user
 
 

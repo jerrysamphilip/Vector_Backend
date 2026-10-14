@@ -1,0 +1,130 @@
+{
+  "suite": "admin_controls",
+  "counts": {
+    "PASS": 17,
+    "FAIL": 0,
+    "BLOCKED": 0
+  },
+  "seconds": 52.1,
+  "cases": [
+    {
+      "id": "AC-001",
+      "title": "A list can be renamed and given a description (trimmed, stored)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-002",
+      "title": "An uploaded prospect list can be renamed too",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-003",
+      "title": "Rename is tenant-isolated (404) and bounded (blank 400, too long 422)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-004",
+      "title": "Without manage_prospects a list cannot be renamed (403)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-010",
+      "title": "Resending straight away is refused (429, once a minute per user)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-011",
+      "title": "After a minute: new temporary password and sign-in link; the old invitation and links are revoked",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-012",
+      "title": "A second resend within the minute is refused again (429)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-013",
+      "title": "Resend guards: joined user 409, other workspace 404, agent 403, admin on a Super Admin invite 403",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-020",
+      "title": "Reports-to cannot be the user or someone in their own team (400)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-021",
+      "title": "manager_id is bounded (422)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-030",
+      "title": "Add domain: normalised, stored for this workspace, DNS guidance for SPF / DKIM / DMARC",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-031",
+      "title": "Unique per workspace (409); another workspace may add the same name (201)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-032",
+      "title": "Hostname validation rejects schemes, addresses, IPs, wildcards, spaces and blanks",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-033",
+      "title": "Only admins add domains (agent 403); any role reads the DNS records",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-034",
+      "title": "DNS records of another workspace's domain are 404",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-035",
+      "title": "Check status (diagnostics scan) runs on an added domain and the statuses are refreshed",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "AC-040",
+      "title": "New endpoints are documented (OpenAPI)",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    }
+  ]
+}

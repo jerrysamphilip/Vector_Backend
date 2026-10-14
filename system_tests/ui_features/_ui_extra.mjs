@@ -179,6 +179,8 @@ export const SCREENS = [
   { key: 'help', name: 'Help center', route: () => 'help', primary: p => p.getByPlaceholder('Search all help…') },
   { key: 'webhooks', name: 'Webhooks', route: () => 'webhooks', primary: p => p.getByTestId('webhook-add') },
   { key: 'contact-scoring', name: 'Contact scoring settings', route: () => 'contact-scoring', primary: p => p.getByTestId('scoring-save') },
+  // BRD section 8: the CRM KPIs tab of Sales reports (primary = the first KPI's definition toggle, so it waits for the data to load)
+  { key: 'crm-kpis', name: 'Sales reports: CRM KPIs', route: () => 'sales-reports?tab=kpis', primary: p => p.getByTestId('kpi-info').first() },
 ];
 
 /** A sidebar nav link; expands its (collapsed) group first. The sidebar keeps only the active group open (Sidebar.jsx). */

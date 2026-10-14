@@ -296,6 +296,23 @@
        }
       ],
       "title": "Occurred At"
+     },
+     "mentioned_user_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string",
+         "maxLength": 36,
+         "minLength": 1
+        },
+        "type": "array",
+        "maxItems": 20
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Mentioned User Ids"
      }
     },
     "type": "object",
@@ -367,6 +384,23 @@
        }
       ],
       "title": "Occurred At"
+     },
+     "mentioned_user_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string",
+         "maxLength": 36,
+         "minLength": 1
+        },
+        "type": "array",
+        "maxItems": 20
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Mentioned User Ids"
      }
     },
     "type": "object",
@@ -455,6 +489,25 @@
      "inbox_preferences"
     ],
     "title": "AlertPreferenceOverviewResponse"
+   },
+   "ApprovalSettingsIn": {
+    "properties": {
+     "discount_approval_threshold": {
+      "anyOf": [
+       {
+        "type": "number",
+        "maximum": 100.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Discount Approval Threshold"
+     }
+    },
+    "type": "object",
+    "title": "ApprovalSettingsIn"
    },
    "ApproveAllResponse": {
     "properties": {
@@ -1253,6 +1306,7 @@
      },
      "min_gap_minutes": {
       "type": "integer",
+      "maximum": 10080.0,
       "minimum": 0.0,
       "title": "Min Gap Minutes",
       "description": "Min gap between emails (random mode)",
@@ -1262,6 +1316,7 @@
       "anyOf": [
        {
         "type": "integer",
+        "maximum": 100000.0,
         "minimum": 1.0
        },
        {
@@ -1273,6 +1328,7 @@
      },
      "batch_gap_minutes": {
       "type": "integer",
+      "maximum": 10080.0,
       "minimum": 1.0,
       "title": "Batch Gap Minutes",
       "description": "Minutes between batch starts (batch mode)",
@@ -1282,6 +1338,7 @@
       "anyOf": [
        {
         "type": "integer",
+        "maximum": 1000000.0,
         "minimum": 1.0
        },
        {
@@ -2116,7 +2173,9 @@
      "min_gap_minutes": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "integer",
+        "maximum": 10080.0,
+        "minimum": 0.0
        },
        {
         "type": "null"
@@ -2127,7 +2186,9 @@
      "batch_size": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "integer",
+        "maximum": 100000.0,
+        "minimum": 1.0
        },
        {
         "type": "null"
@@ -2138,7 +2199,9 @@
      "batch_gap_minutes": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "integer",
+        "maximum": 10080.0,
+        "minimum": 1.0
        },
        {
         "type": "null"
@@ -2162,6 +2225,7 @@
       "anyOf": [
        {
         "type": "integer",
+        "maximum": 1000000.0,
         "minimum": 1.0
        },
        {
@@ -2350,6 +2414,67 @@
     "title": "ClassifyTestResponse",
     "description": "Response for testing classification."
    },
+   "CompanyLinkCreate": {
+    "properties": {
+     "account_id": {
+      "type": "string",
+      "maxLength": 36,
+      "minLength": 1,
+      "title": "Account Id"
+     },
+     "label": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Label"
+     },
+     "make_primary": {
+      "type": "boolean",
+      "title": "Make Primary",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "account_id"
+    ],
+    "title": "CompanyLinkCreate"
+   },
+   "CompanyLinkUpdate": {
+    "properties": {
+     "label": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Label"
+     },
+     "is_primary": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Is Primary"
+     }
+    },
+    "type": "object",
+    "title": "CompanyLinkUpdate"
+   },
    "CompanyProfileCreate": {
     "properties": {
      "profile_name": {
@@ -2476,7 +2601,14 @@
       "title": "Postal Address"
      },
      "is_default": {
-      "type": "boolean",
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Is Default"
      }
     },
@@ -2487,8 +2619,7 @@
      "company_name",
      "company_description",
      "default_sender_name",
-     "default_cta_link",
-     "is_default"
+     "default_cta_link"
     ],
     "title": "CompanyProfileResponse"
    },
@@ -3452,11 +3583,15 @@
      },
      "send_start_hour": {
       "type": "integer",
+      "maximum": 23.0,
+      "minimum": 0.0,
       "title": "Send Start Hour",
       "default": 9
      },
      "send_end_hour": {
       "type": "integer",
+      "maximum": 23.0,
+      "minimum": 0.0,
       "title": "Send End Hour",
       "default": 17
      },
@@ -3792,10 +3927,45 @@
       "type": "boolean",
       "title": "Add To Calendar",
       "default": false
+     },
+     "mentioned_user_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string",
+         "maxLength": 36,
+         "minLength": 1
+        },
+        "type": "array",
+        "maxItems": 20
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Mentioned User Ids"
      }
     },
     "type": "object",
     "title": "DealActivity"
+   },
+   "DecisionIn": {
+    "properties": {
+     "reason": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     }
+    },
+    "type": "object",
+    "title": "DecisionIn"
    },
    "Definition": {
     "properties": {
@@ -3879,6 +4049,21 @@
      "group_by"
     ],
     "title": "Definition"
+   },
+   "DomainCreate": {
+    "properties": {
+     "domain_name": {
+      "type": "string",
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "Domain Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "domain_name"
+    ],
+    "title": "DomainCreate"
    },
    "DraftResponse": {
     "properties": {
@@ -4347,6 +4532,104 @@
     ],
     "title": "EmailValidationRequest"
    },
+   "EndpointCreate": {
+    "properties": {
+     "url": {
+      "type": "string",
+      "maxLength": 2000,
+      "title": "Url"
+     },
+     "description": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Description"
+     },
+     "event_types": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "maxItems": 13,
+      "minItems": 1,
+      "title": "Event Types"
+     },
+     "active": {
+      "type": "boolean",
+      "title": "Active",
+      "default": true
+     }
+    },
+    "type": "object",
+    "required": [
+     "url",
+     "event_types"
+    ],
+    "title": "EndpointCreate"
+   },
+   "EndpointUpdate": {
+    "properties": {
+     "url": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 2000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Url"
+     },
+     "description": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Description"
+     },
+     "event_types": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array",
+        "maxItems": 13,
+        "minItems": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Types"
+     },
+     "active": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Active"
+     }
+    },
+    "type": "object",
+    "title": "EndpointUpdate"
+   },
    "EnrollRequest": {
     "properties": {
      "campaign_id": {
@@ -4378,6 +4661,8 @@
      },
      "cool_off_days": {
       "type": "integer",
+      "maximum": 3650.0,
+      "minimum": 0.0,
       "title": "Cool Off Days",
       "default": 7
      },
@@ -4678,6 +4963,76 @@
     },
     "type": "object",
     "title": "FilterPreview"
+   },
+   "FitRuleIn": {
+    "properties": {
+     "id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 36
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Id"
+     },
+     "label": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Label"
+     },
+     "field": {
+      "type": "string",
+      "maxLength": 40,
+      "minLength": 1,
+      "title": "Field"
+     },
+     "operator": {
+      "type": "string",
+      "maxLength": 20,
+      "minLength": 1,
+      "title": "Operator"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     },
+     "points": {
+      "type": "integer",
+      "maximum": 100.0,
+      "minimum": -100.0,
+      "title": "Points"
+     }
+    },
+    "type": "object",
+    "required": [
+     "field",
+     "operator",
+     "points"
+    ],
+    "title": "FitRuleIn"
    },
    "ForgotPasswordRequest": {
     "properties": {
@@ -4983,6 +5338,35 @@
     ],
     "title": "GoogleCallbackRequest"
    },
+   "GradeThresholdsIn": {
+    "properties": {
+     "A": {
+      "type": "integer",
+      "maximum": 100.0,
+      "minimum": 1.0,
+      "title": "A"
+     },
+     "B": {
+      "type": "integer",
+      "maximum": 100.0,
+      "minimum": 1.0,
+      "title": "B"
+     },
+     "C": {
+      "type": "integer",
+      "maximum": 100.0,
+      "minimum": 1.0,
+      "title": "C"
+     }
+    },
+    "type": "object",
+    "required": [
+     "A",
+     "B",
+     "C"
+    ],
+    "title": "GradeThresholdsIn"
+   },
    "HTTPValidationError": {
     "properties": {
      "detail": {
@@ -5012,7 +5396,8 @@
      "manager_id": {
       "anyOf": [
        {
-        "type": "string"
+        "type": "string",
+        "maxLength": 36
        },
        {
         "type": "null"
@@ -5552,7 +5937,8 @@
      "description": {
       "anyOf": [
        {
-        "type": "string"
+        "type": "string",
+        "maxLength": 2000
        },
        {
         "type": "null"
@@ -6440,7 +6826,14 @@
       "title": "Poc Country"
      },
      "consent_status": {
-      "type": "string",
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Consent Status"
      },
      "notes": {
@@ -6458,8 +6851,7 @@
     "type": "object",
     "required": [
      "prospect_id",
-     "email",
-     "consent_status"
+     "email"
     ],
     "title": "ProspectInListResponse"
    },
@@ -6554,8 +6946,15 @@
       "title": "Prospect Count"
      },
      "uploaded_at": {
-      "type": "string",
-      "format": "date-time",
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Uploaded At"
      }
     },
@@ -6564,8 +6963,7 @@
      "list_id",
      "list_name",
      "source_type",
-     "prospect_count",
-     "uploaded_at"
+     "prospect_count"
     ],
     "title": "ProspectListResponse"
    },
@@ -7445,6 +7843,103 @@
     "title": "SchedulePreviewRequest",
     "description": "Request to preview schedule dates for sequence steps."
    },
+   "ScoringModelWrite": {
+    "properties": {
+     "fit_rules": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/FitRuleIn"
+        },
+        "type": "array",
+        "maxItems": 50
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fit Rules"
+     },
+     "engagement": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "$ref": "#/components/schemas/SignalIn"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engagement"
+     },
+     "half_life_days": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 365.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Half Life Days"
+     },
+     "lookback_days": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 730.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lookback Days"
+     },
+     "fit_weight": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 100.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fit Weight"
+     },
+     "engagement_weight": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 100.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engagement Weight"
+     },
+     "grade_thresholds": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/GradeThresholdsIn"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "title": "ScoringModelWrite"
+   },
    "SegmentationRequest": {
     "properties": {
      "list_id": {
@@ -7723,7 +8218,9 @@
      "daily_limit": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "integer",
+        "maximum": 100000.0,
+        "minimum": 0.0
        },
        {
         "type": "null"
@@ -7849,7 +8346,9 @@
      "max_emails_per_day": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "integer",
+        "maximum": 100000.0,
+        "minimum": 0.0
        },
        {
         "type": "null"
@@ -7956,7 +8455,14 @@
       "title": "Provider"
      },
      "status": {
-      "type": "string",
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Status"
      },
      "last_sent_at": {
@@ -7972,7 +8478,14 @@
       "title": "Last Sent At"
      },
      "daily_limit": {
-      "type": "integer",
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Daily Limit"
      },
      "smtp_host": {
@@ -8409,9 +8922,7 @@
     "type": "object",
     "required": [
      "inbox_id",
-     "email_address",
-     "status",
-     "daily_limit"
+     "email_address"
     ],
     "title": "SendingInboxCreatedResponse"
    },
@@ -8437,7 +8948,14 @@
       "title": "Provider"
      },
      "status": {
-      "type": "string",
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Status"
      },
      "last_sent_at": {
@@ -8453,7 +8971,14 @@
       "title": "Last Sent At"
      },
      "daily_limit": {
-      "type": "integer",
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Daily Limit"
      },
      "smtp_host": {
@@ -8878,9 +9403,7 @@
     "type": "object",
     "required": [
      "inbox_id",
-     "email_address",
-     "status",
-     "daily_limit"
+     "email_address"
     ],
     "title": "SendingInboxResponse"
    },
@@ -8999,7 +9522,9 @@
      "daily_limit": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "integer",
+        "maximum": 100000.0,
+        "minimum": 0.0
        },
        {
         "type": "null"
@@ -9032,7 +9557,9 @@
      "max_emails_per_day": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "integer",
+        "maximum": 100000.0,
+        "minimum": 0.0
        },
        {
         "type": "null"
@@ -9570,6 +10097,51 @@
     "title": "SequenceStepUpdate",
     "description": "Schema for updating a sequence step."
    },
+   "SignalIn": {
+    "properties": {
+     "points": {
+      "type": "integer",
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Points"
+     },
+     "max": {
+      "type": "integer",
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Max"
+     }
+    },
+    "type": "object",
+    "required": [
+     "points",
+     "max"
+    ],
+    "title": "SignalIn"
+   },
+   "SnapshotRequest": {
+    "properties": {
+     "period_type": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^(MONTH|QUARTER)$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Period Type"
+     },
+     "replace": {
+      "type": "boolean",
+      "title": "Replace",
+      "default": false
+     }
+    },
+    "type": "object",
+    "title": "SnapshotRequest"
+   },
    "StageWrite": {
     "properties": {
      "name": {
@@ -9641,6 +10213,24 @@
     },
     "type": "object",
     "title": "StageWrite"
+   },
+   "SubmitIn": {
+    "properties": {
+     "note": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     }
+    },
+    "type": "object",
+    "title": "SubmitIn"
    },
    "TargetWrite": {
     "properties": {
@@ -10388,7 +10978,14 @@
       "title": "Role"
      },
      "status": {
-      "type": "string",
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Status"
      },
      "auth_provider": {
@@ -10660,6 +11257,67 @@
     ],
     "title": "ValidationError"
    },
+   "VariantCreate": {
+    "properties": {
+     "subject": {
+      "type": "string",
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Subject"
+     },
+     "weight": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 100.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Weight",
+      "description": "Relative share of the step's emails; default equal split"
+     }
+    },
+    "type": "object",
+    "required": [
+     "subject"
+    ],
+    "title": "VariantCreate"
+   },
+   "VariantUpdate": {
+    "properties": {
+     "subject": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 500,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subject"
+     },
+     "weight": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 100.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Weight"
+     }
+    },
+    "type": "object",
+    "title": "VariantUpdate"
+   },
    "ViewWrite": {
     "properties": {
      "name": {
@@ -10822,6 +11480,8 @@
      },
      "cool_off_days": {
       "type": "integer",
+      "maximum": 3650.0,
+      "minimum": 0.0,
       "title": "Cool Off Days",
       "default": 7
      }
@@ -10859,7 +11519,8 @@
      "tone": {
       "anyOf": [
        {
-        "type": "string"
+        "type": "string",
+        "maxLength": 50
        },
        {
         "type": "null"
@@ -13507,6 +14168,59 @@
    }
   },
   {
+   "id": "POST /api/users/{user_id}/resend-invite",
+   "method": "POST",
+   "path": "/api/users/{user_id}/resend-invite",
+   "operationId": "resend_invite_api_users__user_id__resend_invite_post",
+   "tags": [
+    "User Management"
+   ],
+   "summary": "Resend Invite",
+   "params": [
+    {
+     "name": "user_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "User Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_team"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.user_router.resend_invite",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN perm=manage_team",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
    "id": "PUT /api/users/{user_id}/role",
    "method": "PUT",
    "path": "/api/users/{user_id}/role",
@@ -16108,6 +16822,52 @@
       "type": "string",
       "title": "Campaign Id"
      }
+    },
+    {
+     "name": "limit",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "maximum": 100,
+      "minimum": 1,
+      "default": 25,
+      "title": "Limit"
+     }
+    },
+    {
+     "name": "cursor",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cursor"
+     }
+    },
+    {
+     "name": "since",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Since"
+     }
     }
    ],
    "body_required": false,
@@ -16319,6 +17079,571 @@
     "MANAGER": true,
     "AGENT": true,
     "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "GET /campaigns/{campaign_id}/sequences/{step}/subject-variants",
+   "method": "GET",
+   "path": "/campaigns/{campaign_id}/sequences/{step}/subject-variants",
+   "operationId": "list_subject_variants_campaigns__campaign_id__sequences__step__subject_variants_get",
+   "tags": [
+    "Subject A/B tests"
+   ],
+   "summary": "List Subject Variants",
+   "params": [
+    {
+     "name": "campaign_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 36,
+      "title": "Campaign Id"
+     }
+    },
+    {
+     "name": "step",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "maximum": 7,
+      "minimum": 1,
+      "description": "Sequence step number (1-7)",
+      "title": "Step"
+     },
+     "description": "Sequence step number (1-7)"
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.subject_variant_router.list_subject_variants",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "POST /campaigns/{campaign_id}/sequences/{step}/subject-variants",
+   "method": "POST",
+   "path": "/campaigns/{campaign_id}/sequences/{step}/subject-variants",
+   "operationId": "create_subject_variant_campaigns__campaign_id__sequences__step__subject_variants_post",
+   "tags": [
+    "Subject A/B tests"
+   ],
+   "summary": "Create Subject Variant",
+   "params": [
+    {
+     "name": "campaign_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 36,
+      "title": "Campaign Id"
+     }
+    },
+    {
+     "name": "step",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "maximum": 7,
+      "minimum": 1,
+      "description": "Sequence step number (1-7)",
+      "title": "Step"
+     },
+     "description": "Sequence step number (1-7)"
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/VariantCreate"
+   },
+   "responses": {
+    "201": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_campaigns"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.subject_variant_router.create_subject_variant",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_campaigns",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "GET /campaigns/{campaign_id}/sequences/{step}/subject-variants/messages",
+   "method": "GET",
+   "path": "/campaigns/{campaign_id}/sequences/{step}/subject-variants/messages",
+   "operationId": "subject_variant_messages_campaigns__campaign_id__sequences__step__subject_variants_messages_get",
+   "tags": [
+    "Subject A/B tests"
+   ],
+   "summary": "Subject Variant Messages",
+   "params": [
+    {
+     "name": "campaign_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 36,
+      "title": "Campaign Id"
+     }
+    },
+    {
+     "name": "step",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "maximum": 7,
+      "minimum": 1,
+      "description": "Sequence step number (1-7)",
+      "title": "Step"
+     },
+     "description": "Sequence step number (1-7)"
+    },
+    {
+     "name": "label",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^[A-Da-d]$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Label"
+     }
+    },
+    {
+     "name": "limit",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "maximum": 200,
+      "minimum": 1,
+      "default": 50,
+      "title": "Limit"
+     }
+    },
+    {
+     "name": "offset",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "maximum": 100000,
+      "minimum": 0,
+      "default": 0,
+      "title": "Offset"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.subject_variant_router.subject_variant_messages",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "GET /campaigns/{campaign_id}/sequences/{step}/subject-variants/stats",
+   "method": "GET",
+   "path": "/campaigns/{campaign_id}/sequences/{step}/subject-variants/stats",
+   "operationId": "subject_variant_stats_campaigns__campaign_id__sequences__step__subject_variants_stats_get",
+   "tags": [
+    "Subject A/B tests"
+   ],
+   "summary": "Subject Variant Stats",
+   "params": [
+    {
+     "name": "campaign_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 36,
+      "title": "Campaign Id"
+     }
+    },
+    {
+     "name": "step",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "maximum": 7,
+      "minimum": 1,
+      "description": "Sequence step number (1-7)",
+      "title": "Step"
+     },
+     "description": "Sequence step number (1-7)"
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.subject_variant_router.subject_variant_stats",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "DELETE /campaigns/{campaign_id}/sequences/{step}/subject-variants/{label}",
+   "method": "DELETE",
+   "path": "/campaigns/{campaign_id}/sequences/{step}/subject-variants/{label}",
+   "operationId": "delete_subject_variant_campaigns__campaign_id__sequences__step__subject_variants__label__delete",
+   "tags": [
+    "Subject A/B tests"
+   ],
+   "summary": "Delete Subject Variant",
+   "params": [
+    {
+     "name": "campaign_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 36,
+      "title": "Campaign Id"
+     }
+    },
+    {
+     "name": "step",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "maximum": 7,
+      "minimum": 1,
+      "description": "Sequence step number (1-7)",
+      "title": "Step"
+     },
+     "description": "Sequence step number (1-7)"
+    },
+    {
+     "name": "label",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "pattern": "^[A-Da-d]$",
+      "description": "Variant label A-D",
+      "title": "Label"
+     },
+     "description": "Variant label A-D"
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "204": null,
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_campaigns"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.subject_variant_router.delete_subject_variant",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_campaigns",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "PATCH /campaigns/{campaign_id}/sequences/{step}/subject-variants/{label}",
+   "method": "PATCH",
+   "path": "/campaigns/{campaign_id}/sequences/{step}/subject-variants/{label}",
+   "operationId": "update_subject_variant_campaigns__campaign_id__sequences__step__subject_variants__label__patch",
+   "tags": [
+    "Subject A/B tests"
+   ],
+   "summary": "Update Subject Variant",
+   "params": [
+    {
+     "name": "campaign_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 36,
+      "title": "Campaign Id"
+     }
+    },
+    {
+     "name": "step",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "maximum": 7,
+      "minimum": 1,
+      "description": "Sequence step number (1-7)",
+      "title": "Step"
+     },
+     "description": "Sequence step number (1-7)"
+    },
+    {
+     "name": "label",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "pattern": "^[A-Da-d]$",
+      "description": "Variant label A-D",
+      "title": "Label"
+     },
+     "description": "Variant label A-D"
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/VariantUpdate"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_campaigns"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.subject_variant_router.update_subject_variant",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_campaigns",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /campaigns/{campaign_id}/sequences/{step}/subject-variants/{label}/promote",
+   "method": "POST",
+   "path": "/campaigns/{campaign_id}/sequences/{step}/subject-variants/{label}/promote",
+   "operationId": "promote_subject_variant_campaigns__campaign_id__sequences__step__subject_variants__label__promote_post",
+   "tags": [
+    "Subject A/B tests"
+   ],
+   "summary": "Promote Subject Variant",
+   "params": [
+    {
+     "name": "campaign_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 36,
+      "title": "Campaign Id"
+     }
+    },
+    {
+     "name": "step",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "maximum": 7,
+      "minimum": 1,
+      "description": "Sequence step number (1-7)",
+      "title": "Step"
+     },
+     "description": "Sequence step number (1-7)"
+    },
+    {
+     "name": "label",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "pattern": "^[A-Da-d]$",
+      "description": "Variant label A-D",
+      "title": "Label"
+     },
+     "description": "Variant label A-D"
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_campaigns"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.subject_variant_router.promote_subject_variant",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_campaigns",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": false,
+    "AGENT_NOPERM": false
    }
   },
   {
@@ -17059,7 +18384,7 @@
      "required": false,
      "schema": {
       "type": "string",
-      "pattern": "^(name|email|company|lifecycle_stage|lead_status|created_at|updated_at)$",
+      "pattern": "^(name|email|company|lifecycle_stage|lead_status|created_at|updated_at|score)$",
       "default": "created_at",
       "title": "Sort By"
      }
@@ -17096,6 +18421,61 @@
       "minimum": 1,
       "default": 25,
       "title": "Page Size"
+     }
+    },
+    {
+     "name": "grade",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 20
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Score grade(s): A, B, C, D, comma-separated",
+      "title": "Grade"
+     },
+     "description": "Score grade(s): A, B, C, D, comma-separated"
+    },
+    {
+     "name": "score_min",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 100,
+        "minimum": 0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score Min"
+     }
+    },
+    {
+     "name": "score_max",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 100,
+        "minimum": 0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score Max"
      }
     }
    ],
@@ -18008,6 +19388,113 @@
    }
   },
   {
+   "id": "GET /contacts/mentionable-users",
+   "method": "GET",
+   "path": "/contacts/mentionable-users",
+   "operationId": "mentionable_users_contacts_mentionable_users_get",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "Mentionable Users",
+   "params": [
+    {
+     "name": "q",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Q"
+     }
+    },
+    {
+     "name": "limit",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "maximum": 50,
+      "minimum": 1,
+      "default": 20,
+      "title": "Limit"
+     }
+    },
+    {
+     "name": "prospect_id",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 36
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Prospect Id"
+     }
+    },
+    {
+     "name": "opportunity_id",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 36
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Opportunity Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.contacts_router.mentionable_users",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
    "id": "POST /contacts/merge",
    "method": "POST",
    "path": "/contacts/merge",
@@ -18133,6 +19620,51 @@
    }
   },
   {
+   "id": "POST /contacts/purge",
+   "method": "POST",
+   "path": "/contacts/purge",
+   "operationId": "purge_deleted_contacts_purge_post",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "Purge Deleted",
+   "params": [],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/RestoreRequest"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.contacts_router.purge_deleted",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
    "id": "POST /contacts/restore",
    "method": "POST",
    "path": "/contacts/restore",
@@ -18175,6 +19707,125 @@
     "MANAGER": true,
     "AGENT": true,
     "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "GET /contacts/scoring-model",
+   "method": "GET",
+   "path": "/contacts/scoring-model",
+   "operationId": "get_scoring_model_contacts_scoring_model_get",
+   "tags": [
+    "Contact scoring"
+   ],
+   "summary": "Get Scoring Model",
+   "params": [],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {}
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.contact_scoring_router.get_scoring_model",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "PUT /contacts/scoring-model",
+   "method": "PUT",
+   "path": "/contacts/scoring-model",
+   "operationId": "put_scoring_model_contacts_scoring_model_put",
+   "tags": [
+    "Contact scoring"
+   ],
+   "summary": "Put Scoring Model",
+   "params": [],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/ScoringModelWrite"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.contact_scoring_router.put_scoring_model",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /contacts/scoring-model/recompute",
+   "method": "POST",
+   "path": "/contacts/scoring-model/recompute",
+   "operationId": "recompute_scores_contacts_scoring_model_recompute_post",
+   "tags": [
+    "Contact scoring"
+   ],
+   "summary": "Recompute Scores",
+   "params": [],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "202": {}
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.contact_scoring_router.recompute_scores",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
    }
   },
   {
@@ -18395,6 +20046,259 @@
    }
   },
   {
+   "id": "GET /contacts/{prospect_id}/companies",
+   "method": "GET",
+   "path": "/contacts/{prospect_id}/companies",
+   "operationId": "list_contact_companies_contacts__prospect_id__companies_get",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "List Contact Companies",
+   "params": [
+    {
+     "name": "prospect_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Prospect Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.contacts_router.list_contact_companies",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "POST /contacts/{prospect_id}/companies",
+   "method": "POST",
+   "path": "/contacts/{prospect_id}/companies",
+   "operationId": "add_contact_company_contacts__prospect_id__companies_post",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "Add Contact Company",
+   "params": [
+    {
+     "name": "prospect_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Prospect Id"
+     }
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/CompanyLinkCreate"
+   },
+   "responses": {
+    "201": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.contacts_router.add_contact_company",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "DELETE /contacts/{prospect_id}/companies/{account_id}",
+   "method": "DELETE",
+   "path": "/contacts/{prospect_id}/companies/{account_id}",
+   "operationId": "remove_contact_company_contacts__prospect_id__companies__account_id__delete",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "Remove Contact Company",
+   "params": [
+    {
+     "name": "prospect_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Prospect Id"
+     }
+    },
+    {
+     "name": "account_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Account Id"
+     }
+    },
+    {
+     "name": "new_primary_id",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 36
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Required when removing the primary company",
+      "title": "New Primary Id"
+     },
+     "description": "Required when removing the primary company"
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.contacts_router.remove_contact_company",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "PATCH /contacts/{prospect_id}/companies/{account_id}",
+   "method": "PATCH",
+   "path": "/contacts/{prospect_id}/companies/{account_id}",
+   "operationId": "update_contact_company_contacts__prospect_id__companies__account_id__patch",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "Update Contact Company",
+   "params": [
+    {
+     "name": "prospect_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Prospect Id"
+     }
+    },
+    {
+     "name": "account_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Account Id"
+     }
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/CompanyLinkUpdate"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.contacts_router.update_contact_company",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
    "id": "GET /contacts/{prospect_id}/history",
    "method": "GET",
    "path": "/contacts/{prospect_id}/history",
@@ -18452,6 +20356,112 @@
    "platform_only": false,
    "other_deps": [],
    "handler": "app.routers.contacts_router.property_history",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "GET /contacts/{prospect_id}/score",
+   "method": "GET",
+   "path": "/contacts/{prospect_id}/score",
+   "operationId": "get_contact_score_contacts__prospect_id__score_get",
+   "tags": [
+    "Contact scoring"
+   ],
+   "summary": "Get Contact Score",
+   "params": [
+    {
+     "name": "prospect_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Prospect Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.contact_scoring_router.get_contact_score",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "POST /contacts/{prospect_id}/score/recompute",
+   "method": "POST",
+   "path": "/contacts/{prospect_id}/score/recompute",
+   "operationId": "recompute_contact_score_contacts__prospect_id__score_recompute_post",
+   "tags": [
+    "Contact scoring"
+   ],
+   "summary": "Recompute Contact Score",
+   "params": [
+    {
+     "name": "prospect_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Prospect Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.contact_scoring_router.recompute_contact_score",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
    "expect": {
@@ -18990,6 +21000,49 @@
    }
   },
   {
+   "id": "POST /deliverability/domains",
+   "method": "POST",
+   "path": "/deliverability/domains",
+   "operationId": "add_domain_deliverability_domains_post",
+   "tags": [
+    "Deliverability"
+   ],
+   "summary": "Add Domain",
+   "params": [],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/DomainCreate"
+   },
+   "responses": {
+    "201": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.deliverability_router.add_domain",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
    "id": "DELETE /deliverability/domains/{domain_name}",
    "method": "DELETE",
    "path": "/deliverability/domains/{domain_name}",
@@ -19038,6 +21091,59 @@
     "MANAGER": false,
     "AGENT": false,
     "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "GET /deliverability/domains/{domain_name}/dns-records",
+   "method": "GET",
+   "path": "/deliverability/domains/{domain_name}/dns-records",
+   "operationId": "get_domain_dns_records_deliverability_domains__domain_name__dns_records_get",
+   "tags": [
+    "Deliverability"
+   ],
+   "summary": "Get Domain Dns Records",
+   "params": [
+    {
+     "name": "domain_name",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Domain Name"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.deliverability_router.get_domain_dns_records",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
    }
   },
   {
@@ -19194,6 +21300,8 @@
      "required": false,
      "schema": {
       "type": "integer",
+      "maximum": 1000,
+      "minimum": 1,
       "default": 100,
       "title": "Limit"
      }
@@ -19316,6 +21424,8 @@
      "required": false,
      "schema": {
       "type": "integer",
+      "maximum": 1000,
+      "minimum": 1,
       "default": 100,
       "title": "Limit"
      }
@@ -20789,6 +22899,611 @@
    "platform_only": false,
    "other_deps": [],
    "handler": "app.routers.inbox_router.get_inbox_warmup_detail",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "GET /integrations/webhooks",
+   "method": "GET",
+   "path": "/integrations/webhooks",
+   "operationId": "list_endpoints_integrations_webhooks_get",
+   "tags": [
+    "Webhooks"
+   ],
+   "summary": "List Endpoints",
+   "params": [],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {}
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.webhooks_router.list_endpoints",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /integrations/webhooks",
+   "method": "POST",
+   "path": "/integrations/webhooks",
+   "operationId": "create_endpoint_integrations_webhooks_post",
+   "tags": [
+    "Webhooks"
+   ],
+   "summary": "Create Endpoint",
+   "params": [],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/EndpointCreate"
+   },
+   "responses": {
+    "201": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.webhooks_router.create_endpoint",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "GET /integrations/webhooks/event-types",
+   "method": "GET",
+   "path": "/integrations/webhooks/event-types",
+   "operationId": "event_types_integrations_webhooks_event_types_get",
+   "tags": [
+    "Webhooks"
+   ],
+   "summary": "Event Types",
+   "params": [],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {}
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.webhooks_router.event_types",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "DELETE /integrations/webhooks/{endpoint_id}",
+   "method": "DELETE",
+   "path": "/integrations/webhooks/{endpoint_id}",
+   "operationId": "delete_endpoint_integrations_webhooks__endpoint_id__delete",
+   "tags": [
+    "Webhooks"
+   ],
+   "summary": "Delete Endpoint",
+   "params": [
+    {
+     "name": "endpoint_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Endpoint Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.webhooks_router.delete_endpoint",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "GET /integrations/webhooks/{endpoint_id}",
+   "method": "GET",
+   "path": "/integrations/webhooks/{endpoint_id}",
+   "operationId": "get_endpoint_integrations_webhooks__endpoint_id__get",
+   "tags": [
+    "Webhooks"
+   ],
+   "summary": "Get Endpoint",
+   "params": [
+    {
+     "name": "endpoint_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Endpoint Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.webhooks_router.get_endpoint",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "PATCH /integrations/webhooks/{endpoint_id}",
+   "method": "PATCH",
+   "path": "/integrations/webhooks/{endpoint_id}",
+   "operationId": "update_endpoint_integrations_webhooks__endpoint_id__patch",
+   "tags": [
+    "Webhooks"
+   ],
+   "summary": "Update Endpoint",
+   "params": [
+    {
+     "name": "endpoint_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Endpoint Id"
+     }
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/EndpointUpdate"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.webhooks_router.update_endpoint",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "GET /integrations/webhooks/{endpoint_id}/deliveries",
+   "method": "GET",
+   "path": "/integrations/webhooks/{endpoint_id}/deliveries",
+   "operationId": "list_deliveries_integrations_webhooks__endpoint_id__deliveries_get",
+   "tags": [
+    "Webhooks"
+   ],
+   "summary": "List Deliveries",
+   "params": [
+    {
+     "name": "endpoint_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Endpoint Id"
+     }
+    },
+    {
+     "name": "status",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 12
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Status"
+     }
+    },
+    {
+     "name": "event_type",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 50
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Type"
+     }
+    },
+    {
+     "name": "limit",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "maximum": 100,
+      "minimum": 1,
+      "default": 50,
+      "title": "Limit"
+     }
+    },
+    {
+     "name": "offset",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "maximum": 10000,
+      "minimum": 0,
+      "default": 0,
+      "title": "Offset"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.webhooks_router.list_deliveries",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "GET /integrations/webhooks/{endpoint_id}/deliveries/{delivery_id}",
+   "method": "GET",
+   "path": "/integrations/webhooks/{endpoint_id}/deliveries/{delivery_id}",
+   "operationId": "get_delivery_integrations_webhooks__endpoint_id__deliveries__delivery_id__get",
+   "tags": [
+    "Webhooks"
+   ],
+   "summary": "Get Delivery",
+   "params": [
+    {
+     "name": "endpoint_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Endpoint Id"
+     }
+    },
+    {
+     "name": "delivery_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Delivery Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.webhooks_router.get_delivery",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /integrations/webhooks/{endpoint_id}/deliveries/{delivery_id}/redeliver",
+   "method": "POST",
+   "path": "/integrations/webhooks/{endpoint_id}/deliveries/{delivery_id}/redeliver",
+   "operationId": "redeliver_integrations_webhooks__endpoint_id__deliveries__delivery_id__redeliver_post",
+   "tags": [
+    "Webhooks"
+   ],
+   "summary": "Redeliver",
+   "params": [
+    {
+     "name": "endpoint_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Endpoint Id"
+     }
+    },
+    {
+     "name": "delivery_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Delivery Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "201": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.webhooks_router.redeliver",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /integrations/webhooks/{endpoint_id}/rotate-secret",
+   "method": "POST",
+   "path": "/integrations/webhooks/{endpoint_id}/rotate-secret",
+   "operationId": "rotate_secret_integrations_webhooks__endpoint_id__rotate_secret_post",
+   "tags": [
+    "Webhooks"
+   ],
+   "summary": "Rotate Secret",
+   "params": [
+    {
+     "name": "endpoint_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Endpoint Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.webhooks_router.rotate_secret",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /integrations/webhooks/{endpoint_id}/test",
+   "method": "POST",
+   "path": "/integrations/webhooks/{endpoint_id}/test",
+   "operationId": "send_test_integrations_webhooks__endpoint_id__test_post",
+   "tags": [
+    "Webhooks"
+   ],
+   "summary": "Send Test",
+   "params": [
+    {
+     "name": "endpoint_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Endpoint Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.webhooks_router.send_test",
    "in_introspection": true,
    "guard": "roles=ADMIN,SUPER_ADMIN",
    "expect": {
@@ -23517,6 +26232,240 @@
    }
   },
   {
+   "id": "GET /proposals/{proposal_id}/approval",
+   "method": "GET",
+   "path": "/proposals/{proposal_id}/approval",
+   "operationId": "get_approval_proposals__proposal_id__approval_get",
+   "tags": [
+    "Quotes"
+   ],
+   "summary": "Get Approval",
+   "params": [
+    {
+     "name": "proposal_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Proposal Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.quotes_router.get_approval",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "POST /proposals/{proposal_id}/approval/approve",
+   "method": "POST",
+   "path": "/proposals/{proposal_id}/approval/approve",
+   "operationId": "approve_discount_proposals__proposal_id__approval_approve_post",
+   "tags": [
+    "Quotes"
+   ],
+   "summary": "Approve Discount",
+   "params": [
+    {
+     "name": "proposal_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Proposal Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "anyOf": [
+     {
+      "$ref": "#/components/schemas/DecisionIn"
+     },
+     {
+      "type": "null"
+     }
+    ],
+    "title": "Payload"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.quotes_router.approve_discount",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "POST /proposals/{proposal_id}/approval/reject",
+   "method": "POST",
+   "path": "/proposals/{proposal_id}/approval/reject",
+   "operationId": "reject_discount_proposals__proposal_id__approval_reject_post",
+   "tags": [
+    "Quotes"
+   ],
+   "summary": "Reject Discount",
+   "params": [
+    {
+     "name": "proposal_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Proposal Id"
+     }
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/DecisionIn"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.quotes_router.reject_discount",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "POST /proposals/{proposal_id}/approval/submit",
+   "method": "POST",
+   "path": "/proposals/{proposal_id}/approval/submit",
+   "operationId": "submit_approval_proposals__proposal_id__approval_submit_post",
+   "tags": [
+    "Quotes"
+   ],
+   "summary": "Submit Approval",
+   "params": [
+    {
+     "name": "proposal_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Proposal Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "anyOf": [
+     {
+      "$ref": "#/components/schemas/SubmitIn"
+     },
+     {
+      "type": "null"
+     }
+    ],
+    "title": "Payload"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.quotes_router.submit_approval",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
    "id": "GET /proposals/{proposal_id}/lines",
    "method": "GET",
    "path": "/proposals/{proposal_id}/lines",
@@ -24372,6 +27321,175 @@
     "MANAGER": false,
     "AGENT": false,
     "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "GET /quotes/approval-settings",
+   "method": "GET",
+   "path": "/quotes/approval-settings",
+   "operationId": "get_approval_settings_quotes_approval_settings_get",
+   "tags": [
+    "Quotes"
+   ],
+   "summary": "Get Approval Settings",
+   "params": [],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {}
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.quotes_router.get_approval_settings",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "PUT /quotes/approval-settings",
+   "method": "PUT",
+   "path": "/quotes/approval-settings",
+   "operationId": "put_approval_settings_quotes_approval_settings_put",
+   "tags": [
+    "Quotes"
+   ],
+   "summary": "Put Approval Settings",
+   "params": [],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/ApprovalSettingsIn"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.quotes_router.put_approval_settings",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "GET /quotes/approvals",
+   "method": "GET",
+   "path": "/quotes/approvals",
+   "operationId": "list_approvals_quotes_approvals_get",
+   "tags": [
+    "Quotes"
+   ],
+   "summary": "List Approvals",
+   "params": [
+    {
+     "name": "scope",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "enum": [
+       "mine",
+       "requested"
+      ],
+      "type": "string",
+      "default": "mine",
+      "title": "Scope"
+     }
+    },
+    {
+     "name": "status",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "enum": [
+       "PENDING",
+       "APPROVED",
+       "REJECTED",
+       "ALL"
+      ],
+      "type": "string",
+      "default": "PENDING",
+      "title": "Status"
+     }
+    },
+    {
+     "name": "limit",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "maximum": 500,
+      "minimum": 1,
+      "default": 200,
+      "title": "Limit"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.quotes_router.list_approvals",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
    }
   },
   {
@@ -25642,7 +28760,9 @@
      "schema": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "integer",
+        "maximum": 2100,
+        "minimum": 1970
        },
        {
         "type": "null"
@@ -25706,6 +28826,135 @@
    "platform_only": false,
    "other_deps": [],
    "handler": "app.routers.sales_reports_router.forecast",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "GET /sales-reports/forecast-accuracy",
+   "method": "GET",
+   "path": "/sales-reports/forecast-accuracy",
+   "operationId": "forecast_accuracy_sales_reports_forecast_accuracy_get",
+   "tags": [
+    "Sales reports"
+   ],
+   "summary": "Forecast Accuracy",
+   "params": [
+    {
+     "name": "period_type",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "string",
+      "pattern": "^(MONTH|QUARTER)$",
+      "default": "QUARTER",
+      "title": "Period Type"
+     }
+    },
+    {
+     "name": "periods",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "maximum": 36,
+      "minimum": 1,
+      "default": 8,
+      "title": "Periods"
+     }
+    },
+    {
+     "name": "member",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 36
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Member"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.sales_kpi_router.forecast_accuracy",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "POST /sales-reports/forecast-snapshots",
+   "method": "POST",
+   "path": "/sales-reports/forecast-snapshots",
+   "operationId": "take_forecast_snapshot_sales_reports_forecast_snapshots_post",
+   "tags": [
+    "Sales reports"
+   ],
+   "summary": "Take Forecast Snapshot",
+   "params": [],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/SnapshotRequest"
+   },
+   "responses": {
+    "201": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.sales_kpi_router.take_forecast_snapshot",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
    "expect": {
@@ -25800,6 +29049,137 @@
    "platform_only": false,
    "other_deps": [],
    "handler": "app.routers.sales_reports_router.funnel",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "GET /sales-reports/kpis",
+   "method": "GET",
+   "path": "/sales-reports/kpis",
+   "operationId": "crm_kpis_sales_reports_kpis_get",
+   "tags": [
+    "Sales reports"
+   ],
+   "summary": "Crm Kpis",
+   "params": [
+    {
+     "name": "date_from",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date From"
+     }
+    },
+    {
+     "name": "date_to",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date To"
+     }
+    },
+    {
+     "name": "fy",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 2100,
+        "minimum": 1970
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fy"
+     }
+    },
+    {
+     "name": "quarter",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 4,
+        "minimum": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Quarter"
+     }
+    },
+    {
+     "name": "member",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 36
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Member"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.sales_kpi_router.crm_kpis",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
    "expect": {
@@ -26064,6 +29444,137 @@
    "platform_only": false,
    "other_deps": [],
    "handler": "app.routers.sales_reports_router.pipeline_report",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "GET /sales-reports/sql-to-win",
+   "method": "GET",
+   "path": "/sales-reports/sql-to-win",
+   "operationId": "sql_to_win_sales_reports_sql_to_win_get",
+   "tags": [
+    "Sales reports"
+   ],
+   "summary": "Sql To Win",
+   "params": [
+    {
+     "name": "date_from",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date From"
+     }
+    },
+    {
+     "name": "date_to",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date To"
+     }
+    },
+    {
+     "name": "fy",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 2100,
+        "minimum": 1970
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fy"
+     }
+    },
+    {
+     "name": "quarter",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 4,
+        "minimum": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Quarter"
+     }
+    },
+    {
+     "name": "member",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 36
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Member"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.sales_kpi_router.sql_to_win",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
    "expect": {

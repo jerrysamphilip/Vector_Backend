@@ -1,7 +1,7 @@
 {
   "suite": "ui_crm mobile_layout",
   "counts": {
-    "PASS": 58,
+    "PASS": 62,
     "FAIL": 0,
     "BLOCKED": 0
   },
@@ -176,6 +176,20 @@
       "detail": ""
     },
     {
+      "id": "UIF-MOB-13",
+      "title": "Sales reports: CRM KPIs at phone 390x844: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-33",
+      "title": "Sales reports: CRM KPIs at phone 390x844: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
       "id": "UIF-MOB-41",
       "title": "Login at tablet 768x1024: no horizontal page scroll, no console / API errors",
       "status": "PASS",
@@ -339,6 +353,20 @@
     {
       "id": "UIF-MOB-72",
       "title": "Contact scoring settings at tablet 768x1024: primary action visible and clickable without sideways scrolling",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-53",
+      "title": "Sales reports: CRM KPIs at tablet 768x1024: no horizontal page scroll, no console / API errors",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-MOB-73",
+      "title": "Sales reports: CRM KPIs at tablet 768x1024: primary action visible and clickable without sideways scrolling",
       "status": "PASS",
       "category": "",
       "detail": ""

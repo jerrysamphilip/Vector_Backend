@@ -319,6 +319,11 @@ def test_forecast_snapshots_and_accuracy(client, kpi):
     total = sql("SELECT SUM(forecast) FROM forecast_snapshots WHERE tenant_id = :t AND period_type = 'MONTH'",
                 t=t["tenant_id"])
     assert float(total) == pytest.approx(expected + 50)  # the old won deal also closes today
+    # Committed forecast (BR-SF-08): won to date + open deals in the Commit category. The open deal's
+    # stage (< 70%) is not Commit, so committed is what was won: 4000 + the old 50
+    committed = sql("SELECT SUM(committed) FROM forecast_snapshots WHERE tenant_id = :t AND period_type = 'MONTH'",
+                    t=t["tenant_id"])
+    assert float(committed) == pytest.approx(4050.0)
     # Taking it again keeps the first one unless replace
     again = client.post("/sales-reports/forecast-snapshots", headers=h, json={"period_type": "MONTH"}).json()
     assert again["snapshots"][0]["status"] == "exists"
@@ -327,15 +332,17 @@ def test_forecast_snapshots_and_accuracy(client, kpi):
     current = acc["periods"][0]
     assert current["closed"] is False and current["accuracy"] is None and acc["current_period"]["has_snapshot"]
     assert current["actual"] == pytest.approx(4050.0)
+    assert current["committed"] == pytest.approx(4050.0) and current["accuracy_to_date"] == 100.0
 
-    # A finished period: forecast 2000 for rep2, actual won 1500 -> 75 %
+    # A finished period: committed 2000 for rep2, actual won 1500 -> 1500 / 2000 = 75 % (BRD formula)
     past_start = fs.add_months(fs.period_bounds("MONTH", date.today())[0], -2)
     past_end = fs.add_months(past_start, 1)
     with SessionLocal() as db:
         from app.models.sales_extra import ForecastSnapshot
         db.add(ForecastSnapshot(tenant_id=t["tenant_id"], period_type="MONTH", period_start=past_start,
                                 period_end=past_end, owner_id=kpi["rep2"]["user_id"], won=500, weighted=1500,
-                                forecast=2000, source="SCHEDULED", taken_at=datetime.combine(past_start, datetime.min.time())))
+                                forecast=2600, commit_open=1500, committed=2000, source="SCHEDULED",
+                                taken_at=datetime.combine(past_start, datetime.min.time())))
         db.commit()
     stage = next(s for s in client.get("/sales/stages", headers=h).json() if s["is_won"])
     r = client.post("/opportunities", headers=h, json={
@@ -345,13 +352,16 @@ def test_forecast_snapshots_and_accuracy(client, kpi):
 
     acc = client.get("/sales-reports/forecast-accuracy", headers=h, params={"period_type": "MONTH"}).json()
     past = next(p for p in acc["periods"] if p["period_start"] == past_start.isoformat())
-    assert past["closed"] and past["forecast"] == 2000.0 and past["actual"] == 1500.0 and past["accuracy"] == 75.0
+    assert past["closed"] and past["committed"] == 2000.0 and past["actual"] == 1500.0 and past["accuracy"] == 75.0
+    assert past["variance"] == -500.0 and past["commit_open_at_snapshot"] == 1500.0
+    # The older closeness-to-weighted-forecast measure stays as a secondary figure: 1 - 1100 / 2600
+    assert past["forecast"] == 2600.0 and past["weighted_accuracy"] == pytest.approx(57.7)
     assert acc["average_accuracy"] == 75.0
     # Scoped: rep1 has no share of that forecast; the manager's team (rep1) neither
     rep1_acc = client.get("/sales-reports/forecast-accuracy", headers=kpi["rep1"]["headers"],
                           params={"period_type": "MONTH"}).json()
     past1 = next(p for p in rep1_acc["periods"] if p["period_start"] == past_start.isoformat())
-    assert past1["forecast"] == 0.0 and past1["accuracy"] is None
+    assert past1["forecast"] == 0.0 and past1["committed"] == 0.0 and past1["accuracy"] is None
     assert rep1_acc["can_take_snapshot"] is False
     # Other workspaces see nothing of it
     other = register_tenant(client, "kpio")

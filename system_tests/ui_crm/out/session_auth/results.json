@@ -5,7 +5,7 @@
     "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 55,
+  "seconds": 49,
   "cases": [
     {
       "id": "UIF-SESS-01",
@@ -23,7 +23,7 @@
     },
     {
       "id": "UIF-SESS-03",
-      "title": "Signed out: /app/contacts/6cfdf7c5-af55-4cb3-8e3c-79c131aefb9c redirects to /login and shows no workspace data",
+      "title": "Signed out: /app/contacts/09a82f1e-0861-4c26-a7bf-9ccdc905986a redirects to /login and shows no workspace data",
       "status": "PASS",
       "category": "",
       "detail": ""

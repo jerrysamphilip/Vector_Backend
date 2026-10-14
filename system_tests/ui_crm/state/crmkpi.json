@@ -1,0 +1,17 @@
+{
+ "tenantId": "a0292d18-713a-4644-a291-995c9809bbe8",
+ "rid": "912d9d",
+ "label": "crmkpi",
+ "users": {
+  "owner": {
+   "userId": "b2fa789d-5a79-4b04-bd7e-a6c1ecd6ada5",
+   "email": "owner-912d9d@uitest.example",
+   "first": "Owner"
+  },
+  "kip": {
+   "userId": "915284d7-0670-45f6-a51b-63033c1f9755",
+   "email": "kip-912d9d@uitest.example",
+   "first": "Kip"
+  }
+ }
+}

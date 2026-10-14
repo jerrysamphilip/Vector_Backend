@@ -42,7 +42,9 @@ const WIPE_TABLES = ['accounts', 'campaigns', 'contact_activities', 'contact_fie
   'saved_reports', 'saved_views', 'user_connections', 'workflow_rules', 'conversations', 'message_templates',
   'contact_companies', 'note_mentions', 'forecast_snapshots',
   // newer feature tables: A/B subject variants, outbound webhooks, the workspace scoring model (reset to defaults on next use)
-  'email_subject_variants', 'webhook_deliveries', 'webhook_endpoints', 'contact_scoring_models'];
+  'email_subject_variants', 'webhook_deliveries', 'webhook_endpoints', 'contact_scoring_models',
+  // CRM KPIs: daily user activity for the adoption KPI (forecast_snapshots is listed above)
+  'user_activity_days'];
 // Child rows without a tenant_id, removed through their tenant-owned parent before the parents go
 // (proposal quote lines; a proposal's discount-approval state lives on the proposals row itself).
 const WIPE_CHILDREN = [['proposal_lines', 'proposal_id', 'proposals']];
