@@ -1,6 +1,6 @@
 # ui_crm mobile_layout results
 
-PASS 58 · FAIL 0 · BLOCKED 0
+PASS 62 · FAIL 0 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -28,6 +28,8 @@ PASS 58 · FAIL 0 · BLOCKED 0
 | UIF-MOB-31 | Webhooks at phone 390x844: primary action visible and clickable without sideways scrolling | PASS |  |  |
 | UIF-MOB-12 | Contact scoring settings at phone 390x844: no horizontal page scroll, no console / API errors | PASS |  |  |
 | UIF-MOB-32 | Contact scoring settings at phone 390x844: primary action visible and clickable without sideways scrolling | PASS |  |  |
+| UIF-MOB-13 | Sales reports: CRM KPIs at phone 390x844: no horizontal page scroll, no console / API errors | PASS |  |  |
+| UIF-MOB-33 | Sales reports: CRM KPIs at phone 390x844: primary action visible and clickable without sideways scrolling | PASS |  |  |
 | UIF-MOB-41 | Login at tablet 768x1024: no horizontal page scroll, no console / API errors | PASS |  |  |
 | UIF-MOB-61 | Login at tablet 768x1024: primary action visible and clickable without sideways scrolling | PASS |  |  |
 | UIF-MOB-42 | Home at tablet 768x1024: no horizontal page scroll, no console / API errors | PASS |  |  |
@@ -52,6 +54,8 @@ PASS 58 · FAIL 0 · BLOCKED 0
 | UIF-MOB-71 | Webhooks at tablet 768x1024: primary action visible and clickable without sideways scrolling | PASS |  |  |
 | UIF-MOB-52 | Contact scoring settings at tablet 768x1024: no horizontal page scroll, no console / API errors | PASS |  |  |
 | UIF-MOB-72 | Contact scoring settings at tablet 768x1024: primary action visible and clickable without sideways scrolling | PASS |  |  |
+| UIF-MOB-53 | Sales reports: CRM KPIs at tablet 768x1024: no horizontal page scroll, no console / API errors | PASS |  |  |
+| UIF-MOB-73 | Sales reports: CRM KPIs at tablet 768x1024: primary action visible and clickable without sideways scrolling | PASS |  |  |
 | UIF-MOB-81 | Navigation reachable at phone 390px: menu toggle opens the nav (or the sidebar link is on screen) and navigates | PASS |  |  |
 | UIF-MOB-82 | Navigation reachable at tablet 768px: menu toggle opens the nav (or the sidebar link is on screen) and navigates | PASS |  |  |
 | UIF-MOB-83 | Phone 390px: the page content keeps at least 70% of the width (the sidebar collapses) | PASS |  |  |

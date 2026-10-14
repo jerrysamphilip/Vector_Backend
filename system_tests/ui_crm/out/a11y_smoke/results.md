@@ -1,6 +1,6 @@
 # ui_crm a11y_smoke results
 
-PASS 81 · FAIL 0 · BLOCKED 0
+PASS 84 · FAIL 0 · BLOCKED 0
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -55,6 +55,9 @@ PASS 81 · FAIL 0 · BLOCKED 0
 | UIF-A11Y-77 | Sales settings: Tab from the top of the page reaches the primary action | PASS |  |  |
 | UIF-A11Y-18 | Account security: every button / link / form control has an accessible name | PASS |  |  |
 | UIF-A11Y-38 | Account security: exactly one h1 | PASS |  |  |
+| UIF-A11Y-19 | Sales reports: CRM KPIs: every button / link / form control has an accessible name | PASS |  |  |
+| UIF-A11Y-39 | Sales reports: CRM KPIs: exactly one h1 | PASS |  |  |
+| UIF-A11Y-79 | Sales reports: CRM KPIs: Tab from the top of the page reaches the primary action | PASS |  |  |
 | UIF-A11Y-41 | Add contact modal: role=dialog named by its title, aria-modal="true" | PASS |  |  |
 | UIF-A11Y-42 | Add contact modal: focus moves into the dialog and Tab / Shift+Tab stay inside it | PASS |  |  |
 | UIF-A11Y-43 | Add contact modal: Escape closes it and focus returns to the control that opened it | PASS |  |  |

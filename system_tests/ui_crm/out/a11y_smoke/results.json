@@ -1,11 +1,11 @@
 {
   "suite": "ui_crm a11y_smoke",
   "counts": {
-    "PASS": 81,
+    "PASS": 84,
     "FAIL": 0,
     "BLOCKED": 0
   },
-  "seconds": 224,
+  "seconds": 219,
   "cases": [
     {
       "id": "UIF-A11Y-01",
@@ -360,6 +360,27 @@
     {
       "id": "UIF-A11Y-38",
       "title": "Account security: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-19",
+      "title": "Sales reports: CRM KPIs: every button / link / form control has an accessible name",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-39",
+      "title": "Sales reports: CRM KPIs: exactly one h1",
+      "status": "PASS",
+      "category": "",
+      "detail": ""
+    },
+    {
+      "id": "UIF-A11Y-79",
+      "title": "Sales reports: CRM KPIs: Tab from the top of the page reaches the primary action",
       "status": "PASS",
       "category": "",
       "detail": ""
