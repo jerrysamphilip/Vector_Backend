@@ -4,11 +4,9 @@ import json, importlib, sys
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
-MODS = ["accounts_router","ai_email_router","auth_router","automation_router","campaign_draft_router","campaign_router",
-        "campaign_wizard_router","company_profile_router","connections_router","contacts_router","conversation_router",
-        "crm_router","custom_reports_router","deliverability_router","email_scheduler_router","import_router","inbox_router",
-        "lists_router","platform_admin_router","prospect_list_router","quotes_router","reports_router","sales_admin_router",
-        "sales_reports_router","sales_router","ses_webhook_router","tasks_router","template_router","tracking_router","user_router"]
+# Every module in app.routers (discovered, so new routers are never silently left out of the guard map)
+import pkgutil, app.routers as _routers_pkg
+MODS = sorted(m.name for m in pkgutil.iter_modules(_routers_pkg.__path__) if m.name.endswith("_router"))
 ROUTERS = []
 seen = set()
 for m in MODS:

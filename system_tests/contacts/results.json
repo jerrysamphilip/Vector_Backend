@@ -1,11 +1,11 @@
 {
   "suite": "Contact Management (BRD \u00a75.2)",
   "counts": {
-    "PASS": 96,
-    "FAIL": 0,
+    "PASS": 93,
+    "FAIL": 3,
     "BLOCKED": 1
   },
-  "seconds": 169.7,
+  "seconds": 173.3,
   "cases": [
     {
       "id": "CM-001",
@@ -304,9 +304,9 @@
     {
       "id": "CM-042",
       "title": "Search & list respect visibility: agent sees only own contacts (BR-CM-21/38)",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "search=1 list=1 own=1"
     },
     {
       "id": "CM-043",
@@ -479,9 +479,9 @@
     {
       "id": "CM-066",
       "title": "Soft delete hides the contact everywhere; restore within 90 days (BR-CM-35)",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "get_after_delete=404 in_deleted=True recreate=409 restored={'status': 'restored', 'restored': 1} get_after_restore=200 hist=2"
     },
     {
       "id": "CM-067",
@@ -612,9 +612,9 @@
     {
       "id": "CM-084",
       "title": "Acceptance: 1,000-row contact+company file imports < 10 s with associations and per-row reasons (\u00a75.2)",
-      "status": "PASS",
-      "category": "",
-      "detail": ""
+      "status": "FAIL",
+      "category": "defect",
+      "detail": "secs=10.30 created=990 companies=50 errors=10 linked=990"
     },
     {
       "id": "CM-085",

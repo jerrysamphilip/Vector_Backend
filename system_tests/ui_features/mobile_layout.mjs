@@ -1,13 +1,13 @@
 // UIF-MOB: responsive layout of the key screens at phone (390x844) and tablet (768x1024) viewports.
 //   Per screen (SCREENS in _ui_extra.mjs: login, home, contacts, contact record, campaigns, deals, pipeline, sales reports,
-//   settings, help center, webhooks, contact scoring):
+//   settings, help center, webhooks, contact scoring, sales reports CRM KPIs tab):
 //     overflow case  - no horizontal page scroll (documentElement.scrollWidth <= innerWidth + 1) and no console / API errors;
 //                      on failure the detail names the outermost offending elements (selector, right edge, text)
 //     primary case   - the screen's main action is visible, not covered, clickable (trial click) without scrolling sideways
 //   plus: navigation reachable (hamburger / collapsed sidebar opens, or the sidebar link is on screen and works),
 //   content area keeps most of the phone width, and the Add contact / New opportunity / Change password modals fit the viewport.
 //   Screenshots: system_tests/ui_crm/shots/mobile_layout/<viewport>-<screen>.png
-// Case numbering: phone overflow 01-12, phone primary 21-32, tablet overflow 41-52, tablet primary 61-72, extra 81-90.
+// Case numbering: phone overflow 01-13, phone primary 21-33, tablet overflow 41-53, tablet primary 61-73, extra 81-90.
 // Uses the ui_crm helpers (own reusable tenant "mobile", wiped on every run).   node mobile_layout.mjs
 import path from 'node:path';
 import { ui, go, settle, tc, ok, must, standalone, isMain, Tenant, WEB } from '../ui_crm/crm_common.mjs';

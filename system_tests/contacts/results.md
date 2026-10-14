@@ -1,6 +1,6 @@
 # Contact Management (BRD §5.2) results
 
-PASS 96 · FAIL 0 · BLOCKED 1
+PASS 93 · FAIL 3 · BLOCKED 1
 
 | ID | Test case | Status | Category | Detail |
 |---|---|---|---|---|
@@ -46,7 +46,7 @@ PASS 96 · FAIL 0 · BLOCKED 1
 | CM-039 | Default views: All, My contacts, Unassigned, Recently created (BR-CM-19) | PASS |  |  |
 | CM-040 | Board view by lifecycle stage / lead status; drag-and-drop moves a card (BR-CM-20) | PASS |  |  |
 | CM-041 | Global search by name, email, phone (any format), company and domain (BR-CM-21) | PASS |  |  |
-| CM-042 | Search & list respect visibility: agent sees only own contacts (BR-CM-21/38) | PASS |  |  |
+| CM-042 | Search & list respect visibility: agent sees only own contacts (BR-CM-21/38) | FAIL | defect | search=1 list=1 own=1 |
 | CM-043 | Active list membership updates automatically from filter criteria (BR-CM-22) | PASS |  |  |
 | CM-044 | Active list rejects manual members and empty criteria (BR-CM-22) | PASS |  |  |
 | CM-045 | Static list holds a fixed set; add/remove; deleted contacts excluded (BR-CM-23) | PASS |  |  |
@@ -71,7 +71,7 @@ PASS 96 · FAIL 0 · BLOCKED 1
 | CM-063 | Merge keeps chosen values, combines timeline, tasks, lists, tags, history (BR-CM-33, integration) | PASS |  |  |
 | CM-064 | Merge can keep the duplicate's email; agent cannot merge; self-merge rejected (BR-CM-33) | PASS |  |  |
 | CM-065 | Data-quality flags: phone format and name capitalisation (BR-CM-34) | PASS |  |  |
-| CM-066 | Soft delete hides the contact everywhere; restore within 90 days (BR-CM-35) | PASS |  |  |
+| CM-066 | Soft delete hides the contact everywhere; restore within 90 days (BR-CM-35) | FAIL | defect | get_after_delete=404 in_deleted=True recreate=409 restored={'status': 'restored', 'restored': 1} get_after_restore=200 hist=2 |
 | CM-067 | Delete/restore permissions: agents cannot delete or see the recycle bin (BR-CM-35/38) | PASS |  |  |
 | CM-068 | After 90 days: no restore; purge job removes contact and dependents (BR-CM-35, integration) | PASS |  |  |
 | CM-069 | Company soft delete/restore; purge detaches contacts and removes company tasks (BR-CM-35, integration) | PASS |  |  |
@@ -90,7 +90,7 @@ PASS 96 · FAIL 0 · BLOCKED 1
 | CM-081 | Market Research journey: import → filter view → assign owners → list → campaign → export (BR-CM-41) | PASS |  |  |
 | CM-082 | Company data enrichment from the domain (BR-CM-42, Could) | BLOCKED | not-implemented | no enrichment endpoint; company created from domain keeps industry/size/location empty |
 | CM-083 | Contact scoring on fit and engagement (BR-CM-43, Could) | PASS |  | ['score', 'fit_score', 'engagement_score', 'score_grade', 'scored_at'] |
-| CM-084 | Acceptance: 1,000-row contact+company file imports < 10 s with associations and per-row reasons (§5.2) | PASS |  |  |
+| CM-084 | Acceptance: 1,000-row contact+company file imports < 10 s with associations and per-row reasons (§5.2) | FAIL | defect | secs=10.30 created=990 companies=50 errors=10 linked=990 |
 | CM-085 | Single-column CSV (just an Email column) imports correctly (BR-CM-25) | PASS |  |  |
 | CM-UI-01 | UI: log in and open the Contacts list (BR-CM-17) | PASS |  | contact visible=true errors=[] |
 | CM-UI-02 | UI: contact record page shows properties, lifecycle and timeline (BR-CM-12) | PASS |  | name=true timeline=true lifecycle=true errors=[] |

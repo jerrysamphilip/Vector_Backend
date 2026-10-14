@@ -1,8 +1,8 @@
 // UIF-A11Y: accessibility smoke, data-driven over the key screens (SCREENS in _ui_extra.mjs + a few more) and the main modals.
-//   per screen  01-18  every interactive element (button, link, textbox, combobox, checkbox ...) has an accessible name
+//   per screen  01-19  every interactive element (button, link, textbox, combobox, checkbox ...) has an accessible name
 //                      (Chromium's computed accessibility tree via CDP; the detail lists role, selector and HTML of the offenders)
-//               21-38  exactly one level-1 heading
-//               61-78  keyboard: Tab from the top of the page reaches the screen's primary action (screens that have one)
+//               21-39  exactly one level-1 heading
+//               61-79  keyboard: Tab from the top of the page reaches the screen's primary action (screens that have one)
 //   per modal   41-58, then 81+  (3 per modal) role=dialog named by its title + aria-modal; focus moves in and
 //                      Tab / Shift+Tab stay inside (focus trap); Escape closes it and focus returns to the element that opened it
 // Desktop 1440x900. Uses the ui_crm helpers (own reusable tenant "a11y", wiped on every run).   node a11y_smoke.mjs
@@ -11,14 +11,18 @@ import { SCREENS, anon, unnamedControls, overlay, focusInside, activeDesc } from
 
 const pad = n => String(n).padStart(2, '0');
 
+// Case ids follow the position in ROUTES and are permanent: screens added to SCREENS after the six extras below are appended
+// at the end (crm-kpis = 19 / 39 / 79), so the ids of the existing screens do not move.
+const LATE_SCREENS = ['crm-kpis'];
 const ROUTES = [
-  ...SCREENS,
+  ...SCREENS.filter(s => !LATE_SCREENS.includes(s.key)),
   { key: 'templates', name: 'Template library', route: () => 'templates', primary: p => p.getByRole('button', { name: /New template/ }) },
   { key: 'tasks', name: 'Tasks', route: () => 'tasks', primary: null },
   { key: 'accounts', name: 'Companies', route: () => 'accounts', primary: null },
   { key: 'leads', name: 'Leads', route: () => 'leads', primary: p => p.getByRole('button', { name: /New lead/ }) },
   { key: 'sales-settings', name: 'Sales settings', route: () => 'sales-settings', primary: p => p.getByRole('button', { name: 'Save settings' }) },
   { key: 'security', name: 'Account security', route: () => 'account/security', primary: null },
+  ...LATE_SCREENS.map(k => SCREENS.find(s => s.key === k)),
 ];
 
 const MODALS = [
@@ -35,7 +39,7 @@ const MODALS = [
   { name: 'Add sending domain', route: 'domain-health', title: 'Add sending domain', trigger: p => p.getByRole('button', { name: 'Add domain', exact: true }) },
   { name: 'Create automation rule', route: 'automation', title: 'Create Automation Rule', trigger: p => p.getByRole('button', { name: 'Create New Rule', exact: true }) },
 ];
-// test-id base of modal k: 41, 44 ... 56 for the first six, then 81, 84 ... (61-78 are the per-screen keyboard checks)
+// test-id base of modal k: 41, 44 ... 56 for the first six, then 81, 84 ... (61-79 are the per-screen keyboard checks)
 const modalBase = k => (k < 6 ? 41 + 3 * k : 81 + 3 * (k - 6));
 
 async function isFocused(loc) { return loc.evaluate(el => el === document.activeElement || el.contains(document.activeElement)).catch(() => false); }
