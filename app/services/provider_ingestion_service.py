@@ -8,6 +8,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.request import Request, urlopen
@@ -20,6 +21,8 @@ from app.models.provider_reputation import (
     ExternalFeedbackEvent,
     ExternalIngestionRun,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderIngestionService:
@@ -106,7 +109,8 @@ class ProviderIngestionService:
                     payload = raw
                 else:
                     payload = json.loads(raw)
-            except Exception as exc:
+            except Exception as exc:  # external feed: record the failure on the run instead of raising
+                logger.warning("%s feed fetch for %s failed: %s", provider, domain_name, exc)
                 return self._record_run(db, provider, domain_name, source, "FAILED", 0, f"Feed fetch failed: {exc}", tenant_id=tenant_id)
 
         try:
@@ -126,7 +130,8 @@ class ProviderIngestionService:
                     "dry_run": True,
                 }
             return self._record_run(db, provider, domain_name, source, "SUCCESS", records, None, tenant_id=tenant_id)
-        except Exception as exc:
+        except Exception as exc:  # malformed feed rows: record the failure on the run instead of raising
+            logger.warning("%s ingest for %s failed", provider, domain_name, exc_info=True)
             if dry_run:
                 return {"provider": provider, "status": "FAILED", "records_ingested": 0, "error": str(exc), "dry_run": True}
             return self._record_run(db, provider, domain_name, source, "FAILED", 0, str(exc), tenant_id=tenant_id)
@@ -200,7 +205,7 @@ class ProviderIngestionService:
             if isinstance(event_time, str):
                 try:
                     parsed_time = datetime.fromisoformat(event_time.replace("Z", "+00:00")).replace(tzinfo=None)
-                except Exception:
+                except ValueError:
                     parsed_time = None
             if not dry_run:
                 db.add(ExternalFeedbackEvent(
@@ -223,7 +228,7 @@ class ProviderIngestionService:
             return None
         try:
             return float(value)
-        except Exception:
+        except (TypeError, ValueError):
             return None
 
     def get_status(self, db: Session, tenant_id: Optional[str] = None) -> Dict[str, Any]:

@@ -34,8 +34,8 @@ def retry_external_api(
         retry=retry_if_exception_type(exception_types),
         reraise=True,
         before_sleep=lambda retry_state: logger.warning(
-            f"[Retry] Attempt {retry_state.attempt_number} failed. Retrying in {retry_state.next_action.sleep}s "
-            f"due to {type(retry_state.outcome.exception()).__name__}: {retry_state.outcome.exception()}"
+            f"[Retry] Attempt {retry_state.attempt_number} failed. Retrying in {retry_state.next_action.sleep}s "  # type: ignore[union-attr]
+            f"due to {type(retry_state.outcome.exception()).__name__}: {retry_state.outcome.exception()}"  # type: ignore[union-attr]
         )
     )
 
@@ -58,7 +58,7 @@ retry_dns_query = retry_external_api(
 T = TypeVar("T")
 
 # Transient errors we should retry on
-RETRYABLE_EXCEPTIONS = (
+RETRYABLE_EXCEPTIONS: tuple = (
     ConnectionError,
     TimeoutError,
     OSError,

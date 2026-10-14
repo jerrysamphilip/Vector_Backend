@@ -45,5 +45,5 @@ class ContactActivity(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ContactActivity {self.activity_type} prospect={self.prospect_id}>"

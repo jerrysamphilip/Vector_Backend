@@ -114,7 +114,7 @@ def global_search(q: str = Query(..., min_length=2, max_length=100), limit: int 
     term = f"%{q.strip()}%"
     contacts = db.query(Prospect).filter(Prospect.tenant_id == current_user.tenant_id, Prospect.deleted_at.is_(None))
     contacts = scope(contacts, db, current_user, Prospect.owner_id)
-    from app.routers.contacts_router import search_condition
+    from app.services.contact_query_service import search_condition
     contact_rows = contacts.filter(search_condition(q)).order_by(Prospect.updated_at.desc()).limit(limit).all()
 
     companies = db.query(Account).filter(Account.tenant_id == current_user.tenant_id, Account.deleted_at.is_(None),

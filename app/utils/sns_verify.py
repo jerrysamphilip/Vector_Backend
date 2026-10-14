@@ -44,7 +44,7 @@ def is_sns_url(url: Optional[str]) -> bool:
 
 
 def string_to_sign(message: dict) -> Optional[str]:
-    fields = _SIGNED_FIELDS.get(message.get("Type"))
+    fields = _SIGNED_FIELDS.get(message.get("Type") or "")
     if not fields:
         return None
     parts = []
@@ -70,7 +70,7 @@ async def verify_sns_signature(message: dict, expected_topic_arn: str = "") -> b
     if expected_topic_arn and message.get("TopicArn") != expected_topic_arn:
         logger.warning("[SNS] Rejected message for unexpected topic %s", message.get("TopicArn"))
         return False
-    cert_url = message.get("SigningCertURL") or message.get("SigningCertUrl")
+    cert_url: str = message.get("SigningCertURL") or message.get("SigningCertUrl") or ""
     if not is_sns_url(cert_url) or not cert_url.endswith(".pem"):
         logger.warning("[SNS] Rejected message: signing certificate URL is not an SNS URL")
         return False
@@ -91,4 +91,4 @@ async def verify_sns_signature(message: dict, expected_topic_arn: str = "") -> b
 
 
 def token_matches(presented: Optional[str], expected: str) -> bool:
-    return bool(presented) and bool(expected) and hmac.compare_digest(presented, expected)
+    return bool(presented) and bool(expected) and hmac.compare_digest(presented or "", expected)

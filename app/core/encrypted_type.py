@@ -7,6 +7,7 @@ Stored form is "enc:v1:<token>". Values without the prefix are legacy plain text
 are still readable, and app/db/security_schema.py encrypts them on start-up.
 """
 
+from typing import Any
 import logging
 from functools import lru_cache
 
@@ -25,18 +26,18 @@ def _fernet() -> Fernet:
     return Fernet(credentials_fernet_key(settings.CREDENTIALS_ENCRYPTION_KEY))
 
 
-def check_credentials_key():
+def check_credentials_key() -> None:
     """Fail fast at start-up (deployed) if CREDENTIALS_ENCRYPTION_KEY is missing."""
     _fernet()
 
 
-def encrypt_value(value):
+def encrypt_value(value: Any) -> Any:
     if value is None or value == "" or str(value).startswith(PREFIX):
         return value
     return PREFIX + _fernet().encrypt(str(value).encode()).decode()
 
 
-def decrypt_value(value):
+def decrypt_value(value: Any) -> Any:
     if value is None or not str(value).startswith(PREFIX):
         return value
     try:
@@ -50,14 +51,14 @@ class EncryptedString(TypeDecorator):
     impl = String(1024)
     cache_ok = True
 
-    def process_bind_param(self, value, dialect):
+    def process_bind_param(self, value: Any, dialect: Any) -> Any:
         return encrypt_value(value)
 
-    def process_result_value(self, value, dialect):
+    def process_result_value(self, value: Any, dialect: Any) -> Any:
         return decrypt_value(value)
 
 
 class EncryptedText(EncryptedString):
     """Encrypted at rest like EncryptedString, for long values such as OAuth tokens."""
-    impl = Text
+    impl = Text  # type: ignore[assignment]  # TypeDecorator.impl may be any column type
     cache_ok = True

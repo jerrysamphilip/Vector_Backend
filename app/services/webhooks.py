@@ -62,7 +62,7 @@ def check_url(url: str, resolver=None) -> wh.Target:
 
 # ── Emitting (outbox) ──────────────────────────────────────────
 
-def _subscribers(db: Session, tenant_id: str) -> List[Tuple[str, frozenset]]:
+def _subscribers(db: Session, tenant_id: Optional[str]) -> List[Tuple[str, frozenset]]:
     """Active endpoints of the workspace as (endpoint_id, event types), cached briefly per session."""
     cache = db.info.setdefault("webhook_subscribers", {})
     hit = cache.get(tenant_id)
@@ -100,7 +100,7 @@ def emit_event(db: Session, tenant_id: Optional[str], event_type: str, data: dic
     try:
         event_id = str(uuid.uuid4())
         now = datetime.utcnow()
-        body = wh.build_body(event_id, event_type, now, tenant_id, data).decode()
+        body = wh.build_body(event_id, event_type, now, tenant_id, data).decode()  # type: ignore[arg-type]  # platform events carry no workspace
         queued = 0
         for endpoint_id, types in _subscribers(db, tenant_id):
             if event_type in types:
@@ -281,8 +281,8 @@ def post(target: wh.Target, body: bytes, headers: Dict[str, str],
     finally:
         try:
             sock.close()
-        except Exception:
-            pass
+        except OSError as exc:
+            logger.debug("Webhook socket close failed: %s", exc)
 
 
 def _send(job: dict) -> dict:
@@ -394,7 +394,7 @@ def deliver_due(session_factory, now: Optional[datetime] = None, limit: int = BA
                  WebhookEndpoint.active.is_(True)
                  ).order_by(WebhookDelivery.next_attempt_at, WebhookDelivery.created_at).limit(limit * 3).all()
         per_endpoint: Dict[str, int] = {}
-        jobs = []
+        jobs: list = []
         for d, ep in rows:
             if per_endpoint.get(ep.endpoint_id, 0) >= PER_ENDPOINT_BATCH or len(jobs) >= limit:
                 continue

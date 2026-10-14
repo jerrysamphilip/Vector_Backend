@@ -18,7 +18,7 @@ class SequenceService:
     
     MAX_STEPS = 7
     
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
     
     def get_step(self, sequence_id: str) -> Optional[EmailSequence]:

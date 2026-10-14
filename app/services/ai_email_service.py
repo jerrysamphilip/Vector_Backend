@@ -126,7 +126,7 @@ _WORD_BOUNDARY_KEYWORDS = frozenset({
 })
 
 
-def classify_prospect(designation: str, company_name: str = None) -> Tuple[str, float]:
+def classify_prospect(designation: str, company_name: str | None = None) -> Tuple[str, float]:
     """
     Classify a prospect into a persona type using a weighted scoring system.
 
@@ -732,7 +732,8 @@ RULE: Describe the MECHANISM and RESULT in your own words. Never mention the pro
             email_type="intro",
             limit=2,
         )
-    except Exception:
+    except Exception as exc:  # few-shot examples are optional prompt garnish
+        logger.warning("Few-shot examples unavailable, generating without them: %s", exc)
         few_shot_block = ""
 
     if healthcare_mode:

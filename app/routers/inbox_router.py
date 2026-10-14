@@ -33,6 +33,9 @@ from app.models.inbox_warmup_event import InboxWarmupEvent
 from app.models.join_tables import campaign_inboxes
 from datetime import datetime
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/inboxes", tags=["Inboxes"])
 
@@ -124,7 +127,8 @@ def ms365_callback(
         mail = imaplib.IMAP4_SSL(inbox.imap_host, inbox.imap_port or 993)
         ms365_oauth.imap_login(mail, inbox.imap_username or inbox.email_address, ms365_oauth.imap_secret(db, inbox))
         mail.logout()
-    except Exception as exc:
+    except Exception as exc:  # any IMAP failure is reported back to the user on the inbox
+        logger.warning("IMAP check after Microsoft sign-in failed for inbox %s: %s", inbox.inbox_id, exc)
         inbox.oauth_error = f"Signed in, but IMAP rejected the token: {exc}. Check IMAP is enabled for the mailbox."[:2000]
         db.commit()
         return back(ms365="error", message=inbox.oauth_error, inbox=inbox.inbox_id)
@@ -190,7 +194,7 @@ def create_inbox(
                 domain, db, tenant_id=new_inbox.tenant_id)
         except Exception as e:
             # Don't fail the inbox creation, just log error
-            print(f"Domain verification failed: {e}")
+            logger.exception("Domain verification failed for %s: %s", domain, e)
             
     # Combine result
     # Pydantic v2/v1 compat: convert sqla model to dict then add field
@@ -469,7 +473,8 @@ def test_imap_connection(
                     "date": msg.get("Date", ""),
                     "message_id": msg.get("Message-ID", ""),
                 })
-            except Exception as e:
+            except Exception as e:  # one unreadable message must not hide the others
+                logger.info("IMAP test: could not read message %s: %s", msg_id, e)
                 result["recent_inbox_emails"].append({"error": str(e)})
 
         mail.logout()
@@ -481,7 +486,8 @@ def test_imap_connection(
             "For Zoho: enable IMAP in Zoho Mail Settings → Mail Accounts → IMAP Access, "
             "and use an App Password (Settings → Security → App Passwords)."
         )
-    except Exception as e:
+    except Exception as e:  # connection test: report any failure to the caller
+        logger.info("IMAP connection test failed for %s: %s", inbox.imap_host, e)
         result["status"] = "connection_failed"
         result["error"] = str(e)
 
@@ -528,13 +534,14 @@ def test_smtp_connection(
         finally:
             try:
                 server.quit()
-            except Exception:
-                pass
+            except (smtplib.SMTPException, OSError) as exc:
+                logger.debug("SMTP test: quit failed: %s", exc)
     except smtplib.SMTPAuthenticationError as e:
         return {"status": "auth_failed", "error": f"SMTP sign-in rejected: {e.smtp_code} {e.smtp_error.decode(errors='ignore') if isinstance(e.smtp_error, bytes) else e.smtp_error}"}
     except (socket.timeout, TimeoutError):
         return {"status": "connection_failed", "error": f"Timed out connecting to {host}:{port}."}
-    except Exception as e:
+    except Exception as e:  # connection test: report any failure to the caller
+        logger.info("SMTP connection test failed for %s:%s: %s", host, port, e)
         return {"status": "connection_failed", "error": str(e)}
     return {"status": "connected", "smtp_host": host, "smtp_port": port, "smtp_username": username}
 

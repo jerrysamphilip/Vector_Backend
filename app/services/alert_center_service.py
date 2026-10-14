@@ -234,7 +234,7 @@ class AlertCenterService:
         filtered_alerts.sort(
             key=lambda a: (
                 self._severity_rank(a.get("severity", "INFO")),
-                -(a.get("created_at").timestamp() if a.get("created_at") else 0),
+                -(a["created_at"].timestamp() if a.get("created_at") else 0),
             )
         )
         return filtered_alerts
@@ -443,7 +443,7 @@ class AlertCenterService:
         return {"sent": sent_count, "skipped": skipped_count, "failed": failed_count}
 
     async def evaluate_and_dispatch_all(self, db: Session) -> Dict[str, Any]:
-        tenant_ids = set()
+        tenant_ids: set = set()
         tenant_ids.update(
             t for (t,) in db.query(SendingInbox.tenant_id).filter(SendingInbox.tenant_id.isnot(None)).distinct().all()
         )

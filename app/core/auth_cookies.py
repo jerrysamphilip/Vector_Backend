@@ -36,7 +36,7 @@ def wants_cookies(request: Request) -> bool:
 
 
 def _common() -> dict:
-    kwargs = {"secure": settings.cookie_secure}
+    kwargs: dict = {"secure": settings.cookie_secure}
     if settings.COOKIE_DOMAIN:
         kwargs["domain"] = settings.COOKIE_DOMAIN
     return kwargs

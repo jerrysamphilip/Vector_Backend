@@ -17,10 +17,10 @@ The pure rules live in app/services/ab_testing.py.
 
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 
 from app.models.campaign import Campaign
 from app.models.email_message import EmailEvent, EmailMessage
@@ -40,7 +40,7 @@ PENDING_STATUSES = ("QUEUED", "SCHEDULED", "PAUSED_BY_CAMPAIGN")
 class SubjectVariantError(Exception):
     """A refused request; the router turns it into an HTTP error."""
 
-    def __init__(self, status_code: int, detail: str):
+    def __init__(self, status_code: int, detail: str) -> None:
         super().__init__(detail)
         self.status_code = status_code
         self.detail = detail
@@ -76,7 +76,7 @@ def check_subject(subject: str) -> Tuple[str, List[str]]:
 
 
 class SubjectVariantService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
         self.audit = AuditService(db)
 
@@ -111,7 +111,7 @@ class SubjectVariantService:
     def promoted(variants: Iterable[EmailSubjectVariant]) -> Optional[EmailSubjectVariant]:
         return next((v for v in variants if v.is_winner), None)
 
-    def _step_messages(self, sequence_id: str):
+    def _step_messages(self, sequence_id: str) -> Query:
         return self.db.query(EmailMessage).filter(
             EmailMessage.sequence_id == sequence_id,
             func.coalesce(EmailMessage.direction, "OUTBOUND") != "INBOUND",
@@ -133,7 +133,7 @@ class SubjectVariantService:
 
     # ── rendering / re-balancing unsent emails ─────────────────
 
-    def _renderer(self, campaign: Campaign):
+    def _renderer(self, campaign: Campaign) -> Callable[..., str]:
         from app.services.campaign_email_service import CampaignEmailService
         from app.services.sender_identity import campaign_sender_name
 

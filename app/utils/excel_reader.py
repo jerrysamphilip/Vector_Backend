@@ -12,7 +12,7 @@ ALLOWED_CONTENT_TYPES = [
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 ]
 
-# Kartik has changed this: Added strict file size and type validation parameters
+# Rejects files over MAX_FILE_SIZE or with a content type outside ALLOWED_CONTENT_TYPES (400)
 def read_upload_file(file: UploadFile) -> pd.DataFrame:
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="Unsupported file format")
@@ -23,9 +23,10 @@ def read_upload_file(file: UploadFile) -> pd.DataFrame:
         raise HTTPException(status_code=413, detail="File size exceeds 5MB limit")
 
     try:
-        if file.filename.endswith(".csv"):
+        filename = file.filename or ""
+        if filename.endswith(".csv"):
             df = pd.read_csv(io.BytesIO(content), nrows=MAX_ROWS + 1)
-        elif file.filename.endswith(".xlsx"):
+        elif filename.endswith(".xlsx"):
             df = pd.read_excel(io.BytesIO(content), nrows=MAX_ROWS + 1)
         else:
             raise ValueError("Unsupported file type")

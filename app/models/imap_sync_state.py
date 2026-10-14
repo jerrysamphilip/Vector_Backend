@@ -29,5 +29,5 @@ class ImapSyncState(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ImapSyncState {self.inbox_id[:8]} {self.folder} uid={self.last_uid}>"

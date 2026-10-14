@@ -93,7 +93,7 @@ def mailbox(monkeypatch):
         sent.append(kw)
         return {"sent": True, "ses_message_id": f"msg-{len(sent)}"}
 
-    monkeypatch.setattr("app.routers.user_router._send_invitation_email", fake_send)
+    monkeypatch.setattr("app.services.invitation_email.send_invitation_email", fake_send)
     return sent
 
 

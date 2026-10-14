@@ -288,7 +288,7 @@ def rescore(db: Session, tenant_id: str, ids: Iterable[str], changed_by: Optiona
 
 # ── Batches ───────────────────────────────────────────────────────
 
-def _try_lock(name: str):
+def _try_lock(name: str) -> Any:
     try:
         from app.jobs import try_acquire
         return try_acquire(name)

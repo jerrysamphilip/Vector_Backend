@@ -5,10 +5,8 @@ Provides cross-tenant management: tenant listing, user overview, platform stats.
 """
 
 import logging
-import os
 import secrets
 from datetime import datetime, timedelta
-from urllib.parse import urlparse
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -24,6 +22,7 @@ from app.core.database import get_db
 from app.core.security import hash_password, hash_token
 from app.models.campaign import Campaign
 from app.models.magic_login_token import MagicLoginToken
+from app.services.invitation_email import build_magic_login_link
 from app.models.tenant import Tenant
 from app.models.user import User
 
@@ -91,70 +90,6 @@ class CreateTenantRequest(BaseModel):
 
 
 # ── Helpers ──────────────────────────────────────────────────
-
-def _build_magic_login_link(token: str) -> str:
-    return _build_magic_login_link_for_origin(token, None)
-
-
-def _build_magic_login_link_for_origin(token: str, request: Request | None) -> str:
-    def _normalized_origin(raw_url: str | None) -> str:
-        if not raw_url:
-            return ""
-        try:
-            parsed = urlparse(raw_url)
-            if not parsed.scheme or not parsed.netloc:
-                return ""
-            host = (parsed.hostname or "").lower()
-            if host == "sales.neutrino-ai.com":
-                return "https://sales.neutrino-ai.com"
-            if host == "outreach360.neutrinoaistudio.com":
-                return "https://outreach360.neutrinoaistudio.com"
-            if host in {"localhost", "127.0.0.1", "0.0.0.0"}:
-                return f"{parsed.scheme}://{parsed.netloc}"
-            return ""
-        except Exception:
-            return ""
-
-    request_origin = ""
-    if request is not None:
-        request_origin = _normalized_origin(request.headers.get("origin"))
-        if not request_origin:
-            request_origin = _normalized_origin(request.headers.get("referer"))
-
-    magic_login_url = (getattr(settings, "MAGIC_LOGIN_URL", None) or "").strip()
-    backend_base = settings.BASE_URL.rstrip("/")
-    frontend_base = (settings.FRONTEND_URL or "").split(",")[0].strip().rstrip("/")
-    profile = (os.getenv("APP_PROFILE", "") or "").strip().lower()
-
-    def _is_local(url: str) -> bool:
-        if not url:
-            return True
-        try:
-            host = (urlparse(url).hostname or "").lower()
-        except Exception:
-            return False
-        return host in {"localhost", "127.0.0.1", "0.0.0.0"}
-
-    profile_base = ""
-    if _is_local(backend_base) and _is_local(frontend_base):
-        if profile == "dev":
-            profile_base = "https://sales.neutrino-ai.com"
-        elif profile == "stage":
-            profile_base = "https://outreach360.neutrinoaistudio.com"
-
-    frontend_non_local = bool(frontend_base) and not _is_local(frontend_base)
-    backend_non_local = bool(backend_base) and not _is_local(backend_base)
-    resolved_base = (
-        profile_base
-        or (frontend_base if frontend_non_local else "")
-        or (backend_base if backend_non_local else "")
-        or frontend_base
-        or backend_base
-    )
-    base = (request_origin and f"{request_origin}/magic-login") or magic_login_url or f"{resolved_base}/magic-login"
-    separator = "&" if "?" in base else "?"
-    return f"{base}{separator}token={token}"
-
 
 def _get_ses_client():
     client_kwargs = {"region_name": settings.AWS_REGION}
@@ -434,7 +369,7 @@ def create_tenant(
 
     # Generate magic login token
     raw_token = secrets.token_urlsafe(48)
-    magic_link = _build_magic_login_link_for_origin(raw_token, request)
+    magic_link = build_magic_login_link(raw_token, request)
     expire_hours = getattr(settings, "MAGIC_LOGIN_EXPIRE_HOURS", 72)
     magic_token = MagicLoginToken(
         user_id=admin_user.user_id,

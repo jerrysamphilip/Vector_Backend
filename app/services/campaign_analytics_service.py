@@ -4,7 +4,7 @@ Campaign analytics: aggregates open, click, reply and bounce metrics.
 """
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import ColumnElement, func
 from typing import List
 
 from app.models.campaign import CampaignProspect
@@ -24,7 +24,7 @@ from app.models.email_message import EmailMessage, EmailEvent
 SENT_STATUSES = ("SENT", "BOUNCED", "COMPLAINED")
 
 
-def sent_message_filters():
+def sent_message_filters() -> List[ColumnElement[bool]]:
     """SQL conditions selecting the EmailMessage rows that count as 'sent'."""
     return [
         EmailMessage.status.in_(SENT_STATUSES),
@@ -33,7 +33,7 @@ def sent_message_filters():
     ]
 
 
-def unique_prospects_expr():
+def unique_prospects_expr() -> ColumnElement[int]:
     """Unique (campaign, prospect) pairs over EmailEvent x EmailMessage rows.
 
     Filter the joined rows on one event type (open, click): within one
@@ -53,7 +53,7 @@ unique_clickers_expr = unique_prospects_expr
 class CampaignAnalyticsService:
     """Handles aggregating email event metrics for campaigns."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
 
     def get_dynamic_metrics(self, campaign_id: str) -> dict:

@@ -11,7 +11,7 @@ tenant of its mailbox (inbox_id) or, failing that, of its campaign (campaign_id)
 import re
 from typing import Optional
 
-from sqlalchemy import or_, select
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.campaign import Campaign
@@ -61,7 +61,7 @@ def tenant_has_domain(db: Session, tenant_id: Optional[str], domain_name: Option
             or domain_name in tenant_inbox_domains(db, tenant_id))
 
 
-def tenant_message_criterion(tenant_id: str):
+def tenant_message_criterion(tenant_id: str) -> ColumnElement[bool]:
     """SQL criterion: this EmailMessage was sent by (belongs to) the tenant."""
     return or_(
         EmailMessage.inbox_id.in_(select(SendingInbox.inbox_id).where(SendingInbox.tenant_id == tenant_id)),
@@ -69,7 +69,7 @@ def tenant_message_criterion(tenant_id: str):
     )
 
 
-def from_domain_criterion(domain_name: str):
+def from_domain_criterion(domain_name: str) -> ColumnElement[bool]:
     return EmailMessage.from_email.like(f"%@{domain_name.strip().lower()}")
 
 

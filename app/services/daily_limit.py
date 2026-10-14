@@ -11,7 +11,7 @@ user sees how many were held (status_for / GET /sales-reports/daily-limit).
 from datetime import date, datetime, time, timedelta
 from typing import Dict, Optional, Tuple
 
-from sqlalchemy import func
+from sqlalchemy import ColumnElement, func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -29,7 +29,7 @@ def _day_bounds(day: date) -> Tuple[datetime, datetime]:
     return start, start + timedelta(days=1)
 
 
-def _attributed_user():
+def _attributed_user() -> ColumnElement[str]:
     return func.coalesce(Prospect.owner_id, Campaign.created_by)
 
 
@@ -73,7 +73,7 @@ class DailyLimiter:
     """Per-process reservation counter used by the scheduler. Reserving does no awaits,
     so parallel inbox queues on the one event loop can never overshoot the limit."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._counts: Dict[Tuple[str, date], int] = {}
 
     def reserve(self, db: Session, user_id: str) -> bool:

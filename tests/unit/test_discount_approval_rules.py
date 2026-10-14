@@ -7,7 +7,7 @@ and who may decide.
 from decimal import Decimal
 
 import pytest
-from fastapi import HTTPException
+from app.core.errors import BadRequestError
 
 from app.services import quote_approval as qa
 
@@ -23,7 +23,7 @@ def test_da_u01_parse_threshold_accepts_percent_or_off(value, expected):
 
 @pytest.mark.parametrize("value", [True, False, -0.01, 100.01, "abc", "nan", "inf", [], {}])
 def test_da_u02_parse_threshold_rejects_out_of_bounds(value):
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(BadRequestError) as exc:
         qa.parse_threshold(value)
     assert exc.value.status_code == 400
 

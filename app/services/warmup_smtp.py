@@ -60,6 +60,7 @@ def _smtp_send_blocking(inbox: SendingInbox, to_email: str, msg: MIMEMultipart, 
     password = secret if secret is not None else inbox.smtp_password
     use_ssl = inbox.smtp_use_ssl or False
 
+    smtp: smtplib.SMTP
     if use_ssl:
         smtp = smtplib.SMTP_SSL(host, port, timeout=30)
     else:
@@ -75,8 +76,8 @@ def _smtp_send_blocking(inbox: SendingInbox, to_email: str, msg: MIMEMultipart, 
     finally:
         try:
             smtp.quit()
-        except Exception:
-            pass
+        except (smtplib.SMTPException, OSError) as exc:
+            logger.debug("Warmup SMTP quit for %s failed: %s", inbox.email_address, exc)
 
 
 async def send_via_inbox(
@@ -109,7 +110,7 @@ async def send_via_inbox(
             if oauth:
                 from sqlalchemy.orm import object_session
                 from app.services.ms365_oauth import smtp_secret
-                secret = smtp_secret(object_session(inbox), inbox)
+                secret = smtp_secret(object_session(inbox), inbox)  # type: ignore[arg-type]  # loaded inbox has a session
             await asyncio.to_thread(_smtp_send_blocking, inbox, to_email, msg, secret)
             logger.debug(
                 "[WarmupSMTP] Sent via per-inbox SMTP %s → %s", inbox.email_address, to_email

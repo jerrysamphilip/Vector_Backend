@@ -16,6 +16,9 @@ The 'openers' field name is kept for DB compatibility but no longer stores examp
 
 import os
 import sys
+import logging
+
+logger = logging.getLogger(__name__)
 
 _CURRENT_DIR = os.path.dirname(__file__)
 _PROJECT_ROOT = os.path.abspath(os.path.join(_CURRENT_DIR, "..", ".."))
@@ -294,7 +297,7 @@ def seed_blueprints(db: Session) -> int:
         PersonaBlueprint.persona_type.notin_(canonical_types)
     ).delete(synchronize_session=False)
     if stale_personas or stale_blueprints:
-        print(f"Retired {stale_personas} stale prospect classifications and {stale_blueprints} stale blueprints")
+        logger.info("Retired %s stale prospect classifications and %s stale blueprints", stale_personas, stale_blueprints)
 
     created = 0
     updated = 0
@@ -324,16 +327,17 @@ def seed_blueprints(db: Session) -> int:
             created += 1
 
     db.commit()
-    print(f"Created {created} new blueprints, updated {updated} existing blueprints")
+    logger.info("Created %s new blueprints, updated %s existing blueprints", created, updated)
     return created + updated
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")  # CLI: progress lines on the console
     from app.core.database import SessionLocal
 
     db = SessionLocal()
     try:
         count = seed_blueprints(db)
-        print(f"Created/Updated {count} blueprints")
+        logger.info("Created/Updated %s blueprints", count)
     finally:
         db.close()

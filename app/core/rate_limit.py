@@ -11,21 +11,22 @@ Counters live in the API process, which is enough for the single-replica deploym
 several replicas, move them to Redis so limits are shared.
 """
 
+from typing import Deque, Dict, NoReturn
 import threading
 import time
 from collections import defaultdict, deque
 
 from fastapi import HTTPException, Request
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import JSONResponse, Response
 
 
 class SlidingWindowLimiter:
-    def __init__(self):
-        self._hits = defaultdict(deque)
+    def __init__(self) -> None:
+        self._hits: Dict[str, Deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
 
-    def _prune(self, key, window, now):
+    def _prune(self, key: str, window: float, now: float) -> Deque[float]:
         hits = self._hits[key]
         while hits and hits[0] <= now - window:
             hits.popleft()
@@ -51,7 +52,7 @@ class SlidingWindowLimiter:
             hits = self._prune(key, window, now)
             return int(hits[0] + window - now) + 1 if len(hits) >= limit else 0
 
-    def reset(self, key: str):
+    def reset(self, key: str) -> None:
         with self._lock:
             self._hits.pop(key, None)
 
@@ -83,11 +84,11 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _too_many(retry_after: int, message: str):
+def _too_many(retry_after: int, message: str) -> NoReturn:
     raise HTTPException(status_code=429, detail=message, headers={"Retry-After": str(retry_after)})
 
 
-def check(request: Request, scope: str, ip_limit: tuple, email: str = None, email_limit: tuple = None):
+def check(request: Request, scope: str, ip_limit: tuple, email: str | None = None, email_limit: tuple | None = None) -> None:
     """Count one request for this scope; raise 429 when the IP or email is over its limit."""
     wait = limiter.hit(f"{scope}:ip:{client_ip(request)}", *ip_limit)
     if wait:
@@ -98,22 +99,22 @@ def check(request: Request, scope: str, ip_limit: tuple, email: str = None, emai
             _too_many(wait, "Too many requests for this email. Please wait a few minutes and try again.")
 
 
-def check_login_allowed(request: Request, email: str):
+def check_login_allowed(request: Request, email: str) -> None:
     check(request, "login", LOGIN_ATTEMPTS_PER_IP)
     wait = limiter.blocked(f"login-fail:{email.strip().lower()}", *LOGIN_FAILURES_PER_EMAIL)
     if wait:
         _too_many(wait, "Too many failed sign-in attempts. Please wait 15 minutes or reset your password.")
 
 
-def record_login_failure(email: str):
+def record_login_failure(email: str) -> None:
     limiter.hit(f"login-fail:{email.strip().lower()}", *LOGIN_FAILURES_PER_EMAIL)
 
 
-def record_login_success(email: str):
+def record_login_success(email: str) -> None:
     limiter.reset(f"login-fail:{email.strip().lower()}")
 
 
-def check_mfa_allowed(user_id: str, mfa_jti: str = None):
+def check_mfa_allowed(user_id: str, mfa_jti: str | None = None) -> None:
     """429 when this user (or this pending sign-in) has had too many wrong two-factor codes."""
     if mfa_jti:
         wait = limiter.blocked(f"mfa-token-fail:{mfa_jti}", *MFA_FAILURES_PER_TOKEN)
@@ -124,13 +125,13 @@ def check_mfa_allowed(user_id: str, mfa_jti: str = None):
         _too_many(wait, "Too many incorrect codes. Please wait 15 minutes and try again.")
 
 
-def record_mfa_failure(user_id: str, mfa_jti: str = None):
+def record_mfa_failure(user_id: str, mfa_jti: str | None = None) -> None:
     if mfa_jti:
         limiter.hit(f"mfa-token-fail:{mfa_jti}", *MFA_FAILURES_PER_TOKEN)
     limiter.hit(f"mfa-fail:{user_id}", *MFA_FAILURES_PER_USER)
 
 
-def record_mfa_success(user_id: str):
+def record_mfa_success(user_id: str) -> None:
     limiter.reset(f"mfa-fail:{user_id}")
 
 
@@ -140,7 +141,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     EXEMPT = ("/health", "/webhooks/ses", "/tracking", "/api/tracking")
 
-    async def dispatch(self, request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if not request.url.path.startswith(self.EXEMPT):
             wait = limiter.hit(f"global:{client_ip(request)}", *GLOBAL_PER_IP)
             if wait:

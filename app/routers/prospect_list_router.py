@@ -11,13 +11,14 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta
 
 from app.core.database import get_db
+from app.core.errors import DomainError
 from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.prospect import Prospect, GlobalUnsubscribe
 from app.models.campaign import CampaignProspect, Campaign
 from app.models.user import User
 
 
-# Kartik has changed this: Removed prefix to support explicit REST boundaries
+# No router prefix: every route spells out its full path
 router = APIRouter(tags=["Prospect Lists"])
 
 # Secondary router for /prospects prefix (upload & stats endpoints)
@@ -68,7 +69,6 @@ class EnrollmentResult(BaseModel):
 # ENDPOINTS
 # =============================
 
-# Kartik has changed this: Explicit collection path
 @router.get("/prospect-lists", response_model=ProspectListPaginatedResponse)
 async def list_prospect_lists(
     page: int = Query(1, ge=1),
@@ -151,7 +151,6 @@ class ProspectListDetailResponse(BaseModel):
     page_size: int
 
 
-# Kartik has changed this: Explicit collection path
 @router.get("/prospect-lists/{list_id}/prospects", response_model=ProspectListDetailResponse)
 async def get_list_prospects(
     list_id: str,
@@ -219,7 +218,6 @@ async def get_list_prospects(
         handle_route_error(e, context="get_list_prospects")
 
 
-# Kartik has changed this: Use RESTful campaigns sub-resource for enrollment
 @router.post("/campaigns/{campaign_id}/enrollments/bulk", response_model=EnrollmentResult, dependencies=[Depends(require_permission("manage_prospects"))])
 async def enroll_prospects(
     campaign_id: str,
@@ -296,7 +294,6 @@ async def enroll_prospects(
     )
 
 
-# Kartik has changed this: Explicit REST path
 @router.delete("/prospect-lists/{list_id}", dependencies=[Depends(require_permission("manage_prospects"))])
 async def delete_prospect_list(
     list_id: str,
@@ -393,7 +390,6 @@ class ProspectUpdateRequest(BaseModel):
     poc_country: Optional[str] = None
 
 
-# Kartik has changed this: Explicit REST path
 @router.patch("/prospect-lists/{list_id}/prospects/{prospect_id}/notes", dependencies=[Depends(require_permission("manage_prospects"))])
 async def update_prospect_note(
     list_id: str,
@@ -427,7 +423,6 @@ async def update_prospect_note(
         handle_route_error(e, context="update_prospect_note")
 
 
-# Kartik has changed this: Proper explicit top-level REST path
 @router.patch("/prospects/{prospect_id}", dependencies=[Depends(require_permission("manage_prospects"))])
 async def update_prospect(
     prospect_id: str,
@@ -477,7 +472,6 @@ async def update_prospect(
         handle_route_error(e, context="update_prospect")
 
 
-# Kartik has changed this: Proper explicit top-level REST path
 @router.delete("/prospects/{prospect_id}", dependencies=[Depends(require_permission("manage_prospects"))])
 async def delete_prospect(
     prospect_id: str,
@@ -529,7 +523,6 @@ class RevalidationResponse(BaseModel):
     results: List[RevalidationResultItem]
 
 
-# Kartik has changed this: Replaced verb with noun-based lifecycle resource
 @router.post("/prospect-lists/{list_id}/revalidations", dependencies=[Depends(require_permission("manage_prospects"))])
 async def revalidate_list(
     list_id: str,
@@ -701,7 +694,6 @@ class ProspectStatsResponse(BaseModel):
     active: int
     opted_out: int
 
-# Kartik has changed this: Added strict Pydantic models for request payloads
 class UploadRevalidateRequest(BaseModel):
     records: list[dict]
 
@@ -713,7 +705,6 @@ class UploadConfirmRequest(BaseModel):
     records: list[dict]
 
 
-# Kartik has changed this: Replaced verb with noun-based action
 @prospect_upload_router.post("/uploads/validations", dependencies=[Depends(require_permission("manage_prospects"))])
 def upload_dry_run(
     file: UploadFile = File(...),
@@ -752,7 +743,6 @@ def upload_dry_run(
         handle_route_error(e, context="upload")
 
 
-# Kartik has changed this: Modeled upload as a root resource rather than a verb
 @prospect_upload_router.post("/uploads/{upload_id}/revalidations", dependencies=[Depends(require_permission("manage_prospects"))])
 def upload_revalidate(
     upload_id: str,
@@ -776,7 +766,6 @@ def upload_revalidate(
         handle_route_error(e, context="upload")
 
 
-# Kartik has changed this: Converted action endpoint into RESTful bulk creation
 @prospect_upload_router.post("/uploads/{upload_id}/confirmations", dependencies=[Depends(require_permission("manage_prospects"))])
 def upload_confirm(
     upload_id: str,
@@ -802,14 +791,13 @@ def upload_confirm(
             tenant_id=current_user.tenant_id,
             uploaded_by=current_user.user_id,
         )
-    except HTTPException:
+    except (HTTPException, DomainError):
         raise
     except Exception as e:
         db.rollback()
         handle_route_error(e, context="upload")
 
 
-# Kartik has changed this: Use proper top-level collection endpoint
 @prospect_upload_router.get("/prospects/stats")
 def get_prospect_stats(
     db: Session = Depends(get_db),

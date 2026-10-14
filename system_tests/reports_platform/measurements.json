@@ -1,29 +1,29 @@
 {
   "latency": {
-    "/sales-reports/dashboard": 0.407,
-    "/sales-reports/funnel": 0.027,
-    "/sales-reports/leads": 0.017,
-    "/sales-reports/pipeline": 0.017,
-    "/sales-reports/forecast": 0.041,
+    "/sales-reports/dashboard": 0.108,
+    "/sales-reports/funnel": 0.03,
+    "/sales-reports/leads": 0.023,
+    "/sales-reports/pipeline": 0.014,
+    "/sales-reports/forecast": 0.051,
     "/sales-reports/team-performance": 0.032,
-    "/sales-reports/targets": 0.021,
-    "/sales-reports/leaderboard": 0.041,
-    "/sales-reports/campaign-roi": 0.019,
-    "/opportunities": 0.031,
-    "/pipeline/revenue": 0.02
+    "/sales-reports/targets": 0.018,
+    "/sales-reports/leaderboard": 0.036,
+    "/sales-reports/campaign-roi": 0.025,
+    "/opportunities": 0.026,
+    "/pipeline/revenue": 0.015
   },
   "load": {
     "users": 25,
     "seconds": 60,
-    "requests": 2121,
-    "rps": 35.4,
-    "p50_ms": 482,
-    "p95_ms": 821,
-    "max_ms": 1312,
+    "requests": 2378,
+    "rps": 39.6,
+    "p50_ms": 407,
+    "p95_ms": 734,
+    "max_ms": 1195,
     "error_rate_pct": 0.0,
     "errors_sample": []
   },
   "lockout": null,
   "ip_limit": null,
-  "health_ms": 55
+  "health_ms": 58
 }

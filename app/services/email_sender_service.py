@@ -51,7 +51,7 @@ class PermanentEmailFailure(Exception):
     are permanent for this attempt but say nothing about the contact.
     """
 
-    def __init__(self, message: str, code: Optional[str] = None, recipient_fault: bool = False):
+    def __init__(self, message: str, code: Optional[str] = None, recipient_fault: bool = False) -> None:
         super().__init__(message)
         self.code = code
         self.recipient_fault = recipient_fault
@@ -113,11 +113,11 @@ def classify_botocore_error(exc: BotoCoreError) -> Exception:
 class RateLimiter:
     """Semaphore-based rate limiter for SES send rate limits."""
     
-    def __init__(self, rate_per_second: int):
+    def __init__(self, rate_per_second: int) -> None:
         self._semaphore = asyncio.Semaphore(rate_per_second)
         self._rate = rate_per_second
     
-    async def acquire(self):
+    async def acquire(self) -> None:
         """Acquire a slot, auto-releases after 1 second."""
         await self._semaphore.acquire()
         # Schedule release after 1 second
@@ -140,7 +140,7 @@ class RateLimiter:
 class EmailSenderService:
     """Service for sending emails via AWS SES"""
     
-    def __init__(self):
+    def __init__(self) -> None:
         # Initialize SES client
         # In production, use IAM roles. For local dev, use env credentials.
         client_kwargs = {
@@ -239,7 +239,7 @@ class EmailSenderService:
         
         link_pattern = r'href=["\']([^"\']+)["\']'
         
-        def replace_link(match):
+        def replace_link(match) -> str:
             original_url = match.group(1)
             # Skip mailto, tel, and already tracked URLs
             if (original_url.startswith('mailto:') or 
@@ -315,8 +315,8 @@ class EmailSenderService:
             return ""
 
         # 1. Pull out <a ...>...</a> tags so they survive escaping.
-        placeholders = {}
-        def _stash(m):
+        placeholders: Dict[str, str] = {}
+        def _stash(m) -> str:
             key = f"__LINK_{len(placeholders)}__"
             placeholders[key] = m.group(0)
             return key
@@ -851,7 +851,7 @@ class EmailSenderService:
             logger.error(f"[SES] Unexpected error: {str(exc)}")
             raise TransientEmailFailure(str(exc))
     
-    async def send_with_retry(
+    async def send_with_retry(  # type: ignore[return]  # max_retries < 1 falls through (returns None)
         self,
         email_message: EmailMessage,
         email_template: EmailTemplate,

@@ -62,7 +62,7 @@ Failures by category: {}
 | UIO-SHELL-GUARD-manager | MANAGER opening restricted URLs is redirected to Home (no flash of forbidden data) | PASS |  |  |
 | UIO-SHELL-GUARD-admin-owner | OWNER opening /vector/admin/... is redirected to Home | PASS |  |  |
 | UIO-SHELL-GUARD-admin-agent | AGENT opening /vector/admin/... is redirected to Home | PASS |  |  |
-| UIO-SHELL-GUARD-api | Server also refuses AGENT on team/inbox/campaign management endpoints (403), not just the UI | PASS |  |  |
+| UIO-SHELL-GUARD-api | Server also refuses AGENT on team/inbox endpoints and campaign launch (403), not just the UI | PASS |  |  |
 | UIO-SHELL-404 | Unknown routes: /app/does-not-exist shows the 404 page (URL kept, link back Home works); /vector/xyz -> Home; /app/campaigns/<bad id> safe | PASS |  |  |
 | UIO-SHELL-HELP-01 | Help button opens panel for the current screen; Close button and Esc close it | PASS |  |  |
 | UIO-SHELL-HELP-02 | ? and F1 keyboard shortcuts toggle help; ? is ignored while typing in a field | PASS |  |  |
@@ -135,7 +135,7 @@ Failures by category: {}
 | UIO-DET-06 | Sending Accounts tab lists the campaign inbox; Inbox tab renders (empty state) and Sync button reports a clear error with no IMAP | PASS |  |  |
 | UIO-DET-07 | Pause Campaign / Resume Campaign buttons change status (DB + badge) | PASS |  |  |
 | UIO-DET-08 | Send Now: cancel at the confirm sends nothing; accept -> POST /send-now answered and the outcome is shown (result dialog or visible error) | PASS |  |  |
-| UIO-DET-09 | Role AGENT cannot open a campaign by URL (redirect Home) | PASS |  |  |
+| UIO-DET-09 | Role AGENT (manage_campaigns by default) can open a campaign by URL | PASS |  |  |
 | UIO-TPL-01 | Template library empty state renders; New template opens modal; Cancel closes without saving | PASS |  |  |
 | UIO-TPL-02 | Create template: merge-field insert, save -> row in list and in DB with subject/body/category/shared | PASS |  |  |
 | UIO-TPL-03 | Validation: saving a template with empty name shows a server error inside the modal (no crash) | PASS |  |  |

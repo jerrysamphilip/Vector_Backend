@@ -13,9 +13,12 @@ Usage:
             handle_route_error(e, context="get_something")
 """
 
+from typing import Optional
 import logging
 from fastapi import HTTPException
 from sqlalchemy.exc import DataError, IntegrityError, OperationalError
+
+from app.core.errors import DomainError
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +28,10 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Map well-known exception types to (http_status, safe_client_message)
-_EXCEPTION_MAP: list[tuple[type, int, str]] = [
-    # Re-raise FastAPI errors unchanged
+_EXCEPTION_MAP: list[tuple[type, int, Optional[str]]] = [
+    # Re-raise FastAPI errors and service-layer domain errors unchanged
     (HTTPException,          0,   ""),
+    (DomainError,            0,   ""),
 
     # Business-logic errors → 400
     (ValueError,             400, None),   # None = use str(e)
@@ -67,8 +71,8 @@ def handle_route_error(e: Exception, context: str = "") -> None:
     """
     prefix = f"[{context}] " if context else ""
 
-    # HTTPException: re-raise exactly as-is (already formatted for the client)
-    if isinstance(e, HTTPException):
+    # HTTPException / DomainError: re-raise exactly as-is (already formatted for the client)
+    if isinstance(e, (HTTPException, DomainError)):
         raise
 
     for exc_type, status_code, safe_message in _EXCEPTION_MAP:

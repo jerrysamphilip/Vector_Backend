@@ -30,6 +30,9 @@ from app.models import (
     AuditLog,
     ComplianceCheck,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def cleanup_all_dummy_data(db: Session, confirm: bool = False) -> dict:
@@ -66,10 +69,10 @@ def cleanup_all_dummy_data(db: Session, confirm: bool = False) -> dict:
         dict with counts of deleted records
     """
     if not confirm:
-        print("⚠️  DRY RUN - No data will be deleted. Use confirm=True to delete.")
+        logger.info("⚠️  DRY RUN - No data will be deleted. Use confirm=True to delete.")
         return _count_records(db)
     
-    print("🗑️  Starting cleanup...")
+    logger.info("🗑️  Starting cleanup...")
     deleted = {}
     
     # Delete in order (child tables first)
@@ -100,13 +103,13 @@ def cleanup_all_dummy_data(db: Session, confirm: bool = False) -> dict:
             if count > 0:
                 db.query(model).delete()
                 deleted[table_name] = count
-                print(f"  ✓ Deleted {count} rows from {table_name}")
+                logger.info("  ✓ Deleted %s rows from %s", count, table_name)
         except Exception as e:
-            print(f"  ✗ Error deleting from {table_name}: {e}")
+            logger.error("  ✗ Error deleting from %s: %s", table_name, e)
             deleted[table_name] = f"ERROR: {e}"
     
     db.commit()
-    print("\n✅ Cleanup complete!")
+    logger.info("\n✅ Cleanup complete!")
     return deleted
 
 
@@ -125,14 +128,14 @@ def _count_records(db: Session) -> dict:
     for name, model in tables:
         count = db.query(model).count()
         counts[name] = count
-        print(f"  {name}: {count} records")
+        logger.info("  %s: %s records", name, count)
     
     return counts
 
 
 def show_uuid_query():
     """Print the query to view binary UUIDs as readable format."""
-    print("""
+    logger.info("""
 To view binary UUIDs in MySQL, use:
 
 SELECT 
@@ -152,6 +155,7 @@ FROM campaigns;
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")  # CLI: progress lines on the console
     import sys
     
     db = SessionLocal()
@@ -159,14 +163,14 @@ if __name__ == "__main__":
         if len(sys.argv) > 1 and sys.argv[1] == "--confirm":
             cleanup_all_dummy_data(db, confirm=True)
         else:
-            print("=" * 50)
-            print("DRY RUN - Current record counts:")
-            print("=" * 50)
+            logger.info("=" * 50)
+            logger.info("DRY RUN - Current record counts:")
+            logger.info("=" * 50)
             cleanup_all_dummy_data(db, confirm=False)
-            print("\n" + "=" * 50)
-            print("To actually delete, run:")
-            print("  python -m app.db.cleanup_dummy_data --confirm")
-            print("=" * 50)
+            logger.info("\n" + "=" * 50)
+            logger.info("To actually delete, run:")
+            logger.info("  python -m app.db.cleanup_dummy_data --confirm")
+            logger.info("=" * 50)
             show_uuid_query()
     finally:
         db.close()

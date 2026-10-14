@@ -263,7 +263,7 @@ def _duplicate_counts_sql(db: Session, tenant_id: str, owners, owner_sql: str,
         query = query.bindparams(bindparam("owners", expanding=True))
     try:
         # Own connection: a query stopped by the time limit must not spoil the request's session
-        with db.get_bind().connect() as conn:
+        with db.get_bind().connect() as conn:  # type: ignore[union-attr]  # sessions are bound to the Engine
             row = conn.execute(query, {"tenant": tenant_id, "labels": _personal_labels(), **params}).one()
     except DBAPIError as exc:
         logger.warning("[KPI] Duplicate contact count for %s stopped: %s", tenant_id, exc.orig)

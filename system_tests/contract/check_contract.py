@@ -34,10 +34,12 @@ CLIENTS = {"api", "apiClient", "apiV1Client", "client", "http", "axios", "apiv1"
 WRAP = re.compile(r"(?<![\w.])(get|post|patch|put|del)\(\s*(`[^`]*`|'[^']*'|\"[^\"]*\")", re.S)
 WRAP_METHOD = {"del": "delete"}
 
+# Vitest/Jest files mock the client with fake paths: not real app calls
+TEST_FILE = re.compile(r"\.(test|spec)\.[jt]sx?$")
 calls, dynamic = [], []
 for root, _, files in os.walk(a.frontend):
     for f in files:
-        if not f.endswith((".js", ".jsx", ".ts", ".tsx")):
+        if not f.endswith((".js", ".jsx", ".ts", ".tsx")) or TEST_FILE.search(f):
             continue
         p = os.path.join(root, f)
         src = open(p, encoding="utf-8", errors="ignore").read()
@@ -58,7 +60,7 @@ for root, _, files in os.walk(a.frontend):
 
 for root, _, files in os.walk(os.path.join(a.frontend, "api")):
     for f in files:
-        if not f.endswith(".js"):
+        if not f.endswith(".js") or TEST_FILE.search(f):
             continue
         p = os.path.join(root, f)
         src = open(p, encoding="utf-8", errors="ignore").read()

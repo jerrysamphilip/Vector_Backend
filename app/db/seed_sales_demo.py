@@ -1,4 +1,7 @@
 from sqlalchemy import bindparam, text
+import logging
+
+logger = logging.getLogger(__name__)
 # app/db/seed_sales_demo.py
 """
 Demo data for Phase 2 sales: a four-level team, leads at every stage, an SQL
@@ -517,15 +520,16 @@ def main():
         if not admin:
             raise SystemExit("No matching admin user found")
         removed = reset(db, admin.tenant_id)
-        print(f"Removed {removed} previous demo sales record(s)")
+        logger.info("Removed %s previous demo sales record(s)", removed)
         if args.reset:
             return
         result = seed(db, admin, random.Random(args.seed))
-        print(f"Seeded into {admin.email}'s workspace: {result}")
-        print(f"Team (password {demo_password()}): " + ", ".join(f"{k}@{DEMO_DOMAIN} (L{v[3]})" for k, v in TEAM.items()))
+        logger.info("Seeded into %s's workspace: %s", admin.email, result)
+        logger.info(f"Team (password {demo_password()}): " + ", ".join(f"{k}@{DEMO_DOMAIN} (L{v[3]})" for k, v in TEAM.items()))
     finally:
         db.close()
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")  # CLI: progress lines on the console
     main()

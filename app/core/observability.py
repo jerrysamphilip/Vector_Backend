@@ -28,10 +28,11 @@ import re
 import time
 import uuid
 from contextvars import ContextVar
-from typing import Optional
+from typing import Any, Optional, Tuple
 
-from fastapi import Request
+from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse, Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
 logger = logging.getLogger(__name__)
@@ -107,7 +108,7 @@ _SES_TYPES = {"Bounce", "Complaint", "Delivery", "Open", "Click", "Reject", "Del
               "Rendering Failure", "Subscription", "Send", "SubscriptionConfirmation"}
 
 
-def _label(value, default: str = "unknown", limit: int = 40) -> str:
+def _label(value: Any, default: str = "unknown", limit: int = 40) -> str:
     text = str(value or "").strip()
     return text[:limit] if text else default
 
@@ -138,7 +139,7 @@ def start_metrics_server(port: Optional[int] = None) -> bool:
     if (os.getenv("METRICS_ENABLED", "true").strip().lower() in ("0", "false", "no", "off")):
         return False
     from prometheus_client import start_http_server
-    port = int(port or os.getenv("METRICS_PORT", "9100"))
+    port = int(port) if port else int(os.getenv("METRICS_PORT", "9100"))
     start_http_server(port)
     logger.info("Metrics server listening on :%s", port)
     return True
@@ -151,10 +152,10 @@ class ObservabilityMiddleware:
 
     SKIP_METRICS = ("/metrics",)
 
-    def __init__(self, app):
+    def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
-    async def __call__(self, scope, receive, send):
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
 
@@ -167,7 +168,7 @@ class ObservabilityMiddleware:
         token = _request_id.set(request_id)
         status = {"code": 500}
 
-        async def send_wrapper(message):
+        async def send_wrapper(message: Message) -> None:
             if message["type"] == "http.response.start":
                 status["code"] = message["status"]
                 headers = [(k, v) for k, v in message.get("headers", []) if k.lower() != b"x-request-id"]
@@ -189,12 +190,12 @@ class ObservabilityMiddleware:
             _request_id.reset(token)
 
 
-def _metrics_flags():
+def _metrics_flags() -> Tuple[bool, str]:
     from app.core.config import settings
     return bool(getattr(settings, "METRICS_ENABLED", True)), (getattr(settings, "METRICS_TOKEN", "") or "").strip()
 
 
-def install_observability(app) -> None:
+def install_observability(app: FastAPI) -> None:
     """Register the request-id/metrics middleware and the /metrics endpoint on the app."""
     import hmac
 
@@ -207,7 +208,7 @@ def install_observability(app) -> None:
         logger.warning("/metrics is enabled without METRICS_TOKEN; keep it off the public ingress")
 
     @app.get("/metrics", include_in_schema=False)
-    def metrics(request: Request):
+    def metrics(request: Request) -> Response:
         if token:
             presented = request.headers.get("authorization", "")
             if not hmac.compare_digest(presented.encode(), f"Bearer {token}".encode()):
@@ -221,7 +222,7 @@ _SENSITIVE_HEADERS = {"authorization", "cookie", "set-cookie", "x-api-key", "x-w
                       "proxy-authorization", "x-amz-security-token"}
 
 
-def _scrub_event(event, hint=None):
+def _scrub_event(event: Any, hint: Any = None) -> Any:
     """Drop request bodies, cookies, query strings and credentials from a Sentry event."""
     request = event.get("request")
     if isinstance(request, dict):

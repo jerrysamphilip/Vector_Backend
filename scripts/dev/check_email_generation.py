@@ -1,4 +1,5 @@
-# app/db/test_email_generation.py
+# scripts/dev/check_email_generation.py
+# Ad-hoc dev check (not part of the test suite). Run from the backend directory: python -m scripts.dev.check_email_generation
 """
 Test script for email generation flow.
 Tests: Classification → Blueprint lookup → Email generation

@@ -6,7 +6,7 @@ so new settings never need a migration.
 """
 import copy
 from decimal import Decimal, InvalidOperation
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from sqlalchemy.orm import Session
 
@@ -40,7 +40,7 @@ DEFAULTS = {
 
 def get_settings(db: Session, tenant_id: str) -> dict:
     row = db.query(SalesSetting).filter(SalesSetting.tenant_id == tenant_id).first()
-    merged = copy.deepcopy(DEFAULTS)
+    merged: Dict[str, Any] = copy.deepcopy(DEFAULTS)
     if row and row.settings:
         for key, value in row.settings.items():
             if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
@@ -105,7 +105,7 @@ def _is_number(v) -> bool:
     return False
 
 
-def _blank_all(data):
+def _blank_all(data) -> Any:
     """Every number below a money key (e.g. {"categories": {"COMMIT": 120.0}}) is an amount."""
     if isinstance(data, dict):
         return {k: _blank_all(v) for k, v in data.items()}
@@ -114,7 +114,7 @@ def _blank_all(data):
     return None if _is_number(data) else data
 
 
-def mask_money(data, keys=MONEY_KEYS):
+def mask_money(data, keys=MONEY_KEYS) -> Any:
     """Blank every money field in an API response, recursively."""
     if isinstance(data, dict):
         out = {}
@@ -131,5 +131,5 @@ def mask_money(data, keys=MONEY_KEYS):
     return data
 
 
-def masked_for(db: Session, user: User, data, keys=MONEY_KEYS):
+def masked_for(db: Session, user: User, data, keys=MONEY_KEYS) -> Any:
     return data if can_see_amounts(db, user) else mask_money(data, keys)

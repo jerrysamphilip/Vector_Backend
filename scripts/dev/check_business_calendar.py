@@ -1,5 +1,5 @@
 # Test script for business_calendar.py
-# Run from backend directory: python -m app.utils.test_business_calendar
+# Ad-hoc dev check (not part of the test suite). Run from the backend directory: python -m scripts.dev.check_business_calendar
 
 from datetime import datetime, date
 from app.utils.business_calendar import (

@@ -7,7 +7,7 @@ Uses the `holidays` library for US federal holiday support.
 
 import holidays
 from datetime import datetime, date, timedelta, time
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Optional, Tuple
 import logging
 import random
@@ -71,7 +71,7 @@ US_STATE_NAME_TO_CODE = {
 }
 
 # US holidays instance (will be created per year as needed)
-_us_holidays_cache = {}
+_us_holidays_cache: dict = {}
 
 
 def _get_us_holidays(year: int) -> holidays.US:
@@ -187,7 +187,8 @@ def get_holiday_name(dt: datetime) -> Optional[str]:
     try:
         us_holidays = _get_us_holidays(dt.year)
         return us_holidays.get(dt.date())
-    except Exception:
+    except Exception as exc:  # holiday table is best effort; treat the day as a normal one
+        logger.warning("Holiday lookup for %s failed: %s", dt, exc)
         return None
 
 
@@ -591,7 +592,7 @@ def schedule_email_in_window(
 
     Returns a naive UTC datetime suitable for EmailMessage.scheduled_at.
     """
-    def _parse_time(t):
+    def _parse_time(t) -> Optional[time]:
         if t is None:
             return None
         if isinstance(t, str):
@@ -624,7 +625,8 @@ def schedule_email_in_window(
 
     try:
         tz = ZoneInfo(timezone_str or "UTC")
-    except Exception:
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        logger.warning("Unknown timezone %r, scheduling in UTC", timezone_str)
         tz = ZoneInfo("UTC")
 
     if base_utc.tzinfo is None:

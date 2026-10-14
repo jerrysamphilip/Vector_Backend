@@ -21,6 +21,9 @@ from app.models.email_message import EmailMessage, EmailEvent
 from app.models.campaign_group import CampaignGroup, CampaignGroupMember
 from app.models.metrics import CampaignMetricsRealtime
 from app.models.audit import AuditLog
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def create_database():
@@ -41,19 +44,19 @@ def create_database():
         conn.commit()
     
     temp_engine.dispose()
-    print(f"[OK] Database '{settings.MYSQL_DATABASE}' ready")
+    logger.info("[OK] Database '%s' ready", settings.MYSQL_DATABASE)
 
 
 def create_tables():
     """Create all tables from SQLAlchemy models."""
     Base.metadata.create_all(bind=engine)
-    print("[OK] All tables created successfully")
+    logger.info("[OK] All tables created successfully")
 
 
 def drop_tables():
     """Drop all tables (use with caution!)."""
     Base.metadata.drop_all(bind=engine)
-    print("[OK] All tables dropped")
+    logger.info("[OK] All tables dropped")
 
 
 def init_db(drop_existing: bool = False):
@@ -63,19 +66,20 @@ def init_db(drop_existing: bool = False):
     Args:
         drop_existing: If True, drops all tables before creating.
     """
-    print("Initializing Outreach AI database...")
+    logger.info("Initializing Outreach AI database...")
     
     create_database()
     
     if drop_existing:
-        print("[WARN] Dropping existing tables...")
+        logger.warning("Dropping existing tables...")
         drop_tables()
     
     create_tables()
-    print("[OK] Database initialization complete!")
+    logger.info("[OK] Database initialization complete!")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")  # CLI: progress lines on the console
     import sys
     
     drop = "--drop" in sys.argv or "-d" in sys.argv

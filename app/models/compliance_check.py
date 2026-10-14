@@ -58,7 +58,7 @@ class ComplianceCheck(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ComplianceCheck {self.check_id[:8]}... ({self.status})>"
     
     @property

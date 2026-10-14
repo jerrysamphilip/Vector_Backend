@@ -4,6 +4,9 @@ Adds templates, prospects, and analytics data to existing campaigns.
 """
 import asyncio
 import sys
+import logging
+
+logger = logging.getLogger(__name__)
 sys.path.insert(0, '.')
 
 from datetime import datetime, timedelta
@@ -30,20 +33,20 @@ def seed_test_data():
         campaigns = db.query(Campaign).all()
         
         if not campaigns:
-            print("No campaigns found! Create a campaign first.")
+            logger.info("No campaigns found! Create a campaign first.")
             return
         
-        print(f"Found {len(campaigns)} campaigns")
+        logger.info("Found %s campaigns", len(campaigns))
         
         for campaign in campaigns:
-            print(f"\n--- Processing: {campaign.campaign_name} ({campaign.campaign_id[:8]}...) ---")
+            logger.info("\n--- Processing: %s (%s...) ---", campaign.campaign_name, campaign.campaign_id[:8])
             
             # 1. Get sequences for this campaign
             sequences = db.query(EmailSequence).filter(
                 EmailSequence.campaign_id == campaign.campaign_id
             ).order_by(EmailSequence.step_number).all()
             
-            print(f"  Found {len(sequences)} sequence steps")
+            logger.info("  Found %s sequence steps", len(sequences))
             
             # 2. Create templates for each sequence step
             templates_created = 0
@@ -53,7 +56,7 @@ def seed_test_data():
                 ).first()
                 
                 if existing:
-                    print(f"  Step {seq.step_number}: Template already exists")
+                    logger.info("  Step %s: Template already exists", seq.step_number)
                     continue
                 
                 template = EmailTemplate(
@@ -90,7 +93,7 @@ This is email step {seq.step_number} of the "{campaign.campaign_name}" campaign.
                 db.add(template)
                 templates_created += 1
             
-            print(f"  Created {templates_created} new templates")
+            logger.info("  Created %s new templates", templates_created)
             
             # 3. Create test prospects if none exist
             existing_prospects = db.query(CampaignProspect).filter(
@@ -98,7 +101,7 @@ This is email step {seq.step_number} of the "{campaign.campaign_name}" campaign.
             ).count()
             
             if existing_prospects == 0:
-                print("  Adding test prospects...")
+                logger.info("  Adding test prospects...")
                 
                 # Create some prospect records
                 test_prospects = [
@@ -139,9 +142,9 @@ This is email step {seq.step_number} of the "{campaign.campaign_name}" campaign.
                     )
                     db.add(campaign_prospect)
                 
-                print(f"  Added {len(test_prospects)} test prospects")
+                logger.info("  Added %s test prospects", len(test_prospects))
             else:
-                print(f"  Campaign already has {existing_prospects} prospects")
+                logger.info("  Campaign already has %s prospects", existing_prospects)
             
             # 4. Update metrics
             metrics = db.query(CampaignMetricsRealtime).filter(
@@ -167,19 +170,18 @@ This is email step {seq.step_number} of the "{campaign.campaign_name}" campaign.
             metrics.opened_count = max(metrics.opened_count, int(prospect_count * 1.2))
             metrics.replied_count = max(metrics.replied_count, int(prospect_count * 0.3))
             
-            print(f"  Updated metrics: {metrics.sent_count} sent, {metrics.opened_count} opened, {metrics.replied_count} replied")
+            logger.info("  Updated metrics: %s sent, %s opened, %s replied", metrics.sent_count, metrics.opened_count, metrics.replied_count)
         
         db.commit()
-        print("\n✅ Test data seeded successfully!")
+        logger.info("\n✅ Test data seeded successfully!")
         
     except Exception as e:
         db.rollback()
-        print(f"\n❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("\n❌ Error: %s", e)
     finally:
         db.close()
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")  # CLI: progress lines on the console
     seed_test_data()

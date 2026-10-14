@@ -44,7 +44,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# Kartik has changed this: Removed prefix to allow explicit noun-based resource paths
+# No router prefix: every route spells out its full, noun-based path
 router = APIRouter(tags=["AI Email Generation"])
 
 
@@ -73,7 +73,6 @@ class EmailValidationRequest(BaseModel):
 # Classification Endpoints
 # ============================================================
 
-# Kartik has changed this: Converted to noun-based REST resource
 @router.post("/prospects/classifications/test", response_model=ClassifyTestResponse)
 def test_classify(
     request: ClassifyProspectRequest,
@@ -97,7 +96,6 @@ def test_classify(
         handle_route_error(e, context="test_classify")
 
 
-# Kartik has changed this: Converted to noun-based REST resource
 @router.post("/prospects/classifications/batch", response_model=List[ClassificationResult])
 def classify_batch(
     request: ClassifyBatchRequest,
@@ -133,7 +131,6 @@ def classify_batch(
 # Email Generation Endpoints
 # ============================================================
 
-# Kartik has changed this: Converted action to noun-based resource
 @router.post("/emails/generations", response_model=GeneratedEmail)
 def generate_email(
     request: GenerateEmailRequest,
@@ -165,7 +162,6 @@ def generate_email(
         handle_route_error(e, context="generate_email")
 
 
-# Kartik has changed this: Converted action to noun-based resource
 @router.post("/emails/sequences/generations")
 def generate_sequence(
     request: GenerateSequenceRequest,
@@ -214,7 +210,6 @@ def generate_sequence(
 # Compliance Endpoints
 # ============================================================
 
-# Kartik has changed this: Converted action to noun-based resource
 @router.post("/emails/compliance-checks")
 def check_compliance(
     request: ComplianceCheckRequest,
@@ -236,7 +231,6 @@ def check_compliance(
         handle_route_error(e, context="check_compliance")
 
 
-# Kartik has changed this: Converted action to noun-based resource
 @router.post("/emails/validations")
 def validate_email(
     request: EmailValidationRequest,
@@ -259,7 +253,6 @@ def validate_email(
     }
 
 
-# Kartik has changed this: Moved under emails resource
 @router.get("/emails/cta-options/{purpose}")
 def get_cta_variations(
     purpose: str,
@@ -291,7 +284,6 @@ def get_cta_variations(
 # Blueprint Management Endpoints
 # ============================================================
 
-# Kartik has changed this: Updated to explicit plural resource
 @router.get("/personas")
 def list_personas(
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT")),
@@ -327,7 +319,6 @@ def list_blueprints(
         handle_route_error(e, context="list_blueprints")
 
 
-# Kartik has changed this: Updated to explicit plural resource
 @router.post("/persona-blueprints", response_model=BlueprintResponse, status_code=status.HTTP_201_CREATED)
 def create_blueprint(
     request: CreateBlueprintRequest,
@@ -366,7 +357,6 @@ def create_blueprint(
         handle_route_error(e, context="create_blueprint")
 
 
-# Kartik has changed this: Updated to explicit plural resource
 @router.get("/persona-blueprints/{persona_type}", response_model=BlueprintResponse)
 def get_blueprint(
     persona_type: str,

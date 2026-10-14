@@ -1,4 +1,5 @@
 
+from typing import Any, Optional
 import hashlib
 import re
 import imaplib
@@ -44,8 +45,9 @@ def _is_unsubscribe_reply(text: str) -> bool:
     return first in _UNSUB_PHRASES and len(lines[0]) <= 60
 
 class IMAPSyncService:
-    def __init__(self, db: Session = None):
-        self.db = db
+    def __init__(self, db: Optional[Session] = None) -> None:
+        # The module-level instance starts without a session; sync_all binds one before any use
+        self.db: Session = db  # type: ignore[assignment]
 
     # Seconds before a stalled IMAP server is given up on, so one dead mailbox
     # cannot hang the whole sync loop (B11)
@@ -54,7 +56,7 @@ class IMAPSyncService:
     SINCE_OVERLAP = timedelta(days=1)
     SENT_FOLDERS = ("Sent", "[Gmail]/Sent Mail", "Sent Items", "Sent Messages")
 
-    def sync_all_active_inboxes(self, db: Session):
+    def sync_all_active_inboxes(self, db: Session) -> None:
         """Background task to sync all INBOX and SENT folders for active inboxes."""
         self.db = db
         try:
@@ -86,10 +88,10 @@ class IMAPSyncService:
                 logger.error(f"[IMAP] Sync of {getattr(inbox, 'email_address', '?')} failed: {e}")
                 try:
                     db.rollback()
-                except Exception:
-                    pass
+                except Exception as rb_exc:
+                    logger.debug("[IMAP] Rollback after failed sync also failed: %s", rb_exc)
 
-    def sync_inbox(self, inbox_id_or_obj, days_back: int = 30):
+    def sync_inbox(self, inbox_id_or_obj, days_back: int = 30) -> bool:
         """
         Sync historical emails for a specific inbox.
         Accepts inbox_id (str) or SendingInbox object.
@@ -140,7 +142,8 @@ class IMAPSyncService:
             try:
                 inbox.imap_last_error = f"{datetime.utcnow():%Y-%m-%d %H:%M} UTC: {e}"[:2000]
                 self.db.commit()
-            except Exception:
+            except Exception as save_exc:
+                logger.warning("[IMAP] Could not store the sync error on inbox %s: %s", inbox.inbox_id, save_exc)
                 self.db.rollback()
             return False
         finally:
@@ -148,11 +151,12 @@ class IMAPSyncService:
             if mail is not None:
                 try:
                     mail.logout()
-                except Exception:
+                except Exception as logout_exc:
+                    logger.debug("[IMAP] Logout failed (%s); closing the socket", logout_exc)
                     try:
                         mail.shutdown()
-                    except Exception:
-                        pass
+                    except Exception as shutdown_exc:
+                        logger.debug("[IMAP] Socket shutdown failed: %s", shutdown_exc)
 
     @staticmethod
     def _quote_mailbox(name: str) -> str:
@@ -160,7 +164,7 @@ class IMAPSyncService:
             return name
         return '"' + name.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
-    def _load_sync_state(self, inbox_model, folder_name):
+    def _load_sync_state(self, inbox_model, folder_name) -> Any:
         """The stored UID position for this folder, or None (also when the table is missing)."""
         from app.models.imap_sync_state import ImapSyncState
         try:
@@ -174,7 +178,7 @@ class IMAPSyncService:
                            f"using the date window")
             return False  # table missing: don't try to store either
 
-    def _save_sync_state(self, state, inbox_model, folder_name, uidvalidity, last_uid):
+    def _save_sync_state(self, state, inbox_model, folder_name, uidvalidity, last_uid) -> None:
         from app.models.imap_sync_state import ImapSyncState
         if state is False:
             return
@@ -189,7 +193,8 @@ class IMAPSyncService:
             logger.warning(f"[IMAP] Could not store UID position for {folder_name}: {exc}")
 
     @staticmethod
-    def _synthetic_message_id(from_: str, date_str: str, subject: str, to_: str) -> str:
+    def _synthetic_message_id(from_: Optional[str], date_str: Optional[str], subject: Optional[str],
+                              to_: Optional[str]) -> str:
         """Stable id for a message with no Message-ID header, so it is stored once (B11)."""
         digest = hashlib.sha256(
             "\x1f".join([(from_ or "").strip().lower(), (to_ or "").strip().lower(),
@@ -211,7 +216,8 @@ class IMAPSyncService:
                 return False
         except (imaplib.IMAP4.abort, OSError):
             raise
-        except Exception:
+        except imaplib.IMAP4.error as exc:
+            logger.info("[IMAP] Cannot select folder %s: %s", folder_name, exc)
             return False
 
         uidvalidity = None
@@ -219,7 +225,7 @@ class IMAPSyncService:
             _, uv = mail.response('UIDVALIDITY')
             if uv and uv[0]:
                 uidvalidity = int(uv[0])
-        except Exception:
+        except (imaplib.IMAP4.error, TypeError, ValueError):
             uidvalidity = None
 
         state = self._load_sync_state(inbox_model, folder_name)
@@ -325,13 +331,15 @@ class IMAPSyncService:
                     for part in msg.walk():
                         if part.get_content_type() == "text/plain":
                             try:
-                                body = part.get_payload(decode=True).decode(errors="ignore")
+                                body = part.get_payload(decode=True).decode(errors="ignore")  # type: ignore[union-attr]
                                 break
-                            except: pass
+                            except AttributeError:  # no decodable payload
+                                pass
                 else:
                     try:
-                        body = msg.get_payload(decode=True).decode(errors="ignore")
-                    except: pass
+                        body = msg.get_payload(decode=True).decode(errors="ignore")  # type: ignore[union-attr]
+                    except AttributeError:  # no decodable payload
+                        pass
 
                 # Store only the newest human-readable reply block.
                 raw_body = body
@@ -360,7 +368,8 @@ class IMAPSyncService:
                         if sent_at.tzinfo:
                             # Convert to UTC first, then make naive
                             sent_at = sent_at.astimezone(timezone.utc).replace(tzinfo=None)
-                    except: pass
+                    except (TypeError, ValueError):  # unparseable Date header: keep "now"
+                        pass
 
                 # ── 1. Find/Create Conversation ──────────────────────────────
                 # We attempt four strategies in order of reliability.

@@ -9,7 +9,10 @@ from pathlib import Path
 from urllib.parse import quote_plus
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, Union
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 _BASE_DIR = Path(__file__).resolve().parents[2]
@@ -245,7 +248,7 @@ class Settings(BaseSettings):
                         # Re-encode to ensure compatibility (unquote handles already encoded chars)
                         clean_password = quote_plus(unquote(password))
                         return f"{prefix}://{user}:{clean_password}@{host_part}"
-            except Exception:
+            except ValueError:
                 pass  # Fallback to returning original if parsing fails (never log the URL: it holds the password)
 
             return database_url
@@ -284,13 +287,14 @@ def load_settings_from_ini() -> dict:
     config_values = {}
     
     if ini_path.exists():
-        print(f"LOADING CONFIG: Profile '{profile}' from {ini_path}")
+        logger.info("LOADING CONFIG: Profile '%s' from %s", profile, ini_path)
         parser = configparser.ConfigParser()
         parser.read(str(ini_path))
         
         if profile in parser:
             section = parser[profile]
             for key, value in section.items():
+                val: Union[bool, int, str]
                 # specific type conversions for known bools/ints
                 if value.lower() in ['true', 'false']:
                     val = parser.getboolean(profile, key)
@@ -308,9 +312,9 @@ def load_settings_from_ini() -> dict:
                 
                 config_values[key.upper()] = val
         else:
-             print(f"WARNING: Profile '{profile}' not found in app-properties.ini")
+             logger.warning("Profile '%s' not found in app-properties.ini", profile)
     else:
-        print(f"WARNING: app-properties.ini not found at {ini_path}")
+        logger.warning("app-properties.ini not found at %s", ini_path)
 
     return config_values
 
@@ -348,7 +352,7 @@ def get_settings() -> Settings:
         final_settings[k] = v
 
     if skipped:
-        print(f"IGNORING unrecognized app-properties.ini keys (not used by this service): {skipped}")
+        logger.warning("IGNORING unrecognized app-properties.ini keys (not used by this service): %s", skipped)
 
     return Settings(**final_settings)
 

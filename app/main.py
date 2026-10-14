@@ -114,7 +114,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"success": False, "error": "Validation Error", "detail": detail, "code": "VALIDATION_ERROR"},
     )
  
-# Kartik has changed this: Added global rate limiter and standard exception handlers
+# Global rate limiter (slowapi, when installed) and the standard exception handlers
 try:
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.util import get_remote_address
@@ -124,7 +124,7 @@ try:
 except ImportError:
     _SLOWAPI_AVAILABLE = False
 
-from app.core.exceptions import global_exception_handler, BusinessLogicError, ResourceNotFoundError, ExternalServiceError
+from app.core.exceptions import global_exception_handler
 
 if _SLOWAPI_AVAILABLE:
     limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
@@ -132,12 +132,13 @@ if _SLOWAPI_AVAILABLE:
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)
 else:
-    print("WARNING slowapi not installed. Rate limiting middleware is disabled.")
+    logger.warning("slowapi not installed. Rate limiting middleware is disabled.")
 
-app.add_exception_handler(BusinessLogicError, global_exception_handler)
-app.add_exception_handler(ResourceNotFoundError, global_exception_handler)
-app.add_exception_handler(ExternalServiceError, global_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
+
+# Service-layer domain errors (app/core/errors.py) -> {"detail": ...} like HTTPException
+from app.core.errors import DomainError, domain_error_handler
+app.add_exception_handler(DomainError, domain_error_handler)
 
 from sqlalchemy.exc import DataError, IntegrityError
 

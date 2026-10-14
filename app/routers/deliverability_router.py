@@ -37,7 +37,7 @@ from app.services.alert_center_service import alert_center_service
 from app.services.domain_tenancy import (dns_record_guidance, get_or_create_tenant_domain, get_tenant_domain,
                                          normalize_domain_name, tenant_has_domain, tenant_message_criterion)
 
-# Kartik has changed this: Removed prefix to support explicit REST boundaries
+# No router prefix: every route spells out its full path
 router = APIRouter(tags=["Deliverability"])
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,6 @@ def _require_tenant_domain(db: Session, current_user: User, domain_name: str) ->
     return domain
 
 
-# Kartik has changed this: Explicit collection path
 @router.get("/deliverability/statistics", response_model=SESStatisticsResponse)
 def get_deliverability_statistics(
     domain: str = None,
@@ -76,7 +75,6 @@ def get_account_statistics(
     """Account-wide AWS SES sending statistics (every tenant's mail): platform admins only."""
     return deliverability_service.get_sending_statistics()
 
-# Kartik has changed this: Explicit collection path
 @router.get("/deliverability/domains", response_model=List[SendingDomainResponse])
 def list_domains(
     db: Session = Depends(get_db),
@@ -85,7 +83,6 @@ def list_domains(
     """List the tenant's sending domains with detailed associations."""
     return deliverability_service.get_all_domains_enriched(db, current_user.tenant_id)
 
-# Kartik has changed this: Explicit collection path
 @router.get("/deliverability/alerts", response_model=List[ReputationAlertResponse])
 def list_alerts(
     resolved: bool = False,
@@ -135,7 +132,6 @@ def upsert_alert_preferences(
         raise HTTPException(status_code=400, detail=str(exc))
     return {"status": "updated", "updated": len(payload.preferences)}
 
-# Kartik has changed this: Converted action scan to sub-resource creations
 @router.post("/deliverability/domains/{domain_name}/scans", status_code=status.HTTP_202_ACCEPTED)
 def scan_domain(
     domain_name: str,
@@ -148,7 +144,6 @@ def scan_domain(
     result = deliverability_service.perform_dns_scan(domain_name, db, tenant_id=current_user.tenant_id)
     return {"status": "scan_completed", "results": result}
 
-# Kartik has changed this: Explicit collection path
 @router.post("/deliverability/snapshots", status_code=status.HTTP_201_CREATED)
 def trigger_snapshot(
     db: Session = Depends(get_db),
@@ -158,7 +153,6 @@ def trigger_snapshot(
     deliverability_service.create_snapshot(db, tenant_id=current_user.tenant_id)
     return {"status": "snapshot_created"}
 
-# Kartik has changed this: Explicit collection path
 @router.delete("/deliverability/domains/{domain_name}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_domain(
     domain_name: str,

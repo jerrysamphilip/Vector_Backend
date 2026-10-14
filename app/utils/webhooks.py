@@ -132,7 +132,7 @@ def should_disable(consecutive_failures: int, threshold: int = DISABLE_AFTER_FAI
 
 # ── Payload ────────────────────────────────────────────────────
 
-def _default(value):
+def _default(value) -> str:
     if isinstance(value, datetime):
         return value.replace(microsecond=0).isoformat() + ("Z" if value.tzinfo is None else "")
     if hasattr(value, "isoformat"):
@@ -191,7 +191,7 @@ def socket_resolver(host: str, port: int) -> List[str]:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except (socket.gaierror, UnicodeError) as exc:
         raise WebhookUrlError(f"Could not resolve {host}") from exc
-    return list(dict.fromkeys(info[4][0] for info in infos))
+    return list(dict.fromkeys(str(info[4][0]) for info in infos))
 
 
 def ip_block_reason(address: str, allow_private: bool = False) -> Optional[str]:

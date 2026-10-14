@@ -163,7 +163,7 @@ class LintResult:
     warnings: List[LintWarning] = field(default_factory=list)
     passed: bool = True
 
-    def add(self, warning: LintWarning):
+    def add(self, warning: LintWarning) -> None:
         self.warnings.append(warning)
         self.composite_score += warning.score_impact
         if warning.severity == "HIGH":
@@ -283,7 +283,7 @@ def check_personal_data(body: str) -> Tuple[bool, List[str]]:
 
 def _check_subject_line(subject: str) -> List[LintWarning]:
     """Validate subject line against spam filter heuristics."""
-    warnings = []
+    warnings: list = []
     if not subject:
         return warnings
 
@@ -331,7 +331,7 @@ def _check_subject_line(subject: str) -> List[LintWarning]:
 
 def _check_asf_triggers(body: str) -> List[LintWarning]:
     """Check for Microsoft EOP Advanced Spam Filter (ASF) triggers."""
-    warnings = []
+    warnings: list = []
     if not body:
         return warnings
 
@@ -392,7 +392,7 @@ def _check_linguistic_signals(subject: str, body: str) -> List[LintWarning]:
     Detect AI-generated / salesperson language patterns.
     Checks imperative verb density and banned persona phrases.
     """
-    warnings = []
+    warnings: list = []
     content = f"{subject} {body}"
     if not content.strip():
         return warnings
@@ -434,7 +434,7 @@ def _check_linguistic_signals(subject: str, body: str) -> List[LintWarning]:
 
 def _check_link_domains(body: str, sender_domain: str) -> List[LintWarning]:
     """Validate that all URLs in body match the sender domain or configured tracking domain."""
-    warnings = []
+    warnings: list = []
     if not body or not sender_domain:
         return warnings
 

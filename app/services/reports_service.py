@@ -8,9 +8,10 @@ import io
 import csv
 import logging
 from datetime import date, timedelta, datetime
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from docx import Document
+from docx.document import Document as DocxDocument
 from docx.shared import Pt, RGBColor, Inches, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
@@ -18,7 +19,7 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, case
+from sqlalchemy import Subquery, and_, case, func
 
 from app.models.campaign import Campaign, CampaignProspect
 from app.models.metrics import CampaignMetricsRealtime
@@ -53,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 
 
-def _by_owner(column, user_id):
+def _by_owner(column, user_id) -> list:
     """Filter for one user id, a set of ids (a manager's team), or nobody (None = everyone)."""
     if not user_id:
         return [] if user_id is None else [column.is_(None) & column.isnot(None)]  # empty team -> nothing
@@ -62,10 +63,10 @@ def _by_owner(column, user_id):
     return [column.in_(list(user_id))]
 
 class ReportsService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
 
-    def _campaign_subquery(self, tenant_id: str, user_id: Optional[str] = None):
+    def _campaign_subquery(self, tenant_id: str, user_id: Optional[str] = None) -> Subquery:
         """Return a subquery of campaign_ids scoped to tenant (and optionally a single user)."""
         q = self.db.query(Campaign.campaign_id).filter(Campaign.tenant_id == tenant_id)
         q = q.filter(*_by_owner(Campaign.created_by, user_id))
@@ -150,8 +151,8 @@ class ReportsService:
             EmailEvent.event_time >= start_date,
             EmailEvent.event_time < end_date + timedelta(days=1),
         )
-        replied = event_row.replied or 0
-        bounced = event_row.bounced or 0
+        replied = event_row.replied or 0  # type: ignore[union-attr]  # aggregate query: always one row
+        bounced = event_row.bounced or 0  # type: ignore[union-attr]
 
         # Fallback: if no open events, count prospects with OPENED/REPLIED status
         # (mirrors CampaignAnalyticsService logic — a reply implies the email was opened)
@@ -546,7 +547,7 @@ class ReportsService:
         )
 
         # Build lookup
-        provider_events = {}
+        provider_events: Dict[str, Any] = {}
         for r in event_rows:
             if r.provider not in provider_events:
                 provider_events[r.provider] = {}
@@ -720,7 +721,7 @@ class ReportsService:
         )
 
         # Build lookup
-        mailbox_events = {}
+        mailbox_events: Dict[str, Any] = {}
         for r in event_rows:
             if r.mailbox not in mailbox_events:
                 mailbox_events[r.mailbox] = {}
@@ -855,7 +856,8 @@ class ReportsService:
                 median_hours = diffs[len(diffs) // 2] if diffs else 0.0
             else:
                 median_hours = 0.0
-        except Exception:
+        except Exception:  # optional metric: report 0 rather than failing the whole report
+            logger.warning("Median time-to-reply query failed", exc_info=True)
             median_hours = 0.0
 
         return CampaignOptimizationMetrics(
@@ -926,8 +928,8 @@ class ReportsService:
                 EmailEvent.event_time >= start_date,
                 EmailEvent.event_time < end_date + timedelta(days=1),
             )
-            replied = event_row.replied or 0
-            bounced = event_row.bounced or 0
+            replied = event_row.replied or 0  # type: ignore[union-attr]  # aggregate query: always one row
+            bounced = event_row.bounced or 0  # type: ignore[union-attr]
 
             results.append(UserPerformanceItem(
                 user_id=u.user_id,
@@ -1129,7 +1131,7 @@ class ReportsService:
             .group_by(EmailMessage.prospect_id, EmailEvent.event_type)
             .all()
         )
-        event_map = {}
+        event_map: Dict[str, Any] = {}
         for r in event_counts:
             if r.prospect_id not in event_map:
                 event_map[r.prospect_id] = {}
@@ -1153,7 +1155,7 @@ class ReportsService:
                 .first()
             )
             pid = prospect_row.prospect_id if prospect_row else None
-            events = event_map.get(pid, {})
+            events = event_map.get(pid, {})  # type: ignore[arg-type]  # None (unknown prospect) -> {}
 
             writer.writerow([
                 r.email, r.first_name or "", r.last_name or "",
@@ -1173,7 +1175,7 @@ class ReportsService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _set_cell_bg(cell, hex_color: str):
+    def _set_cell_bg(cell, hex_color: str) -> None:
         """Fill a table cell background with a hex color (e.g. '2d6bbf')."""
         tc = cell._tc
         tcPr = tc.get_or_add_tcPr()
@@ -1184,7 +1186,7 @@ class ReportsService:
         tcPr.append(shd)
 
     @staticmethod
-    def _set_cell_border_bottom(cell, hex_color: str = "E5E7EB"):
+    def _set_cell_border_bottom(cell, hex_color: str = "E5E7EB") -> None:
         """Add a bottom border to a cell."""
         tc = cell._tc
         tcPr = tc.get_or_add_tcPr()
@@ -1196,7 +1198,7 @@ class ReportsService:
         tcBorders.append(bottom)
         tcPr.append(tcBorders)
 
-    def _add_section_heading(self, doc: Document, text: str):
+    def _add_section_heading(self, doc: DocxDocument, text: str) -> None:
         p = doc.add_paragraph()
         p.paragraph_format.space_before = Pt(18)
         p.paragraph_format.space_after = Pt(6)
@@ -1215,7 +1217,7 @@ class ReportsService:
         pBdr.append(bottom)
         pPr.append(pBdr)
 
-    def _add_kpi_table(self, doc: Document, rows: list[tuple]):
+    def _add_kpi_table(self, doc: DocxDocument, rows: list[tuple]) -> None:
         """Two-column key-value table for KPI summary."""
         table = doc.add_table(rows=len(rows), cols=2)
         table.style = "Table Grid"
@@ -1241,7 +1243,7 @@ class ReportsService:
             row.cells[0].width = Inches(2.8)
             row.cells[1].width = Inches(1.5)
 
-    def _add_data_table(self, doc: Document, headers: list[str], data_rows: list[list]):
+    def _add_data_table(self, doc: DocxDocument, headers: list[str], data_rows: list[list]) -> None:
         """Full data table with blue header row."""
         table = doc.add_table(rows=1 + len(data_rows), cols=len(headers))
         table.style = "Table Grid"

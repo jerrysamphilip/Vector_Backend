@@ -38,7 +38,7 @@ class CampaignGroup(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<CampaignGroup {self.group_name}>"
 
 
@@ -60,5 +60,5 @@ class CampaignGroupMember(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<CampaignGroupMember group={self.group_id} campaign={self.campaign_id}>"

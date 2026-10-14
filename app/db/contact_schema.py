@@ -10,6 +10,9 @@ The same changes are in alembic revision e7f8a9b0c1d2 for environments that migr
 """
 
 from sqlalchemy import text
+import logging
+
+logger = logging.getLogger(__name__)
 
 _PROSPECT_COLUMNS = {
     "phone": "VARCHAR(50) NULL",
@@ -146,7 +149,7 @@ def ensure_phase1_schema(engine) -> None:
                 conn.execute(text(sql))
         conn.commit()
         if added:
-            print(f"Contact management (Phase 1): added columns {added}")
+            logger.info("Contact management (Phase 1): added columns %s", added)
 
 
 def ensure_contact_schema(engine) -> None:
@@ -183,6 +186,6 @@ def ensure_contact_schema(engine) -> None:
         conn.commit()
 
         if added:
-            print(f"Contact management: added prospects columns {added}")
+            logger.info("Contact management: added prospects columns %s", added)
 
     ensure_phase1_schema(engine)

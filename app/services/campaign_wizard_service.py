@@ -15,10 +15,11 @@ Flow:
 9. Activate campaign
 """
 
-from typing import Dict, List, Optional, Tuple
+import logging
+from typing import Dict, Iterable, List, Optional, Tuple
 from datetime import datetime, timedelta, time, date as date_type
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, not_
+from sqlalchemy import and_, func, or_, not_
 import uuid
 import random
 
@@ -38,7 +39,10 @@ from app.models import (
     SendingInbox,
 )
 from app.models.domain_reputation import SendingDomain
+from app.core.errors import BadRequestError, ConflictError, NotFoundError
 from app.services.ai_email_service import classify_prospect
+from app.services.enrollment_rules import MAX_REJECTIONS_RETURNED, summarize
+from app.utils.email_context_detector import detect_email_context
 from app.utils.business_calendar import calculate_send_time
 from app.utils.email_utils import (
     normalize_unsubscribe_footer,
@@ -46,6 +50,8 @@ from app.utils.email_utils import (
     normalize_cta_link,
     has_effective_cta_link,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -159,7 +165,7 @@ def step_1_create_campaign(
 def step_2_get_prospects_from_list(
     db: Session,
     list_id: str,
-    excluded_prospect_ids: List[str] = None,
+    excluded_prospect_ids: List[str] | None = None,
 ) -> List[Prospect]:
     """
     Step 2: Get all prospects from a prospect list.
@@ -336,7 +342,7 @@ def step_5_bulk_enroll(
 def step_6_create_email_sequences(
     db: Session,
     campaign_id: str,
-    schedule: List[Dict] = None,
+    schedule: List[Dict] | None = None,
 ) -> List[EmailSequence]:
     """
     Step 6: Create email sequence steps (Day 1, 3, 7).
@@ -514,3 +520,285 @@ def run_campaign_wizard(
 
 
 
+
+
+# ============================================================
+# API OPERATIONS (tenant-scoped; used by campaign_wizard_router)
+# ============================================================
+
+SCHEDULE_PREVIEW_SEND_HOUR = 9
+
+
+def get_campaign_for_tenant(db: Session, campaign_id: str, tenant_id: str) -> Campaign:
+    """The campaign if it belongs to the tenant; NotFoundError otherwise."""
+    campaign = db.query(Campaign).filter(
+        Campaign.campaign_id == campaign_id,
+        Campaign.tenant_id == tenant_id,
+    ).first()
+    if not campaign:
+        raise NotFoundError("Campaign not found")
+    return campaign
+
+
+def get_list_for_tenant(db: Session, list_id: str, tenant_id: str) -> ProspectList:
+    """The prospect list if it belongs to the tenant; NotFoundError otherwise."""
+    prospect_list = db.query(ProspectList).filter(
+        ProspectList.list_id == list_id,
+        ProspectList.tenant_id == tenant_id,
+    ).first()
+    if not prospect_list:
+        raise NotFoundError("Prospect list not found")
+    return prospect_list
+
+
+def list_available_lists(db: Session, tenant_id: str) -> List[Dict]:
+    """The tenant's prospect lists with their member counts, for the wizard's list picker."""
+    lists = db.query(ProspectList).filter(ProspectList.tenant_id == tenant_id).all()
+    counts = dict(
+        db.query(ProspectListMember.list_id, func.count(ProspectListMember.id))
+        .filter(ProspectListMember.list_id.in_([pl.list_id for pl in lists] or [""]))
+        .group_by(ProspectListMember.list_id).all()
+    )
+    return [
+        {
+            "list_id": pl.list_id,
+            "list_name": pl.list_name,
+            "prospect_count": counts.get(pl.list_id, 0),
+            "created_at": pl.uploaded_at,
+        }
+        for pl in lists
+    ]
+
+
+def build_schedule_preview(
+    steps: Iterable[Tuple[int, int]],
+    state: Optional[str],
+    base_time: Optional[datetime] = None,
+) -> List[Dict]:
+    """
+    Send dates for (step_number, wait_days) steps: 9 AM in the state's timezone, skipping weekends
+    and US federal holidays, wait days accumulating across steps (including step 1). No jitter, so
+    the preview is stable.
+    """
+    base_time = base_time or datetime.utcnow()
+    schedule = []
+    cumulative_wait_days = 0
+    for step_number, wait_days in steps:
+        cumulative_wait_days += wait_days
+        send_datetime = calculate_send_time(
+            base_time=base_time,
+            wait_days=cumulative_wait_days,
+            state=state,
+            send_hour=SCHEDULE_PREVIEW_SEND_HOUR,
+            send_minute=0,
+            add_jitter=False,
+        )
+        schedule.append({
+            "step_number": step_number,
+            "send_date": send_datetime.isoformat() + "Z",
+            "formatted": send_datetime.strftime("%a, %b %d"),  # e.g. "Mon, Jan 20"
+            "wait_days": wait_days if step_number > 1 else 0,
+        })
+    return schedule
+
+
+def create_campaign_for_tenant(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    campaign_name: str,
+    send_start_hour: int,
+    send_end_hour: int,
+    timezone: str,
+    cta_link: Optional[str],
+    inbox_ids: List[str],
+) -> Campaign:
+    """Wizard step 1; an invalid setting (e.g. inbox selection) is a BadRequestError."""
+    try:
+        return step_1_create_campaign(
+            db=db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            campaign_name=campaign_name,
+            send_start_hour=send_start_hour,
+            send_end_hour=send_end_hour,
+            timezone=timezone,
+            cta_link=normalize_cta_link(cta_link),
+            inbox_ids=inbox_ids,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise BadRequestError(str(exc)) from exc
+
+
+def generate_persona_template(
+    db: Session,
+    campaign: Campaign,
+    tenant_id: str,
+    persona_type: str,
+    list_id: str,
+    product_name: str,
+    campaign_description: str,
+    sequence_steps: Optional[List[dict]],
+    excluded_prospect_ids: Optional[List[str]],
+    include_first_name_in_subject: bool,
+    creative_email: bool,
+) -> Dict:
+    """
+    (Re)generate one persona's templates for the campaign. Works for any canonical persona, even
+    one with no classified prospects yet. Only this persona's previous templates are replaced.
+    """
+    from app.services.batch_processor_service import batch_classify_prospects, generate_template_for_persona
+
+    campaign_id = campaign.campaign_id
+    try:
+        email_context = detect_email_context(product_name, campaign_description)
+        cta_link = normalize_cta_link(campaign.cta_link)
+        cta_enabled = has_effective_cta_link(cta_link)
+
+        step_to_seq_id = {s.step_number: s.sequence_id for s in db.query(EmailSequence).filter(
+            EmailSequence.campaign_id == campaign_id
+        ).all()}
+
+        # Reuse (or create) classifications for this list; may yield 0 prospects for this persona.
+        prospects = batch_classify_prospects(db, list_id, tenant_id, excluded_prospect_ids).get(persona_type, [])
+
+        db.query(EmailTemplate).filter(
+            EmailTemplate.campaign_id == campaign_id,
+            EmailTemplate.designation == persona_type,
+        ).delete(synchronize_session=False)
+
+        result = generate_template_for_persona(
+            db, campaign_id, persona_type, prospects,
+            product_name, campaign_description, sequence_steps,
+            include_first_name_in_subject, creative_email, email_context,
+            cta_link, cta_enabled, step_to_seq_id,
+        )
+        db.commit()
+        return result
+    except Exception:
+        db.rollback()  # all-or-nothing: never leave this persona half-replaced
+        raise
+
+
+def _rejection_report(rejections: List[Dict]) -> Dict:
+    return {
+        "rejected_count": len(rejections),
+        "rejected_summary": summarize(rejections),
+        "rejected": rejections[:MAX_REJECTIONS_RETURNED],
+    }
+
+
+def preview_list_segmentation(db: Session, tenant_id: str, list_id: str, rules: SegmentationRules) -> Dict:
+    """Counts after segmentation and safety checks for a list, without enrolling anyone."""
+    get_list_for_tenant(db, list_id, tenant_id)
+    all_prospects = step_2_get_prospects_from_list(db, list_id)
+    if not all_prospects:
+        raise NotFoundError("No prospects found in this list")
+
+    segment_rejections: List[Dict] = []
+    segmented = step_3_apply_segmentation(db, all_prospects, rules, segment_rejections)
+    safety = step_4_run_safety_checks(db, tenant_id, segmented)
+    return {
+        "list_total": len(all_prospects),
+        "after_segmentation": len(segmented),
+        "after_safety_checks": safety["safe_count"],
+        "breakdown": {
+            "unsubscribed": safety["unsubscribed_count"],
+            "invalid_emails": safety["invalid_count"],
+            "cool_off_excluded": safety["cool_off_count"],
+        },
+        "ready_to_enroll": safety["safe_count"],
+        **_rejection_report(segment_rejections + safety["rejections"]),
+    }
+
+
+def enroll_list_into_campaign(
+    db: Session,
+    tenant_id: str,
+    campaign_id: str,
+    list_id: str,
+    rules: SegmentationRules,
+    cool_off_days: int,
+    excluded_prospect_ids: Optional[List[str]],
+) -> Dict:
+    """Segment a list, run the safety checks and bulk-enroll whoever passes."""
+    get_campaign_for_tenant(db, campaign_id, tenant_id)
+    get_list_for_tenant(db, list_id, tenant_id)
+
+    all_prospects = step_2_get_prospects_from_list(db, list_id, excluded_prospect_ids)
+    logger.info(f"[ENROLL] Step 2 - Prospects from list '{list_id}': {len(all_prospects)}")
+    logger.info(f"[ENROLL] Step 3 - Segmentation rules: exclude_personal={rules.exclude_personal_emails}, "
+                f"persona_types={rules.persona_types}")
+
+    segment_rejections: List[Dict] = []
+    segmented = step_3_apply_segmentation(db, all_prospects, rules, segment_rejections)
+    logger.info(f"[ENROLL] Step 3 - After segmentation: {len(segmented)} "
+                f"(dropped {len(all_prospects) - len(segmented)})")
+
+    safety = step_4_run_safety_checks(db, tenant_id, segmented, cool_off_days, campaign_id=campaign_id)
+    logger.info(f"[ENROLL] Step 4 - Safety: safe={safety['safe_count']}, unsub={safety['unsubscribed_count']}, "
+                f"invalid={safety['invalid_count']}, cool_off={safety['cool_off_count']}")
+
+    enrolled = step_5_bulk_enroll(db, campaign_id, safety["safe_prospects"])
+    logger.info(f"[ENROLL] Step 5 - Enrolled: {enrolled}")
+
+    return {
+        "campaign_id": campaign_id,
+        "enrolled_count": enrolled,
+        "sequences_created": 0,
+        "status": "READY_TO_ACTIVATE",
+        **_rejection_report(segment_rejections + safety["rejections"]),
+        "_debug": {
+            "prospects_in_list": len(all_prospects),
+            "after_segmentation": len(segmented),
+            "safe_count": safety["safe_count"],
+            "unsubscribed": safety["unsubscribed_count"],
+            "invalid": safety["invalid_count"],
+            "cool_off": safety["cool_off_count"],
+        }
+    }
+
+
+def activate_campaign_for_tenant(db: Session, tenant_id: str, campaign_id: str, user_id: str) -> Campaign:
+    """Wizard activation: no sender identity -> BadRequestError, not activatable -> ConflictError."""
+    from app.services.sender_identity import SenderIdentityMissing
+
+    get_campaign_for_tenant(db, campaign_id, tenant_id)
+    try:
+        campaign = step_7_activate_campaign(db, campaign_id, user_id)
+    except SenderIdentityMissing as exc:
+        db.rollback()
+        raise BadRequestError(str(exc)) from exc
+    except ValueError as exc:
+        db.rollback()
+        raise ConflictError(str(exc)) from exc
+    if not campaign:
+        raise NotFoundError("Campaign not found")
+    return campaign
+
+
+def run_campaign_wizard_for_tenant(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    campaign_name: str,
+    list_id: str,
+    rules: SegmentationRules,
+    cool_off_days: int,
+) -> Dict:
+    """The all-in-one wizard on one of the tenant's lists; invalid input is a BadRequestError."""
+    get_list_for_tenant(db, list_id, tenant_id)
+    try:
+        return run_campaign_wizard(
+            db=db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            campaign_name=campaign_name,
+            list_id=list_id,
+            rules=rules,
+            cool_off_days=cool_off_days,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise BadRequestError(str(exc)) from exc

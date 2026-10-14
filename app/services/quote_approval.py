@@ -21,10 +21,11 @@ tests/unit/test_discount_approval_rules.py).
 """
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
+
+from app.core.errors import BadRequestError, ConflictError, PermissionDenied
 
 APPROVAL_STATUSES = ("NOT_REQUIRED", "PENDING", "APPROVED", "REJECTED")
 GATED_STATUSES = ("SENT", "UNDER_REVIEW", "ACCEPTED")   # proposal statuses that need a cleared discount
@@ -40,13 +41,13 @@ def parse_threshold(value) -> Optional[float]:
     if value is None or value == "":
         return None
     if isinstance(value, bool):
-        raise HTTPException(status_code=400, detail="discount_approval_threshold must be a percent between 0 and 100")
+        raise BadRequestError("discount_approval_threshold must be a percent between 0 and 100")
     try:
         number = Decimal(str(value).strip())
     except (InvalidOperation, ValueError):
-        raise HTTPException(status_code=400, detail="discount_approval_threshold must be a percent between 0 and 100")
+        raise BadRequestError("discount_approval_threshold must be a percent between 0 and 100")
     if not number.is_finite() or number < 0 or number > 100:
-        raise HTTPException(status_code=400, detail="discount_approval_threshold must be a percent between 0 and 100")
+        raise BadRequestError("discount_approval_threshold must be a percent between 0 and 100")
     return float(number.quantize(PCT, ROUND_HALF_UP))
 
 
@@ -111,7 +112,7 @@ def threshold_for(db: Session, tenant_id: str) -> Optional[float]:
     value = get_settings(db, tenant_id).get(SETTING_KEY)
     try:
         return parse_threshold(value)
-    except HTTPException:
+    except BadRequestError:
         return None
 
 
@@ -155,7 +156,7 @@ def approver_ids(db: Session, tenant_id: str, owner_id: Optional[str], exclude: 
 
 
 def state(db: Session, p, user=None, threshold=..., effective: Optional[Decimal] = None,
-          owner_id: Optional[str] = ...) -> dict:
+          owner_id: Any = ...) -> dict:  # ... = "look it up"
     """Approval block returned with a quote."""
     from app.services import sales as svc
     threshold = threshold_for(db, p.tenant_id) if threshold is ... else threshold
@@ -198,7 +199,7 @@ def ensure_can_send(db: Session, p, new_status: Optional[str]) -> None:
     waiting = " It is waiting for approval." if p.approval_status == "PENDING" else \
         " It was rejected; change the discount or submit it again." if p.approval_status == "REJECTED" else \
         " Submit it for approval first."
-    raise HTTPException(status_code=409, detail=(
+    raise ConflictError((
         f"This quote has a {_pct(effective)}% discount, above the {_pct(threshold)}% approval limit, "
         f"so it cannot be sent or accepted until a manager approves it.{waiting}"))
 
@@ -230,15 +231,15 @@ def _request(db: Session, user, p, effective: Decimal, owner_id: Optional[str], 
 def submit(db: Session, user, p, note: Optional[str] = None) -> None:
     owner_id = _owner_id(db, p)
     if not can_submit(user, p, owner_id):
-        raise HTTPException(status_code=403, detail="Only the quote owner can submit it for approval")
+        raise PermissionDenied("Only the quote owner can submit it for approval")
     threshold = threshold_for(db, p.tenant_id)
     effective = quote_discount(db, p.proposal_id)
     if not approval_required(effective, threshold):
-        raise HTTPException(status_code=400, detail="This quote's discount is within the limit; it needs no approval")
+        raise BadRequestError("This quote's discount is within the limit; it needs no approval")
     if p.approval_status == "PENDING":
-        raise HTTPException(status_code=409, detail="This quote is already waiting for approval")
+        raise ConflictError("This quote is already waiting for approval")
     if is_cleared(effective, threshold, p.approval_status, p.approval_discount_pct):
-        raise HTTPException(status_code=409, detail="This quote's discount is already approved")
+        raise ConflictError("This quote's discount is already approved")
     _request(db, user, p, effective, owner_id, note, "asks you to approve")
 
 
@@ -246,11 +247,11 @@ def decide(db: Session, user, p, approve: bool, reason: Optional[str]) -> None:
     from app.services.notifications import notify
     owner_id = _owner_id(db, p)
     if p.approval_status != "PENDING":
-        raise HTTPException(status_code=409, detail="This quote is not waiting for approval")
+        raise ConflictError("This quote is not waiting for approval")
     if not can_decide(db, user, p, owner_id):
-        raise HTTPException(status_code=403, detail="Only the owner's managers or an admin can decide on this discount")
+        raise PermissionDenied("Only the owner's managers or an admin can decide on this discount")
     if not approve and not reason:
-        raise HTTPException(status_code=400, detail="Give a reason for rejecting the discount")
+        raise BadRequestError("Give a reason for rejecting the discount")
     effective = quote_discount(db, p.proposal_id)
     p.approval_status = "APPROVED" if approve else "REJECTED"
     if approve:
