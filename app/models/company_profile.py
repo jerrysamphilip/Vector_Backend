@@ -46,7 +46,7 @@ class CompanyProfile(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<CompanyProfile {self.profile_name}>"
     
     def to_dict(self):

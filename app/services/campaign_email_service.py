@@ -6,7 +6,7 @@ placeholder substitution, and pre-scheduling of email messages.
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
-from typing import Optional
+from typing import List, Optional, Tuple
 from datetime import datetime, timedelta
 import uuid
 
@@ -28,6 +28,9 @@ from app.utils.email_utils import (
     finalize_email_body,
     build_signature_block,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 REMOVED_BY_USER = "Removed from campaign by user"
@@ -42,7 +45,7 @@ class CampaignEmailService:
     - Placeholder substitution
     """
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
         self.audit = AuditService(db)
 
@@ -174,7 +177,7 @@ class CampaignEmailService:
         campaign_id: str,
         user_id: str,
         request: CampaignEnrollmentRequest
-    ):
+    ) -> Tuple[int, List[dict]]:
         """
         Enroll prospects into campaign (Stage 3 Gate). Returns (enrolled_count, rejections),
         with a reason for every contact not enrolled (app/services/enrollment_rules.py):
@@ -440,7 +443,7 @@ class CampaignEmailService:
         from_state: str,
         to_state: str,
         reason: Optional[str] = None
-    ):
+    ) -> None:
         """Record a campaign state transition."""
         event = CampaignStateEvent(
             id=str(uuid.uuid4()),
@@ -459,17 +462,15 @@ class CampaignEmailService:
         Returns:
             Number of messages created
         """
-        import logging
-        logger = logging.getLogger(__name__)
 
-        print(f"[PRESCHEDULE] Starting for campaign {campaign_id}")
+        logger.info("[PRESCHEDULE] Starting for campaign %s", campaign_id)
 
         campaign = self.db.query(Campaign).filter(
             Campaign.campaign_id == campaign_id
         ).first()
 
         if not campaign:
-            logger.error(f"[PRESCHEDULE] Campaign {campaign_id} not found")
+            logger.error("[PRESCHEDULE] Campaign %s not found", campaign_id)
             return 0
 
         prospects = self.db.query(CampaignProspect).filter(
@@ -477,7 +478,7 @@ class CampaignEmailService:
             CampaignProspect.status == "ACTIVE"
         ).all()
 
-        print(f"[PRESCHEDULE] Found {len(prospects)} active prospects")
+        logger.info("[PRESCHEDULE] Found %s active prospects", len(prospects))
 
         if not prospects:
             return 0
@@ -486,7 +487,7 @@ class CampaignEmailService:
             EmailSequence.campaign_id == campaign_id
         ).order_by(EmailSequence.step_number).all()
 
-        print(f"[PRESCHEDULE] Found {len(sequences)} sequences")
+        logger.info("[PRESCHEDULE] Found %s sequences", len(sequences))
 
         if not sequences:
             return 0
@@ -499,7 +500,7 @@ class CampaignEmailService:
             EmailTemplate.campaign_id == campaign_id
         ).all()
 
-        print(f"[PRESCHEDULE] Found {len(templates)} templates")
+        logger.info("[PRESCHEDULE] Found %s templates", len(templates))
 
         # Build template lookup: (sequence_id, designation) -> template
         template_map = {}
@@ -519,7 +520,7 @@ class CampaignEmailService:
                 if start_utc > base_time:
                     base_time = start_utc
             except Exception as e:
-                logger.error(f"Error parsing campaign start date: {e}")
+                logger.error("Error parsing campaign start date: %s", e)
 
         from app.services.sender_identity import campaign_sender_name
         sender_name = campaign_sender_name(self.db, campaign)
@@ -562,7 +563,7 @@ class CampaignEmailService:
         # front, balanced against the step's existing assignments. Emails that
         # already exist keep theirs (the idempotency guard below skips them).
         from app.services.subject_variant_service import SubjectVariantService
-        needed_by_seq = {}
+        needed_by_seq: dict = {}
         for cp in prospects:
             if cp.prospect_id not in prospect_by_id:
                 continue
@@ -689,5 +690,5 @@ class CampaignEmailService:
                 messages_created += 1
 
         self.db.flush()
-        print(f"[PRESCHEDULE] Created {messages_created} messages")
+        logger.info("[PRESCHEDULE] Created %s messages", messages_created)
         return messages_created

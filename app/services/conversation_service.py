@@ -11,7 +11,7 @@ from app.schemas.conversation_schema import ConversationListItem, ConversationLi
 from app.utils.email_utils import conversation_snippet
 
 class ConversationService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
 
     def list_conversations(self, tenant_id: str, page: int = 1, page_size: int = 20, campaign_id: Optional[str] = None) -> ConversationListResponse:
@@ -68,7 +68,7 @@ class ConversationService:
             page_size=page_size
         )
 
-    def get_conversation_thread(self, conversation_id: str, tenant_id: str) -> ConversationDetailResponse:
+    def get_conversation_thread(self, conversation_id: str, tenant_id: str) -> Optional[ConversationDetailResponse]:
         conversation = self.db.query(Conversation).filter(
             Conversation.id == conversation_id,
             Conversation.tenant_id == tenant_id

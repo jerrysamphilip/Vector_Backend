@@ -15,10 +15,10 @@ import json
 import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
-from sqlalchemy import Numeric, and_, cast, func, not_, or_
-from sqlalchemy.orm import Session
+from sqlalchemy import ColumnElement, Numeric, and_, cast, func, not_, or_
+from sqlalchemy.orm import Query, Session
 
 from app.models.account import Account
 from app.models.campaign import CampaignProspect
@@ -86,7 +86,7 @@ def lifecycle_move_allowed(old: Optional[str], new: Optional[str], user: User) -
 
 # ── Property history ────────────────────────────────────────────
 
-def _fmt(value):
+def _fmt(value) -> Optional[str]:
     if value is None or value == "" or value == [] or value == {}:
         return None
     if isinstance(value, (list, dict)):
@@ -317,7 +317,7 @@ class FilterError(ValueError):
     pass
 
 
-def _as_list(value):
+def _as_list(value) -> list:
     if isinstance(value, list):
         return value
     if value is None or value == "":
@@ -325,14 +325,14 @@ def _as_list(value):
     return [value]
 
 
-def _parse_dt(value):
+def _parse_dt(value) -> datetime:
     try:
         return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
     except ValueError:
         raise FilterError(f"Invalid date: {value}")
 
 
-def _compare(column, operator, value, is_text=True):
+def _compare(column, operator, value, is_text=True) -> ColumnElement[bool]:
     if operator == "is":
         return func.lower(column) == str(value).lower() if is_text and isinstance(value, str) else column == value
     if operator == "is_not":
@@ -367,7 +367,7 @@ def _compare(column, operator, value, is_text=True):
     raise FilterError(f"Unknown operator: {operator}")
 
 
-def _condition(db: Session, cond: dict, user: User):
+def _condition(db: Session, cond: dict, user: User) -> ColumnElement[bool]:
     field, operator, value = cond.get("field"), cond.get("operator"), cond.get("value")
     if operator not in OPERATORS:
         raise FilterError(f"Unknown operator: {operator}")
@@ -399,7 +399,7 @@ def _condition(db: Session, cond: dict, user: User):
             return or_(_compare(raw, operator, value), arr) if operator == "is" else or_(raw.ilike(f"%{value}%"), arr)
         is_date = isinstance(value, str) and bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", value))
         if operator in ("gt", "gte", "lt", "lte", "between") and not is_date:
-            raw = cast(raw, Numeric(18, 4))  # number properties compare numerically, dates as ISO text
+            raw = cast(raw, Numeric(18, 4))  # type: ignore[assignment]  # number properties compare numerically, dates as ISO text
         return _compare(raw, operator, value)
     if field and field.startswith("company."):
         if field == "company.annual_revenue":
@@ -412,7 +412,7 @@ def _condition(db: Session, cond: dict, user: User):
         is_text = field != "company.annual_revenue"
         companies = db.query(Account.account_id).filter(_compare(column, operator, value, is_text=is_text))
         return Prospect.account_id.in_(companies)
-    column = CONTACT_FIELDS.get(field)
+    column = CONTACT_FIELDS.get(field or "")
     if column is None:
         raise FilterError(f"Unknown property: {field}")
     is_text = field not in ("is_valid_email", "created_at", "updated_at")
@@ -421,7 +421,7 @@ def _condition(db: Session, cond: dict, user: User):
     return _compare(column, operator, value, is_text=is_text)
 
 
-def filter_clause(db: Session, spec, user: User, depth: int = 0, counter=None):
+def filter_clause(db: Session, spec, user: User, depth: int = 0, counter=None) -> Optional[ColumnElement[bool]]:
     """SQL condition for a filter spec (see above); None/empty means 'everything'."""
     counter = counter if counter is not None else [0]
     if not spec:
@@ -440,7 +440,7 @@ def filter_clause(db: Session, spec, user: User, depth: int = 0, counter=None):
     return _condition(db, spec, user)
 
 
-def parse_filter_param(raw: Optional[str]):
+def parse_filter_param(raw: Optional[str]) -> Optional[dict]:
     if not raw:
         return None
     try:
@@ -454,7 +454,7 @@ def parse_filter_param(raw: Optional[str]):
 
 # ── Lists ───────────────────────────────────────────────────────
 
-def list_member_ids(db: Session, plist: ProspectList, user: User):
+def list_member_ids(db: Session, plist: ProspectList, user: User) -> Query:
     """Subquery of contact ids in a list. Active lists are evaluated live from their filters."""
     if plist.list_type == "ACTIVE":
         clause = filter_clause(db, plist.filters, user)
@@ -489,7 +489,7 @@ def quality_flags(p: Prospect) -> list:
 _FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 
-def csv_safe(value):
+def csv_safe(value) -> Any:
     """Neutralise spreadsheet formula injection: text starting with = + - @ (or tab / CR)
     is prefixed with a single quote so Excel / Sheets treat it as text."""
     if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):

@@ -8,6 +8,9 @@ start; already-encrypted values are left alone. Alembic revision f8a9b0c1d2e3 ru
 from sqlalchemy import text
 
 from app.core.encrypted_type import PREFIX, encrypt_value
+import logging
+
+logger = logging.getLogger(__name__)
 
 PASSWORD_COLUMNS = ("smtp_password", "imap_password")
 
@@ -37,7 +40,7 @@ def encrypt_mailbox_passwords(engine) -> int:
                 changed += 1
         conn.commit()
     if changed:
-        print(f"Security: encrypted {changed} stored mailbox password(s)")
+        logger.info("Security: encrypted %s stored mailbox password(s)", changed)
     return changed
 
 
@@ -51,4 +54,4 @@ def allow_anonymised_audit_logs(engine) -> None:
         if nullable == "NO":
             conn.execute(text("ALTER TABLE audit_logs MODIFY user_id VARCHAR(36) NULL"))
             conn.commit()
-            print("Security: audit_logs.user_id is now nullable (user deletion keeps audit history)")
+            logger.info("Security: audit_logs.user_id is now nullable (user deletion keeps audit history)")

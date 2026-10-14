@@ -53,5 +53,5 @@ class AutomationRule(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<AutomationRule {self.name} ({self.trigger_type} -> {self.action_type})>"

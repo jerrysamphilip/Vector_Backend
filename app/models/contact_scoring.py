@@ -29,5 +29,5 @@ class ContactScoringModel(Base):
 
     __table_args__ = ({"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ContactScoringModel tenant={self.tenant_id}>"

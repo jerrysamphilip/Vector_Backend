@@ -1,4 +1,5 @@
-# app/db/test_unsubscribe_link.py
+# scripts/dev/check_unsubscribe_link.py
+# Ad-hoc dev check (not part of the test suite). Run from the backend directory: python -m scripts.dev.check_unsubscribe_link
 """
 Test: Verify unsubscribe link is appended to all campaign email types.
 

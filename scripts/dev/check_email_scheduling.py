@@ -1,4 +1,5 @@
-# test_email_scheduling.py
+# scripts/dev/check_email_scheduling.py
+# Ad-hoc dev check (not part of the test suite). Run from the backend directory: python -m scripts.dev.check_email_scheduling
 """
 Test script for email scheduling logic fixes.
 Tests:

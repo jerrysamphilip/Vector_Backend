@@ -25,7 +25,8 @@ from app.core.auth import require_role
 from app.core.database import get_db
 from app.models.prospect import Prospect
 from app.models.user import User
-from app.routers.contacts_router import _get_contact, tenant_user
+from app.routers.contacts_router import tenant_user
+from app.services.contact_query_service import get_contact as _get_contact
 from app.services import contact_scoring, scoring_engine
 
 router = APIRouter(prefix="/contacts", tags=["Contact scoring"])

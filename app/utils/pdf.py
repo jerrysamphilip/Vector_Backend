@@ -36,11 +36,11 @@ def _escape(text: str) -> str:
 
 
 class Page:
-    def __init__(self):
+    def __init__(self) -> None:
         self.ops: List[str] = []
 
     def text(self, x: float, y: float, text: str, size: float = 10, bold: bool = False,
-             color: Tuple[float, float, float] = (0.1, 0.12, 0.16), align: str = "left"):
+             color: Tuple[float, float, float] = (0.1, 0.12, 0.16), align: str = "left") -> None:
         if align == "right":
             x -= text_width(text, size, bold)
         elif align == "center":
@@ -49,11 +49,11 @@ class Page:
         self.ops.append(f"BT /{'F2' if bold else 'F1'} {size:.1f} Tf {r:.3f} {g:.3f} {b:.3f} rg "
                         f"{x:.2f} {y:.2f} Td ({_escape(text)}) Tj ET")
 
-    def line(self, x1, y1, x2, y2, width=0.6, color=(0.85, 0.87, 0.9)):
+    def line(self, x1, y1, x2, y2, width=0.6, color=(0.85, 0.87, 0.9)) -> None:
         r, g, b = color
         self.ops.append(f"{r:.3f} {g:.3f} {b:.3f} RG {width:.2f} w {x1:.2f} {y1:.2f} m {x2:.2f} {y2:.2f} l S")
 
-    def rect(self, x, y, w, h, fill=(0.95, 0.96, 0.98)):
+    def rect(self, x, y, w, h, fill=(0.95, 0.96, 0.98)) -> None:
         r, g, b = fill
         self.ops.append(f"{r:.3f} {g:.3f} {b:.3f} rg {x:.2f} {y:.2f} {w:.2f} {h:.2f} re f")
 
@@ -76,7 +76,7 @@ class Page:
 
 
 class Document:
-    def __init__(self, size=A4, title: str = "Document"):
+    def __init__(self, size=A4, title: str = "Document") -> None:
         self.size = size
         self.title = title
         self.pages: List[Page] = []

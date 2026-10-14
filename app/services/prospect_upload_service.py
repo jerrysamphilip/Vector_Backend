@@ -1,12 +1,13 @@
 # app/services/prospect_upload_service.py
 
+from typing import Any, Dict, Optional, Tuple
 import uuid
 import math
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from sqlalchemy.exc import IntegrityError
-from fastapi import HTTPException
+from app.core.errors import ConflictError
 
 from app.models import (
     Prospect,
@@ -19,7 +20,7 @@ from app.utils.email_utils import parse_email
 from app.utils.business_calendar import get_timezone_for_state
 
 
-def _sanitize_value(val):
+def _sanitize_value(val) -> Optional[str]:
     """Convert pandas NaN/None/empty to None for JSON serialization."""
     if val is None:
         return None
@@ -39,7 +40,7 @@ PHONE_COLUMNS = ("Phone", "Phone Number", "POC Phone", "Direct Phone", "Work Pho
 MOBILE_COLUMNS = ("Mobile", "Mobile Phone", "Mobile Number", "Cell", "Cell Phone")
 
 
-def _first_value(row, columns):
+def _first_value(row, columns) -> Optional[str]:
     for column in columns:
         value = _sanitize_value(row.get(column))
         if value:
@@ -53,7 +54,7 @@ def dry_run_validate(
     tenant_id: str,
     uploaded_by: str,
     file_name: str,
-):
+) -> Tuple[str, Dict[str, Any]]:
     records = []
     accepted_count = 0
     rejected_count = 0
@@ -194,7 +195,7 @@ def revalidate_prospect_records(
     records: list,
     db: Session,
     tenant_id: str,
-):
+) -> Dict[str, Any]:
     """
     Re-run validation on edited records.
     Handles all edge cases:
@@ -330,7 +331,7 @@ def confirm_upload(
     db: Session,
     tenant_id: str,
     uploaded_by: str,
-):
+) -> Dict[str, Any]:
     """
     Master + snapshot ingestion.
     """
@@ -392,7 +393,7 @@ def confirm_upload(
     # Link contacts to account records by company name, creating accounts as needed
     accounts_by_name = {}
 
-    def _account_id_for(company_name, record):
+    def _account_id_for(company_name, record) -> Optional[str]:
         key = (company_name or "").strip().lower()
         if not key:
             return None
@@ -507,12 +508,9 @@ def confirm_upload(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Upload failed because one or more contacts could not be saved "
-                "(often a duplicate email address). Please revalidate and try again."
-            ),
+        raise ConflictError(
+            "Upload failed because one or more contacts could not be saved "
+            "(often a duplicate email address). Please revalidate and try again."
         )
     except Exception:
         db.rollback()

@@ -268,7 +268,7 @@ def _build_reset_link_for_origin(token: str, request: Request | None) -> str:
             if host in {"localhost", "127.0.0.1", "0.0.0.0"}:
                 return f"{parsed.scheme}://{parsed.netloc}"
             return ""
-        except Exception:
+        except ValueError:  # malformed Origin/Referer
             return ""
 
     request_origin = ""
@@ -287,7 +287,7 @@ def _build_reset_link_for_origin(token: str, request: Request | None) -> str:
             return True
         try:
             host = (urlparse(url).hostname or "").lower()
-        except Exception:
+        except ValueError:
             return False
         return host in {"localhost", "127.0.0.1", "0.0.0.0"}
 

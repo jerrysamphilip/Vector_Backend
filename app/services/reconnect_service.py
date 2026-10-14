@@ -40,7 +40,7 @@ class ProspectRevalidationService:
     voluntary unsubscribes.
     """
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
 
     def _is_voluntary_unsub(self, record: GlobalUnsubscribe) -> bool:

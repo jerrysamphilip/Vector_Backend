@@ -30,7 +30,7 @@ class AIPrompt(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<AIPrompt {self.prompt_id[:8]}...>"
 
 
@@ -85,7 +85,7 @@ class EmailTemplate(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<EmailTemplate {self.subject[:30]}...>"
 
 
@@ -115,5 +115,5 @@ class EmailTemplateVersion(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<EmailTemplateVersion v{self.version_number}>"

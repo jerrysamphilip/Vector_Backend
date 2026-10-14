@@ -2,7 +2,7 @@
 applies to phone-like queries only, so a mixed query does not match every record containing its digits."""
 import pytest
 
-from app.routers.contacts_router import search_condition
+from app.services.contact_query_service import search_condition
 
 
 def _likes(q):

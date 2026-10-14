@@ -56,7 +56,7 @@ def _endpoint(path: str) -> str:
     return f"https://login.microsoftonline.com/{settings.MS365_TENANT_ID or 'common'}/oauth2/v2.0/{path}"
 
 
-def make_state(inbox_id: str, tenant_id: str, user_id: str, nonce: str = None) -> str:
+def make_state(inbox_id: str, tenant_id: str, user_id: str, nonce: str | None = None) -> str:
     payload = {"inbox_id": inbox_id, "tenant_id": tenant_id, "user_id": user_id, "purpose": "ms365_oauth",
                "nonce": nonce,
                "exp": datetime.utcnow() + timedelta(minutes=STATE_TTL_MINUTES)}
@@ -142,11 +142,11 @@ def xoauth2(username: str, token: str) -> str:
 
 # ── Login helpers used by every IMAP/SMTP connection ──────────
 
-def imap_login(mail: imaplib.IMAP4, username: str, secret: str) -> None:
+def imap_login(mail: imaplib.IMAP4, username: str, secret: Optional[str]) -> None:
     if isinstance(secret, OAuthToken):
         mail.authenticate("XOAUTH2", lambda _: xoauth2(username, secret).encode())
     else:
-        mail.login(username, secret)
+        mail.login(username, secret)  # type: ignore[arg-type]  # None = no password stored; the server rejects it
 
 
 def smtp_login(server: smtplib.SMTP, username: str, secret: str) -> None:

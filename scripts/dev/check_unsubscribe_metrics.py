@@ -1,4 +1,5 @@
-# app/db/test_unsubscribe_metrics.py
+# scripts/dev/check_unsubscribe_metrics.py
+# Ad-hoc dev check (not part of the test suite). Run from the backend directory: python -m scripts.dev.check_unsubscribe_metrics
 """
 Read-only check: confirms unsubscribed_count now flows through
 CampaignAnalyticsService for real campaigns in the database.

@@ -65,11 +65,11 @@ def charge(kwargs: dict) -> Tuple[dict, int]:
             db.execute(text("INSERT IGNORE INTO platform_flags (name, value) VALUES (:n, '0')"), {"n": name})
         ok = db.execute(text("UPDATE platform_flags SET value = CAST(value AS UNSIGNED) + :e "
                              "WHERE name = :n AND CAST(value AS UNSIGNED) + :e <= :l"),
-                        {"n": f"llm_usd_micro:{day}", "e": est, "l": limit}).rowcount
+                        {"n": f"llm_usd_micro:{day}", "e": est, "l": limit}).rowcount  # type: ignore[attr-defined]
         if ok:
             ok = db.execute(text("UPDATE platform_flags SET value = CAST(value AS UNSIGNED) + 1 "
                                  "WHERE name = :n AND CAST(value AS UNSIGNED) < :l"),
-                            {"n": f"llm_calls:{day}", "l": int(settings.OPENAI_MAX_CALLS_PER_DAY)}).rowcount
+                            {"n": f"llm_calls:{day}", "l": int(settings.OPENAI_MAX_CALLS_PER_DAY)}).rowcount  # type: ignore[attr-defined]
             if not ok:                 # call ceiling hit: give the dollar reservation back
                 db.execute(text("UPDATE platform_flags SET value = GREATEST(CAST(value AS SIGNED) - :e, 0) WHERE name = :n"),
                            {"n": f"llm_usd_micro:{day}", "e": est})

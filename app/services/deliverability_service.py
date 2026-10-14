@@ -3,6 +3,7 @@
 """
 Service for calculating and monitoring Domain Reputation and Deliverability.
 """
+from typing import Any, Dict
 import logging
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -25,7 +26,7 @@ from app.utils.retry_utils import retry_aws_call
 logger = logging.getLogger(__name__)
 
 class DeliverabilityService:
-    def __init__(self):
+    def __init__(self) -> None:
         client_kwargs = {"region_name": settings.AWS_REGION}
         if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
             client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
@@ -75,7 +76,7 @@ class DeliverabilityService:
             logger.error(f"[Deliverability] Failed to fetch stats: {e}")
             return {"data_points": [], "summary": {}}
 
-    def get_domain_statistics(self, db: Session, domain: str = None, tenant_id: str = None) -> dict:
+    def get_domain_statistics(self, db: Session, domain: str | None = None, tenant_id: str | None = None) -> dict:
         """
         Calculate statistics from LOCAL database, same shape as get_sending_statistics().
         Aggregates EmailMessage (Sent) and EmailEvent (Bounces, Complaints).
@@ -91,10 +92,10 @@ class DeliverabilityService:
         start_date = end_date - timedelta(days=14)
         
         # Helper to format key
-        def get_date_key(dt):
+        def get_date_key(dt) -> str:
             return dt.date().isoformat()
 
-        stats_map = defaultdict(lambda: {"DeliveryAttempts": 0, "Bounces": 0, "Complaints": 0, "Rejects": 0})
+        stats_map: Dict[str, Dict[str, int]] = defaultdict(lambda: {"DeliveryAttempts": 0, "Bounces": 0, "Complaints": 0, "Rejects": 0})
         
         # Pre-fill last 14 days with 0s
         for i in range(15):
@@ -186,7 +187,7 @@ class DeliverabilityService:
             }
         }
 
-    def sync_ses_metrics(self, db: Session):
+    def sync_ses_metrics(self, db: Session) -> bool:
         """
         Fetch account-level reputation and SESv2 status from AWS.
         Updates all domains with the current account health.
@@ -233,7 +234,7 @@ class DeliverabilityService:
             logger.error(f"[Deliverability] Unexpected error in sync_ses_metrics: {e}")
             return False
 
-    def update_domain_stats(self, domain_name: str, event_type: str, db: Session, tenant_id: str = None):
+    def update_domain_stats(self, domain_name: str, event_type: str, db: Session, tenant_id: str | None = None) -> Any:
         """Kept for callers outside the webhook; health is now rate-based (send_safety).
         tenant_id: the tenant whose mail caused the event (domain records are per tenant)."""
         from app.services.send_safety import check_domain_health
@@ -245,7 +246,7 @@ class DeliverabilityService:
             return
         return self._legacy_update_domain_stats(domain_name, event_type, db, tenant_id)
 
-    def _legacy_update_domain_stats(self, domain_name: str, event_type: str, db: Session, tenant_id: str):
+    def _legacy_update_domain_stats(self, domain_name: str, event_type: str, db: Session, tenant_id: str) -> None:
         """
         Update reputation score based on real-time events (Bounce, Complaint).
         Triggers safety switch if score drops below threshold.
@@ -275,7 +276,7 @@ class DeliverabilityService:
             
         db.commit()
 
-    def _trigger_safety_switch(self, domain: SendingDomain, db: Session):
+    def _trigger_safety_switch(self, domain: SendingDomain, db: Session) -> None:
         """
         PAUSE the owning tenant's active campaigns using this domain and alert.
         """
@@ -314,7 +315,7 @@ class DeliverabilityService:
             f"(tenant {domain.tenant_id}) due to low reputation!"
         )
 
-    def create_snapshot(self, db: Session, tenant_id: str = None):
+    def create_snapshot(self, db: Session, tenant_id: str | None = None) -> None:
         """
         Snapshot domain health. tenant_id: only that tenant's domains; None = every
         tenant-owned domain (scheduled job).
@@ -335,7 +336,7 @@ class DeliverabilityService:
             db.add(snap)
         db.commit()
 
-    def sync_from_inboxes(self, db: Session, tenant_id: str = None) -> int:
+    def sync_from_inboxes(self, db: Session, tenant_id: str | None = None) -> int:
         """
         Ensure every (tenant, inbox domain) pair has a domain record.
         tenant_id: only that tenant; None = every tenant.
@@ -364,7 +365,7 @@ class DeliverabilityService:
             logger.error(f"[Deliverability] sync_from_inboxes failed: {e}")
             raise
 
-    def perform_dns_scan(self, domain_name: str, db: Session, tenant_id: str = None) -> dict:
+    def perform_dns_scan(self, domain_name: str, db: Session, tenant_id: str | None = None) -> dict:
         """
         Perform real-time DNS queries to verify SPF and DMARC alignment.
         Also syncs DKIM status from AWS SES directly.
@@ -401,10 +402,10 @@ class DeliverabilityService:
                             for inc_rd in inc_ans:
                                 if "amazonses.com" in inc_rd.to_text():
                                     return True
-                        except Exception:
-                            pass
-            except Exception:
-                pass
+                        except Exception as exc:  # DNS lookups fail routinely; treat as "no SES include"
+                            logger.debug("SPF include lookup for %s failed: %s", inc, exc)
+            except Exception as exc:
+                logger.debug("SPF TXT lookup for %s failed: %s", check_domain, exc)
             return False
 
         try:
@@ -549,7 +550,7 @@ class DeliverabilityService:
             
         return results
 
-    def verify_domain_and_get_tokens(self, domain_name: str, db: Session, tenant_id: str = None) -> dict:
+    def verify_domain_and_get_tokens(self, domain_name: str, db: Session, tenant_id: str | None = None) -> dict:
         """
         Initiate DKIM verification for a domain and return the DNS records needed.
         Also ensures the tenant has its own SendingDomain record for it.

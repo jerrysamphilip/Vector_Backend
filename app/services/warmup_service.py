@@ -60,7 +60,7 @@ class WarmupService:
         "Looks good. Leaving this active for the next pass.",
     ]
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.is_running = False
         self.max_sends_per_cycle = int(getattr(settings, "WARMUP_MAX_SENDS_PER_CYCLE", 3) or 3)
         self.reply_rate_default = int(getattr(settings, "WARMUP_REPLY_RATE_DEFAULT", 35) or 35)
@@ -190,7 +190,8 @@ class WarmupService:
                     "X-Warmup-Inbox": inbox.inbox_id,
                 },
             )
-        except Exception as exc:
+        except Exception as exc:  # provider send failed: count it against the inbox, keep the loop going
+            logger.warning("Warmup send from %s failed: %s", inbox.email_address, exc)
             self._register_send_failure(db, inbox, sender_metric, str(exc))
             return False, False
 
@@ -271,7 +272,8 @@ class WarmupService:
                     "References": internet_message_id or "",
                 },
             )
-        except Exception as exc:
+        except Exception as exc:  # provider send failed: count it against the peer, keep the loop going
+            logger.warning("Warmup reply from %s failed: %s", peer.email_address, exc)
             self._register_send_failure(db, peer, peer_metric, str(exc))
             return False
 
@@ -717,7 +719,7 @@ class WarmupService:
             "events": events,
         }
 
-    async def run_continuous(self, interval_seconds: int = 900):
+    async def run_continuous(self, interval_seconds: int = 900) -> None:
         if self.is_running:
             logger.warning("[Warmup] Already running")
             return
@@ -730,7 +732,7 @@ class WarmupService:
                 logger.exception("[Warmup] Continuous warmup loop failed")
             await asyncio.sleep(interval_seconds)
 
-    def stop(self):
+    def stop(self) -> None:
         self.is_running = False
 
     def _display_name(self, email_address: str) -> str:

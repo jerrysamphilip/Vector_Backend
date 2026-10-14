@@ -14,7 +14,7 @@ never blocked.
 import asyncio
 import imaplib
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ _SPAM_FOLDERS = [
 
 def _connect(host: str, port: int, username: str, password: str) -> imaplib.IMAP4:
     """Blocking IMAP connect + login. Port 993 → SSL; anything else → plain."""
+    imap: imaplib.IMAP4
     if not port or port == 993:
         imap = imaplib.IMAP4_SSL(host, port or 993)
     else:
@@ -56,13 +57,15 @@ def _search_folder(
         status, _ = imap.select(f'"{folder}"', readonly=False)
         if status != "OK":
             return None
-    except Exception:
+    except (imaplib.IMAP4.error, OSError) as exc:
+        logger.debug("Warmup IMAP select of %s failed: %s", folder, exc)
         return None
 
     criteria = f'(FROM "{sender_email}" SUBJECT "{subject}")'
     try:
-        status, data = imap.uid("SEARCH", None, criteria)
-    except Exception:
+        status, data = imap.uid("SEARCH", None, criteria)  # type: ignore[arg-type]  # imaplib accepts bytes UIDs / None charset
+    except (imaplib.IMAP4.error, OSError) as exc:
+        logger.debug("Warmup IMAP search in %s failed: %s", folder, exc)
         return None
 
     if status != "OK" or not data or not data[0]:
@@ -80,18 +83,18 @@ def _rescue_from_spam(imap: imaplib.IMAP4, uid: bytes) -> bool:
     """
     # RFC 6851 MOVE (atomic, no server-side copy artifact)
     try:
-        status, _ = imap.uid("MOVE", uid, "INBOX")
+        status, _ = imap.uid("MOVE", uid, "INBOX")  # type: ignore[arg-type]  # imaplib accepts bytes UIDs / None charset
         if status == "OK":
             return True
-    except Exception:
-        pass
+    except (imaplib.IMAP4.error, OSError) as exc:  # server without MOVE: fall back to COPY + delete
+        logger.debug("Warmup IMAP MOVE failed, falling back to COPY: %s", exc)
 
     # Fallback: COPY → INBOX then delete from spam
     try:
-        status, _ = imap.uid("COPY", uid, "INBOX")
+        status, _ = imap.uid("COPY", uid, "INBOX")  # type: ignore[arg-type]  # imaplib accepts bytes UIDs / None charset
         if status != "OK":
             return False
-        imap.uid("STORE", uid, "+FLAGS", r"(\Deleted)")
+        imap.uid("STORE", uid, "+FLAGS", r"(\Deleted)")  # type: ignore[arg-type]  # imaplib accepts bytes UIDs / None charset
         imap.expunge()
         return True
     except Exception as exc:
@@ -117,7 +120,7 @@ def _engage_blocking(
         "error": str | None,
       }
     """
-    result = {"found": False, "rescued_from_spam": False, "error": None}
+    result: Dict[str, Any] = {"found": False, "rescued_from_spam": False, "error": None}
     imap = None
 
     try:
@@ -127,7 +130,7 @@ def _engage_blocking(
         uid = _search_folder(imap, "INBOX", subject, sender_email)
         if uid:
             result["found"] = True
-            imap.uid("STORE", uid, "+FLAGS", r"(\Seen)")
+            imap.uid("STORE", uid, "+FLAGS", r"(\Seen)")  # type: ignore[arg-type]  # imaplib accepts bytes UIDs / None charset
             return result
 
         # 2. Probe known spam/junk folders
@@ -142,10 +145,10 @@ def _engage_blocking(
                     # Find the rescued copy in INBOX and mark it read
                     uid2 = _search_folder(imap, "INBOX", subject, sender_email)
                     if uid2:
-                        imap.uid("STORE", uid2, "+FLAGS", r"(\Seen)")
+                        imap.uid("STORE", uid2, "+FLAGS", r"(\Seen)")  # type: ignore[arg-type]  # imaplib accepts bytes UIDs / None charset
                 else:
                     # At least mark read in spam
-                    imap.uid("STORE", uid, "+FLAGS", r"(\Seen)")
+                    imap.uid("STORE", uid, "+FLAGS", r"(\Seen)")  # type: ignore[arg-type]  # imaplib accepts bytes UIDs / None charset
                 return result
 
         # Email not found yet — it may still be in transit; that's normal
@@ -160,8 +163,8 @@ def _engage_blocking(
         if imap:
             try:
                 imap.logout()
-            except Exception:
-                pass
+            except (imaplib.IMAP4.error, OSError) as exc:
+                logger.debug("Warmup IMAP logout failed: %s", exc)
 
 
 async def engage_after_delay(

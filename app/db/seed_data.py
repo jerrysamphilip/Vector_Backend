@@ -17,6 +17,9 @@ from app.models.email_sequence import EmailSequence
 from app.models.email_template import AIPrompt, EmailTemplate
 from app.models.metrics import CampaignMetricsRealtime
 from app.models.audit import AuditLog
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def seed_database():
@@ -25,7 +28,7 @@ def seed_database():
     require_dev_environment("seed_data")
     
     with get_db_session() as db:
-        print("Seeding database with dummy data...")
+        logger.info("Seeding database with dummy data...")
         
         # =====================
         # 1. Create Tenant
@@ -40,7 +43,7 @@ def seed_database():
                 status="ACTIVE",
             )
             db.add(tenant)
-            print("[OK] Created tenant: Neutrino Tech Systems")
+            logger.info("[OK] Created tenant: Neutrino Tech Systems")
         
         # =====================
         # 2. Create Users
@@ -60,7 +63,7 @@ def seed_database():
                     status="ACTIVE",
                 )
                 db.add(user)
-                print(f"[OK] Created user: {user_data['first_name']} {user_data['last_name']}")
+                logger.info("[OK] Created user: %s %s", user_data['first_name'], user_data['last_name'])
         
         db.flush()  # Flush users before creating prospects
         
@@ -95,7 +98,7 @@ def seed_database():
                     **prospect_data,
                 )
                 db.add(prospect)
-        print(f"[OK] Created {len(prospects_data)} prospects")
+        logger.info("[OK] Created %s prospects", len(prospects_data))
         
         db.flush()
         
@@ -113,7 +116,7 @@ def seed_database():
             if not existing:
                 pl = ProspectList(tenant_id=tenant_id, **list_data)
                 db.add(pl)
-        print(f"[OK] Created {len(lists_data)} prospect lists")
+        logger.info("[OK] Created %s prospect lists", len(lists_data))
         
         db.flush()
         
@@ -149,7 +152,7 @@ def seed_database():
             if not existing:
                 plm = ProspectListMember(id=str(uuid.uuid4()), **member)
                 db.add(plm)
-        print(f"[OK] Assigned prospects to lists")
+        logger.info(f"[OK] Assigned prospects to lists")
         
         db.flush()
         
@@ -202,7 +205,7 @@ def seed_database():
                     **camp_data,
                 )
                 db.add(campaign)
-                print(f"[OK] Created campaign: {camp_data['campaign_name']}")
+                logger.info("[OK] Created campaign: %s", camp_data['campaign_name'])
         
         db.flush()
         
@@ -230,7 +233,7 @@ def seed_database():
                     **seq_data,
                 )
                 db.add(seq)
-        print("[OK] Created email sequences")
+        logger.info("[OK] Created email sequences")
         
         # =====================
         # 5. Create Templates
@@ -261,7 +264,7 @@ def seed_database():
             if not existing:
                 tmpl = EmailTemplate(**tmpl_data)
                 db.add(tmpl)
-        print("[OK] Created email templates")
+        logger.info("[OK] Created email templates")
         
         # =====================
         # 6. Create Metrics
@@ -280,7 +283,7 @@ def seed_database():
             if not existing:
                 m = CampaignMetricsRealtime(row_version=0, **metrics)
                 db.add(m)
-        print("[OK] Created campaign metrics")
+        logger.info("[OK] Created campaign metrics")
         
         # =====================
         # 7. Create Audit Logs
@@ -301,16 +304,17 @@ def seed_database():
                 entity_id=audit["campaign_id"],
             )
             db.add(log)
-        print("[OK] Created audit logs")
+        logger.info("[OK] Created audit logs")
         
-        print("\n[OK] Database seeded successfully!")
-        print("\nSummary:")
-        print(f"  - 1 Tenant")
-        print(f"  - {len(users_data)} Users")
-        print(f"  - {len(campaigns_data)} Campaigns")
-        print(f"  - {len(sequences_data)} Sequence Steps")
-        print(f"  - {len(templates_data)} Templates")
+        logger.info("\n[OK] Database seeded successfully!")
+        logger.info("\nSummary:")
+        logger.info(f"  - 1 Tenant")
+        logger.info("  - %s Users", len(users_data))
+        logger.info("  - %s Campaigns", len(campaigns_data))
+        logger.info("  - %s Sequence Steps", len(sequences_data))
+        logger.info("  - %s Templates", len(templates_data))
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")  # CLI: progress lines on the console
     seed_database()

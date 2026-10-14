@@ -46,7 +46,7 @@ class CampaignCRUDService:
     (pause, resume, complete). Launch is delegated to CampaignEmailService.
     """
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
         self.audit = AuditService(db)
         self.metrics = MetricsService(db)
@@ -657,7 +657,7 @@ class CampaignCRUDService:
         from_state: str,
         to_state: str,
         reason: Optional[str] = None
-    ):
+    ) -> None:
         """Record a campaign state transition."""
         event = CampaignStateEvent(
             id=str(uuid.uuid4()),

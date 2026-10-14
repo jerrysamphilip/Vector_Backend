@@ -85,7 +85,7 @@ class Campaign(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Campaign {self.campaign_name} ({self.status})>"
 
 
@@ -111,7 +111,7 @@ class CampaignStateEvent(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<CampaignStateEvent {self.from_state} -> {self.to_state}>"
 
 
@@ -144,5 +144,5 @@ class CampaignProspect(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<CampaignProspect campaign={self.campaign_id} step={self.current_step}>"

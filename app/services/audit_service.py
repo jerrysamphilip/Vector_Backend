@@ -30,7 +30,7 @@ class AuditService:
     ENTITY_PROSPECT = "prospect"
     ENTITY_LIST = "prospect_list"
     
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
     
     def log_action(

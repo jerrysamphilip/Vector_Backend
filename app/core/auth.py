@@ -11,6 +11,8 @@ Role hierarchy (highest → lowest):
   AGENT          — Works assigned campaigns.
 """
 
+from typing import Any, Callable, Optional, Tuple
+
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
@@ -38,7 +40,7 @@ MFA_SETUP_ALLOWED_ROUTES = frozenset({
 })
 
 
-def _tenant_flags(db: Session, user: User):
+def _tenant_flags(db: Session, user: User) -> Tuple[Optional[str], bool]:
     """(status, require_mfa) of the user's tenant; (None, False) for PLATFORM_ADMIN / no tenant."""
     if user.role == "PLATFORM_ADMIN" or not user.tenant_id:
         return None, False
@@ -81,6 +83,7 @@ async def get_current_user(
     PLATFORM_ADMIN users have tenant_id = NULL — this is allowed.
     """
     via_cookie = False
+    token: Optional[str]
     if credentials and credentials.credentials:
         token = credentials.credentials
     else:
@@ -101,7 +104,7 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user_id: str = payload.get("sub")
+    user_id: Optional[str] = payload.get("sub")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -143,7 +146,7 @@ async def get_current_user(
     return user
 
 
-def require_role(*allowed_roles: str):
+def require_role(*allowed_roles: str) -> Callable[..., Any]:
     """
     Factory that returns a dependency which checks the current user's role.
 
@@ -174,7 +177,9 @@ def require_role(*allowed_roles: str):
     return _role_checker
 
 
-# Default permissions per role — must stay in sync with user_router.py
+# Default permissions per role, enforced by require_permission. app/services/user_admin_service.py
+# (DEFAULT_PERMISSIONS) shows the defaults in the user admin API; keep the two consistent
+# (SUPER_ADMIN always passes here; AGENT has no enforced default).
 _DEFAULT_PERMS: dict[str, frozenset] = {
     "PLATFORM_ADMIN": frozenset(["manage_platform"]),          # platform-only
     "SUPER_ADMIN":    frozenset(["manage_campaigns", "manage_templates", "manage_inboxes",
@@ -185,7 +190,7 @@ _DEFAULT_PERMS: dict[str, frozenset] = {
 }
 
 
-def require_permission(permission: str):
+def require_permission(permission: str) -> Callable[..., Any]:
     """
     Dependency that enforces a feature-level permission.
     - SUPER_ADMIN always passes (within tenant).

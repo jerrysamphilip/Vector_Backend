@@ -62,7 +62,7 @@ class SendingDomain(Base):
     snapshots = relationship("DomainHealthSnapshot", back_populates="domain", cascade="all, delete-orphan")
     alerts = relationship("ReputationAlert", back_populates="domain", cascade="all, delete-orphan")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<SendingDomain {self.domain_name} tenant={self.tenant_id} (Score: {self.current_reputation_score})>"
 
 
@@ -92,7 +92,7 @@ class DomainHealthSnapshot(Base):
     # Relationships
     domain = relationship("SendingDomain", back_populates="snapshots")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<HealthSnapshot {self.domain_name} @ {self.snapshot_at}>"
 
 
@@ -121,5 +121,5 @@ class ReputationAlert(Base):
     # Relationships
     domain = relationship("SendingDomain", back_populates="alerts")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ReputationAlert {self.alert_type} for {self.domain_name}>"

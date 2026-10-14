@@ -8,10 +8,10 @@ emails it too when that user has email notifications on (app/services/notificati
 """
 from typing import Dict, Iterable, List, Optional
 
-from fastapi import HTTPException
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.core.errors import BadRequestError
 from app.models.contact_activity import ContactActivity
 from app.models.crm import NoteMention
 from app.models.user import User
@@ -55,17 +55,17 @@ def validate(db: Session, user: User, user_ids: Optional[Iterable[str]], owner_i
     if not ids:
         return []
     if len(ids) > MAX_MENTIONS:
-        raise HTTPException(status_code=400, detail=f"Mention at most {MAX_MENTIONS} people in one note")
+        raise BadRequestError(f"Mention at most {MAX_MENTIONS} people in one note")
     users = db.query(User).filter(User.user_id.in_(ids), User.tenant_id == user.tenant_id,
                                   User.status == "ACTIVE",
                                   User.role.in_(("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT"))).all()
     if len(users) != len(ids):
-        raise HTTPException(status_code=400, detail="You can only mention active users in your workspace")
+        raise BadRequestError("You can only mention active users in your workspace")
     if check_owner:
         from app.services.contact_service import can_see_owner
         for u in users:
             if not can_see_owner(db, u, owner_id):
-                raise HTTPException(status_code=400, detail=f"{_name(u)} cannot see this record, so cannot be mentioned")
+                raise BadRequestError(f"{_name(u)} cannot see this record, so cannot be mentioned")
     by_id = {u.user_id: u for u in users}
     return [by_id[i] for i in ids]
 

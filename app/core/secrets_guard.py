@@ -37,7 +37,7 @@ def resolve_jwt_secret(configured: str) -> str:
             "Set it to a long random value (e.g. `python -c \"import secrets; print(secrets.token_urlsafe(48))\"`) "
             "in the deployment secret before starting the API."
         )
-    print("WARNING JWT_SECRET_KEY not set: using a random per-process secret (local only; sign-ins end on restart).")
+    logger.warning("JWT_SECRET_KEY not set: using a random per-process secret (local only; sign-ins end on restart).")
     return secrets.token_urlsafe(48)
 
 
@@ -54,6 +54,6 @@ def credentials_fernet_key(configured: str) -> bytes:
                 "CREDENTIALS_ENCRYPTION_KEY is not set. Mailbox passwords are encrypted with it; set a long random "
                 "value in the deployment secret, and keep it: changing it makes saved mailbox passwords unreadable."
             )
-        print("WARNING CREDENTIALS_ENCRYPTION_KEY not set: using the local development key.")
+        logger.warning("CREDENTIALS_ENCRYPTION_KEY not set: using the local development key.")
         configured = _DEV_CREDENTIALS_KEY
     return base64.urlsafe_b64encode(hashlib.sha256(configured.encode()).digest())

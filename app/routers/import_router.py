@@ -236,7 +236,7 @@ def run_import(
                 for v in df[column].dropna():
                     values.update(x.strip() for x in str(v).split(";") if x.strip())
                 options_list = sorted(values)[:200] or ["Yes"]
-            from app.routers.contacts_router import create_field_definition
+            from app.services.contact_field_service import create_field_definition
             definition = create_field_definition(db, tenant_id, label.strip(), ftype, options_list)
             custom_defs[definition.field_key] = definition
             target = f"custom.{definition.field_key}"
@@ -404,11 +404,12 @@ def run_import(
                     custom[key] = [v.strip() for v in str(value).split(";")] \
                         if custom_defs[key].field_type == "MULTI_CHECKBOX" else str(value).strip()
         if custom:
-            from app.routers.contacts_router import _clean_custom_fields
+            from app.core.errors import DomainError
+            from app.services.contact_field_service import clean_custom_fields
             try:
-                custom = _clean_custom_fields(db, tenant_id, custom)
-            except HTTPException as exc:
-                raise RowError(exc.detail)
+                custom = clean_custom_fields(db, tenant_id, custom)
+            except DomainError as exc:
+                raise RowError(exc.detail) from exc
         return email, vals, custom
 
     def apply_contact(p, vals, custom, account, created):

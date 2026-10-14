@@ -59,6 +59,9 @@ jobs:
       - name: Ruff (bug-class rules only, see ruff.toml)
         run: ruff check .
 
+      - name: Mypy (app/core, app/services, app/utils; see mypy.ini)
+        run: mypy
+
       - name: Unit layer
         run: python scripts/test.py run unit --where host --report-dir reports/ci-unit
 

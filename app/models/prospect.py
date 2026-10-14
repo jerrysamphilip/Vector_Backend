@@ -120,7 +120,7 @@ class Prospect(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Prospect {self.email}>"
 
     @property
@@ -149,5 +149,5 @@ class GlobalUnsubscribe(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<GlobalUnsubscribe {self.email}>"

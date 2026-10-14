@@ -1,3 +1,4 @@
+from typing import Optional
 import html
 import re
 
@@ -24,7 +25,7 @@ _EMAIL_RE = re.compile(
 )
 
 
-def parse_email(raw_email):
+def parse_email(raw_email) -> Optional[dict]:
     # Handle None, NaN (float), or other non-string values
     if raw_email is None or not isinstance(raw_email, str):
         return None
@@ -200,7 +201,7 @@ def normalize_paragraph_spacing(body: str) -> str:
     text = str(body).replace("\r\n", "\n").replace("\r", "\n")
 
     lines = text.split("\n")
-    out = []
+    out: list = []
 
     def _is_bullet(line: str) -> bool:
         stripped = line.strip()
@@ -335,7 +336,7 @@ def html_to_text(body: str) -> str:
     return html.unescape(text).replace("\xa0", " ")
 
 
-def conversation_snippet(body: str, limit: int = 100) -> str:
+def conversation_snippet(body: Optional[str], limit: int = 100) -> str:
     """One-line plain-text preview of a message for the unified inbox list."""
     text = extract_latest_message_text(html_to_text(body or ""))
     text = re.sub(r"\s+", " ", text).strip()
@@ -371,9 +372,9 @@ def format_email_body_html(body: str) -> str:
 
     lines = body.replace("\r\n", "\n").split("\n")
     blocks = []
-    bullet_buffer = []
+    bullet_buffer: list = []
 
-    def _flush_bullets():
+    def _flush_bullets() -> None:
         if bullet_buffer:
             items = "\n".join(f"<li>{_escape(item)}</li>" for item in bullet_buffer)
             blocks.append(f"<ul>\n{items}\n</ul>")
@@ -414,7 +415,8 @@ def finalize_email_body(body: str) -> str:
     return body
 
 
-def build_signature_block(sender_name: str, sender_title: str = None, company_name: str = None) -> str:
+def build_signature_block(sender_name: Optional[str], sender_title: Optional[str] = None,
+                          company_name: Optional[str] = None) -> str:
     """
     Build the resolved signature block: name, then title (if set), then the
     sending tenant's company name (if known) — used to resolve the

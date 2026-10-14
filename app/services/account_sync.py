@@ -19,7 +19,7 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 from email.utils import getaddresses, parsedate_to_datetime
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlencode
 
 import httpx
@@ -52,7 +52,7 @@ def http_post(url: str, data: dict) -> httpx.Response:
     return httpx.post(url, data=data, timeout=20)
 
 
-def http_request(method: str, url: str, token: str, params: dict = None, json: dict = None) -> httpx.Response:
+def http_request(method: str, url: str, token: str, params: dict | None = None, json: dict | None = None) -> httpx.Response:
     return httpx.request(method, url, params=params, json=json, timeout=30,
                          headers={"Authorization": f"Bearer {token}"})
 
@@ -69,7 +69,7 @@ def _ms_endpoint(path: str) -> str:
     return f"https://login.microsoftonline.com/{settings.MS365_TENANT_ID or 'common'}/oauth2/v2.0/{path}"
 
 
-def make_state(user: User, provider: str, nonce: str = None) -> str:
+def make_state(user: User, provider: str, nonce: str | None = None) -> str:
     return jwt.encode({"user_id": user.user_id, "provider": provider, "purpose": "account_sync", "nonce": nonce,
                        "exp": datetime.utcnow() + timedelta(minutes=15)},
                       settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
@@ -85,7 +85,7 @@ def read_state(state: str) -> dict:
     return data
 
 
-def authorize_url(provider: str, user: User, nonce: str = None) -> str:
+def authorize_url(provider: str, user: User, nonce: str | None = None) -> str:
     state = make_state(user, provider, nonce)
     if provider == "GOOGLE":
         return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({
@@ -136,7 +136,7 @@ def complete(db: Session, user: User, provider: str, code: str) -> UserConnectio
     return conn
 
 
-def _store(conn: UserConnection, tokens: dict):
+def _store(conn: UserConnection, tokens: dict) -> None:
     conn.access_token = tokens["access_token"]
     if tokens.get("refresh_token"):
         conn.refresh_token = tokens["refresh_token"]
@@ -281,7 +281,7 @@ def sync_connection(db: Session, conn: UserConnection) -> dict:
     if not user or user.status != "ACTIVE":
         return {"skipped": True}
     since = (conn.last_sync_at or datetime.utcnow() - timedelta(days=LOOKBACK_DAYS)) - timedelta(minutes=5)
-    result = {"emails": 0, "meetings": 0}
+    result: Dict[str, Any] = {"emails": 0, "meetings": 0}
     try:
         token = access_token(db, conn)
         if conn.provider == "GOOGLE":
@@ -295,7 +295,8 @@ def sync_connection(db: Session, conn: UserConnection) -> dict:
             if conn.sync_calendar:
                 result["meetings"] = _graph_calendar(db, user, conn, token, since)
         conn.last_sync_at, conn.last_error = datetime.utcnow(), None
-    except Exception as exc:
+    except Exception as exc:  # provider API / token failure: keep it visible on the connection
+        logger.warning("Sync of %s connection %s failed: %s", conn.provider, conn.connection_id, exc)
         db.rollback()
         conn = db.query(UserConnection).filter(UserConnection.connection_id == conn.connection_id).first()
         conn.last_error = f"{datetime.utcnow():%Y-%m-%d %H:%M} UTC: {exc}"[:2000]

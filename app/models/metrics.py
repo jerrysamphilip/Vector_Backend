@@ -39,7 +39,7 @@ class CampaignMetricsRealtime(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<CampaignMetrics sent={self.sent_count} opened={self.opened_count}>"
 
     @property

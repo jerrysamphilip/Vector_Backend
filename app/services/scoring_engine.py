@@ -428,7 +428,7 @@ def decay_weight(age_days: float, half_life_days: int) -> float:
 
 
 def engagement_breakdown(model: Dict[str, Any], activity: Dict[str, Any], now: datetime) -> Tuple[int, List[Dict[str, Any]]]:
-    now = _as_datetime(now)
+    now = _as_datetime(now)  # type: ignore[assignment]  # a datetime in gives a datetime out
     half_life, lookback = model["half_life_days"], model["lookback_days"]
     rows, total = [], 0.0
     for key, label in ENGAGEMENT_SIGNALS.items():

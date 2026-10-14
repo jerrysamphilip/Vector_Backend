@@ -3,12 +3,12 @@ Leads, opportunities and proposals: shared rules (BRD v2.0 5.6, 5.7).
 """
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
-from fastapi import HTTPException
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 
+from app.core.errors import BadRequestError, NotFoundError, PermissionDenied
 from app.core.config import settings
 from app.models.account import Account
 from app.models.prospect import Prospect
@@ -70,9 +70,9 @@ def money(value) -> Optional[Decimal]:
     try:
         amount = Decimal(str(value).replace(",", "").strip())
     except InvalidOperation:
-        raise HTTPException(status_code=400, detail="Amount must be a number")
+        raise BadRequestError("Amount must be a number")
     if amount < 0:
-        raise HTTPException(status_code=400, detail="Amount cannot be negative")
+        raise BadRequestError("Amount cannot be negative")
     return amount.quantize(Decimal("0.01"))
 
 
@@ -92,9 +92,9 @@ def check_assignable(db: Session, user: User, owner_id: str) -> None:
     """Records can be assigned to a workspace user the current user can see (BR-SH-02)."""
     if not owner_id or not db.query(User.user_id).filter(User.user_id == owner_id,
                                                          User.tenant_id == user.tenant_id).first():
-        raise HTTPException(status_code=400, detail="Owner must be a user in your workspace")
+        raise BadRequestError("Owner must be a user in your workspace")
     if not can_see_owner(db, user, owner_id):
-        raise HTTPException(status_code=403, detail="You can only assign records to yourself or your team")
+        raise PermissionDenied("You can only assign records to yourself or your team")
 
 
 def fiscal_year_of(d: date) -> int:
@@ -114,7 +114,7 @@ def fiscal_label(fy: int) -> str:
     return f"FY {fy}-{str(fy + 1)[-2:]}"
 
 
-def fiscal_year_bounds(fy: int):
+def fiscal_year_bounds(fy: int) -> Tuple[date, date]:
     start_month = settings.FISCAL_YEAR_START_MONTH
     start = date(fy, start_month, 1)
     end = date(fy + 1, start_month, 1) if start_month > 1 else date(fy + 1, 1, 1)
@@ -123,7 +123,7 @@ def fiscal_year_bounds(fy: int):
 
 # ── Leads ────────────────────────────────────────────────────
 
-def visible_leads(db: Session, user: User):
+def visible_leads(db: Session, user: User) -> Query:
     query = db.query(Lead).filter(Lead.tenant_id == user.tenant_id)
     return scope(query, db, user, Lead.owner_id)
 
@@ -131,7 +131,7 @@ def visible_leads(db: Session, user: User):
 def get_lead(db: Session, user: User, lead_id: str) -> Lead:
     lead = visible_leads(db, user).filter(Lead.lead_id == lead_id).first()
     if not lead:
-        raise HTTPException(status_code=404, detail="Lead not found")
+        raise NotFoundError("Lead not found")
     return lead
 
 
@@ -140,7 +140,7 @@ def criteria_met(qualification: Optional[dict]) -> List[str]:
     return [label for key, label in SQL_CRITERIA.items() if not q.get(key)]
 
 
-def sync_contact_lifecycle(db: Session, prospect: Optional[Prospect], lifecycle: Optional[str], user_id: Optional[str]):
+def sync_contact_lifecycle(db: Session, prospect: Optional[Prospect], lifecycle: Optional[str], user_id: Optional[str]) -> None:
     """Move the contact's lifecycle stage forward to match the lead (never backward)."""
     if not prospect or not lifecycle:
         return
@@ -156,20 +156,20 @@ def sync_contact_lifecycle(db: Session, prospect: Optional[Prospect], lifecycle:
 
 def set_lead_stage(db: Session, lead: Lead, stage: str, user: User) -> None:
     if stage not in LEAD_STAGES:
-        raise HTTPException(status_code=400, detail=f"stage must be one of {list(LEAD_STAGES)}")
+        raise BadRequestError(f"stage must be one of {list(LEAD_STAGES)}")
     if stage == lead.stage:
         return
     if lead.stage == "CONVERTED":
-        raise HTTPException(status_code=400, detail="This lead is already converted; work the opportunity instead")
+        raise BadRequestError("This lead is already converted; work the opportunity instead")
     if stage == "CONVERTED":
-        raise HTTPException(status_code=400, detail="Use Convert to create the opportunity")
+        raise BadRequestError("Use Convert to create the opportunity")
     if stage == "SQL":
         missing = criteria_met(lead.qualification)
         if missing:
-            raise HTTPException(status_code=400, detail="To mark as SQL, confirm: " + ", ".join(missing))
+            raise BadRequestError("To mark as SQL, confirm: " + ", ".join(missing))
         lead.qualified_at = lead.qualified_at or datetime.utcnow()
     if stage == "DISQUALIFIED" and not clean_str(lead.disqualified_reason):
-        raise HTTPException(status_code=400, detail="Give a reason for disqualifying the lead")
+        raise BadRequestError("Give a reason for disqualifying the lead")
     lead.stage = stage
     lead.stage_changed_at = datetime.utcnow()
     prospect = db.query(Prospect).filter(Prospect.prospect_id == lead.prospect_id).first()
@@ -211,7 +211,7 @@ def lead_dicts(db: Session, leads: List[Lead]) -> List[dict]:
 
 # ── Opportunities ────────────────────────────────────────────
 
-def visible_opps(db: Session, user: User):
+def visible_opps(db: Session, user: User) -> Query:
     query = db.query(Opportunity).filter(Opportunity.tenant_id == user.tenant_id)
     return scope(query, db, user, Opportunity.owner_id)
 
@@ -219,7 +219,7 @@ def visible_opps(db: Session, user: User):
 def get_opp(db: Session, user: User, opportunity_id: str) -> Opportunity:
     opp = visible_opps(db, user).filter(Opportunity.opportunity_id == opportunity_id).first()
     if not opp:
-        raise HTTPException(status_code=404, detail="Opportunity not found")
+        raise NotFoundError("Opportunity not found")
     return opp
 
 
@@ -236,7 +236,7 @@ def apply_stage(db: Session, opp: Opportunity, stage_id: str) -> SalesStage:
     stage = db.query(SalesStage).filter(SalesStage.stage_id == stage_id,
                                         SalesStage.tenant_id == opp.tenant_id).first()
     if not stage:
-        raise HTTPException(status_code=400, detail="Unknown sales stage")
+        raise BadRequestError("Unknown sales stage")
     status = stage_status(stage)
     # A brand-new deal has no status yet (the column default applies on insert): treat it as open
     if status != "OPEN" and opp.status in (None, "OPEN"):
@@ -261,7 +261,7 @@ def stage_change_recipients(owner_id: Optional[str], manager_id: Optional[str],
 
 
 def stage_change_message(deal_name: str, stage_name: str, status: str, actor_name: Optional[str],
-                         previous_stage: Optional[str] = None, reason: Optional[str] = None):
+                         previous_stage: Optional[str] = None, reason: Optional[str] = None) -> Tuple[str, str, str]:
     """(kind, title, body) for a deal won / lost / stage-change notification."""
     deal_name = deal_name or "Deal"
     who = actor_name or "Someone"
@@ -296,7 +296,7 @@ def require_close_reason(db: Session, opp: Opportunity, stage: SalesStage, reaso
     """A won or lost deal records why (BR-SF-05), unless the workspace turned that off."""
     from app.services.sales_settings import get_settings
     if stage_status(stage) != "OPEN" and not clean_str(reason) and get_settings(db, opp.tenant_id).get("require_close_reason", True):
-        raise HTTPException(status_code=400, detail=f"Say why the deal was {'won' if stage.is_won else 'lost'}")
+        raise BadRequestError(f"Say why the deal was {'won' if stage.is_won else 'lost'}")
 
 
 def source_campaign(db: Session, prospect_id: Optional[str], before: Optional[datetime] = None) -> Optional[str]:
@@ -406,7 +406,7 @@ def convert_lead(db: Session, user: User, lead: Lead, data: dict) -> Opportunity
     # Lock the lead row and re-read it so two simultaneous conversions can't both create a deal
     lead = db.query(Lead).filter(Lead.lead_id == lead.lead_id).with_for_update().populate_existing().one()
     if lead.stage != "SQL":
-        raise HTTPException(status_code=400, detail="Only sales-qualified leads (SQL) can be converted")
+        raise BadRequestError("Only sales-qualified leads (SQL) can be converted")
     prospect = db.query(Prospect).filter(Prospect.prospect_id == lead.prospect_id).first()
     account_id = lead.account_id or (prospect.account_id if prospect else None)
     if not account_id and prospect:

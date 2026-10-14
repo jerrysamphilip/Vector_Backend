@@ -29,5 +29,5 @@ class RefreshToken(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<RefreshToken user={self.user_id} revoked={self.revoked_at is not None}>"

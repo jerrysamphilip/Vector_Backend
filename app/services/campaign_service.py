@@ -12,6 +12,7 @@ all three services so that any existing callers importing CampaignService
 continue to work without changes.
 """
 
+from typing import Any, List, Tuple
 from app.services.campaign_crud_service import CampaignCRUDService
 from app.services.campaign_email_service import CampaignEmailService
 from app.services.campaign_analytics_service import CampaignAnalyticsService
@@ -30,13 +31,13 @@ class CampaignService(CampaignCRUDService):
     CampaignEmailService so they remain callable via this class.
     """
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         super().__init__(db)
         self._email_svc = CampaignEmailService(db)
 
     # ── Proxy email-related methods ──────────────────────────────────────────
 
-    def launch(self, campaign_id: str, user_id: str):
+    def launch(self, campaign_id: str, user_id: str) -> Any:
         return self._email_svc.launch(campaign_id, user_id)
 
     def generate_stub_content(self, campaign_id: str, user_id: str) -> int:
@@ -45,7 +46,7 @@ class CampaignService(CampaignCRUDService):
     def enroll_prospects(self, campaign_id: str, user_id: str, request) -> int:
         return self._email_svc.enroll_prospects(campaign_id, user_id, request)
 
-    def enroll_prospects_with_report(self, campaign_id: str, user_id: str, request):
+    def enroll_prospects_with_report(self, campaign_id: str, user_id: str, request) -> Tuple[int, List[dict]]:
         return self._email_svc.enroll_prospects_with_report(campaign_id, user_id, request)
 
     def remove_prospect(self, campaign_id: str, prospect_id: str, user_id: str) -> bool:

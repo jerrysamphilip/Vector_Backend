@@ -23,7 +23,9 @@ from app.models.crm import ContactCompany, CrmTask, PropertyChange
 from app.models.email_message import EmailMessage
 from app.models.prospect import Prospect
 from app.models.user import User
-from app.routers.contacts_router import _history_items, _summaries, _user_name
+from app.services.contact_query_service import history_items as _history_items
+from app.services.contact_query_service import summaries as _summaries
+from app.services.contact_query_service import user_name as _user_name
 from app.services import contact_companies, crm
 from app.services.contact_service import can_manage_contacts, can_see_owner, clean_str, scope, sees_everything, visible_user_ids
 from app.services.sales_settings import can_see_amounts, masked_for

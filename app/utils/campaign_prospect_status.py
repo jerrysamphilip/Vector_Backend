@@ -32,7 +32,7 @@ STATUS_PRIORITY = {
 }
 
 
-def set_prospect_status(campaign_prospect, new_status: str, stopped_reason: str = None) -> bool:
+def set_prospect_status(campaign_prospect, new_status: str, stopped_reason: str | None = None) -> bool:
     """
     Update `campaign_prospect.status`, refusing to downgrade a higher-priority
     status that's already recorded.

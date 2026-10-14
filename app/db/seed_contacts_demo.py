@@ -20,6 +20,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import SessionLocal
 from app.core.security import hash_password
@@ -37,6 +38,9 @@ from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.services.contact_service import delete_contacts
 from app.utils.business_calendar import get_timezone_for_state
+import logging
+
+logger = logging.getLogger(__name__)
 
 DEMO_PREFIX = "[Demo]"
 DEMO_USER_DOMAIN = "vector-demo.example"
@@ -166,7 +170,7 @@ def reset(db, tenant_id):
             with db.begin_nested():
                 db.delete(user)
             removed_users += 1
-        except Exception:
+        except IntegrityError:
             # Referenced elsewhere (e.g. they logged in): deactivate instead
             user.status = "INACTIVE"
     db.commit()
@@ -385,21 +389,22 @@ def main():
 
         removed, removed_users = reset(db, admin.tenant_id)
         if removed or removed_users:
-            print(f"Removed previous demo data: {removed} contacts, {removed_users} demo users.")
+            logger.info("Removed previous demo data: %s contacts, %s demo users.", removed, removed_users)
         if args.reset:
             return
 
         counts = seed(db, admin, random.Random(args.seed), with_users=not args.no_users)
-        print(f"Seeded workspace of {admin.email}: {counts['contacts']} contacts, {counts['accounts']} accounts, "
+        logger.info(f"Seeded workspace of {admin.email}: {counts['contacts']} contacts, {counts['accounts']} accounts, "
               f"{counts['activities']} activities, {counts['campaign_contacts']} contacts with campaign email history, "
               f"{counts['reps']} demo reps.")
         if counts["reps"]:
-            print(f"Demo reps sign in as <first>.<last>@{DEMO_USER_DOMAIN} with password '{demo_password()}' "
+            logger.info(f"Demo reps sign in as <first>.<last>@{DEMO_USER_DOMAIN} with password '{demo_password()}' "
                   f"(e.g. marcus.bell@{DEMO_USER_DOMAIN}, an Agent who only sees their own contacts).")
-        print("Remove it any time with: python -m app.db.seed_contacts_demo --reset")
+        logger.info("Remove it any time with: python -m app.db.seed_contacts_demo --reset")
     finally:
         db.close()
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")  # CLI: progress lines on the console
     main()

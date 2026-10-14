@@ -15,7 +15,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Iterable, Optional, Set
 
-from sqlalchemy import func, or_
+from sqlalchemy import ColumnElement, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 PENDING = ("QUEUED", "SCHEDULED")
 
 
-def active_clause(now: Optional[datetime] = None):
+def active_clause(now: Optional[datetime] = None) -> ColumnElement[bool]:
     now = now or datetime.utcnow()
     return or_(GlobalUnsubscribe.suppression_expires_at.is_(None), GlobalUnsubscribe.suppression_expires_at > now)
 

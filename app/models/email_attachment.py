@@ -32,5 +32,5 @@ class EmailAttachment(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<EmailAttachment {self.filename}>"

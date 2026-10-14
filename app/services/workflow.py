@@ -9,7 +9,7 @@ MAX_DEPTH levels, so two rules can never loop forever.
 """
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -35,7 +35,7 @@ OPERATORS = {"changes": "changes", "equals": "changes to", "greater_than": "beco
 ACTION_TYPES = ("create_task", "notify", "update_field")
 
 
-def _load(db: Session, object_type: str, object_id: str):
+def _load(db: Session, object_type: str, object_id: str) -> Any:
     from app.models.prospect import Prospect
     from app.models.sales import Lead, Opportunity
     model = {"LEAD": Lead, "DEAL": Opportunity, "CONTACT": Prospect}[object_type]
@@ -124,7 +124,7 @@ def on_changes(db: Session, tenant_id: str, object_type: str, object_id: str,
     return len(rules)
 
 
-def _run(db, tenant_id, rule, object_type, obj, name, link, owner_id, actor_id, prospect_id, opportunity_id, account_id):
+def _run(db, tenant_id, rule, object_type, obj, name, link, owner_id, actor_id, prospect_id, opportunity_id, account_id) -> None:
     from app.models.crm import CrmTask
     from app.services import crm
     from app.services.notifications import notify

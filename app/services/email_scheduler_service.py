@@ -10,12 +10,12 @@ import math
 import time as _time
 from collections import defaultdict
 from datetime import datetime, timedelta, time
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from types import SimpleNamespace
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, aliased
-from sqlalchemy import and_, exists, func, or_
+from sqlalchemy.orm import Query, Session, aliased
+from sqlalchemy import Exists, and_, exists, func, or_
 
 from app.core.database import SessionLocal
 from app.core.config import settings
@@ -71,7 +71,7 @@ class EmailSchedulerService:
     # Statuses of a not-yet-sent step that must go out before the next step (B01)
     PENDING_STATUSES = ("QUEUED", "SCHEDULED", "SENDING", "PAUSED_BY_CAMPAIGN")
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Hard ceiling on due rows considered per cycle (all lanes). Rows are
         # taken round-robin across lanes (ROW_NUMBER per lane), so the ceiling
         # never favours one inbox's backlog over another's.
@@ -81,7 +81,7 @@ class EmailSchedulerService:
         self.is_running = False
         # Exact time of each inbox's last send in this process; the DB column only
         # keeps whole seconds, which would let sends drift up to 1s too close.
-        self._last_send = {}
+        self._last_send: Dict[str, float] = {}
         from app.services.daily_limit import DailyLimiter
         self._daily = DailyLimiter()
 
@@ -265,7 +265,7 @@ class EmailSchedulerService:
                 db.close()
                 
 
-    def _earlier_step_pending(self, msg_entity, step_entity):
+    def _earlier_step_pending(self, msg_entity, step_entity) -> Exists:
         """
         SQL condition: this prospect still has an earlier step of the same
         campaign that has not been sent yet (B01). A follow-up is only due once
@@ -283,7 +283,7 @@ class EmailSchedulerService:
             prev_step.step_number < step_entity.step_number,
         )
 
-    def _select_due(self, db: Session, now: datetime):
+    def _select_due(self, db: Session, now: datetime) -> Query:
         """
         Due rows as (message_id, inbox_id, lane), fair across lanes (B04).
 
@@ -348,7 +348,7 @@ class EmailSchedulerService:
 
     async def _run_inbox_queue(self, message_ids: List[str]) -> dict:
         """Send one inbox's due messages in order, at its pace, in its own session."""
-        stats = defaultdict(int)
+        stats: Dict[str, int] = defaultdict(int)
         db = SessionLocal()
         try:
             for message_id in message_ids:
@@ -467,7 +467,7 @@ class EmailSchedulerService:
         db.commit()
         logger.warning(f"[Scheduler] Cancelled duplicate send {email_msg.message_id} to {email_msg.to_email}")
 
-    def _check_completed_campaigns(self, db: Session):
+    def _check_completed_campaigns(self, db: Session) -> None:
         """
         Automatically triggers when every lead in the campaign has reached a terminal state.
         Signals to the user that the objective is met and no further action is required.
@@ -984,7 +984,7 @@ class EmailSchedulerService:
         self, 
         email_msg: EmailMessage, 
         db: Session
-    ):
+    ) -> None:
         """
         Update campaign prospect state after a successful send.
         - If there is a next sequence step, advance current_step and schedule next send.
@@ -1060,7 +1060,7 @@ class EmailSchedulerService:
             logger.exception(f"[Scheduler] Failed to update prospect step: {e}")
 
     @staticmethod
-    def schedule_next_step(db: Session, sent_msg: EmailMessage, next_step, sent_at: datetime):
+    def schedule_next_step(db: Session, sent_msg: EmailMessage, next_step, sent_at: datetime) -> Optional[datetime]:
         """
         B01: the follow-up's gap counts from when this step was actually sent,
         not from launch. Every step is pre-scheduled at launch from launch time;
@@ -1094,7 +1094,7 @@ class EmailSchedulerService:
         prospect: Prospect,
         db: Session,
         error_details: str,
-    ):
+    ) -> None:
         """
         Auto-suppress a recipient after a permanent/hard bounce.
         - Adds the email to GlobalUnsubscribe with reason HARD_BOUNCE_AUTO_SUPPRESSED
@@ -1115,7 +1115,7 @@ class EmailSchedulerService:
         except Exception as e:
             logger.error(f"[Scheduler] Failed to auto-suppress hard bounce: {e}")
     
-    async def run_continuous(self, interval_seconds: int = 30):
+    async def run_continuous(self, interval_seconds: int = 30) -> None:
         """
         Run scheduler continuously in background.
         
@@ -1139,7 +1139,7 @@ class EmailSchedulerService:
             # Come straight back while there is work, so pace is set by the inboxes (BR-DF-01)
             await asyncio.sleep(2 if stats.get("processed") else interval_seconds)
     
-    def stop(self):
+    def stop(self) -> None:
         """Stop continuous scheduler."""
         self.is_running = False
         logger.info("[Scheduler] Stopping")
@@ -1182,7 +1182,7 @@ def rebase_overdue_on_resume(db: Session, campaign) -> int:
         SendingInbox.inbox_id.in_(inbox_ids)).all()) if inbox_ids else {}
     campaign_gap = max(int(campaign.min_gap_minutes or 0), 0) * 60
 
-    slot = defaultdict(int)
+    slot: Dict[Any, int] = defaultdict(int)
     moved = 0
     for planned, first, msgs in overdue:
         lane = first.inbox_id or campaign.campaign_id
@@ -1207,7 +1207,7 @@ email_scheduler = EmailSchedulerService()
 # Manual Trigger Functions
 # =============================
 
-async def trigger_email_processing():
+async def trigger_email_processing() -> Any:
     """
     Manually trigger email processing.
     Can be called from an API endpoint or cron job.
@@ -1215,7 +1215,7 @@ async def trigger_email_processing():
     return await email_scheduler.process_scheduled_emails()
 
 
-def process_emails_sync():
+def process_emails_sync() -> Any:
     """
     Synchronous wrapper for email processing.
     Useful for cron jobs or management commands.

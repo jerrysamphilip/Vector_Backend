@@ -5,7 +5,7 @@ Real-time metrics service for campaign dashboard.
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import Optional
+from typing import Any, Optional
 import uuid
 
 from app.models.metrics import CampaignMetricsRealtime
@@ -15,7 +15,7 @@ from app.models.email_message import EmailEvent
 class MetricsService:
     """Service for campaign metrics management."""
     
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
     
     def get_or_create_metrics(self, campaign_id: str) -> CampaignMetricsRealtime:
@@ -143,7 +143,7 @@ class MetricsService:
         m = CampaignAnalyticsService(self.db).get_dynamic_metrics(campaign_id)
         sent = m["sent_count"]
 
-        def rate(n):
+        def rate(n) -> float:
             return (n / sent) * 100 if sent else 0.0
 
         return {
@@ -159,7 +159,7 @@ class MetricsService:
             "bounce_rate": rate(m["bounced_count"]),
         }
 
-    def sync_campaign_metrics(self, campaign_id: str):
+    def sync_campaign_metrics(self, campaign_id: str) -> Any:
         """
         Force sync metrics from raw message and event data.
         Use this to fix out-of-sync or historical metrics.

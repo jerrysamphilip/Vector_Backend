@@ -9,21 +9,21 @@ back in line with account_id whenever a contact's companies are read or edited.
 """
 from typing import List, Optional
 
-from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy import ColumnElement, or_
+from sqlalchemy.orm import Query, Session
 
 from app.models.account import Account
 from app.models.crm import ContactCompany
 from app.models.prospect import Prospect
 
 
-def secondary_contact_ids(db: Session, account_id: str):
+def secondary_contact_ids(db: Session, account_id: str) -> Query:
     """Subquery: contacts associated with the company other than as their primary company."""
     return db.query(ContactCompany.prospect_id).filter(
         ContactCompany.account_id == account_id, ContactCompany.is_primary.is_(False))
 
 
-def company_condition(db: Session, account_id: str):
+def company_condition(db: Session, account_id: str) -> ColumnElement[bool]:
     """Contacts whose primary company is account_id, or that are associated with it."""
     return or_(Prospect.account_id == account_id, Prospect.prospect_id.in_(secondary_contact_ids(db, account_id)))
 

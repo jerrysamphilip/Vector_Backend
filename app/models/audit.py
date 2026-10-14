@@ -31,5 +31,5 @@ class AuditLog(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<AuditLog {self.action} on {self.entity_type}>"

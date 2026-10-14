@@ -42,5 +42,5 @@ class ProspectPersona(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ProspectPersona {self.persona_type} for {self.prospect_id[:8]}...>"

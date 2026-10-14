@@ -19,7 +19,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
@@ -82,7 +82,8 @@ def _load(db: Session, tenant_id: str) -> SenderIdentity:
         try:
             with db.begin_nested():
                 name = db.query(Tenant.tenant_name).filter(Tenant.tenant_id == tenant_id).scalar()
-        except Exception:
+        except Exception as exc:  # sender name is optional; never block a send over it
+            logger.warning("[SenderIdentity] Could not read tenant name for %s: %s", tenant_id, exc)
             name = None
     return SenderIdentity(
         company_name=(name or "").strip() or None,
@@ -158,7 +159,7 @@ def current_company_name() -> str:
     return _current_company.get() or GENERIC_COMPANY
 
 
-def brand(text):
+def brand(text) -> Any:
     """Replace the sender-company token with the bound tenant's company name."""
     if not isinstance(text, str) or SENDER_COMPANY_TOKEN not in text:
         return text
@@ -168,10 +169,10 @@ def brand(text):
 
 
 class _BrandedCompletions:
-    def __init__(self, completions):
+    def __init__(self, completions) -> None:
         self._completions = completions
 
-    def create(self, *args, **kwargs):
+    def create(self, *args, **kwargs) -> Any:
         messages = kwargs.get("messages")
         if messages:
             kwargs["messages"] = [
@@ -188,25 +189,25 @@ class _BrandedCompletions:
         settle(reserved, response)
         return response
 
-    def __getattr__(self, name):
+    def __getattr__(self, name) -> Any:
         return getattr(self._completions, name)
 
 
 class _BrandedChat:
-    def __init__(self, chat):
+    def __init__(self, chat) -> None:
         self.completions = _BrandedCompletions(chat.completions)
         self._chat = chat
 
-    def __getattr__(self, name):
+    def __getattr__(self, name) -> Any:
         return getattr(self._chat, name)
 
 
 class branded_openai_client:
     """Wraps an OpenAI client so every chat prompt is written for the bound tenant."""
 
-    def __init__(self, client):
+    def __init__(self, client) -> None:
         self._client = client
         self.chat = _BrandedChat(client.chat)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name) -> Any:
         return getattr(self._client, name)

@@ -34,5 +34,5 @@ class CampaignDraft(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<CampaignDraft {self.draft_id} - Step {self.current_step}>"

@@ -4,7 +4,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
+from app.core.errors import BadRequestError
 
 from app.core.config import settings
 from app.models.sales import SQL_CRITERIA
@@ -70,7 +70,7 @@ def test_money_parsing(value, expected):
 
 @pytest.mark.parametrize("value", ["-1", "abc", "1.2.3"])
 def test_money_rejects_negative_and_non_numbers(value):
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(BadRequestError) as exc:
         sales.money(value)
     assert exc.value.status_code == 400
 

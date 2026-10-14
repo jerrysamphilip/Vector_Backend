@@ -9,7 +9,7 @@ Creates unique content for 3-email follow-up sequences:
 Prompts are loaded from: app/prompts/
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 import json
 import random
@@ -139,7 +139,7 @@ def generate_sequence_with_llm(
     include_first_name_in_subject: bool = False,  # Include {{first_name}} in subject
     creative_email: bool = False,  # Apply creative writing style instructions
     email_context: str = "COLD_OUTREACH",  # "COLD_OUTREACH" | "CONFERENCE_PREOUTREACH"
-) -> Optional[Dict[str, Dict]]:
+) -> Optional[Dict[str, Any]]:
     """
     Generate email sequence using GPT-4o-mini.
     Uses prompts from app/prompts/llm_system_prompts.py with house-style examples.
@@ -482,7 +482,7 @@ def generate_sequence_from_blueprint(
     product_name: str,
     cta_link: str = "",
     is_conference: bool = False,
-) -> Dict[str, Dict]:
+) -> Dict[str, Any]:
     """
     Generate a 3-email sequence using blueprint templates (no LLM).
     """
@@ -703,7 +703,7 @@ def builtin_sequence_emails(num_emails: int, cta_enabled: bool = False,
 
 
 class SequenceGeneratorService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
         pass
 

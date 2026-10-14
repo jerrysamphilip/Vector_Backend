@@ -40,7 +40,7 @@ class ProspectList(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ProspectList {self.list_name}>"
 
 
@@ -67,5 +67,5 @@ class ProspectListMember(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ProspectListMember list={self.list_id} prospect={self.prospect_id}>"

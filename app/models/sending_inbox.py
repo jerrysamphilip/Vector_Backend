@@ -152,7 +152,7 @@ class SendingInbox(Base):
         target = self.warmup_max_target or self.current_daily_limit or self.daily_limit or 0
         return max(0, min(target, self.daily_limit or target))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<SendingInbox {self.email_address}>"
 
     # Shown on the edit form so users can see a password is saved without exposing it.

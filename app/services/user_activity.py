@@ -67,6 +67,7 @@ def record_for(db, user) -> None:
         return
     try:
         bind = db.get_bind()
-    except Exception:
+    except Exception as exc:  # never fail a request over activity tracking
+        logger.debug("Activity tracking skipped for user %s: no bind (%s)", user.user_id, exc)
         return
     record(bind, user.tenant_id, user.user_id)

@@ -9,8 +9,8 @@ import uuid
 from collections import defaultdict
 from typing import Iterable, Optional, Set
 
-from sqlalchemy import or_, text
-from sqlalchemy.orm import Session, object_session
+from sqlalchemy import ColumnElement, or_, text
+from sqlalchemy.orm import Query, Session, object_session
 
 from app.core.auth import _DEFAULT_PERMS
 from app.models.account import Account
@@ -86,7 +86,7 @@ def visible_user_ids(db: Session, user: User) -> Optional[Set[str]]:
     return cached
 
 
-def owner_clause(db: Session, user: User, column):
+def owner_clause(db: Session, user: User, column) -> Optional[ColumnElement[bool]]:
     """SQL condition limiting `column` (an owner id) to what the user may see; None = no limit."""
     ids = visible_user_ids(db, user)
     if ids is None:
@@ -97,7 +97,7 @@ def owner_clause(db: Session, user: User, column):
     return clause
 
 
-def scope(query, db: Session, user: User, column):
+def scope(query, db: Session, user: User, column) -> Query:
     clause = owner_clause(db, user, column)
     return query if clause is None else query.filter(clause)
 
@@ -110,7 +110,7 @@ def can_see_owner(db: Session, user: User, owner_id: Optional[str]) -> bool:
 
 
 def can_access_contact(user: User, prospect: Prospect) -> bool:
-    return can_see_owner(object_session(prospect), user, prospect.owner_id)
+    return can_see_owner(object_session(prospect), user, prospect.owner_id)  # type: ignore[arg-type]  # a loaded contact always has a session
 
 
 # ── Normalisation ──────────────────────────────────────────────────
@@ -125,8 +125,8 @@ def clean_str(value) -> Optional[str]:
 def normalize_tags(tags: Optional[Iterable[str]]) -> list:
     """Trim, drop blanks, de-duplicate case-insensitively, keep first spelling and order."""
     seen, result = set(), []
-    for tag in tags or []:
-        tag = clean_str(tag)
+    for raw_tag in tags or []:
+        tag = clean_str(raw_tag)
         if not tag:
             continue
         tag = tag[:50]
@@ -179,7 +179,7 @@ def backfill_accounts(db: Session, tenant_id: str) -> int:
         WHERE p.tenant_id = :tenant_id AND p.account_id IS NULL
           AND p.company_name IS NOT NULL AND TRIM(p.company_name) <> ''
     """), {"tenant_id": tenant_id})
-    return result.rowcount or 0
+    return result.rowcount or 0  # type: ignore[attr-defined]  # UPDATE returns a CursorResult
 
 
 # ── Delete ─────────────────────────────────────────────────────────

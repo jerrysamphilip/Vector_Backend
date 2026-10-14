@@ -13,7 +13,7 @@ Flow:
 Prompts: app/prompts/llm_system_prompts.py
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 from collections import defaultdict
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -33,6 +33,9 @@ from app.services.sequence_generator import AI_FALLBACK_NOTICE, builtin_sequence
 from app.prompts.llm_system_prompts import get_sequence_generation_system_prompt
 from app.utils.email_utils import normalize_cta_link, has_effective_cta_link, finalize_email_body
 from app.utils.email_context_detector import detect_email_context, EMAIL_CONTEXT_CONFERENCE
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -43,7 +46,7 @@ def batch_classify_prospects(
     db: Session,
     list_id: str,
     tenant_id: str,
-    excluded_prospect_ids: List[str] = None,
+    excluded_prospect_ids: List[str] | None = None,
 ) -> Dict[str, List[Dict]]:
     """
     Classify all prospects in a list by persona type.
@@ -150,7 +153,7 @@ def generate_template_for_persona(
     prospects: List[Dict],
     product_name: str,
     campaign_description: str,
-    sequence_steps: list,
+    sequence_steps: Optional[list],
     include_first_name_in_subject: bool,
     creative_email: bool,
     email_context: str,
@@ -226,7 +229,7 @@ def generate_template_for_persona(
         else:
             fallback_reason = "No persona blueprint for AI generation"
     except Exception as e:
-        print(f"Error generating template for {persona_type}: {e}")
+        logger.exception("Error generating template for %s: %s", persona_type, e)
         sequence = None
         fallback_reason = f"AI generation failed: {e}"
 
@@ -250,9 +253,9 @@ def generate_template_for_persona(
             campaign_id=campaign_id,
             sequence_id=step_to_seq_id.get(i),  # Link to sequence
             designation=persona_type,
-            subject=email_data.get("subject", ""),
-            body=finalize_email_body(email_data.get("body", "")),
-            cta_text=email_data.get("cta", ""),
+            subject=email_data.get("subject", ""),  # type: ignore[union-attr]  # set on both branches above
+            body=finalize_email_body(email_data.get("body", "")),  # type: ignore[union-attr]  # set on both branches above
+            cta_text=email_data.get("cta", ""),  # type: ignore[union-attr]  # set on both branches above
             cta_link=cta_link,
             is_ai_generated=ai_written,
             ai_model="gpt-4o-mini" if ai_written else None,
@@ -278,9 +281,9 @@ def generate_template_for_persona(
         all_emails.append({
             "step_number": i,
             "template_id": template.template_id,
-            "subject": email_data.get("subject", ""),
-            "body": email_data.get("body", ""),
-            "cta": email_data.get("cta", ""),
+            "subject": email_data.get("subject", ""),  # type: ignore[union-attr]  # set on both branches above
+            "body": email_data.get("body", ""),  # type: ignore[union-attr]  # set on both branches above
+            "cta": email_data.get("cta", ""),  # type: ignore[union-attr]  # set on both branches above
             "cta_link": cta_link,
             "schedule": f"Day {cumulative_day}",
             "is_ai_generated": ai_written,
@@ -311,7 +314,7 @@ def generate_templates_per_persona(
     product_name: str = "your solution",
     company_name: str = "your company",
     campaign_description: str = "",
-    sequence_steps: list = None,  # User-configured sequence timing
+    sequence_steps: list | None = None,  # User-configured sequence timing
     include_first_name_in_subject: bool = False,  # Include {{first_name}} in subject
     creative_email: bool = False,  # Apply creative writing style instructions
     email_context: str = "COLD_OUTREACH",  # Auto-detected if not passed
@@ -391,10 +394,10 @@ def process_prospect_list(
     product_name: str = "your solution",
     company_name: str = "your company",
     campaign_description: str = "",
-    sequence_steps: list = None,  # User-configured sequence timing
+    sequence_steps: list | None = None,  # User-configured sequence timing
     include_first_name_in_subject: bool = False,  # Include {{first_name}} in subject
     creative_email: bool = False,  # Apply creative writing style instructions
-    excluded_prospect_ids: list = None,  # Contacts deselected in the wizard
+    excluded_prospect_ids: list | None = None,  # Contacts deselected in the wizard
 ) -> Dict:
     """
     Full processing flow (ATOMIC — all-or-nothing):
@@ -438,7 +441,7 @@ def process_prospect_list(
     except Exception as e:
         # Something failed — roll back everything (classifications + templates)
         db.rollback()
-        print(f"Batch processing failed, rolled back all changes: {e}")
+        logger.exception("Batch processing failed, rolled back all changes: %s", e)
         raise
     
     # Build summary (after successful commit)

@@ -1,7 +1,7 @@
 """Unit tests (no database, no network) for the admin UI controls round:
 
 - sending domains: hostname validation and the DNS record guidance (app/services/domain_tenancy.py);
-- invitation resend cooldown (app/routers/user_router.py resend_wait_seconds);
+- invitation resend cooldown (app/services/invitation_service.py resend_wait_seconds);
 - contact scoring guards: idempotent grade history and out-of-office replies
   (app/services/contact_scoring.py grade_history_needed / is_auto_reply).
 """
@@ -70,7 +70,7 @@ def test_auc_u06_guidance_caps_token_count():
 # ── AUC-U10..12 invitation resend cooldown ───────────────────
 
 def test_auc_u10_resend_allowed_when_never_sent_or_after_a_minute():
-    from app.routers.user_router import RESEND_COOLDOWN_SECONDS, resend_wait_seconds
+    from app.services.invitation_service import RESEND_COOLDOWN_SECONDS, resend_wait_seconds
     assert RESEND_COOLDOWN_SECONDS == 60
     assert resend_wait_seconds(None) == 0
     assert resend_wait_seconds(60) == 0
@@ -78,14 +78,14 @@ def test_auc_u10_resend_allowed_when_never_sent_or_after_a_minute():
 
 
 def test_auc_u11_resend_blocked_within_a_minute():
-    from app.routers.user_router import resend_wait_seconds
+    from app.services.invitation_service import resend_wait_seconds
     assert resend_wait_seconds(0) == 60
     assert resend_wait_seconds(1) == 59
     assert resend_wait_seconds(59) == 1
 
 
 def test_auc_u12_clock_skew_counts_as_just_sent():
-    from app.routers.user_router import resend_wait_seconds
+    from app.services.invitation_service import resend_wait_seconds
     assert resend_wait_seconds(-5) == 60
     assert resend_wait_seconds(10, cooldown=30) == 20
 

@@ -5,15 +5,17 @@ them), so refuse them at the edge with a 422.
 """
 import json
 
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
 _METHODS = {"POST", "PUT", "PATCH"}
 _MAX_BUFFER = 5 * 1024 * 1024
 
 
 class RejectNulMiddleware:
-    def __init__(self, app):
+    def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
-    async def __call__(self, scope, receive, send):
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or scope["method"] not in _METHODS:
             return await self.app(scope, receive, send)
         ctype = dict(scope["headers"]).get(b"content-type", b"").lower()
@@ -43,7 +45,7 @@ class RejectNulMiddleware:
 
         sent = False
 
-        async def replay():
+        async def replay() -> Message:
             nonlocal sent
             if not sent:
                 sent = True

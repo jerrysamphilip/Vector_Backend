@@ -27,7 +27,7 @@ class AutomationRuleService:
     Evaluates triggers and executes actions for automation rules.
     """
 
-    def process_event(self, event_type: TriggerType, campaign_id: str, prospect_id: str, metadata: Dict[str, Any] = None, db: Session = None):
+    def process_event(self, event_type: TriggerType, campaign_id: str, prospect_id: str, metadata: Dict[str, Any] | None = None, db: Session | None = None) -> None:
         """
         Evaluate rules for a specific event trigger.
         Example: EMAIL_OPENED for prospect X in campaign Y.
@@ -51,7 +51,7 @@ class AutomationRuleService:
             logger.info(f"[Automation] Found {len(rules)} rules for {event_type} in campaign {campaign_id}")
             
             for rule in rules:
-                self._evaluate_and_execute(rule, prospect_id, metadata, db)
+                self._evaluate_and_execute(rule, prospect_id, metadata or {}, db)
                 
             db.commit()
             
@@ -62,7 +62,7 @@ class AutomationRuleService:
             if close_db:
                 db.close()
 
-    def _evaluate_and_execute(self, rule: AutomationRule, prospect_id: str, metadata: Dict, db: Session):
+    def _evaluate_and_execute(self, rule: AutomationRule, prospect_id: str, metadata: Dict, db: Session) -> None:
         """Check conditions and execute action."""
         # 1. Check Conditions (if any in trigger_config)
         # For now, we assume if the event fired, the trigger is met.
@@ -82,7 +82,7 @@ class AutomationRuleService:
         except Exception as e:
             logger.error(f"[Automation] Failed to execute rule {rule.name}: {e}")
 
-    def _action_send_email(self, rule: AutomationRule, prospect_id: str, db: Session):
+    def _action_send_email(self, rule: AutomationRule, prospect_id: str, db: Session) -> None:
         """Action: Schedule an immediate email."""
         template_id = rule.action_config.get("template_id")
         if not template_id:
@@ -125,7 +125,7 @@ class AutomationRuleService:
         db.flush()  # visible to the de-duplication check if the rule fires again in this session
         logger.info(f"[Automation] Scheduled email (Template {template_id}) from Rule {rule.name}")
 
-    def _action_change_step(self, rule: AutomationRule, prospect_id: str, db: Session):
+    def _action_change_step(self, rule: AutomationRule, prospect_id: str, db: Session) -> None:
         """Action: Move prospect to a different campaign step (e.g., skip to step 5)."""
         target_step = rule.action_config.get("step_id") # e.g. 5
         if not target_step:
@@ -141,7 +141,7 @@ class AutomationRuleService:
             cp.current_step = target_step
             logger.info(f"[Automation] Moved Prospect {prospect_id} from Step {old_step} to {target_step}")
 
-    def _action_pause_prospect(self, rule: AutomationRule, prospect_id: str, db: Session):
+    def _action_pause_prospect(self, rule: AutomationRule, prospect_id: str, db: Session) -> None:
         """Action: Mark prospect as REPLIED or similar to stop sequence."""
         cp = db.query(CampaignProspect).filter(
             CampaignProspect.campaign_id == rule.campaign_id,

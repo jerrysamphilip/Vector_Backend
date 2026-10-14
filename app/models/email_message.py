@@ -85,7 +85,7 @@ class EmailMessage(Base):
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<EmailMessage {self.message_id[:8]}... ({self.status})>"
 
 
@@ -121,5 +121,5 @@ class EmailEvent(Base):
     EVENT_REPLY_OOO = 9
     EVENT_DELIVERED = 10
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<EmailEvent type={self.event_type}>"

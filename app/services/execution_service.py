@@ -21,6 +21,9 @@ from app.core.config import settings
 from app.utils.email_utils import normalize_cta_link, has_effective_cta_link, strip_cta_content_no_link, normalize_unsubscribe_footer, normalize_paragraph_spacing, finalize_email_body, build_signature_block
 from app.utils.business_calendar import schedule_email_in_window, get_timezone_for_state
 from app.utils.campaign_prospect_status import set_prospect_status
+import logging
+
+logger = logging.getLogger(__name__)
 
 class CampaignExecutionService:
     """
@@ -33,7 +36,7 @@ class CampaignExecutionService:
     5. Update state
     """
     
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
         self.audit = AuditService(db)
 
@@ -245,7 +248,7 @@ class CampaignExecutionService:
                 processed_count += 1
                 
             except Exception as e:
-                print(f"Error processing prospect {cp.prospect_id}: {e}")
+                logger.exception("Error processing prospect %s: %s", cp.prospect_id, e)
                 continue
         
         self.db.commit()
