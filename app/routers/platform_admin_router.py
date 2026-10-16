@@ -334,7 +334,8 @@ def create_tenant(
         raise HTTPException(status_code=400, detail="Tenant name cannot be empty")
 
     # Prevent duplicate tenant names
-    existing_tenant = db.query(Tenant).filter(Tenant.tenant_name.ilike(tenant_name)).first()
+    # Exact, case-insensitive match (ilike would treat % and _ in the name as wildcards)
+    existing_tenant = db.query(Tenant).filter(func.lower(Tenant.tenant_name) == tenant_name.lower()).first()
     if existing_tenant:
         raise HTTPException(status_code=409, detail="A tenant with this name already exists")
 

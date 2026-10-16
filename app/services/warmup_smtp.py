@@ -13,6 +13,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
 
+from app.core.tls import open_smtp
 from app.models.sending_inbox import SendingInbox
 from app.services.email_sender_service import email_sender
 
@@ -60,14 +61,8 @@ def _smtp_send_blocking(inbox: SendingInbox, to_email: str, msg: MIMEMultipart, 
     password = secret if secret is not None else inbox.smtp_password
     use_ssl = inbox.smtp_use_ssl or False
 
-    smtp: smtplib.SMTP
-    if use_ssl:
-        smtp = smtplib.SMTP_SSL(host, port, timeout=30)
-    else:
-        smtp = smtplib.SMTP(host, port, timeout=30)
-        smtp.ehlo()
-        smtp.starttls()
-        smtp.ehlo()
+    # Verified TLS (implicit, or a required STARTTLS) before any credentials are sent
+    smtp = open_smtp(host, port, use_ssl=use_ssl, timeout=30)
 
     try:
         from app.services.ms365_oauth import smtp_login

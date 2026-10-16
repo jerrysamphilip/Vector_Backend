@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 
 from app.core.observability import record_imap_sync
+from app.core.tls import open_imap
 
 from app.models.sending_inbox import SendingInbox
 from app.models.email_message import EmailMessage, EmailEvent
@@ -112,8 +113,7 @@ class IMAPSyncService:
             # Connect to IMAP: password, or XOAUTH2 for Microsoft 365 (BR-DF-05).
             # A socket timeout so a stalled server fails this inbox, not the loop.
             from app.services.ms365_oauth import imap_login, imap_secret
-            mail = imaplib.IMAP4_SSL(inbox.imap_host, inbox.imap_port or 993,
-                                     timeout=self.IMAP_TIMEOUT_SECONDS)
+            mail = open_imap(inbox.imap_host, inbox.imap_port, timeout=self.IMAP_TIMEOUT_SECONDS)
             imap_login(mail, inbox.imap_username or inbox.email_address, imap_secret(self.db, inbox))
 
             # 1. Sync INBOX (Received emails)

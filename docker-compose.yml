@@ -20,6 +20,9 @@ x-api-env: &api-env
   APP_PROFILE: local
   ENVIRONMENT: development
   DEBUG: ${DEBUG:-false}
+  # Mailbox SMTP/IMAP certificates are verified. Set MAIL_TLS_VERIFY=false in .env only to run the
+  # system tests' self-signed fake IMAP server (system_tests/outreach); refused in production.
+  MAIL_TLS_VERIFY: ${MAIL_TLS_VERIFY:-true}
   MYSQL_HOST: mysql
   MYSQL_PORT: "3306"
   MYSQL_USER: ${LOCAL_MYSQL_USER:-vector}

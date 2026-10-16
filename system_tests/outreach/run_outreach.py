@@ -14,6 +14,8 @@ Notes
   accept) or pulled due with SQL inside our own tenant, to drive webhooks / the scheduler.
 - There are no SES credentials, so nothing is delivered; scheduler tests assert state
   transitions and decisions, not delivery.
+- The fake IMAP server (helpers.FakeImap) uses a self-signed certificate, which the app rejects
+  by default: start the stack with MAIL_TLS_VERIFY=false (e.g. in .env) for this suite.
 """
 import base64
 import hashlib

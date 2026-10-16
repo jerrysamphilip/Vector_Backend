@@ -125,6 +125,17 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Session limits (ADR 0007, app/services/session_limits.py), enforced when the refresh token is
+    # exchanged, so they take effect within one access-token lifetime (ACCESS_TOKEN_EXPIRE_MINUTES).
+    # SESSION_ABSOLUTE_HOURS: a sign-in lasts at most this long, however active the user is.
+    # SESSION_IDLE_MINUTES: refresh is refused when the user has not interacted for this long
+    #   (activity is reported by the SPA in the X-User-Activity header; background polling is not activity).
+    # REFRESH_REUSE_GRACE_SECONDS: a token rotated this recently may be presented again without being
+    #   treated as theft (two tabs refreshing at once); later reuse revokes the whole session.
+    SESSION_ABSOLUTE_HOURS: int = 12
+    SESSION_IDLE_MINUTES: int = 30
+    REFRESH_REUSE_GRACE_SECONDS: int = 30
+
     # Encrypts mailbox (SMTP/IMAP) passwords at rest. Required when deployed; keep it stable.
     CREDENTIALS_ENCRYPTION_KEY: str = ""
 
@@ -178,6 +189,10 @@ class Settings(BaseSettings):
     ATTACHMENTS_DIR: str = str(_BASE_DIR / "uploads" / "attachments")
     MAX_ATTACHMENT_SIZE_MB: int = 10
     MAX_ATTACHMENTS_PER_TEMPLATE: int = 10
+
+    # Mailbox SMTP/IMAP TLS (app/core/tls.py). Certificates and host names are always verified;
+    # false is a local dev/test escape hatch for self-signed fake servers and is refused in production.
+    MAIL_TLS_VERIFY: bool = True
 
     # Warmup engine
     WARMUP_INTERVAL_SECONDS: int = 900
@@ -362,3 +377,7 @@ settings = get_settings()
 # Refuse the public default JWT secret when deployed (BR-DF-09)
 from app.core.secrets_guard import resolve_jwt_secret  # noqa: E402
 settings.JWT_SECRET_KEY = resolve_jwt_secret(settings.JWT_SECRET_KEY)
+
+# Mailbox passwords must never cross an unverified TLS connection in production
+if not settings.MAIL_TLS_VERIFY and settings.is_production:
+    raise RuntimeError("MAIL_TLS_VERIFY=false is for local development only and is refused in production.")

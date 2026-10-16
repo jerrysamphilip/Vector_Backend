@@ -16,6 +16,8 @@ import imaplib
 import logging
 from typing import Any, Dict, Optional
 
+from app.core.tls import open_imap
+
 logger = logging.getLogger(__name__)
 
 # Ordered list of spam folder names to probe (most common first).
@@ -31,12 +33,8 @@ _SPAM_FOLDERS = [
 
 
 def _connect(host: str, port: int, username: str, password: str) -> imaplib.IMAP4:
-    """Blocking IMAP connect + login. Port 993 → SSL; anything else → plain."""
-    imap: imaplib.IMAP4
-    if not port or port == 993:
-        imap = imaplib.IMAP4_SSL(host, port or 993)
-    else:
-        imap = imaplib.IMAP4(host, port)
+    """Blocking IMAP connect + login. Port 993 → SSL; anything else → STARTTLS (required, never plain)."""
+    imap = open_imap(host, port, timeout=30, starttls=bool(port) and port != 993)
     # password may be an OAuthToken for Microsoft 365 mailboxes (XOAUTH2, BR-DF-05)
     from app.services.ms365_oauth import imap_login
     imap_login(imap, username, password)
