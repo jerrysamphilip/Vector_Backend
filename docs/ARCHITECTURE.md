@@ -123,7 +123,7 @@ All OpenAI calls go through the client wrapper in `app/services/sender_identity.
 ## 7. Cross-cutting
 
 - **Rate limiting**: `app/core/rate_limit.py`, an in-process sliding window (per IP, per e-mail for
-  sign-in/reset/MFA). Correct for one API replica; see [ADR 0002](adr/0002-single-process-api-in-memory-rate-limiter.md).
+  reset/MFA; wrong passwords lock the (e-mail, IP) pair after 10, with a 50-per-e-mail backstop across IPs). Correct for one API replica; see [ADR 0002](adr/0002-single-process-api-in-memory-rate-limiter.md).
 - **Observability**: `app/core/observability.py` adds `X-Request-ID` to every request and log line,
   Prometheus metrics at `/metrics` (API) and on the worker, and optional Sentry (`SENTRY_DSN`) with
   request bodies and secrets scrubbed.
@@ -134,6 +134,17 @@ All OpenAI calls go through the client wrapper in `app/services/sender_identity.
 - **Secrets**: `app/core/secrets_guard.py` refuses to start a deployed environment without
   `JWT_SECRET_KEY` and `CREDENTIALS_ENCRYPTION_KEY`; mailbox passwords and OAuth tokens are encrypted
   at rest (`app/core/encrypted_type.py`).
+- **Security: version exposure (I-17)**: in production `GET /health` and `GET /` omit the release
+  version, `/` lists `/docs` only when the docs are served (`ENABLE_DOCS`), and `/metrics` needs
+  `METRICS_TOKEN`. Outside production the version is shown for test runners. The release is still
+  visible in `/openapi.json` when docs are enabled, so the ingress should expose only `/api/*` and
+  `/health` and drop the rest, e.g. nginx `location ~ ^/(docs|redoc|openapi\.json|metrics)$ { return 404; }`.
+- **Security: sign-up and SSO (I-12)**: self sign-up (`ALLOW_SELF_SIGNUP`) is off unless set to true
+  in every environment. Google sign-in links itself to an existing account with the same verified email
+  only for domains in `SSO_LINK_ALLOWED_DOMAINS` (default none: 409, sign in with the password); each
+  link is audit-logged as `LINK_GOOGLE_SSO`.
+- **Search input**: user-typed LIKE terms go through `app/utils/sql_like.py`, so `%`, `_` and `\` match
+  literally.
 - **Logging**: module loggers (`logging.getLogger(__name__)`), never `print()`. CLI scripts under
   `app/db/` configure logging in their `__main__` block.
 - **Contact search**: see [ADR 0003](adr/0003-contact-search-strategy.md).

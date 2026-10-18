@@ -26,6 +26,7 @@ from app.services.invitation_email import build_magic_login_link
 from app.services.invitation_service import show_once_link
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.utils.sql_like import ilike
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +195,7 @@ def list_tenants(
     )
 
     if search:
-        query = query.filter(Tenant.tenant_name.ilike(f"%{search}%"))
+        query = query.filter(ilike(Tenant.tenant_name, search))
     if status_filter:
         query = query.filter(Tenant.status == status_filter.upper())
     query = query.filter((User.user_id.is_(None)) | (User.role != "PLATFORM_ADMIN"))
@@ -294,11 +295,10 @@ def list_all_users(
     )
 
     if search:
-        search_term = f"%{search}%"
         query = query.filter(
-            (User.email.ilike(search_term))
-            | (User.first_name.ilike(search_term))
-            | (User.last_name.ilike(search_term))
+            ilike(User.email, search)
+            | ilike(User.first_name, search)
+            | ilike(User.last_name, search)
         )
     if role:
         query = query.filter(User.role == role.upper())

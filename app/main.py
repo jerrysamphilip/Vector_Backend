@@ -196,12 +196,13 @@ install_observability(app)
  
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Liveness check: the process is up and serving requests (no dependencies checked)."""
-    return {
-        "status": "healthy",
-        "app": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-    }
+    """Liveness check: the process is up and serving requests (no dependencies checked).
+    The release version is shown outside production only (I-17: no fingerprinting of production)."""
+    return {"status": "healthy", "app": settings.APP_NAME, **_version_info()}
+
+
+def _version_info() -> dict:
+    return {} if settings.is_production else {"version": settings.APP_VERSION}
 
 
 @app.get("/health/ready", tags=["Health"])
@@ -295,11 +296,11 @@ app.include_router(webhooks_router)
  
 @app.get("/", tags=["Root"])
 async def root():
-    """API root - returns available endpoints."""
+    """API root - returns available endpoints (version outside production only; /docs only when served)."""
     return {
         "message": f"Welcome to {settings.APP_NAME} API",
-        "version": settings.APP_VERSION,
-        "docs": "/docs",
+        **_version_info(),
+        **({"docs": app.docs_url} if app.docs_url else {}),
         "endpoints": {
             "campaigns": "/campaigns",
             "sequences": "/campaigns/{id}/sequences",

@@ -3,8 +3,9 @@
 In-memory rate limiting (BR-DF-09). slowapi isn't available on every package index this
 project builds from, so this is a small sliding-window limiter with no dependencies.
 
-- Sign-in: failed passwords are counted per email (brute force on one account) and all
-  attempts per client IP; password-reset and register requests are limited the same way.
+- Sign-in: failed passwords are counted per (email, client IP) pair, which locks only that pair,
+  plus a higher per-email backstop across all IPs; all attempts are also counted per client IP.
+  Password-reset and register requests are limited per IP / per email.
 - Everything else: a generous per-client-IP ceiling (RateLimitMiddleware).
 
 Counters live in the API process, which is enough for the single-replica deployment. With
@@ -59,7 +60,8 @@ class SlidingWindowLimiter:
 
 limiter = SlidingWindowLimiter()
 
-LOGIN_FAILURES_PER_EMAIL = (10, 15 * 60)   # 10 wrong passwords per 15 min
+LOGIN_FAILURES_PER_EMAIL_IP = (10, 15 * 60)   # 10 wrong passwords per 15 min for one email from one IP
+LOGIN_FAILURES_PER_EMAIL = (50, 15 * 60)      # backstop: 50 per 15 min for one email across all IPs
 LOGIN_ATTEMPTS_PER_IP = (60, 5 * 60)
 EMAIL_REQUESTS_PER_EMAIL = (5, 15 * 60)    # reset links / magic links
 EMAIL_REQUESTS_PER_IP = (30, 15 * 60)
@@ -99,19 +101,31 @@ def check(request: Request, scope: str, ip_limit: tuple, email: str | None = Non
             _too_many(wait, "Too many requests for this email. Please wait a few minutes and try again.")
 
 
+def _login_fail_keys(request: Request, email: str) -> tuple[str, str]:
+    norm = email.strip().lower()
+    return f"login-fail:{norm}:ip:{client_ip(request)}", f"login-fail:{norm}"
+
+
 def check_login_allowed(request: Request, email: str) -> None:
+    """429 when this client IP is over its attempt limit, this (email, IP) pair has had too many wrong
+    passwords, or the email has had very many from all IPs together (backstop against distributed guessing).
+    Keying the lock on the pair means a stranger cannot lock a user out from another network."""
     check(request, "login", LOGIN_ATTEMPTS_PER_IP)
-    wait = limiter.blocked(f"login-fail:{email.strip().lower()}", *LOGIN_FAILURES_PER_EMAIL)
+    pair_key, email_key = _login_fail_keys(request, email)
+    wait = max(limiter.blocked(pair_key, *LOGIN_FAILURES_PER_EMAIL_IP), limiter.blocked(email_key, *LOGIN_FAILURES_PER_EMAIL))
     if wait:
         _too_many(wait, "Too many failed sign-in attempts. Please wait 15 minutes or reset your password.")
 
 
-def record_login_failure(email: str) -> None:
-    limiter.hit(f"login-fail:{email.strip().lower()}", *LOGIN_FAILURES_PER_EMAIL)
+def record_login_failure(request: Request, email: str) -> None:
+    pair_key, email_key = _login_fail_keys(request, email)
+    limiter.hit(pair_key, *LOGIN_FAILURES_PER_EMAIL_IP)
+    limiter.hit(email_key, *LOGIN_FAILURES_PER_EMAIL)
 
 
-def record_login_success(email: str) -> None:
-    limiter.reset(f"login-fail:{email.strip().lower()}")
+def record_login_success(request: Request, email: str) -> None:
+    """Clears this (email, IP) pair; the cross-IP backstop counter keeps running out its window."""
+    limiter.reset(_login_fail_keys(request, email)[0])
 
 
 def check_mfa_allowed(user_id: str, mfa_jti: str | None = None) -> None:

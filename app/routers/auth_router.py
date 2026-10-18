@@ -16,7 +16,6 @@ import secrets
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus, urlencode, urlparse
 
-import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -55,6 +54,8 @@ from app.models.refresh_token import RefreshToken
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.services import session_limits, token_revocation
+from app.services.audit_service import AuditService
+from app.services.ses_client import get_ses_client
 
 logger = logging.getLogger(__name__)
 
@@ -248,11 +249,8 @@ def _complete_sign_in(user: User, db: Session, request: Request, response: Respo
 
 
 def _get_ses_client():
-    client_kwargs = {"region_name": settings.AWS_REGION}
-    if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
-        client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
-        client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
-    return boto3.client("ses", **client_kwargs)
+    """The shared SES client (one per region/credentials, not one per reset email, T-5)."""
+    return get_ses_client()
 
 
 def _build_reset_link(token: str) -> str:
@@ -408,9 +406,9 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
     user = db.query(User).filter(User.email == body.email).first()
 
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
-        rate_limit.record_login_failure(body.email)
+        rate_limit.record_login_failure(request, body.email)
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    rate_limit.record_login_success(body.email)
+    rate_limit.record_login_success(request, body.email)
 
     if user.status not in ("ACTIVE", "INVITED"):
         raise HTTPException(status_code=403, detail="Account is suspended or inactive")
@@ -647,6 +645,27 @@ def google_auth_url():
     )
     return {"auth_url": f"https://accounts.google.com/o/oauth2/v2/auth?{params}", "state": state}
 
+GOOGLE_LINK_REFUSED = ("An account with this email already exists. Sign in with your email and password; "
+                       "signing in with Google is not linked to existing accounts automatically.")
+
+
+def _link_google_account(db: Session, user: User, google_id: str, email: str) -> None:
+    """Attach a Google identity to an existing account found by its (Google-verified) email.
+
+    Only for email domains listed in SSO_LINK_ALLOWED_DOMAINS (default: none), otherwise 409: whoever controls
+    a Google account for the address must not silently take over a password account (I-12). An account
+    already linked to a different Google identity is never re-linked. Every link is audit-logged."""
+    domain = email.rsplit("@", 1)[-1].strip().lower()
+    if user.google_id or domain not in settings.sso_link_allowed_domains:
+        logger.warning("Google sign-in refused for existing account %s (auto-link not allowed for %s)", user.user_id, domain)
+        raise HTTPException(status_code=409, detail=GOOGLE_LINK_REFUSED)
+    user.google_id = google_id
+    user.auth_provider = "google"
+    logger.info("Google identity linked to existing account %s (domain %s)", user.user_id, domain)
+    if user.tenant_id:
+        AuditService(db).log_action(user.tenant_id, user.user_id, "LINK", "google_sso", user.user_id)
+
+
 @router.post("/google/callback", response_model=TokenResponse, response_model_exclude_none=True)
 def google_callback(body: GoogleCallbackRequest, request: Request, response: Response,
                     db: Session = Depends(get_db)):
@@ -688,10 +707,8 @@ def google_callback(body: GoogleCallbackRequest, request: Request, response: Res
         if user.status not in ("ACTIVE", "INVITED"):
             raise HTTPException(status_code=403, detail="Account is suspended or inactive")
         ensure_tenant_active(db, user)
-        # Existing user — link Google if not already
-        if not user.google_id:
-            user.google_id = google_id
-            user.auth_provider = "google"
+        if user.google_id != google_id:
+            _link_google_account(db, user, google_id, email)
         if avatar and not user.avatar_url:
             user.avatar_url = avatar
         user.email_verified = True

@@ -170,8 +170,12 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     # /docs, /redoc and /openapi.json are disabled in production unless this is true
     ENABLE_DOCS: bool = False
-    # Public self-registration (creates a tenant + SUPER_ADMIN). Unset = off in production, on elsewhere.
+    # Public self-registration (creates a tenant + SUPER_ADMIN) and new-tenant Google sign-up. Off unless
+    # explicitly true, in every environment (I-12); the local compose stack and the test runners set it.
     ALLOW_SELF_SIGNUP: Optional[bool] = None
+    # Google sign-in may link itself to an EXISTING password account with the same verified email only
+    # for these email domains (comma-separated, e.g. "example.com,example.org"). Empty = never auto-link.
+    SSO_LINK_ALLOWED_DOMAINS: str = ""
     # Number of reverse proxies in front of the API that append to X-Forwarded-For (rate limiting)
     TRUSTED_PROXY_HOPS: int = 1
     BASE_URL: str = "https://outreach360.neutrinoaistudio.com"
@@ -245,9 +249,11 @@ class Settings(BaseSettings):
 
     @property
     def self_signup_enabled(self) -> bool:
-        if self.ALLOW_SELF_SIGNUP is not None:
-            return self.ALLOW_SELF_SIGNUP
-        return not self.is_production
+        return bool(self.ALLOW_SELF_SIGNUP)
+
+    @property
+    def sso_link_allowed_domains(self) -> frozenset:
+        return frozenset(d.strip().lower().lstrip("@") for d in (self.SSO_LINK_ALLOWED_DOMAINS or "").split(",") if d.strip())
 
     @property
     def DATABASE_URL(self) -> str:

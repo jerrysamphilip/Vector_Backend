@@ -15,7 +15,7 @@ from typing import Annotated, Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_permission, require_role
@@ -32,6 +32,7 @@ from app.services import sales as svc
 from app.services.contact_service import (SALES_LEVELS, can_access_contact, clean_str, sees_everything,
                                           team_user_ids, visible_user_ids)
 from app.services.notifications import notify
+from app.utils.sql_like import ilike
 from app.services.sales_settings import can_see_amounts, get_settings, masked_for
 
 router = APIRouter(tags=["Sales"])
@@ -198,10 +199,10 @@ def _lead_query(db, user, stage=None, owner=None, q=None, source=None, open_only
     if source:
         query = query.filter(Lead.source == source)
     if q and q.strip():
-        term = f"%{q.strip()}%"
+        term = q.strip()
         query = query.join(Prospect, Prospect.prospect_id == Lead.prospect_id).filter(or_(
-            Prospect.first_name.ilike(term), Prospect.last_name.ilike(term), Prospect.email.ilike(term),
-            Prospect.company_name.ilike(term)))
+            ilike(Prospect.first_name, term), ilike(Prospect.last_name, term), ilike(Prospect.email, term),
+            ilike(Prospect.company_name, term)))
     return query
 
 
@@ -551,9 +552,9 @@ def _opp_query(db, user, owner=None, status=None, stage_id=None, client_type=Non
     if account_id:
         query = query.filter(Opportunity.account_id == account_id)
     if q and q.strip():
-        term = f"%{q.strip()}%"
+        term = q.strip()
         query = query.outerjoin(Account, Account.account_id == Opportunity.account_id) \
-            .filter(or_(Opportunity.name.ilike(term), Account.name.ilike(term)))
+            .filter(or_(ilike(Opportunity.name, term), ilike(Account.name, term)))
     return query
 
 
@@ -604,16 +605,45 @@ def list_opps(owner: Optional[str] = None, status: Optional[str] = None, stage_i
 @router.get("/opportunities/board")
 def opp_board(owner: Optional[str] = None, client_type: Optional[str] = None, q: Optional[str] = None,
               include_closed: bool = False, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+    shown = [s for s in svc.stages(db, current_user.tenant_id)
+             if include_closed or svc.stage_status(s) == "OPEN"]
+    query = _opp_query(db, current_user, owner, None, None, client_type, q=q) \
+        .filter(Opportunity.stage_id.in_([s.stage_id for s in shown]))
+    totals, items = _board_totals(query), _board_items(db, query)
     columns = []
-    for stage in svc.stages(db, current_user.tenant_id):
-        if not include_closed and svc.stage_status(stage) != "OPEN":
-            continue
-        query = _opp_query(db, current_user, owner, None, stage.stage_id, client_type, q=q)
-        rows = query.order_by(Opportunity.close_date.is_(None), Opportunity.close_date).limit(100).all()
-        total = svc.as_float(query.with_entities(func.coalesce(func.sum(Opportunity.amount), 0)).scalar())
-        columns.append({**svc.stage_dict(stage), "count": query.count(), "amount": total,
-                        "weighted": round(total * stage.probability / 100, 2), "items": svc.opp_dicts(db, rows)})
+    for stage in shown:
+        count, total = totals.get(stage.stage_id, (0, 0.0))
+        columns.append({**svc.stage_dict(stage), "count": count, "amount": total,
+                        "weighted": round(total * stage.probability / 100, 2),
+                        "items": items.get(stage.stage_id, [])})
     return masked_for(db, current_user, {"columns": columns})
+
+
+BOARD_COLUMN_LIMIT = 100  # cards loaded per stage column
+
+
+def _board_totals(query) -> Dict[str, tuple]:
+    """(count, amount) per stage in one grouped query, whatever the number of stages (T-5)."""
+    grouped = query.with_entities(Opportunity.stage_id, func.count(Opportunity.opportunity_id),
+                                  func.coalesce(func.sum(Opportunity.amount), 0)) \
+        .group_by(Opportunity.stage_id).all()
+    return {stage_id: (count, svc.as_float(amount)) for stage_id, count, amount in grouped}
+
+
+def _board_items(db: Session, query) -> Dict[str, List[dict]]:
+    """The first BOARD_COLUMN_LIMIT deals of every stage (soonest close first) in one window query,
+    plus one batched opp_dicts for all of them."""
+    order = (Opportunity.close_date.is_(None), Opportunity.close_date, Opportunity.opportunity_id)
+    ranked = query.with_entities(
+        Opportunity.opportunity_id.label("oid"),
+        func.row_number().over(partition_by=Opportunity.stage_id, order_by=order).label("rn"),
+    ).subquery()
+    rows = db.query(Opportunity).filter(Opportunity.opportunity_id.in_(
+        select(ranked.c.oid).where(ranked.c.rn <= BOARD_COLUMN_LIMIT))).order_by(*order).all()
+    by_stage: Dict[str, List[dict]] = {}
+    for item in svc.opp_dicts(db, rows):
+        by_stage.setdefault(item["stage_id"], []).append(item)
+    return by_stage
 
 
 @router.post("/opportunities", status_code=201)

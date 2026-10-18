@@ -26,6 +26,7 @@ from app.services import workflow
 from app.services.contact_service import can_access_contact, clean_str, sees_everything, team_user_ids, visible_user_ids
 from app.services.notifications import as_dict as notification_dict
 from app.services.sales_settings import DEFAULTS, can_see_amounts, get_settings, save_settings
+from app.utils.sql_like import ilike
 
 router = APIRouter(tags=["Sales settings"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -304,8 +305,8 @@ def list_templates(q: Optional[str] = None, category: Optional[str] = None,
     if category:
         query = query.filter(MessageTemplate.category == category)
     if q and q.strip():
-        term = f"%{q.strip()}%"
-        query = query.filter(or_(MessageTemplate.name.ilike(term), MessageTemplate.subject.ilike(term)))
+        term = q.strip()
+        query = query.filter(or_(ilike(MessageTemplate.name, term), ilike(MessageTemplate.subject, term)))
     rows = query.order_by(MessageTemplate.usage_count.desc(), MessageTemplate.name).limit(500).all()
     names = svc.user_names(db, [t.owner_id for t in rows])
     # Categories of the templates this user can see only (not of other users' private templates)

@@ -20,6 +20,8 @@ x-api-env: &api-env
   APP_PROFILE: local
   ENVIRONMENT: development
   DEBUG: ${DEBUG:-false}
+  # Self sign-up (POST /api/auth/register) is off unless set; the local stack and the system tests use it.
+  ALLOW_SELF_SIGNUP: ${ALLOW_SELF_SIGNUP:-true}
   # Mailbox SMTP/IMAP certificates are verified. Set MAIL_TLS_VERIFY=false in .env only to run the
   # system tests' self-signed fake IMAP server (system_tests/outreach); refused in production.
   MAIL_TLS_VERIFY: ${MAIL_TLS_VERIFY:-true}

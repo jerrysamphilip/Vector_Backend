@@ -30,7 +30,8 @@ def clock(monkeypatch):
 def test_documented_limits():
     assert rl.LOGIN_ATTEMPTS_PER_IP == (60, 300)
     assert rl.REGISTER_PER_IP == (10, 3600)
-    assert rl.LOGIN_FAILURES_PER_EMAIL == (10, 900)
+    assert rl.LOGIN_FAILURES_PER_EMAIL_IP == (10, 900)
+    assert rl.LOGIN_FAILURES_PER_EMAIL == (50, 900)
     assert rl.EMAIL_REQUESTS_PER_EMAIL == (5, 900)
 
 
@@ -103,3 +104,40 @@ def test_check_limits_per_email_case_insensitively(monkeypatch, clock):
     rl.check(_request(host="1.0.0.1"), "unit", (100, 60), "Pat@X.example", (1, 60))
     with pytest.raises(HTTPException):
         rl.check(_request(host="1.0.0.2"), "unit", (100, 60), " pat@x.example ", (1, 60))
+
+
+# ── Sign-in lockout keyed on (email, IP) with a per-email backstop ──
+
+def _fail(n, host, email="victim@x.example"):
+    for _ in range(n):
+        rl.check_login_allowed(_request(host=host), email)
+        rl.record_login_failure(_request(host=host), email)
+
+
+def test_wrong_passwords_lock_only_that_email_ip_pair(monkeypatch, clock):
+    monkeypatch.setattr(rl, "limiter", rl.SlidingWindowLimiter())
+    _fail(10, "6.6.6.6")
+    with pytest.raises(HTTPException) as exc:
+        rl.check_login_allowed(_request(host="6.6.6.6"), "Victim@X.example")
+    assert exc.value.status_code == 429
+    rl.check_login_allowed(_request(host="1.2.3.4"), "victim@x.example")   # the real user elsewhere is not locked
+    rl.check_login_allowed(_request(host="6.6.6.6"), "other@x.example")    # nor another email from that IP
+
+
+def test_per_email_backstop_across_ips(monkeypatch, clock):
+    monkeypatch.setattr(rl, "limiter", rl.SlidingWindowLimiter())
+    for i in range(5):
+        _fail(10, f"10.0.0.{i}")
+    with pytest.raises(HTTPException):
+        rl.check_login_allowed(_request(host="10.9.9.9"), "victim@x.example")
+    clock.now += 901
+    rl.check_login_allowed(_request(host="10.9.9.9"), "victim@x.example")
+
+
+def test_success_clears_the_pair_only(monkeypatch, clock):
+    monkeypatch.setattr(rl, "limiter", rl.SlidingWindowLimiter())
+    _fail(9, "6.6.6.6")
+    rl.record_login_success(_request(host="6.6.6.6"), "victim@x.example")
+    _fail(9, "6.6.6.6")                                                     # pair counter started again
+    rl.check_login_allowed(_request(host="6.6.6.6"), "victim@x.example")
+    assert rl.limiter.blocked("login-fail:victim@x.example", 18, 900) > 0   # backstop kept all 18

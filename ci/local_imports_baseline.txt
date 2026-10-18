@@ -133,7 +133,6 @@ app/services/ai_email_service.py:generate_email_for_prospect:app.services.sender
 app/services/ai_email_service.py:generate_email_hybrid:app.services.sender_identity
 app/services/ai_email_service.py:generate_email_with_llm:app.prompts.email_examples
 app/services/ai_email_service.py:generate_email_with_llm:re
-app/services/batch_processor_service.py:generate_template_for_persona:app.services.sender_identity
 app/services/batch_processor_service.py:generate_templates_per_persona:app.models.email_attachment
 app/services/batch_processor_service.py:generate_templates_per_persona:app.models.email_template
 app/services/campaign_crud_service.py:CampaignCRUDService._record_state_change:app.services
@@ -158,7 +157,6 @@ app/services/campaign_email_service.py:CampaignEmailService.remove_prospect:app.
 app/services/campaign_email_service.py:CampaignEmailService.substitute_placeholders:app.services.sender_identity
 app/services/campaign_template_service.py:CampaignTemplateService.regenerate:app.services.sender_identity
 app/services/campaign_wizard_service.py:activate_campaign_for_tenant:app.services.sender_identity
-app/services/campaign_wizard_service.py:generate_persona_template:app.services.batch_processor_service
 app/services/campaign_wizard_service.py:step_2_get_prospects_from_list:app.models.prospect_list
 app/services/campaign_wizard_service.py:step_2_get_prospects_from_list:app.services.enrollment_rules
 app/services/campaign_wizard_service.py:step_3_apply_segmentation:app.services.enrollment_rules

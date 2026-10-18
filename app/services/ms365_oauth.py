@@ -26,8 +26,10 @@ from urllib.parse import urlencode
 import httpx
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.config import settings
+from app.core.database import SessionLocal
 from app.models.sending_inbox import SendingInbox
 
 logger = logging.getLogger(__name__)
@@ -96,12 +98,19 @@ def _token_request(data: dict) -> dict:
     return body
 
 
-def _store(inbox: SendingInbox, tokens: dict) -> None:
-    inbox.oauth_access_token = tokens["access_token"]
+def _token_fields(tokens: dict) -> dict:
+    """The inbox columns a token response sets (the refresh token only when a new one came back)."""
+    fields = {"oauth_access_token": tokens["access_token"],
+              "oauth_expires_at": datetime.utcnow() + timedelta(seconds=int(tokens.get("expires_in", 3600))),
+              "oauth_error": None}
     if tokens.get("refresh_token"):
-        inbox.oauth_refresh_token = tokens["refresh_token"]
-    inbox.oauth_expires_at = datetime.utcnow() + timedelta(seconds=int(tokens.get("expires_in", 3600)))
-    inbox.oauth_error = None
+        fields["oauth_refresh_token"] = tokens["refresh_token"]
+    return fields
+
+
+def _store(inbox: SendingInbox, tokens: dict) -> None:
+    for name, value in _token_fields(tokens).items():
+        setattr(inbox, name, value)
 
 
 def complete_connection(db: Session, inbox: SendingInbox, code: str) -> None:
@@ -119,21 +128,53 @@ def complete_connection(db: Session, inbox: SendingInbox, code: str) -> None:
 
 
 def access_token(db: Session, inbox: SendingInbox) -> OAuthToken:
-    """A valid access token, refreshed if it expires within 5 minutes. Commits on refresh."""
+    """A valid access token, refreshed if it expires within 5 minutes.
+
+    No transaction is held during the token HTTP call and the caller's work is never committed
+    here (T-1): a caller session with only reads has its read transaction ended (its loaded
+    objects stay loaded), and the new token is written in a separate short-lived session. A
+    caller with staged writes keeps its transaction (they are the caller's to commit), so callers
+    should ask for the token before staging writes, as IMAP sync and the inbox tests do.
+    """
     if inbox.oauth_access_token and inbox.oauth_expires_at and \
             inbox.oauth_expires_at > datetime.utcnow() + timedelta(minutes=5):
         return OAuthToken(inbox.oauth_access_token)
     if not inbox.oauth_refresh_token:
         raise OAuthError("Microsoft 365 is not connected for this mailbox. Reconnect it.")
+    inbox_id, refresh_token = inbox.inbox_id, inbox.oauth_refresh_token
+    _end_read_transaction(db)
     try:
-        tokens = _token_request({"grant_type": "refresh_token", "refresh_token": inbox.oauth_refresh_token})
+        tokens = _token_request({"grant_type": "refresh_token", "refresh_token": refresh_token})
     except OAuthError as exc:
-        inbox.oauth_error = f"Microsoft 365 sign-in expired: {exc}. Reconnect the mailbox."[:2000]
-        db.commit()
+        error = f"Microsoft 365 sign-in expired: {exc}. Reconnect the mailbox."[:2000]
+        _save_token_fields(inbox_id, {"oauth_error": error})
+        set_committed_value(inbox, "oauth_error", error)
         raise
-    _store(inbox, tokens)
-    db.commit()
-    return OAuthToken(inbox.oauth_access_token)
+    fields = _token_fields(tokens)
+    _save_token_fields(inbox_id, fields)
+    for name, value in fields.items():  # mirror onto the caller's object without dirtying it
+        set_committed_value(inbox, name, value)
+    return OAuthToken(fields["oauth_access_token"])
+
+
+def _end_read_transaction(db: Optional[Session]) -> None:
+    """Ends the caller's transaction when it holds only reads, keeping its objects loaded."""
+    if db is None or not db.in_transaction() or db.new or db.dirty or db.deleted:
+        return
+    keep = db.expire_on_commit
+    db.expire_on_commit = False
+    try:
+        db.commit()  # nothing pending: this only releases the snapshot / connection
+    finally:
+        db.expire_on_commit = keep
+
+
+def _save_token_fields(inbox_id: str, fields: dict) -> None:
+    """Writes the token columns in their own short transaction, apart from the caller's session."""
+    with SessionLocal() as token_db:
+        token_db.query(SendingInbox).filter(SendingInbox.inbox_id == inbox_id).update(
+            fields, synchronize_session=False)
+        token_db.commit()
 
 
 def xoauth2(username: str, token: str) -> str:

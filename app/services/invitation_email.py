@@ -10,10 +10,10 @@ import re
 from typing import Any, Dict
 from urllib.parse import quote_plus, urlparse
 
-import boto3
 from fastapi import Request
 
 from app.core.config import settings
+from app.services.ses_client import get_ses_client
 
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0"})
 # Front-end origins a sign-in link may point back to (taken from the inviting request)
@@ -29,12 +29,8 @@ _PROFILE_BASES = {
 
 
 def _get_ses_client() -> Any:
-    """Build SES client using configured region/credentials."""
-    client_kwargs = {"region_name": settings.AWS_REGION}
-    if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
-        client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
-        client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
-    return boto3.client("ses", **client_kwargs)
+    """The shared SES client (one per region/credentials, not one per invitation)."""
+    return get_ses_client()
 
 
 def normalized_origin(raw_url: str | None) -> str:

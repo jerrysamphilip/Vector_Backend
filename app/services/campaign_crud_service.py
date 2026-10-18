@@ -38,6 +38,7 @@ from app.services.audit_service import AuditService
 from app.services.metrics_service import MetricsService
 from app.services.campaign_analytics_service import CampaignAnalyticsService
 from app.utils.email_utils import normalize_cta_link
+from app.utils.sql_like import ilike
 
 
 class CampaignCRUDService:
@@ -463,7 +464,7 @@ class CampaignCRUDService:
         
         if filters.campaign_name:
             query = query.filter(
-                Campaign.campaign_name.ilike(f"%{filters.campaign_name}%")
+                ilike(Campaign.campaign_name, filters.campaign_name)
             )
         
         # Get total count

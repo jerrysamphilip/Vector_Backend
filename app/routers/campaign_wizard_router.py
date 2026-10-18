@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
+from app.core.concurrency import if_match_version, resolve_expected
 from app.core.database import get_db
 from app.models.user import User
 from app.services import campaign_wizard_service as wizard
@@ -92,6 +93,7 @@ class EnrollRequest(BaseModel):
 
 class ActivateRequest(BaseModel):
     campaign_id: str
+    expected_version: Optional[int] = Field(None, ge=1)  # the campaign's row_version the wizard loaded (T-3)
 
 
 class WizardRequest(BaseModel):
@@ -316,15 +318,18 @@ def activate_campaign(
     request: ActivateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*MANAGER_ROLES)),
+    if_match: Optional[int] = Depends(if_match_version),
 ) -> Dict[str, Any]:
-    """Step 6: Activate the campaign."""
+    """Step 6: Activate the campaign. Send its row_version as expected_version or If-Match (T-3)."""
     _require_matching_campaign_id(campaign_id, request.campaign_id)
-    campaign = wizard.activate_campaign_for_tenant(db, current_user.tenant_id, campaign_id, current_user.user_id)
+    campaign = wizard.activate_campaign_for_tenant(db, current_user.tenant_id, campaign_id, current_user.user_id,
+                                                   resolve_expected(request.expected_version, if_match))
     return {
         "campaign_id": campaign.campaign_id,
         "campaign_name": campaign.campaign_name,
         "status": campaign.status,
         "launched_at": campaign.launched_at,
+        "row_version": campaign.row_version,
     }
 
 

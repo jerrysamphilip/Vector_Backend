@@ -200,6 +200,19 @@ def preview(file: UploadFile = File(...), db: Session = Depends(get_db), current
     }
 
 
+def _add_list_members(db: Session, list_id: str, prospect_ids: List[str]) -> None:
+    """Adds one chunk's contacts to the import's static list, in that chunk's transaction, so a
+    later failure keeps the list consistent with the contacts already committed."""
+    ids = list(dict.fromkeys(prospect_ids))
+    if not ids:
+        return
+    existing = {r[0] for r in db.query(ProspectListMember.prospect_id).filter(
+        ProspectListMember.list_id == list_id, ProspectListMember.prospect_id.in_(ids))}
+    for pid in ids:
+        if pid not in existing:
+            db.add(ProspectListMember(list_id=list_id, prospect_id=pid, is_new_prospect=True))
+
+
 @router.post("", status_code=201)
 def run_import(
     file: UploadFile = File(...),
@@ -528,6 +541,8 @@ def run_import(
                 saved = (dict(stats), len(errors), set(companies_touched), len(list_members), dict(seen_emails))
                 try:
                     process_chunk(chunk)
+                    if target_list:  # list membership commits with its chunk, not at the very end
+                        _add_list_members(db, target_list.list_id, list_members[saved[3]:])
                     db.commit()
                     break
                 except OperationalError as exc:
@@ -548,12 +563,6 @@ def run_import(
                     seen_emails.update(saved[4])
                     time.sleep(random.uniform(0.1, 0.5) * (attempt + 1))
 
-        if target_list and list_members:
-            existing_members = {r[0] for r in db.query(ProspectListMember.prospect_id).filter(
-                ProspectListMember.list_id == target_list.list_id)}
-            for pid in dict.fromkeys(list_members):
-                if pid not in existing_members:
-                    db.add(ProspectListMember(list_id=target_list.list_id, prospect_id=pid, is_new_prospect=True))
         job.status = "COMPLETED"
     except Exception as exc:  # keep the history row truthful
         db.rollback()

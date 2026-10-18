@@ -123,3 +123,22 @@ def test_metrics_endpoint_requires_the_token_in_production():
     proc = _run(code, GOOD_PROD)
     assert proc.returncode == 0, proc.stderr[-3000:]
     assert proc.stdout.strip().endswith("401 200")
+
+
+def test_self_signup_defaults_off_outside_production_too():
+    env = {**GOOD_PROD, "ENVIRONMENT": "development"}
+    proc = _run("from app.core.config import settings; print('signup', settings.self_signup_enabled)", env)
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    assert "signup False" in proc.stdout
+    proc = _run("from app.core.config import settings; print('signup', settings.self_signup_enabled)",
+                {**env, "ALLOW_SELF_SIGNUP": "true"})
+    assert "signup True" in proc.stdout
+
+
+def test_health_and_root_do_not_expose_version_or_docs_in_production():
+    code = ("from fastapi.testclient import TestClient; import app.main as m; c = TestClient(m.app);"
+            "h = c.get('/health').json(); r = c.get('/').json();"
+            "print('version' in h, 'version' in r, 'docs' in r, h['status'])")
+    proc = _run(code, GOOD_PROD)
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    assert proc.stdout.strip().endswith("False False False healthy")

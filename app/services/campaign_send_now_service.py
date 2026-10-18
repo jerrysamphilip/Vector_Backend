@@ -230,7 +230,8 @@ class CampaignSendNowService:
         rows_updated = db.query(EmailMessage).filter(
             EmailMessage.message_id == email_msg.message_id,
             EmailMessage.status.in_(PENDING_STATUSES)
-        ).update({"status": "SENDING"}, synchronize_session=False)
+        # claimed_at dates the claim, so the stuck-SENDING sweep only reaps it once it is stale
+        ).update({"status": "SENDING", "claimed_at": datetime.utcnow()}, synchronize_session=False)
         db.commit()  # commit the lock acquisition immediately
         if rows_updated == 0:
             logger.info(f"[SendNow] Skipping email {email_msg.message_id}, not in QUEUED state "

@@ -488,9 +488,9 @@ def chk_signup():
                      "cannot read the API container settings; assuming self sign-up is allowed", FIX_STACK)
     envname = (vals.get("ENVIRONMENT") or "").lower()
     allow = (vals.get("ALLOW_SELF_SIGNUP") or "").lower()
-    if allow == "false" or (envname in ("production", "prod") and allow != "true"):
+    if allow != "true":  # off unless explicitly enabled (I-12)
         return Check("signup", "missing", f"self sign-up is off (ENVIRONMENT={envname or '-'}, ALLOW_SELF_SIGNUP={allow or '-'})",
-                     "run the stack with ENVIRONMENT=development or ALLOW_SELF_SIGNUP=true")
+                     "run the stack with ALLOW_SELF_SIGNUP=true")
     return Check("signup", "ok", f"self sign-up allowed (ENVIRONMENT={envname or 'default'})")
 
 

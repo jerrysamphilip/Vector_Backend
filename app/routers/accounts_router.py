@@ -30,6 +30,7 @@ from app.services.contact_query_service import user_name as _user_name
 from app.services import contact_companies, crm
 from app.services.contact_service import can_manage_contacts, can_see_owner, clean_str, scope, sees_everything, visible_user_ids
 from app.services.sales_settings import can_see_amounts, masked_for
+from app.utils.sql_like import ilike
 
 router = APIRouter(prefix="/accounts", tags=["Companies"])
 
@@ -186,8 +187,8 @@ def list_accounts(
     if industry:
         query = query.filter(Account.industry == industry)
     if q and q.strip():
-        term = f"%{q.strip()}%"
-        query = query.filter(or_(Account.name.ilike(term), Account.domain.ilike(term), Account.industry.ilike(term)))
+        term = q.strip()
+        query = query.filter(or_(ilike(Account.name, term), ilike(Account.domain, term), ilike(Account.industry, term)))
 
     total = query.count()
     column = {"name": Account.name, "contacts": func.coalesce(counts.c.n, 0), "annual_revenue": Account.annual_revenue,
