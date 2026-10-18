@@ -40,6 +40,7 @@ from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.user import User
 from app.services import crm
 from app.services.contact_service import can_access_contact, can_manage_contacts, can_see_owner, normalize_tags
+from app.utils.http_files import content_disposition
 
 router = APIRouter(prefix="/imports", tags=["Imports"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -613,4 +614,4 @@ def import_errors(import_id: str, db: Session = Depends(get_db), current_user: U
         writer.writerow(crm.csv_safe_row([e["row"], e["reason"]] + [(e.get("values") or {}).get(c) for c in columns]))
     name = re.sub(r"[^\w.-]+", "_", job.file_name.rsplit(".", 1)[0])
     return StreamingResponse(iter([out.getvalue().encode("utf-8-sig")]), media_type="text/csv",
-                             headers={"Content-Disposition": f'attachment; filename="{name}-errors.csv"'})
+                             headers={"Content-Disposition": content_disposition(f"{name}-errors.csv")})

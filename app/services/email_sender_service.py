@@ -462,10 +462,9 @@ class EmailSenderService:
                 part = MIMEBase(maintype or "application", subtype or "octet-stream")
                 part.set_payload(att["data"])
                 encoders.encode_base64(part)
-                part.add_header(
-                    "Content-Disposition",
-                    f'attachment; filename="{att["filename"]}"',
-                )
+                # filename as a parameter: the email package quotes it and encodes a
+                # non-ASCII name per RFC 2231 instead of emitting a raw, broken header (W-12)
+                part.add_header("Content-Disposition", "attachment", filename=att["filename"])
                 msg.attach(part)
         else:
             msg = alt

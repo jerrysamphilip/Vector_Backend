@@ -14,6 +14,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.campaign import Campaign
 from app.services.reports_service import ReportsService
+from app.utils.http_files import content_disposition
 from app.schemas.reports_schema import (
     GlobalAnalyticsResponse,
     CampaignComparisonResponse,
@@ -202,7 +203,7 @@ async def export_global_analytics_csv(
     return StreamingResponse(
         buf,
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": content_disposition(filename)},
     )
 
 
@@ -226,7 +227,7 @@ async def export_global_analytics_docx(
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": content_disposition(filename)},
     )
 
 
@@ -244,7 +245,7 @@ async def export_campaign_comparison_csv(
     return StreamingResponse(
         buf,
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": content_disposition(filename)},
     )
 
 
@@ -265,7 +266,7 @@ async def export_prospects_csv(
     return StreamingResponse(
         buf,
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=prospects_{campaign_id[:8]}.csv"},
+        headers={"Content-Disposition": content_disposition(f"prospects_{campaign_id[:8]}.csv")},
     )
 
 
@@ -279,5 +280,5 @@ async def export_deliverability_csv(
     return StreamingResponse(
         buf,
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=mailbox_health_report.csv"},
+        headers={"Content-Disposition": content_disposition("mailbox_health_report.csv")},
     )

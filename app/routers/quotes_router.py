@@ -29,6 +29,7 @@ from app.services import quote_approval as qa
 from app.services import sales as svc
 from app.services.contact_service import clean_str, team_user_ids
 from app.services.sales_settings import can_see_amounts, masked_for, save_settings
+from app.utils.http_files import content_disposition
 
 router = APIRouter(tags=["Quotes"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -380,4 +381,4 @@ def proposal_pdf(proposal_id: str, db: Session = Depends(get_db), current_user: 
 
     filename = "".join(c if c.isalnum() or c in " -_" else "_" for c in p.title)[:80].strip() or "proposal"
     return Response(content=doc.render(), media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{filename}.pdf"'})
+                    headers={"Content-Disposition": content_disposition(f"{filename}.pdf")})

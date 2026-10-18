@@ -43,6 +43,7 @@ from app.services import contact_field_service as fields
 from app.services import contact_query_service as contacts
 from app.services import contact_write_service as writes
 from app.services.crm import RESTORE_WINDOW_DAYS
+from app.utils.http_files import content_disposition
 
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
 
@@ -162,7 +163,7 @@ def export_contacts(
                                 lead_status=lead_status, tag=tag, filters=filters)
     export = contacts.export_contacts(db, current_user, format, columns, f)
     return StreamingResponse(iter([export.content]), media_type=export.media_type,
-                             headers={"Content-Disposition": f'attachment; filename="{export.filename}"'})
+                             headers={"Content-Disposition": content_disposition(export.filename)})
 
 
 @router.post("/bulk", response_model=None)
