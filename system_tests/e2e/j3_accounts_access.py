@@ -77,11 +77,16 @@ def run(R):
     body = (c.text if c else "") or ""
     link = re.search(r"https?://\S+token=\S+", body)
     plain = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body))
-    temp = re.search(r"Password\s+(\S+)", plain)
-    R.check("E2E-J3-06", "Invite creates an INVITED user and sends a real email (captured in SES) with a magic link + temporary password; "
-            "the API response does not leak either",
-            s == 201 and c and link and temp and "token=" not in str(inv) and (temp.group(1) not in str(inv)),
-            f"{s} captured={bool(c)} link={bool(link)} temp={bool(temp)} resp={str(inv)[:200]}")
+    temp = re.search(r"Password:?\s+(\S+)", plain)
+    no_hash = scalar(f"SELECT password_hash IS NULL FROM users WHERE LOWER(email)={q(inv_addr)}") in (1, "1", True)
+    s_pw, _ = login_xff(inv_addr, "Any-password-123!")
+    R.check("E2E-J3-06", "Invite (I-13) creates an INVITED user with no password and sends a real email (captured in SES) "
+            "with a set-password link only (no password); the API response leaks neither link nor password; "
+            "password sign-in for the invited account is refused",
+            s == 201 and c and link and not temp and "token=" not in str(inv) and "password" not in str(inv).lower()
+            and no_hash and s_pw in (401, 403),
+            f"{s} captured={bool(c)} link={bool(link)} pw_in_mail={bool(temp)} no_hash={no_hash} pwlogin={s_pw} "
+            f"resp={str(inv)[:200]}")
     st = scalar(f"SELECT status FROM users WHERE LOWER(email)={q(inv_addr)}")
     tok = _token_in(link.group(0) if link else "")
     s, mg = req("POST", "/api/auth/magic-login", {"token": tok}) if tok else (0, {})
@@ -91,12 +96,12 @@ def run(R):
             st == "INVITED" and s == 200 and mg.get("access_token") and st2 == "ACTIVE" and s_again == 401,
             f"before={st} after={st2} use={s} reuse={s_again}")
     inv_tok = mg.get("access_token")
-    tpw = temp.group(1) if temp else ""
-    s, ch = req("PUT", "/api/auth/me/password", {"current_password": tpw, "new_password": f"Invitee-{rid}-new!"}, inv_tok)
+    s, ch = req("POST", "/api/auth/me/set-password", {"new_password": f"Invitee-{rid}-new!"}, inv_tok)
     s2, lg = login_xff(inv_addr, f"Invitee-{rid}-new!")
-    s3, lg_old = login_xff(inv_addr, tpw)
-    R.check("E2E-J3-08", "Invitee sets their own password using the emailed temporary one; new password logs in, temporary no longer does",
-            s == 200 and s2 == 200 and lg.get("access_token") and s3 == 401, f"{s} {s2} {s3} {str(ch)[:100]}")
+    s3, _ = req("POST", "/api/auth/me/set-password", {"new_password": f"Hijack-{rid}-pw!"}, inv_tok)
+    R.check("E2E-J3-08", "Invitee chooses their first password after the link (no current password asked); it logs in; "
+            "set-password is refused once a password exists",
+            s == 200 and s2 == 200 and lg.get("access_token") and s3 == 409, f"{s} {s2} {s3} {str(ch)[:100]}")
     inv_tok = lg.get("access_token")
     s, me_i = req("GET", "/api/auth/me", token=inv_tok)
     R.check("E2E-J3-09", "Invitee lands in the inviter's tenant with the invited role", me_i.get("role") == "AGENT"

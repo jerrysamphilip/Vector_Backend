@@ -1,9 +1,16 @@
 # CI lint gate (.github/workflows/ci.yml): only rules that catch real bugs, not style.
 #   E9   syntax / IO errors          F63  invalid comparisons (is "literal", ...)
 #   F7   misplaced statements        F82  undefined names (F821 undefined, F822/F823)
+#   S101 assert in application code (C-3, docs/CI_GATES.md): `python -O` strips asserts, so a
+#        guard written as an assert silently disappears. Enforced for app/ only; test code
+#        (tests/, system_tests/, scripts/) asserts on purpose. CI also runs bandit B101 on app/.
 # F811 (redefinition) is left out for now: the 4 current hits are harmless shadowed imports.
 target-version = "py312"
 extend-exclude = ["alembic/versions_legacy", "venv", "venv_prod"]
 
 [lint]
-select = ["E9", "F63", "F7", "F82"]
+select = ["E9", "F63", "F7", "F82", "S101"]
+
+[lint.per-file-ignores]
+# S101 applies to the application package only
+"!app/**" = ["S101"]

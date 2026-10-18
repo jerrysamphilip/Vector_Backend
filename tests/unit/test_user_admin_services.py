@@ -1,6 +1,5 @@
 """Unit tests (no database) for the pure rules extracted from the user router into
 app/services/user_admin_service.py, invitation_service.py and invitation_email.py."""
-import string
 from types import SimpleNamespace
 
 import pytest
@@ -36,14 +35,10 @@ def test_inv_u01_names_from_email():
     assert invitation_email.recipient_name_from_email("@acme.com") == "there"
 
 
-def test_inv_u02_temporary_password_shape():
-    for _ in range(20):
-        pw = invitation_service.generate_temporary_password()
-        assert len(pw) == 12
-        assert any(c in string.ascii_uppercase for c in pw)
-        assert any(c in string.ascii_lowercase for c in pw)
-        assert any(c in string.digits for c in pw)
-        assert any(c in "!@#$%&*" for c in pw)
+def test_inv_u02_no_temporary_password_generator():
+    # I-13: invitations never generate a password
+    assert not hasattr(invitation_service, "generate_temporary_password")
+    assert not hasattr(invitation_service, "may_expose_credentials")
 
 
 @pytest.mark.parametrize("sent,env,deployed,expected", [
@@ -54,8 +49,24 @@ def test_inv_u02_temporary_password_shape():
     (False, "dev", True, False),
     (False, None, False, False),
 ])
-def test_inv_u03_credentials_only_for_local_dev_without_email(sent, env, deployed, expected):
-    assert invitation_service.may_expose_credentials(sent, env, deployed) is expected
+def test_inv_u03_link_shown_once_only_for_local_dev_without_email(sent, env, deployed, expected):
+    assert invitation_service.may_show_link_once(sent, env, deployed) is expected
+
+
+def test_inv_u03b_show_once_refused_in_production(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    assert invitation_service.show_once_link("a@x.com", "https://l", email_sent=False) == {
+        "email": "a@x.com", "magic_login_link": "https://l"}
+    assert invitation_service.show_once_link("a@x.com", "https://l", email_sent=True) is None
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    assert invitation_service.show_once_link("a@x.com", "https://l", email_sent=False) is None
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+    assert invitation_service.show_once_link("a@x.com", "https://l", email_sent=False) is None
 
 
 def test_inv_u04_origins():
@@ -80,11 +91,15 @@ def test_inv_u05_resolve_base_url():
     assert resolve("http://localhost:8000", "http://localhost:5173", "") == "http://localhost:5173"
 
 
-def test_inv_u06_text_body_has_credentials():
-    body = invitation_email.build_invite_text(recipient_name="Jane", to_email="j@x.com", temporary_password="P@ss1",
-                                              magic_login_link="https://l", tenant_name="Acme",
-                                              support_email="help@x.com")
-    assert "Hi Jane," in body and "Password: P@ss1" in body and "https://l" in body and "help@x.com" in body
+def test_inv_u06_bodies_have_link_and_no_password():
+    content = dict(recipient_name="Jane", to_email="j@x.com", magic_login_link="https://l/magic-login?token=t",
+                   tenant_name="Acme", support_email="help@x.com")
+    text_body = invitation_email.build_invite_text(**content)
+    html_body = invitation_email.build_invite_html(**content)
+    assert "Hi Jane," in text_body and "https://l/magic-login?token=t" in text_body and "help@x.com" in text_body
+    assert "https://l/magic-login?token=t" in html_body
+    for body in (text_body, html_body):
+        assert "Password:" not in body and "temporary" not in body.lower() and "credentials" not in body.lower()
 
 
 def test_role_defaults_have_one_source_and_agent_manages_campaigns():

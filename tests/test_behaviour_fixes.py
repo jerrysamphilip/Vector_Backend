@@ -337,9 +337,12 @@ def test_bf_f07_reinvite_after_revoke_or_deactivation(client, tenant_bf):
     joined = f"joined2.{RUN}@bf{RUN}.example.com"
     r = client.post("/api/users/invite", headers=h, json={"email": joined, "role": "AGENT"})
     uid2 = r.json()["user_id"]
-    from app.core.security import hash_password
-    sql("UPDATE users SET password_hash = :p WHERE user_id = :u", p=hash_password("Joined-pass-123"), u=uid2)
-    assert client.post("/api/auth/login", json={"email": joined, "password": "Joined-pass-123"}).status_code == 200
+    # I-13: the invitee joins with the emailed sign-in link (they have no password)
+    from app.core.security import hash_token
+    raw = f"join-{RUN}-{uid2}"
+    sql("INSERT INTO magic_login_tokens (token_id, user_id, token_hash, expires_at) "
+        "VALUES (UUID(), :u, :t, NOW() + INTERVAL 1 HOUR)", u=uid2, t=hash_token(raw))
+    assert client.post("/api/auth/magic-login", json={"token": raw}).status_code == 200
     assert client.delete(f"/api/users/{uid2}", headers=h).status_code == 200
     assert client.post("/api/users/invite", headers=h, json={"email": joined}).status_code == 409
 

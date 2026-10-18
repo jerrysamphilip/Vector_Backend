@@ -118,7 +118,8 @@ class OperationFailed(DomainError):
 
 async def domain_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """FastAPI exception handler: DomainError -> {"detail": ...} with the class's status code."""
-    assert isinstance(exc, DomainError)
+    if not isinstance(exc, DomainError):  # registered for DomainError only; never strip this under -O
+        raise TypeError(f"domain_error_handler received {type(exc).__name__}, expected a DomainError")
     level = logging.WARNING if exc.status_code >= 500 else logging.INFO
     logger.log(level, "%d %s on %s %s: %s", exc.status_code, exc.code, request.method, request.url.path, exc.message)
     retry_after = getattr(exc, "retry_after", None)

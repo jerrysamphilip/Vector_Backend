@@ -1,0 +1,7 @@
+# Accepted pip-audit findings (gate: scripts/ci/run_pip_audit.py; policy: docs/CI_GATES.md).
+# Format, one per line:  <vuln id> | <package> | <added YYYY-MM-DD> | <review by YYYY-MM-DD> | <reason>
+# The audit fails on any finding not listed here, and on any entry whose review date has passed
+# (re-assess, then extend the date with a new reason or fix the dependency). Remove an entry as soon as a
+# fixed version is installed: unused entries fail the gate too.
+PYSEC-2026-4298 | python-jose | 2026-10-18 | 2026-12-31 | No fixed release. Every jwt.decode in app/ pins algorithms=[settings.JWT_ALGORITHM] (HS256) and keys are a shared secret, never a public key, so the key-confusion forgery does not apply. TODO: migrate to PyJWT.
+PYSEC-2026-1325 | ecdsa | 2026-10-18 | 2026-12-31 | Pulled in by python-jose; the app never signs with ecdsa (jose uses the cryptography backend, HS256 only). Minerva timing needs ECDSA signing. Goes away with the PyJWT migration.

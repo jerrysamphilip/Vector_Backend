@@ -15,6 +15,7 @@ from typing import Any, Callable, Collection, Dict, List, Optional, Sequence, Tu
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.concurrency import claim_version, resolve_expected
 from app.core.errors import BadRequestError, ConflictError, DomainError, NotFoundError, PermissionDenied
 from app.models.account import Account
 from app.models.campaign import Campaign
@@ -264,10 +265,13 @@ def create_contact(db: Session, user: User, payload: ContactCreate) -> Prospect:
     return prospect
 
 
-def update_contact(db: Session, user: User, prospect_id: str, payload: ContactUpdate) -> Prospect:
+def update_contact(db: Session, user: User, prospect_id: str, payload: ContactUpdate,
+                   if_match: Optional[int] = None) -> Prospect:
     prospect = get_contact(db, user, prospect_id)
-    before = crm.snapshot(prospect, TRACKED_FIELDS)
     data = payload.model_dump(exclude_unset=True)
+    # T-3: the version the client saw, before anything changes (409 STALE_VERSION when stale)
+    claim_version(db, prospect, resolve_expected(data.pop("expected_version", None), if_match), record="contact")
+    before = crm.snapshot(prospect, TRACKED_FIELDS)
 
     new_email = data.pop("email", None)
     if new_email and new_email.strip().lower() != (prospect.email or "").lower():
@@ -329,10 +333,14 @@ class _Bulk:
         self.result: Dict[str, Any] = {"status": "ok", "action": payload.action, "updated": len(prospects)}
 
     def tracked(self, fn: Callable[[Prospect], None], fields: Sequence[str]) -> None:
-        """Apply fn to each contact, recording property history with source BULK."""
+        """Apply fn to each contact, recording property history with source BULK.
+
+        Bulk edits are set-based, so they take no expected version (T-3), but they bump each
+        contact's row_version: a form opened before the bulk edit gets 409 instead of undoing it."""
         for p in self.prospects:
             before = crm.snapshot(p, fields)
             fn(p)
+            p.row_version = Prospect.row_version + 1
             crm.record_changes(self.db, self.user.tenant_id, "CONTACT", p.prospect_id, before,
                                crm.snapshot(p, fields), self.user.user_id, "BULK")
 

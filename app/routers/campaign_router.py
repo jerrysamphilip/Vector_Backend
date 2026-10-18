@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_permission, require_role
+from app.core.concurrency import claim_version, if_match_version, resolve_expected
 from app.core.database import get_db
 from app.core.errors import BadRequestError
 from app.models.campaign import Campaign
@@ -31,6 +32,7 @@ from app.schemas.campaign_schema import (
     CampaignStateChange,
     CampaignStatus,
     CampaignUpdate,
+    CampaignVersionedAction,
 )
 from app.schemas.sequence_schema import (
     SequenceResponse,
@@ -101,7 +103,12 @@ def _state_change(campaign_id: str, old_status: str, campaign: Campaign,
         new_status=CampaignStatus(campaign.status),
         reason=reason,
         changed_at=datetime.utcnow(),
+        row_version=campaign.row_version,
     )
+
+
+def _action_version(payload: Optional[CampaignVersionedAction], if_match: Optional[int]) -> Optional[int]:
+    return resolve_expected(payload.expected_version if payload else None, if_match)
 
 
 # =============================
@@ -188,14 +195,17 @@ async def update_campaign(
     queries: CampaignQueryService = Depends(get_query_service),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*ANY_ROLE)),
+    if_match: Optional[int] = Depends(if_match_version),
 ) -> Optional[CampaignResponse]:
     """
     Update campaign settings.
 
     Only updates provided fields. Cannot change status directly - use pause/resume/launch.
+    Send the row_version you loaded as expected_version or If-Match (T-3); stale -> 409.
     """
     try:
-        _get_campaign_for_user(queries, campaign_id, current_user)
+        campaign = _get_campaign_for_user(queries, campaign_id, current_user)
+        claim_version(db, campaign, resolve_expected(data.expected_version, if_match), record="campaign")
         campaign = service.update(campaign_id, current_user.user_id, data)
         if not campaign:
             raise HTTPException(status_code=404, detail="Campaign not found")
@@ -263,14 +273,17 @@ async def update_sequence_step(
     queries: CampaignQueryService = Depends(get_query_service),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*ANY_ROLE)),
+    if_match: Optional[int] = Depends(if_match_version),
 ) -> SequenceStepResponse:
     """
     Update a sequence step.
 
     Cannot change step_number. To reorder, delete and recreate.
+    Send the step's row_version as expected_version or If-Match (T-3); stale -> 409.
     """
     try:
-        queries.require_sequence_step_for_tenant(sequence_id, current_user.tenant_id)
+        step_row = queries.require_sequence_step_for_tenant(sequence_id, current_user.tenant_id)
+        claim_version(db, step_row, resolve_expected(data.expected_version, if_match), record="sequence step")
         step = seq_service.update_step(sequence_id, data)
         if not step:
             raise HTTPException(status_code=404, detail="Sequence step not found")
@@ -463,10 +476,12 @@ async def delete_campaign(
 @router.post("/{campaign_id}/launch", response_model=CampaignStateChange, dependencies=MANAGE_CAMPAIGNS)
 async def launch_campaign(
     campaign_id: str,
+    payload: Optional[CampaignVersionedAction] = None,
     service: CampaignService = Depends(get_campaign_service),
     queries: CampaignQueryService = Depends(get_query_service),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*MANAGER_ROLES)),
+    if_match: Optional[int] = Depends(if_match_version),
 ) -> CampaignStateChange:
     """
     Launch a draft campaign.
@@ -474,7 +489,9 @@ async def launch_campaign(
     Changes status from DRAFT to ACTIVE and starts the email sending process.
     """
     try:
-        old_status = _get_campaign_for_user(queries, campaign_id, current_user).status
+        current = _get_campaign_for_user(queries, campaign_id, current_user)
+        old_status = current.status
+        claim_version(db, current, _action_version(payload, if_match), record="campaign")
         campaign = service.launch(campaign_id, current_user.user_id)
         db.commit()
         return _state_change(campaign_id, old_status, campaign)
@@ -487,10 +504,12 @@ async def launch_campaign(
 async def pause_campaign(
     campaign_id: str,
     reason: Optional[str] = Query(None, description="Reason for pausing"),
+    payload: Optional[CampaignVersionedAction] = None,
     service: CampaignService = Depends(get_campaign_service),
     queries: CampaignQueryService = Depends(get_query_service),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*MANAGER_ROLES)),
+    if_match: Optional[int] = Depends(if_match_version),
 ) -> CampaignStateChange:
     """
     Pause an active campaign.
@@ -498,7 +517,9 @@ async def pause_campaign(
     Stops sending emails until resumed. Currently queued emails are not affected.
     """
     try:
-        old_status = _get_campaign_for_user(queries, campaign_id, current_user).status
+        current = _get_campaign_for_user(queries, campaign_id, current_user)
+        old_status = current.status
+        claim_version(db, current, _action_version(payload, if_match), record="campaign")
         campaign = service.pause(campaign_id, current_user.user_id, reason)
         db.commit()
         return _state_change(campaign_id, old_status, campaign, reason=reason)
@@ -510,10 +531,12 @@ async def pause_campaign(
 @router.post("/{campaign_id}/resume", response_model=CampaignStateChange, dependencies=MANAGE_CAMPAIGNS)
 async def resume_campaign(
     campaign_id: str,
+    payload: Optional[CampaignVersionedAction] = None,
     service: CampaignService = Depends(get_campaign_service),
     queries: CampaignQueryService = Depends(get_query_service),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*MANAGER_ROLES)),
+    if_match: Optional[int] = Depends(if_match_version),
 ) -> CampaignStateChange:
     """
     Resume a paused campaign.
@@ -521,7 +544,9 @@ async def resume_campaign(
     Continues sending emails from where it was paused.
     """
     try:
-        old_status = _get_campaign_for_user(queries, campaign_id, current_user).status
+        current = _get_campaign_for_user(queries, campaign_id, current_user)
+        old_status = current.status
+        claim_version(db, current, _action_version(payload, if_match), record="campaign")
         campaign = service.resume(campaign_id, current_user.user_id)
         db.commit()
         return _state_change(campaign_id, old_status, campaign)

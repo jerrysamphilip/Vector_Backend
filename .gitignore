@@ -7,6 +7,9 @@ __pycache__/
 # local helper scripts stay untracked, except the test runner
 scripts/*
 !scripts/test.py
+# CI gate scripts (docs/CI_GATES.md)
+!scripts/ci/
+!scripts/pin_images.py
 # C extensions
 *.so
 .dockerignore
@@ -122,6 +125,9 @@ docs/*
 !docs/TRACEABILITY.md
 !docs/ARCHITECTURE.md
 !docs/adr/
+!docs/REQUIREMENTS.md
+!docs/CI_GATES.md
+!docs/RELEASE.md
 # Stray local artefacts (never commit; may contain logs/credentials)
 kill_locks.py
 =*

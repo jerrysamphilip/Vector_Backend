@@ -4,7 +4,7 @@ Prospect and Global Unsubscribe models.
 GDPR compliant with consent tracking and anonymization support.
 """
 
-from sqlalchemy import Column, String, Boolean, SmallInteger, TIMESTAMP, ForeignKey, JSON, UniqueConstraint, Index, Computed
+from sqlalchemy import Column, String, Boolean, Integer, SmallInteger, TIMESTAMP, ForeignKey, JSON, UniqueConstraint, Index, Computed
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -96,6 +96,8 @@ class Prospect(Base):
 
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    # Optimistic concurrency (T-3, app/core/concurrency.py): bumped by every user edit
+    row_version = Column(Integer, nullable=False, default=1, server_default="1")
 
     # Relationships
     tenant = relationship("Tenant", back_populates="prospects")

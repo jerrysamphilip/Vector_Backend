@@ -4,7 +4,7 @@ Account (company) records. Contacts link to an account instead of only
 carrying company_name as free text.
 """
 
-from sqlalchemy import Column, String, Text, TIMESTAMP, ForeignKey, UniqueConstraint, Numeric
+from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, UniqueConstraint, Numeric
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -41,6 +41,7 @@ class Account(Base):
 
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
 
     owner = relationship("User", foreign_keys=[owner_id])
     contacts = relationship("Prospect", back_populates="account", lazy="dynamic")

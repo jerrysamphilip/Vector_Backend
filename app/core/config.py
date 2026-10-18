@@ -18,12 +18,20 @@ logger = logging.getLogger(__name__)
 _BASE_DIR = Path(__file__).resolve().parents[2]
 
 
+def _release_version() -> str:
+    """Release identity: the VERSION file at the repository root (CI checks it matches CHANGELOG.md)."""
+    try:
+        return (_BASE_DIR / "VERSION").read_text(encoding="utf-8").strip() or "0.0.0+unknown"
+    except OSError:
+        return "0.0.0+unknown"
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
     # App Settings
     APP_NAME: str = "Outreach AI"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = _release_version()
     DEBUG: bool = False
     
     # MySQL Database Settings
@@ -374,6 +382,16 @@ def get_settings() -> Settings:
 
 settings = get_settings()
 
+# I-11 fail closed: a deployed process (Kubernetes, see secrets_guard.is_deployed) must say which
+# environment it is. Without it the code default ("development") would quietly switch off every
+# production-only safeguard (docs off, self sign-up off, Secure cookies, TLS verification guard, ...).
+if os.getenv("KUBERNETES_SERVICE_HOST") and (
+        "ENVIRONMENT" not in settings.model_fields_set or not (settings.ENVIRONMENT or "").strip()):
+    raise RuntimeError(
+        "ENVIRONMENT is not set in a deployed (Kubernetes) context. Set ENVIRONMENT explicitly "
+        "(production, staging, ...) in the deployment secret; it no longer defaults to development there."
+    )
+
 # Refuse the public default JWT secret when deployed (BR-DF-09)
 from app.core.secrets_guard import resolve_jwt_secret  # noqa: E402
 settings.JWT_SECRET_KEY = resolve_jwt_secret(settings.JWT_SECRET_KEY)
@@ -381,3 +399,13 @@ settings.JWT_SECRET_KEY = resolve_jwt_secret(settings.JWT_SECRET_KEY)
 # Mailbox passwords must never cross an unverified TLS connection in production
 if not settings.MAIL_TLS_VERIFY and settings.is_production:
     raise RuntimeError("MAIL_TLS_VERIFY=false is for local development only and is refused in production.")
+
+# Credentialed CORS with a wildcard origin lets any site act as the signed-in user
+if settings.is_production and any(o.strip() == "*" or "*" in o
+                                  for o in (settings.FRONTEND_URL or "").split(",") if o.strip()):
+    raise RuntimeError("FRONTEND_URL contains a wildcard origin; list the exact frontend origin(s) in production.")
+
+# /metrics exposes tenant activity counters: production requires a scrape token (or METRICS_ENABLED=false)
+if settings.is_production and settings.METRICS_ENABLED and not (settings.METRICS_TOKEN or "").strip():
+    raise RuntimeError("METRICS_TOKEN is required in production while METRICS_ENABLED is true "
+                       "(set a long random value in the deployment secret, or METRICS_ENABLED=false).")

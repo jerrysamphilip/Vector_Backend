@@ -11,7 +11,7 @@ Outreach 360 test runner: one command per layer, results captured and compared b
     python3 scripts/test.py collect                   snapshot the suites' current results files (no tests run)
     python3 scripts/test.py env up|down|status [--e2e] [--build] [--execute]
     python3 scripts/test.py db create|drop|reset|status
-    python3 scripts/test.py trace [--brd FILE] [--out docs/TRACEABILITY.md] [--from-run DIR]
+    python3 scripts/test.py trace [--brd FILE] [--out docs/TRACEABILITY.md] [--from-run DIR] [--check]
 
 Layers: unit (pure logic) -> functional (TestClient + MySQL) -> system (live stack) -> e2e (worker + SES
 stand-in + fake IMAP) -> ui (Playwright). Suites come from tests/registry.json plus discovery of new
@@ -1653,10 +1653,36 @@ def code_section_refs(path):
     return pairs
 
 
+REQUIREMENTS_FILE = ROOT / "docs" / "REQUIREMENTS.md"
+IN_SCOPE_STATUSES = {"fixed", "decision", "change request"}   # "Out of release" needs no case
+
+
+def requirements_register(path):
+    """{rid: (title, status)} from the table of docs/REQUIREMENTS.md (columns ID | ... | Requirement | ... | Status)."""
+    out, header = {}, None
+    if not path or not Path(path).exists():
+        return out
+    for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.startswith("|"):
+            header = None
+            continue
+        cells = [x.strip() for x in line.strip().strip("|").split("|")]
+        if header is None:
+            header = [h.lower() for h in cells]
+            continue
+        if "status" in header and re.fullmatch(r"BR-[A-Z]{2,4}-\d{2,3}", cells[0]) and len(cells) == len(header):
+            title = cells[header.index("requirement")] if "requirement" in header else ""
+            out[cells[0]] = (title, cells[header.index("status")])
+    return out
+
+
 def brd_requirements(path):
     reqs = {}
     if not path or not Path(path).exists():
         return reqs
+    register = requirements_register(path)
+    if register:
+        return {rid: _md(title, 90) for rid, (title, _status) in register.items()}
     for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
         for m in re.finditer(r"\bBR-[A-Z]{2,4}-\d{2,3}\b", line):
             rid = m.group(0)
@@ -1688,11 +1714,35 @@ def current_case_statuses(reg, from_run):
     return out, (rel(run_dir) if data else None)
 
 
+def trace_check(path, req_cases):
+    """Traceability gate (CI): every in-scope requirement in the register has at least one test case."""
+    register = requirements_register(path)
+    if not register:
+        say(f"trace --check: no requirements register with a Status column at {path or REQUIREMENTS_FILE}")
+        return 2
+    bad_status = {r: s for r, (_t, s) in register.items() if s.lower() not in IN_SCOPE_STATUSES | {"out of release"}}
+    in_scope = [r for r, (_t, s) in register.items() if s.lower() in IN_SCOPE_STATUSES]
+    uncovered = [r for r in in_scope if not req_cases.get(r)]
+    unknown = sorted(r for r in req_cases if r.startswith("BR-") and r not in register)
+    for r, s in sorted(bad_status.items()):
+        say(f"UNKNOWN STATUS  {r}: {s!r} (use Fixed, Decision, Change request or Out of release)")
+    for r in uncovered:
+        say(f"NO CASE         {r} ({register[r][1]}): {register[r][0][:90]}")
+    for r in unknown:
+        say(f"NOT IN REGISTER {r}: referenced by {', '.join(req_cases[r][:5])} (add it to {rel(Path(path))})")
+    out_of_release = len(register) - len(in_scope) - len(bad_status)
+    say(f"traceability: {len(register)} requirements, {len(in_scope)} in scope, {out_of_release} out of release; "
+        f"{len(in_scope) - len(uncovered)} in scope with a case, {len(uncovered)} without, "
+        f"{len(unknown)} referenced but not registered")
+    return 1 if uncovered or bad_status or unknown else 0
+
+
 def cmd_trace(args):
     reg = load_registry()
     suites = {s["id"]: s for s in discover(reg)}
-    statuses, run_used = current_case_statuses(reg, args.from_run)
-    brd_path = args.brd or env("TEST_BRD_PATH") or (str(ROOT / "docs" / "BRD.md") if (ROOT / "docs" / "BRD.md").exists() else "")
+    # --check is static: case catalogues and suite scripts only, never run results
+    statuses, run_used = ({}, None) if args.check else current_case_statuses(reg, args.from_run)
+    brd_path = args.brd or env("TEST_BRD_PATH") or (str(REQUIREMENTS_FILE) if REQUIREMENTS_FILE.exists() else "")
     reqs = brd_requirements(brd_path)
     catalogues = {}
     for path in sorted(glob.glob(str(ROOT / "system_tests" / "*" / "TEST_CASES.md"))):
@@ -1730,6 +1780,8 @@ def cmd_trace(args):
                     code_refs.setdefault(cid, [])
                     if r not in code_refs[cid]:
                         code_refs[cid].append(r)
+    if args.check:
+        return trace_check(brd_path, req_cases)
 
     def st(cid):
         return all_status[cid][1]["status"] if cid in all_status else "no result"
@@ -1871,7 +1923,10 @@ def main(argv=None):
     p.set_defaults(fn=cmd_collect)
 
     p = sub.add_parser("trace", help="write docs/TRACEABILITY.md (BRD requirement -> case -> latest status)")
-    p.add_argument("--brd", help="BRD in markdown/text, to list requirements that have no case (or TEST_BRD_PATH)")
+    p.add_argument("--brd", help="requirement list (default docs/REQUIREMENTS.md; any BRD markdown/text also works; "
+                                 "or TEST_BRD_PATH)")
+    p.add_argument("--check", action="store_true",
+                   help="CI gate: fail when an in-scope requirement has no test case (static; writes nothing)")
     p.add_argument("--out", help="output file (default docs/TRACEABILITY.md)")
     p.add_argument("--from-run", help="run directory whose statuses overlay the suites' results files (default: latest)")
     p.set_defaults(fn=cmd_trace)

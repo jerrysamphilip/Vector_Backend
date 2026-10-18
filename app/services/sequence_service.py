@@ -155,6 +155,7 @@ class SequenceService:
             sequence_id=step.sequence_id,
             campaign_id=step.campaign_id,
             step_number=step.step_number,
+            row_version=step.row_version or 1,
             wait_days=step.wait_days,
             stop_on_reply=step.stop_on_reply,
             stop_on_bounce=step.stop_on_bounce,

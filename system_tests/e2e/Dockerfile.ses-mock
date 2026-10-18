@@ -1,5 +1,6 @@
 # SES stand-in: the app image + moto's server. Build (sandbox, see README.md):
 #   docker build -f Dockerfile.ses-mock --build-context certs=<dir containing ca.crt> -t vector-ses-mock .
+# pin:ignore test-only: vector-api is built locally from this repo's Dockerfile (pinned there)
 FROM vector-api:latest
 USER root
 COPY --from=certs ca.crt /ca.crt

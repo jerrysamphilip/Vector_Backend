@@ -271,7 +271,8 @@ const newToken = () => crypto.randomBytes(24).toString('base64url');
     sql(`INSERT INTO magic_login_tokens (token_id,user_id,token_hash,expires_at) VALUES (UUID(),${q(uid)},${q(sha256(raw))}, ${expired ? 'NOW() - INTERVAL 1 HOUR' : 'NOW() + INTERVAL 1 HOUR'})`);
     return raw;
   };
-  const inv = await mkUser('magic', { status: 'INVITED' });
+  // I-13: an invited account has no password; it joins with the emailed link and chooses one
+  const inv = await mkUser('magic', { status: 'INVITED', password_hash: null });
   const tok = mkMagic(inv.id);
   let page2, w2;
   {
@@ -292,18 +293,18 @@ const newToken = () => crypto.randomBytes(24).toString('base64url');
       if (sql(`SELECT used_at IS NOT NULL FROM magic_login_tokens WHERE token_hash=${q(sha256(tok))}`) !== '1') return 'token not consumed';
       const p = await clean(page2, w2); if (p) return p;
     }, page2);
-    await S.t(`${A}-54`, 'SetPassword validation (short, mismatch) and wrong temporary password error', async () => {
-      const cur = page2.getByPlaceholder('Enter the password from your invite email');
-      await cur.fill(ws.password);
+    await S.t(`${A}-54`, 'SetPassword validation (short, mismatch); no temporary/current password is asked', async () => {
+      if (await page2.getByPlaceholder('Enter the password from your invite email').count()) return 'asks for a temporary password';
+      if (await page2.getByText(/temporary password/i).count()) return 'mentions a temporary password';
+      if (await api('POST', '/api/auth/login', { headers: { 'X-Forwarded-For': ws.xff }, body: { email: inv.email, password: ws.password } })
+        .then(r => r.status === 200)) return 'invited account signed in with a password';
       await page2.getByPlaceholder('At least 8 characters').fill('short'); await page2.getByPlaceholder('Repeat new password').fill('short');
       await page2.locator('form button[type=submit]').click(); await waitText(page2, /at least 8 characters/);
       await page2.getByPlaceholder('At least 8 characters').fill('Brandnew-123'); await page2.getByPlaceholder('Repeat new password').fill('Brandnew-124');
       await page2.locator('form button[type=submit]').click(); await waitText(page2, /do not match/i);
-      await page2.getByPlaceholder('Repeat new password').fill('Brandnew-123'); await cur.fill('wrong-temp-pw');
-      await page2.locator('form button[type=submit]').click(); await waitText(page2, /incorrect|invalid|wrong|failed/i); w2.drain([/me\/password/]);
+      await page2.getByPlaceholder('Repeat new password').fill('Brandnew-123');
     }, page2);
     await S.t(`${A}-55`, 'SetPassword success: confirmation then Home; new password works', async () => {
-      await page2.getByPlaceholder('Enter the password from your invite email').fill(ws.password);
       await page2.locator('form button[type=submit]').click();
       await page2.waitForURL(/\/app\/dashboard/, { timeout: 8000 });
       const lr = await api('POST', '/api/auth/login', { headers: { 'X-Forwarded-For': ws.xff }, body: { email: inv.email, password: 'Brandnew-123' } });

@@ -19,6 +19,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_permission, require_role
+from app.core.concurrency import claim_version, if_match_version, resolve_expected
 from app.core.database import get_db
 from app.models.account import Account
 from app.models.crm import PropertyChange
@@ -141,6 +142,7 @@ class LeadUpdate(BaseModel):
     disqualified_reason: Optional[str] = None
     qualification: Optional[Dict[str, Any]] = None
     recycle_in_days: Optional[int] = None   # reopen a disqualified lead after this many days (BR-SF-02)
+    expected_version: Optional[int] = Field(None, ge=1)  # row_version the client loaded (T-3)
 
 
 class ConvertRequest(BaseModel):
@@ -373,9 +375,10 @@ def get_lead(lead_id: str, db: Session = Depends(get_db), current_user: User = D
 
 @router.patch("/leads/{lead_id}")
 def update_lead(lead_id: str, payload: LeadUpdate, db: Session = Depends(get_db),
-                current_user: User = Depends(tenant_user)):
+                current_user: User = Depends(tenant_user), if_match: Optional[int] = Depends(if_match_version)):
     lead = svc.get_lead(db, current_user, lead_id)
     data = payload.model_dump(exclude_unset=True)
+    claim_version(db, lead, resolve_expected(data.pop("expected_version", None), if_match), record="lead")  # T-3
     before = crm.snapshot(lead, svc.LEAD_FIELDS)
     if "owner_id" in data:
         if not data["owner_id"]:
@@ -523,6 +526,7 @@ class OppWrite(BaseModel):
     next_step: Optional[str] = None
     description: Optional[str] = None
     forecast_category: Optional[str] = None
+    expected_version: Optional[int] = Field(None, ge=1)  # updates only: row_version the client loaded (T-3)
 
 
 def _opp_query(db, user, owner=None, status=None, stage_id=None, client_type=None, close_from=None,
@@ -684,9 +688,12 @@ def _stage_history(opp: Opportunity, history: List[dict]) -> List[dict]:
 
 @router.patch("/opportunities/{opportunity_id}")
 def update_opp(opportunity_id: str, payload: OppWrite, db: Session = Depends(get_db),
-               current_user: User = Depends(tenant_user)):
+               current_user: User = Depends(tenant_user), if_match: Optional[int] = Depends(if_match_version)):
+    """Edit a deal, including board drag-and-drop stage moves (stage_id); send the row_version you
+    loaded as expected_version or If-Match (T-3)."""
     opp = svc.get_opp(db, current_user, opportunity_id)
     data = payload.model_dump(exclude_unset=True)
+    claim_version(db, opp, resolve_expected(data.pop("expected_version", None), if_match), record="opportunity")
     _check_opp_links(db, current_user, data)
     _check_amount_rights(db, current_user, data)
     before = crm.snapshot(opp, svc.OPP_FIELDS)
@@ -839,10 +846,11 @@ class ProposalWrite(BaseModel):
     status: Optional[str] = None
     valid_until: Optional[date] = None
     notes: Optional[str] = None
+    expected_version: Optional[int] = Field(None, ge=1)  # updates only: row_version the client loaded (T-3)
 
 
 def _proposal_dict(p: Proposal, opp: Optional[dict] = None) -> dict:
-    d = {"proposal_id": p.proposal_id, "opportunity_id": p.opportunity_id, "title": p.title,
+    d = {"proposal_id": p.proposal_id, "row_version": p.row_version, "opportunity_id": p.opportunity_id, "title": p.title,
          "amount": svc.as_float(p.amount) if p.amount is not None else None, "status": p.status,
          "status_label": PROPOSAL_STATUSES.get(p.status), "valid_until": p.valid_until, "notes": p.notes,
          "sent_at": p.sent_at, "decided_at": p.decided_at, "created_at": p.created_at,
@@ -917,9 +925,10 @@ def create_proposal(payload: ProposalWrite, db: Session = Depends(get_db), curre
 
 @router.patch("/proposals/{proposal_id}")
 def update_proposal(proposal_id: str, payload: ProposalWrite, db: Session = Depends(get_db),
-                    current_user: User = Depends(tenant_user)):
+                    current_user: User = Depends(tenant_user), if_match: Optional[int] = Depends(if_match_version)):
     p = _get_proposal(db, current_user, proposal_id)
     data = payload.model_dump(exclude_unset=True)
+    claim_version(db, p, resolve_expected(data.pop("expected_version", None), if_match), record="proposal")  # T-3
     _check_amount_rights(db, current_user, data)
     old_status = p.status
     if "title" in data:

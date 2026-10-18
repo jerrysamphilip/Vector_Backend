@@ -268,6 +268,7 @@ def summaries(db: Session, prospects: List[Prospect]) -> List[dict]:
 
     return [{
         "prospect_id": p.prospect_id,
+        "row_version": p.row_version,  # send back as expected_version when editing (T-3)
         "first_name": p.first_name,
         "last_name": p.last_name,
         "full_name": p.full_name,

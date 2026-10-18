@@ -86,6 +86,10 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+class SetPasswordRequest(BaseModel):
+    new_password: str
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
@@ -145,15 +149,6 @@ class MfaTenantPolicyRequest(BaseModel):
 _DEFAULT_PERMS: dict[str, list[str]] = {
     role: list(perms) for role, perms in ROLE_DEFAULT_PERMISSIONS.items()
 }
-
-
-def _has_live_invite_link(db: Session, user: User) -> bool:
-    """An INVITED account may sign in only while its emailed sign-in link is unused and unexpired."""
-    return db.query(MagicLoginToken.token_id).filter(
-        MagicLoginToken.user_id == user.user_id,
-        MagicLoginToken.used_at.is_(None),
-        MagicLoginToken.expires_at > datetime.utcnow(),
-    ).first() is not None
 
 
 def _user_dict(user: User) -> dict:
@@ -419,18 +414,15 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
 
     if user.status not in ("ACTIVE", "INVITED"):
         raise HTTPException(status_code=403, detail="Account is suspended or inactive")
-    if user.status == "INVITED" and not _has_live_invite_link(db, user):
-        # The temporary password is only valid while the invitation's sign-in link is
+    if user.status == "INVITED":
+        # I-13: an invited account has no password of its own yet; it joins only through the
+        # emailed set-password link (/magic-login), never with a password.
         raise HTTPException(status_code=403,
-                            detail="Your invitation has expired. Ask your administrator to resend it.")
+                            detail="Finish joining with the sign-in link in your invitation email. "
+                                   "If it has expired, ask your administrator to resend it.")
     ensure_tenant_active(db, user)
 
-    # Activate invited user on first login
-    is_first_login = user.status == "INVITED"
-    if is_first_login:
-        user.status = "ACTIVE"
-
-    return _complete_sign_in(user, db, request, response, first_login=is_first_login)
+    return _complete_sign_in(user, db, request, response)
 
 
 def _refresh_token_from(request: Request, body: RefreshRequest | None, csrf: bool) -> str | None:
@@ -800,6 +792,37 @@ def change_password(
         # The refresh cookie was just revoked with the rest; give this browser a fresh session
         _deliver_tokens(_issue_tokens(current_user, db), request, response)
     return {"message": "Password changed successfully"}
+
+
+@router.post("/me/set-password")
+def set_initial_password(
+    body: SetPasswordRequest,
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    First password for an invited account (I-13). Invitees never receive a password: they sign
+    in once with the emailed link (/magic-login) and choose one here, so no current password is
+    asked. Only for a local account that has no password yet; everyone else uses PUT /me/password.
+    """
+    if current_user.password_hash or (current_user.auth_provider or "local") != "local":
+        raise HTTPException(status_code=409, detail="A password is already set. Use change password instead.")
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+
+    current_user.password_hash = hash_password(body.new_password)
+    # Other sessions (if any) end; this browser keeps a fresh one
+    db.query(RefreshToken).filter(
+        RefreshToken.user_id == current_user.user_id,
+        RefreshToken.revoked_at.is_(None),
+    ).update({"revoked_at": datetime.utcnow()})
+    db.commit()
+    logger.info("Initial password set for user %s", current_user.user_id)
+    if wants_cookies(request):
+        _deliver_tokens(_issue_tokens(current_user, db), request, response)
+    return {"message": "Password set successfully"}
 
 
 # ── Two-factor authentication (TOTP) ──────────────────────

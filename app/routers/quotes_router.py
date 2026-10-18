@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
+from app.core.concurrency import claim_version, if_match_version, resolve_expected
 from app.core.database import get_db
 from app.models.account import Account
 from app.models.prospect import Prospect
@@ -107,6 +108,7 @@ class LineIn(BaseModel):
 
 class LinesIn(BaseModel):
     lines: List[LineIn]
+    expected_version: Optional[int] = Field(None, ge=1)  # the proposal's row_version the client loaded (T-3)
 
 
 def _line_total(line: ProposalLine) -> Decimal:
@@ -132,7 +134,7 @@ def _quote(db: Session, p: Proposal) -> dict:
     lines = db.query(ProposalLine).filter(ProposalLine.proposal_id == p.proposal_id).order_by(ProposalLine.sort_order).all()
     gross = sum((Decimal(l.quantity) * Decimal(l.unit_price) for l in lines), Decimal(0)).quantize(CENT)
     total = sum((_line_total(l) for l in lines), Decimal(0))
-    return {"proposal_id": p.proposal_id, "title": p.title, "status": p.status, "lines": [_line_dict(l) for l in lines],
+    return {"proposal_id": p.proposal_id, "row_version": p.row_version, "title": p.title, "status": p.status, "lines": [_line_dict(l) for l in lines],
             "subtotal": float(gross), "discount_total": float(gross - total), "amount": float(total) if lines else svc.as_float(p.amount),
             "valid_until": p.valid_until, "notes": p.notes}
 
@@ -144,11 +146,13 @@ def get_lines(proposal_id: str, db: Session = Depends(get_db), current_user: Use
 
 
 @router.put("/proposals/{proposal_id}/lines")
-def set_lines(proposal_id: str, payload: LinesIn, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+def set_lines(proposal_id: str, payload: LinesIn, db: Session = Depends(get_db), current_user: User = Depends(tenant_user),
+              if_match: Optional[int] = Depends(if_match_version)):
     """Replace the quote lines; the proposal amount becomes their total."""
     if not can_see_amounts(db, current_user):
         raise HTTPException(status_code=403, detail="Your role cannot see or change amounts")
     p = _proposal(db, current_user, proposal_id)
+    claim_version(db, p, resolve_expected(payload.expected_version, if_match), record="proposal")  # T-3
     products = {x.product_id: x for x in db.query(Product).filter(Product.tenant_id == current_user.tenant_id)}
     db.query(ProposalLine).filter(ProposalLine.proposal_id == p.proposal_id).delete(synchronize_session=False)
     for i, line in enumerate(payload.lines):
@@ -189,10 +193,12 @@ class ApprovalSettingsIn(BaseModel):
 
 class SubmitIn(BaseModel):
     note: Optional[str] = Field(None, max_length=1000)
+    expected_version: Optional[int] = Field(None, ge=1)  # the proposal's row_version the client loaded (T-3)
 
 
 class DecisionIn(BaseModel):
     reason: Optional[str] = Field(None, max_length=1000)
+    expected_version: Optional[int] = Field(None, ge=1)  # the proposal's row_version the client loaded (T-3)
 
 
 @router.get("/quotes/approval-settings")
@@ -222,8 +228,8 @@ def _approval_proposal(db: Session, user: User, proposal_id: str) -> Proposal:
 
 
 def _approval_result(db: Session, user: User, p: Proposal) -> dict:
-    return {"proposal_id": p.proposal_id, "opportunity_id": p.opportunity_id, "title": p.title,
-            "status": p.status, **qa.state(db, p, user)}
+    return {"proposal_id": p.proposal_id, "row_version": p.row_version, "opportunity_id": p.opportunity_id,
+            "title": p.title, "status": p.status, **qa.state(db, p, user)}
 
 
 @router.get("/proposals/{proposal_id}/approval")
@@ -233,8 +239,9 @@ def get_approval(proposal_id: str, db: Session = Depends(get_db), current_user: 
 
 @router.post("/proposals/{proposal_id}/approval/submit")
 def submit_approval(proposal_id: str, payload: Optional[SubmitIn] = None, db: Session = Depends(get_db),
-                    current_user: User = Depends(tenant_user)):
+                    current_user: User = Depends(tenant_user), if_match: Optional[int] = Depends(if_match_version)):
     p = _proposal(db, current_user, proposal_id)
+    claim_version(db, p, resolve_expected(payload.expected_version if payload else None, if_match), record="proposal")
     qa.submit(db, current_user, p, clean_str(payload.note) if payload else None)
     db.commit()
     return _approval_result(db, current_user, p)
@@ -242,8 +249,9 @@ def submit_approval(proposal_id: str, payload: Optional[SubmitIn] = None, db: Se
 
 @router.post("/proposals/{proposal_id}/approval/approve")
 def approve_discount(proposal_id: str, payload: Optional[DecisionIn] = None, db: Session = Depends(get_db),
-                     current_user: User = Depends(tenant_user)):
+                     current_user: User = Depends(tenant_user), if_match: Optional[int] = Depends(if_match_version)):
     p = _approval_proposal(db, current_user, proposal_id)
+    claim_version(db, p, resolve_expected(payload.expected_version if payload else None, if_match), record="proposal")
     qa.decide(db, current_user, p, True, clean_str(payload.reason) if payload else None)
     db.commit()
     return _approval_result(db, current_user, p)
@@ -251,8 +259,9 @@ def approve_discount(proposal_id: str, payload: Optional[DecisionIn] = None, db:
 
 @router.post("/proposals/{proposal_id}/approval/reject")
 def reject_discount(proposal_id: str, payload: DecisionIn, db: Session = Depends(get_db),
-                    current_user: User = Depends(tenant_user)):
+                    current_user: User = Depends(tenant_user), if_match: Optional[int] = Depends(if_match_version)):
     p = _approval_proposal(db, current_user, proposal_id)
+    claim_version(db, p, resolve_expected(payload.expected_version, if_match), record="proposal")  # T-3
     qa.decide(db, current_user, p, False, clean_str(payload.reason))
     db.commit()
     return _approval_result(db, current_user, p)
@@ -291,7 +300,7 @@ def list_approvals(scope: Literal["mine", "requested"] = "mine",
     items = []
     for p, o in rows:
         effective = qa.effective_discount(lines.get(p.proposal_id, []))
-        items.append({"proposal_id": p.proposal_id, "title": p.title, "status": p.status, "amount": svc.as_float(p.amount),
+        items.append({"proposal_id": p.proposal_id, "row_version": p.row_version, "title": p.title, "status": p.status, "amount": svc.as_float(p.amount),
                       "opportunity_id": o.opportunity_id, "opportunity_name": o.name,
                       "company_name": companies.get(o.account_id), "owner_id": o.owner_id,
                       "owner_name": owners.get(o.owner_id),

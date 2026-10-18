@@ -23,6 +23,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
+from app.core.concurrency import if_match_version
 from app.core.database import get_db
 from app.models.user import User
 from app.routers.tasks_router import task_dict
@@ -302,8 +303,10 @@ def update_contact(
     payload: ContactUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(tenant_user),
+    if_match: Optional[int] = Depends(if_match_version),
 ) -> Dict[str, Any]:
-    prospect = writes.update_contact(db, current_user, prospect_id, payload)
+    """Edit a contact; send the row_version you loaded as expected_version or If-Match (T-3)."""
+    prospect = writes.update_contact(db, current_user, prospect_id, payload, if_match)
     return contacts.contact_detail(db, current_user, prospect)
 
 

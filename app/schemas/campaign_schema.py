@@ -88,6 +88,13 @@ class CampaignUpdate(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     inbox_ids: Optional[List[str]] = Field(None, description="Update list of Sending Inboxes")
+    expected_version: Optional[int] = Field(None, ge=1, description="row_version the client loaded (T-3)")
+
+
+class CampaignVersionedAction(BaseModel):
+    """Optional body of launch / pause / resume: the row_version the client loaded (T-3)."""
+
+    expected_version: Optional[int] = Field(None, ge=1)
 
 
 class CampaignFilter(BaseModel):
@@ -164,6 +171,7 @@ class CampaignResponse(BaseModel):
     sender_title: Optional[str] = None
     cta_link: Optional[str] = None
     status: CampaignStatus
+    row_version: int = 1  # send back as expected_version on update / launch / pause / resume (T-3)
     # Why it is paused; auto_paused = paused by the deliverability guard (BR-DF-07)
     paused_reason: Optional[str] = None
     paused_at: Optional[datetime] = None
@@ -210,9 +218,10 @@ class CampaignListItem(BaseModel):
     campaign_name: str
     cta_link: Optional[str] = None
     status: CampaignStatus
+    row_version: int = 1  # T-3
     created_by: str
     creator_name: Optional[str] = None
-    
+
     # Key metrics
     sent_count: int = 0
     opened_count: int = 0
@@ -250,3 +259,4 @@ class CampaignStateChange(BaseModel):
     new_status: CampaignStatus
     reason: Optional[str] = None
     changed_at: datetime
+    row_version: Optional[int] = None  # the campaign's new row_version (T-3)

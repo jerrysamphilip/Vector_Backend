@@ -124,7 +124,9 @@ Set these in the backend secret for each environment (the manifests read them):
 
 | Setting | Production value | What it does |
 |---|---|---|
-| `ENVIRONMENT` | `production` | Turns off self sign-up, `/docs`, dev-only links and seed scripts; the SES webhook refuses calls if `AWS_SNS_TOPIC_ARN` is empty |
+| `ENVIRONMENT` | `production` | **Required in Kubernetes** (the app refuses to start without it). Turns off self sign-up, `/docs`, dev-only links and seed scripts; the SES webhook refuses calls if `AWS_SNS_TOPIC_ARN` is empty |
+| `METRICS_TOKEN` | long random value | **Required in production** while `METRICS_ENABLED` is true: `/metrics` then needs `Authorization: Bearer <token>` |
+| `FRONTEND_URL` | exact origin(s) | A wildcard (`*`) origin is refused in production |
 | `ALLOW_SELF_SIGNUP` | `false` (default in production) | `true` lets anyone create a workspace from the login page |
 | `AWS_SNS_TOPIC_ARN` | your SES notifications topic | Only notifications from this topic are accepted |
 | `JWT_SECRET_KEY`, `CREDENTIALS_ENCRYPTION_KEY` | long random values | The app refuses to start with the development defaults |

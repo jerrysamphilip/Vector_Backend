@@ -192,9 +192,12 @@ def test_invitation_lifecycle_and_repeat_deletes(client, tenant_m):
     r = client.post("/api/users/invite", headers=h, json={"email": email2, "role": "AGENT"})
     assert r.status_code == 201, r.text
     inv2, user2 = r.json()["invitation_id"], r.json()["user_id"]
-    sql("UPDATE users SET password_hash = :p WHERE user_id = :u",
-        p=__import__("app.core.security", fromlist=["hash_password"]).hash_password("Invitee-pass-123"), u=user2)
-    assert client.post("/api/auth/login", json={"email": email2, "password": "Invitee-pass-123"}).status_code == 200
+    # I-13: the invitee joins with the emailed sign-in link (they have no password)
+    raw = f"join-{RUN}-{user2}"
+    sql("INSERT INTO magic_login_tokens (token_id, user_id, token_hash, expires_at) "
+        "VALUES (UUID(), :u, :t, NOW() + INTERVAL 1 HOUR)",
+        u=user2, t=__import__("app.core.security", fromlist=["hash_token"]).hash_token(raw))
+    assert client.post("/api/auth/magic-login", json={"token": raw}).status_code == 200
     assert sql("SELECT status FROM invitations WHERE invitation_id = :i", i=inv2) == "ACCEPTED"
     assert client.delete(f"/api/users/invitations/{inv2}", headers=h).status_code == 400
 
