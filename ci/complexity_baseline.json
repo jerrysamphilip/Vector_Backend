@@ -1,9 +1,9 @@
 {
   "_comment": "C-1 ratchet baseline: functions over cyclomatic complexity 20. Entries may only be removed or lowered (docs/CI_GATES.md).",
-  "generated": "2026-10-18",
+  "generated": "2026-10-19",
   "max_cc": 20,
   "max_average": 5.0,
-  "average_ceiling": 5.18,
+  "average_ceiling": 5.17,
   "functions": {
     "alembic/versions/0005_tenant_sending_domains.py::upgrade": 27,
     "app/db/seed_contacts_demo.py::seed": 52,
@@ -36,7 +36,7 @@
     "app/services/alert_center_service.py::AlertCenterService.collect_dashboard_alerts": 21,
     "app/services/batch_processor_service.py::batch_classify_prospects": 21,
     "app/services/campaign_crud_service.py::CampaignCRUDService._rebind_pending_messages_for_campaign": 21,
-    "app/services/campaign_email_service.py::CampaignEmailService._preschedule_all_emails": 55,
+    "app/services/campaign_email_service.py::CampaignEmailService._preschedule_all_emails": 54,
     "app/services/contact_field_service.py::clean_custom_value": 23,
     "app/services/contact_query_service.py::filtered_query": 27,
     "app/services/contact_query_service.py::timeline": 34,
