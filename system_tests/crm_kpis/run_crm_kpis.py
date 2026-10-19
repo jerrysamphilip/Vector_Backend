@@ -63,8 +63,9 @@ head = sql("SELECT version_num FROM alembic_version")
 cols = sql("SELECT GROUP_CONCAT(column_name ORDER BY column_name) FROM information_schema.columns WHERE table_schema = DATABASE() "
            "AND table_name = 'forecast_snapshots' AND column_name IN ('commit_open', 'committed')")
 tbl = sql("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'user_activity_days'")
-R.check("CK-001", "Schema is at alembic 0014_crm_kpis: committed columns on forecast_snapshots and the user_activity_days table",
-        head == "0014_crm_kpis" and cols == "commit_open,committed" and tbl == "1", (head, cols, tbl))
+# At or past 0014_crm_kpis: later revisions (0015 session limits, 0016 optimistic concurrency) keep these objects
+R.check("CK-001", "Schema is at alembic 0014_crm_kpis or later: committed columns on forecast_snapshots and the user_activity_days table",
+        (head or "")[:4].isdigit() and int(head[:4]) >= 14 and cols == "commit_open,committed" and tbl == "1", (head, cols, tbl))
 
 # ── Shape and access ──────────────────────────────────────────────
 s, k, body = kpis(OWNER)

@@ -585,9 +585,9 @@ class CampaignEmailService:
             # Daily batch throttle: shift prospect's base_time by N business days
             # so the first batch goes day 1, second batch goes day 2, etc.
             if campaign.daily_batch_size and campaign.daily_batch_size > 0:
-                from app.utils.business_calendar import add_business_days
+                from app.utils.business_calendar import batch_day_start
                 day_offset = prospect_index // campaign.daily_batch_size
-                prospect_base_time = add_business_days(base_time, day_offset) if day_offset > 0 else base_time
+                prospect_base_time = batch_day_start(base_time, day_offset)
             else:
                 prospect_base_time = base_time
 

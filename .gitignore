@@ -131,6 +131,7 @@ docs/*
 !docs/OPERATIONS.md
 !docs/DECISIONS.md
 !docs/REVIEW_RESPONSES.md
+!docs/EVIDENCE_*.md
 # Stray local artefacts (never commit; may contain logs/credentials)
 kill_locks.py
 =*

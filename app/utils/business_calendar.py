@@ -273,6 +273,17 @@ def add_business_days(dt: datetime, n: int) -> datetime:
     return current
 
 
+def batch_day_start(base: datetime, day_offset: int) -> datetime:
+    """Base time of the daily batch number ``day_offset`` (0 = first) of a paced launch.
+
+    Batches are counted from the first business day on or after ``base``. Counting from ``base`` itself
+    put batches 0 and 1 on the same day when the start date is a weekend or holiday (batch 0 is pushed to
+    the next business day by the send-window planner, batch 1 lands there too)."""
+    if day_offset <= 0:
+        return base
+    return add_business_days(add_business_days(base, 0), day_offset)
+
+
 def calculate_send_time(
     base_time: datetime,
     wait_days: int,

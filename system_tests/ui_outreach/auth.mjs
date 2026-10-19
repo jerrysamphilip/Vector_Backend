@@ -70,7 +70,8 @@ const newToken = () => crypto.randomBytes(24).toString('base64url');
   }, page);
   await S.t(`${A}-07`, 'Locked after 10 failed attempts: UI shows "Too many failed sign-in attempts" (429), correct password also refused', async () => {
     const u = await mkUser('lock');
-    for (let i = 0; i < 10; i++) await api('POST', '/api/auth/login', { headers: { 'X-Forwarded-For': ws.xff }, body: { email: u.email, password: 'bad-' + i } });
+    // The lockout is per (email, client IP): fail from the browser's own address, i.e. through the web proxy
+    for (let i = 0; i < 10; i++) await page.request.post(WEB + '/api/api/auth/login', { data: { email: u.email, password: 'bad-' + i } });
     await go(page, '/login');
     await page.getByPlaceholder('your@email.com').fill(u.email);
     await page.getByPlaceholder('••••••••').fill(u.password);

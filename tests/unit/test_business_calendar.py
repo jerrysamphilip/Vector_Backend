@@ -90,6 +90,17 @@ def test_add_business_days():
     assert bc.add_business_days(datetime(2026, 11, 23, 9, 0), 5) == datetime(2026, 12, 1, 9, 0)
 
 
+def test_batch_day_start_counts_from_the_first_business_day():
+    # Start on Saturday 2026-11-07: batches Mon 9, Tue 10, [Wed 11 Veterans Day] Thu 12, Fri 13, Mon 16 (OUT-031)
+    sat = datetime(2026, 11, 7, 0, 0)
+    days = [bc.batch_day_start(sat, n) for n in range(1, 5)]
+    assert days == [datetime(2026, 11, 10), datetime(2026, 11, 12), datetime(2026, 11, 13), datetime(2026, 11, 16)]
+    assert bc.batch_day_start(sat, 0) == sat  # batch 0 is placed by the send-window planner (next business day)
+    # A business-day start is unchanged by the fix
+    mon = datetime(2026, 10, 19, 9, 0)
+    assert [bc.batch_day_start(mon, n) for n in range(3)] == [mon, datetime(2026, 10, 20, 9, 0), datetime(2026, 10, 21, 9, 0)]
+
+
 # ── calculate_send_time ──────────────────────────────────────
 
 def test_send_time_before_window_goes_out_at_window_start(no_jitter):
