@@ -1,4 +1,6 @@
-FROM python:3.12.7-slim AS builder
+# Base images are pinned by digest (P-2). Refresh with `python3 scripts/pin_images.py` before a
+# release; `python3 scripts/pin_images.py --check` fails on any unpinned FROM / image line.
+FROM python:3.12.7-slim@sha256:60d9996b6a8a3689d36db740b49f4327be3be09a21122bd02fb8895abb38b50d AS builder
 
 WORKDIR /app
 
@@ -12,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-FROM python:3.12.7-slim
+FROM python:3.12.7-slim@sha256:60d9996b6a8a3689d36db740b49f4327be3be09a21122bd02fb8895abb38b50d
 
 WORKDIR /app
 
@@ -26,8 +28,11 @@ RUN groupadd --system --gid 10001 app \
 # Copy application code (owned by root, read-only for the app user)
 COPY . .
 
-# Writable upload storage (ATTACHMENTS_DIR defaults to /app/uploads/attachments)
-RUN mkdir -p /app/uploads/attachments && chown -R app:app /app/uploads
+# Writable upload storage (ATTACHMENTS_DIR defaults to /app/uploads/attachments). In Kubernetes the
+# root filesystem is read-only and /app/uploads and /tmp are emptyDir volumes (manifests/).
+# Bytecode is compiled at build time because nothing can be written at run time.
+RUN mkdir -p /app/uploads/attachments && chown -R app:app /app/uploads \
+    && python -m compileall -q /app/app /app/alembic
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

@@ -58,6 +58,7 @@ class SequenceStepUpdate(BaseModel):
     send_start_hour: Optional[int] = Field(None, ge=0, le=23)
     send_end_hour: Optional[int] = Field(None, ge=0, le=23)
     template_id: Optional[str] = None
+    expected_version: Optional[int] = Field(None, ge=1, description="row_version the client loaded (T-3)")
 
 
 # ===========================
@@ -71,7 +72,8 @@ class SequenceStepResponse(BaseModel):
     campaign_id: str
     step_number: int
     wait_days: int
-    
+    row_version: int = 1  # send back as expected_version when updating the step (T-3)
+
     stop_on_reply: bool
     stop_on_bounce: bool
     

@@ -67,6 +67,7 @@ class Campaign(Base):
 
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
 
     # Relationships
     tenant = relationship("Tenant", back_populates="campaigns")

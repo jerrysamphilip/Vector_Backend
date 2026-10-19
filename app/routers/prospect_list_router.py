@@ -7,9 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import func, distinct
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
 
+from app.core.concurrency import claim_version, if_match_version, resolve_expected
 from app.core.database import get_db
 from app.core.errors import DomainError
 from app.models.prospect_list import ProspectList, ProspectListMember
@@ -27,6 +28,7 @@ prospect_upload_router = APIRouter(tags=["Prospects"])
 
 from app.core.auth import require_role, require_permission
 from app.utils.error_utils import handle_route_error
+from app.utils.sql_like import ilike
 import logging
 
 logger = logging.getLogger(__name__)
@@ -85,7 +87,7 @@ async def list_prospect_lists(
     try:
         query = db.query(ProspectList).filter(ProspectList.tenant_id == current_user.tenant_id)
         if search:
-            query = query.filter(ProspectList.list_name.ilike(f"%{search}%"))
+            query = query.filter(ilike(ProspectList.list_name, search))
         total = query.count()
         if sort_by == "list_name":
             order_col = ProspectList.list_name
@@ -137,7 +139,8 @@ class ProspectInListResponse(BaseModel):
     poc_country: Optional[str] = None
     consent_status: Optional[str] = None  # S10: column is nullable
     notes: Optional[str] = None
-    
+    row_version: Optional[int] = None  # send back as expected_version on PATCH /prospects/{id} (T-3)
+
     class Config:
         from_attributes = True
 
@@ -184,12 +187,11 @@ async def get_list_prospects(
                 ProspectListMember.id.asc(),
             )
         if search:
-            search_term = f"%{search}%"
             query = query.filter(
-                (Prospect.first_name.ilike(search_term)) |
-                (Prospect.last_name.ilike(search_term)) |
-                (Prospect.email.ilike(search_term)) |
-                (Prospect.company_name.ilike(search_term))
+                ilike(Prospect.first_name, search) |
+                ilike(Prospect.last_name, search) |
+                ilike(Prospect.email, search) |
+                ilike(Prospect.company_name, search)
             )
         total = query.count()
         offset = (page - 1) * page_size
@@ -209,6 +211,7 @@ async def get_list_prospects(
                 poc_country=p.poc_country,
                 consent_status=p.consent_status,
                 notes=membership_notes,
+                row_version=p.row_version,
             ) for p, membership_notes in rows],
             total=total,
             page=page,
@@ -388,6 +391,7 @@ class ProspectUpdateRequest(BaseModel):
     poc_city: Optional[str] = None
     poc_state: Optional[str] = None
     poc_country: Optional[str] = None
+    expected_version: Optional[int] = Field(None, ge=1)  # the contact's row_version the client loaded (T-3)
 
 
 @router.patch("/prospect-lists/{list_id}/prospects/{prospect_id}/notes", dependencies=[Depends(require_permission("manage_prospects"))])
@@ -429,9 +433,12 @@ async def update_prospect(
     updates: ProspectUpdateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")),
+    if_match: Optional[int] = Depends(if_match_version),
 ):
     """
     Update individual prospect fields.
+
+    Send the contact's row_version as expected_version or If-Match (T-3); stale -> 409.
     """
     try:
         prospect = db.query(Prospect).filter(
@@ -441,6 +448,8 @@ async def update_prospect(
         if not prospect:
             raise HTTPException(status_code=404, detail="Prospect not found")
         update_data = updates.dict(exclude_unset=True)
+        claim_version(db, prospect, resolve_expected(update_data.pop("expected_version", None), if_match),
+                      record="contact")
         for field, value in update_data.items():
             setattr(prospect, field, value)
         if "email" in update_data and update_data["email"]:
@@ -466,7 +475,7 @@ async def update_prospect(
             from app.utils.business_calendar import get_timezone_for_state
             prospect.timezone = get_timezone_for_state(update_data["poc_state"])
         db.commit()
-        return {"status": "updated", "prospect_id": prospect_id}
+        return {"status": "updated", "prospect_id": prospect_id, "row_version": prospect.row_version}
     except Exception as e:
         db.rollback()
         handle_route_error(e, context="update_prospect")

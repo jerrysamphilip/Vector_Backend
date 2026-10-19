@@ -27,6 +27,7 @@ from app.models.email_message import EmailMessage
 from app.models.prospect import Prospect
 from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.user import User
+from app.utils.sql_like import ilike
 
 # ── Definitions (labels can be renamed here before go-live; codes are stored) ──
 
@@ -342,11 +343,11 @@ def _compare(column, operator, value, is_text=True) -> ColumnElement[bool]:
     if operator == "not_in":
         return or_(column.is_(None), column.notin_(_as_list(value)))
     if operator == "contains":
-        return column.ilike(f"%{value}%")
+        return ilike(column, value)
     if operator == "not_contains":
-        return or_(column.is_(None), not_(column.ilike(f"%{value}%")))
+        return or_(column.is_(None), not_(ilike(column, value)))
     if operator == "starts_with":
-        return column.ilike(f"{value}%")
+        return ilike(column, value, "prefix")
     if operator == "is_empty":
         return or_(column.is_(None), column == "") if is_text else column.is_(None)
     if operator == "is_not_empty":
@@ -396,7 +397,7 @@ def _condition(db: Session, cond: dict, user: User) -> ColumnElement[bool]:
         raw = func.json_unquote(func.json_extract(Prospect.custom_fields, f'$."{key}"'))
         if operator in ("contains", "is") and isinstance(value, str):  # multi-checkbox values are arrays
             arr = func.json_contains(func.json_extract(Prospect.custom_fields, f'$."{key}"'), func.json_quote(value)) == 1
-            return or_(_compare(raw, operator, value), arr) if operator == "is" else or_(raw.ilike(f"%{value}%"), arr)
+            return or_(_compare(raw, operator, value), arr) if operator == "is" else or_(ilike(raw, value), arr)
         is_date = isinstance(value, str) and bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", value))
         if operator in ("gt", "gte", "lt", "lte", "between") and not is_date:
             raw = cast(raw, Numeric(18, 4))  # type: ignore[assignment]  # number properties compare numerically, dates as ISO text

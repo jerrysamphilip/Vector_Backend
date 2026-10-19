@@ -40,6 +40,8 @@ class ContactCreate(ContactWrite):
 
 class ContactUpdate(ContactWrite):
     email: Optional[EmailStr] = None
+    # The row_version the client loaded (T-3, app/core/concurrency.py); stale -> 409 STALE_VERSION
+    expected_version: Optional[int] = Field(None, ge=1)
 
 
 UserId = Annotated[str, Field(min_length=1, max_length=36)]

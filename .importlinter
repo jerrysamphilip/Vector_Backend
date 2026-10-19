@@ -1,0 +1,95 @@
+# C-4 / C-5 import contracts (NTS Build Standard Addendum; docs/CI_GATES.md, docs/ARCHITECTURE.md).
+# Run:  lint-imports            (CI: unit job, blocking)
+#
+# Layering, top to bottom (a module may import from its own layer or any layer below it):
+#   app.main / app.worker   process entry points
+#   app.jobs                background loops
+#   app.routers | app.db    HTTP adapters | migrations + seed scripts (independent of each other)
+#   app.services            business logic
+#   app.schemas | app.prompts   request/response models | LLM prompt text
+#   app.utils               pure helpers
+#   app.models              ORM models
+#   app.core                config, database, auth, errors, security primitives
+#
+# BASELINE (2026-10-18): the `ignore_imports` entries below are the violations that exist today.
+# They are a ratchet: entries may only be removed (fix the import, then delete the line); new ones
+# are not accepted. Each carries a TODO with the intended fix.
+
+[importlinter]
+root_package = app
+include_external_packages = False
+
+[importlinter:contract:layers]
+name = C-4 layered architecture (entry points > jobs > routers|db > services > schemas|prompts > utils > models > core)
+type = layers
+layers =
+    app.main | app.worker
+    app.jobs
+    app.routers | app.db
+    app.services
+    app.schemas | app.prompts
+    app.utils
+    app.models
+    app.core
+ignore_imports =
+    # --- BASELINE 2026-10-18 (may only shrink) ---
+    # TODO(C-4): auth resolves the current User/Tenant; move the lookup into a service and pass it in.
+    app.core.auth -> app.models.user
+    app.core.auth -> app.models.tenant
+    # TODO(C-4): token revocation / activity checks belong in a service-level dependency, not app.core.auth.
+    app.core.auth -> app.services.token_revocation
+    app.core.auth -> app.services.user_activity
+    # TODO(C-4): MAX_MENTIONS is a shared constant; move it to app.core or app.schemas.
+    app.schemas.contact_schema -> app.services.mentions
+    # TODO(C-4): the classifier should receive the LLM budget hooks from its service caller.
+    app.utils.reply_classifier -> app.services.llm_budget
+    # TODO(C-4): the job lock helpers (try_acquire/release) belong in app.core or a service module.
+    app.services.contact_scoring -> app.jobs
+
+[importlinter:contract:core-no-upper]
+name = C-5 app.core must not import app.services, app.routers, app.jobs or app.db
+type = forbidden
+source_modules =
+    app.core
+forbidden_modules =
+    app.services
+    app.routers
+    app.jobs
+    app.db
+ignore_imports =
+    # --- BASELINE 2026-10-18 (may only shrink); same TODOs as the layers contract ---
+    app.core.auth -> app.services.token_revocation
+    app.core.auth -> app.services.user_activity
+
+[importlinter:contract:services-no-routers]
+name = C-5 app.services must not import app.routers (HTTP stays in the adapters)
+type = forbidden
+source_modules =
+    app.services
+    app.core
+    app.utils
+    app.models
+    app.schemas
+forbidden_modules =
+    app.routers
+
+[importlinter:contract:no-cycles]
+name = C-5 no import cycles between the app sub-packages
+type = acyclic_siblings
+ancestors =
+    app
+ignore_imports =
+    # --- BASELINE 2026-10-18 (may only shrink); the layer violations above close these package cycles ---
+    app.core.auth -> app.models.user
+    app.core.auth -> app.models.tenant
+    app.core.auth -> app.services.token_revocation
+    app.core.auth -> app.services.user_activity
+    app.schemas.contact_schema -> app.services.mentions
+    app.utils.reply_classifier -> app.services.llm_budget
+    app.services.contact_scoring -> app.jobs
+    # TODO(C-5): cycles inside app.services, broken today by function-local imports. Fix by moving the
+    # shared helper (crm._fmt -> app.utils) or inverting the call (sales/campaign_email callbacks).
+    app.services.contact_service -> app.services.sales
+    app.services.subject_variant_service -> app.services.campaign_email_service
+    app.services.webhooks -> app.services.crm
+    app.services.workflow -> app.services.crm

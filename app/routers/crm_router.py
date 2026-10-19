@@ -16,6 +16,7 @@ from app.models.prospect import Prospect
 from app.models.user import User
 from app.services import crm
 from app.services.contact_service import can_manage_contacts, clean_str, phone_digits, scope, visible_user_ids
+from app.utils.sql_like import ilike
 
 router = APIRouter(tags=["CRM"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -111,14 +112,14 @@ def delete_view(view_id: str, db: Session = Depends(get_db), current_user: User 
 def global_search(q: str = Query(..., min_length=2, max_length=100), limit: int = Query(8, ge=1, le=25),
                   db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
     """Contacts by name, email, phone, company or domain, and companies by name or domain."""
-    term = f"%{q.strip()}%"
+    term = q.strip()
     contacts = db.query(Prospect).filter(Prospect.tenant_id == current_user.tenant_id, Prospect.deleted_at.is_(None))
     contacts = scope(contacts, db, current_user, Prospect.owner_id)
     from app.services.contact_query_service import search_condition
     contact_rows = contacts.filter(search_condition(q)).order_by(Prospect.updated_at.desc()).limit(limit).all()
 
     companies = db.query(Account).filter(Account.tenant_id == current_user.tenant_id, Account.deleted_at.is_(None),
-                                         or_(Account.name.ilike(term), Account.domain.ilike(term)))
+                                         or_(ilike(Account.name, term), ilike(Account.domain, term)))
     visible = visible_user_ids(db, current_user)
     if visible is not None:  # companies of your team, or with a contact you can see (BR-SH-02)
         seen = contacts.with_entities(Prospect.account_id).filter(Prospect.account_id.isnot(None))

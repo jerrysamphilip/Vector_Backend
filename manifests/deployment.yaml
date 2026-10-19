@@ -28,6 +28,21 @@ spec:
         fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
+      # The app never calls the Kubernetes API, so no service-account token is mounted.
+      automountServiceAccountToken: false
+      # Root filesystems are read-only (P-1); these are the only writable paths.
+      #   tmp:     /tmp (multipart upload spooling, pandas/openpyxl temp files, tempfile)
+      #   uploads: ATTACHMENTS_DIR=/app/uploads/attachments (template attachments)
+      # NOTE: uploads is per-pod scratch, as the container filesystem was before. Attachments
+      # written by one API replica are not visible to the other replica or to backend-worker,
+      # which sends the emails; durable shared storage (EFS PVC or S3) is an open decision.
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: uploads
+          emptyDir:
+            sizeLimit: 1Gi
       # Schema migrations (alembic upgrade head). Every replica's initContainer runs it; a MySQL
       # named lock serialises them and later runs find the schema at head and exit at once.
       initContainers:
@@ -35,9 +50,16 @@ spec:
           image: <ECR_IMAGE_URI>
           command: ["python", "-m", "app.db.migrate"]
           securityContext:
+            runAsNonRoot: true
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           env:
             # - name: NODE_ENV
             #   value: "devlopment"
@@ -147,14 +169,16 @@ spec:
                   name: sales360-secret
                   key: SES_WEBHOOK_TOKEN
 
-            # Platform hardening, optional. ENVIRONMENT=production disables /docs, self sign-up
-            # (override with ALLOW_SELF_SIGNUP) and requires AWS_SNS_TOPIC_ARN for the SES webhook.
+            # Platform hardening. ENVIRONMENT is REQUIRED (I-11 fail closed: the pod does not start
+            # without it). ENVIRONMENT=production disables /docs, self sign-up (override with
+            # ALLOW_SELF_SIGNUP), requires AWS_SNS_TOPIC_ARN for the SES webhook and requires
+            # METRICS_TOKEN (or METRICS_ENABLED=false). The keys below it are optional.
             - name: ENVIRONMENT
               valueFrom:
                 secretKeyRef:
                   name: sales360-secret
                   key: ENVIRONMENT
-                  optional: true
+                  optional: false
             - name: ALLOW_SELF_SIGNUP
               valueFrom:
                 secretKeyRef:
@@ -235,9 +259,18 @@ spec:
           ports:
             - containerPort: 8001
           securityContext:
+            runAsNonRoot: true
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: uploads
+              mountPath: /app/uploads
           # /health = process is up (liveness); /health/ready = database reachable (readiness)
           startupProbe:
             httpGet:
@@ -369,14 +402,16 @@ spec:
                   name: sales360-secret
                   key: SES_WEBHOOK_TOKEN
 
-            # Platform hardening, optional. ENVIRONMENT=production disables /docs, self sign-up
-            # (override with ALLOW_SELF_SIGNUP) and requires AWS_SNS_TOPIC_ARN for the SES webhook.
+            # Platform hardening. ENVIRONMENT is REQUIRED (I-11 fail closed: the pod does not start
+            # without it). ENVIRONMENT=production disables /docs, self sign-up (override with
+            # ALLOW_SELF_SIGNUP), requires AWS_SNS_TOPIC_ARN for the SES webhook and requires
+            # METRICS_TOKEN (or METRICS_ENABLED=false). The keys below it are optional.
             - name: ENVIRONMENT
               valueFrom:
                 secretKeyRef:
                   name: sales360-secret
                   key: ENVIRONMENT
-                  optional: true
+                  optional: false
             - name: ALLOW_SELF_SIGNUP
               valueFrom:
                 secretKeyRef:
@@ -501,6 +536,21 @@ spec:
         fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
+      # The app never calls the Kubernetes API, so no service-account token is mounted.
+      automountServiceAccountToken: false
+      # Root filesystems are read-only (P-1); these are the only writable paths.
+      #   tmp:     /tmp (multipart upload spooling, pandas/openpyxl temp files, tempfile)
+      #   uploads: ATTACHMENTS_DIR=/app/uploads/attachments (template attachments)
+      # NOTE: uploads is per-pod scratch, as the container filesystem was before. Attachments
+      # written by one API replica are not visible to the other replica or to backend-worker,
+      # which sends the emails; durable shared storage (EFS PVC or S3) is an open decision.
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: uploads
+          emptyDir:
+            sizeLimit: 1Gi
       terminationGracePeriodSeconds: 60
       containers:
         - name: backend-worker
@@ -510,9 +560,18 @@ spec:
             - name: health
               containerPort: 8002
           securityContext:
+            runAsNonRoot: true
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: uploads
+              mountPath: /app/uploads
           # /health = process is up (liveness); /health/ready = database reachable and every
           # loop has a heartbeat newer than 3x its interval (readiness)
           startupProbe:
@@ -644,14 +703,16 @@ spec:
                   name: sales360-secret
                   key: SES_WEBHOOK_TOKEN
 
-            # Platform hardening, optional. ENVIRONMENT=production disables /docs, self sign-up
-            # (override with ALLOW_SELF_SIGNUP) and requires AWS_SNS_TOPIC_ARN for the SES webhook.
+            # Platform hardening. ENVIRONMENT is REQUIRED (I-11 fail closed: the pod does not start
+            # without it). ENVIRONMENT=production disables /docs, self sign-up (override with
+            # ALLOW_SELF_SIGNUP), requires AWS_SNS_TOPIC_ARN for the SES webhook and requires
+            # METRICS_TOKEN (or METRICS_ENABLED=false). The keys below it are optional.
             - name: ENVIRONMENT
               valueFrom:
                 secretKeyRef:
                   name: sales360-secret
                   key: ENVIRONMENT
-                  optional: true
+                  optional: false
             - name: ALLOW_SELF_SIGNUP
               valueFrom:
                 secretKeyRef:

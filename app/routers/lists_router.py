@@ -25,6 +25,7 @@ from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.user import User
 from app.services import crm
 from app.services.contact_service import can_manage_contacts, clean_str, scope
+from app.utils.sql_like import ilike
 
 router = APIRouter(prefix="/lists", tags=["Lists"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -98,7 +99,7 @@ def list_lists(
     if list_type:
         query = query.filter(ProspectList.list_type == list_type)
     if q and q.strip():
-        query = query.filter(ProspectList.list_name.ilike(f"%{q.strip()}%"))
+        query = query.filter(ilike(ProspectList.list_name, q.strip()))
     rows = query.order_by(ProspectList.uploaded_at.desc()).limit(500).all()
     owners = {u.user_id: f"{u.first_name} {u.last_name}".strip()
               for u in db.query(User).filter(User.user_id.in_({r.uploaded_by for r in rows}))}

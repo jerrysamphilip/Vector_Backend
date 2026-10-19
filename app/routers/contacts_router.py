@@ -23,6 +23,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
+from app.core.concurrency import if_match_version
 from app.core.database import get_db
 from app.models.user import User
 from app.routers.tasks_router import task_dict
@@ -43,6 +44,7 @@ from app.services import contact_field_service as fields
 from app.services import contact_query_service as contacts
 from app.services import contact_write_service as writes
 from app.services.crm import RESTORE_WINDOW_DAYS
+from app.utils.http_files import content_disposition
 
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
 
@@ -162,7 +164,7 @@ def export_contacts(
                                 lead_status=lead_status, tag=tag, filters=filters)
     export = contacts.export_contacts(db, current_user, format, columns, f)
     return StreamingResponse(iter([export.content]), media_type=export.media_type,
-                             headers={"Content-Disposition": f'attachment; filename="{export.filename}"'})
+                             headers={"Content-Disposition": content_disposition(export.filename)})
 
 
 @router.post("/bulk", response_model=None)
@@ -301,8 +303,10 @@ def update_contact(
     payload: ContactUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(tenant_user),
+    if_match: Optional[int] = Depends(if_match_version),
 ) -> Dict[str, Any]:
-    prospect = writes.update_contact(db, current_user, prospect_id, payload)
+    """Edit a contact; send the row_version you loaded as expected_version or If-Match (T-3)."""
+    prospect = writes.update_contact(db, current_user, prospect_id, payload, if_match)
     return contacts.contact_detail(db, current_user, prospect)
 
 

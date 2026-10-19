@@ -10,10 +10,10 @@ import re
 from typing import Any, Dict
 from urllib.parse import quote_plus, urlparse
 
-import boto3
 from fastapi import Request
 
 from app.core.config import settings
+from app.services.ses_client import get_ses_client
 
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0"})
 # Front-end origins a sign-in link may point back to (taken from the inviting request)
@@ -29,12 +29,8 @@ _PROFILE_BASES = {
 
 
 def _get_ses_client() -> Any:
-    """Build SES client using configured region/credentials."""
-    client_kwargs = {"region_name": settings.AWS_REGION}
-    if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
-        client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
-        client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
-    return boto3.client("ses", **client_kwargs)
+    """The shared SES client (one per region/credentials, not one per invitation)."""
+    return get_ses_client()
 
 
 def normalized_origin(raw_url: str | None) -> str:
@@ -112,18 +108,17 @@ def build_invite_html(
     *,
     recipient_name: str,
     to_email: str,
-    temporary_password: str,
     magic_login_link: str,
     tenant_name: str,
     support_email: str,
 ) -> str:
-    """Build the HTML body for the invitation email."""
+    """Build the HTML body for the invitation email: a set-password link, never a password (I-13)."""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Your Secure Login Credentials</title>
+  <title>You're invited to {tenant_name}</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f6f8;font-family:'Segoe UI',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:32px 16px;">
@@ -146,7 +141,7 @@ def build_invite_html(
 
               <!-- Subject line -->
               <p style="margin:0 0 20px;font-size:18px;font-weight:700;color:#0f172a;line-height:1.3;">
-                Your Secure Login Credentials to {tenant_name}
+                You&#39;re invited to {tenant_name}
               </p>
 
               <!-- Greeting -->
@@ -154,47 +149,28 @@ def build_invite_html(
               <p style="margin:0 0 20px;font-size:15px;color:#334155;">Hope you&#39;re doing great!</p>
 
               <p style="margin:0 0 16px;font-size:15px;color:#334155;">
-                Below are your secure login credentials to access <strong>{tenant_name}</strong>:
+                You have been invited to join <strong>{tenant_name}</strong> on Outreach360.AI as
+                <a href="mailto:{to_email}" style="color:#2563eb;text-decoration:none;font-weight:500;">{to_email}</a>.
               </p>
 
-              <!-- Credentials box -->
-              <table width="100%" cellpadding="0" cellspacing="0"
-                style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:20px;">
-                <tr>
-                  <td style="padding:16px 20px;border-bottom:1px solid #e2e8f0;">
-                    <span style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Email</span><br/>
-                    <a href="mailto:{to_email}" style="font-size:15px;color:#2563eb;text-decoration:none;font-weight:500;margin-top:4px;display:inline-block;">
-                      {to_email}
-                    </a>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:16px 20px;">
-                    <span style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Password</span><br/>
-                    <span style="font-size:15px;font-weight:700;color:#0f172a;font-family:monospace;margin-top:4px;display:inline-block;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;">
-                      {temporary_password}
-                    </span>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Magic login button -->
+              <!-- Set-password button -->
               <p style="margin:0 0 12px;font-size:14px;color:#334155;">
-                Or click the button below for instant one-click access:
+                Click the button below to sign in and choose your password:
               </p>
               <table cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
                 <tr>
                   <td style="background:#2563eb;border-radius:8px;">
                     <a href="{magic_login_link}"
                       style="display:inline-block;padding:12px 28px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
-                      &#x1F517; Login to {tenant_name}
+                      Set your password
                     </a>
                   </td>
                 </tr>
               </table>
 
               <p style="margin:0 0 24px;font-size:13px;color:#94a3b8;">
-                This link expires in {settings.MAGIC_LOGIN_EXPIRE_HOURS} hours. After that, use your email and password to sign in.
+                This link works once and expires in {settings.MAGIC_LOGIN_EXPIRE_HOURS} hours. If it has expired, ask
+                your administrator to resend the invitation. We will never email you a password.
               </p>
 
               <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 24px;" />
@@ -211,10 +187,10 @@ def build_invite_html(
                   <td style="border-left:3px solid #e2e8f0;padding:10px 16px;background:#f8fafc;border-radius:0 6px 6px 0;">
                     <p style="margin:0;font-size:12px;color:#64748b;font-style:italic;line-height:1.6;">
                       <strong style="font-style:normal;">Disclaimer:</strong>
-                      This email contains sensitive login information. The information contained in this communication
+                      This email contains a personal sign-in link. The information contained in this communication
                       and any attachments is confidential and intended solely for the use of the individual or entity to
-                      whom it is addressed. Access to Outreach360.AI is subject to our Terms of Use. Please ensure
-                      your login credentials are kept secure and are not shared with unauthorized parties. Unauthorized
+                      whom it is addressed. Access to Outreach360.AI is subject to our Terms of Use. Please do not
+                      forward this email or share the link with unauthorized parties. Unauthorized
                       sharing of access or data is strictly prohibited to ensure system integrity.
                     </p>
                   </td>
@@ -245,38 +221,36 @@ def build_invite_text(
     *,
     recipient_name: str,
     to_email: str,
-    temporary_password: str,
     magic_login_link: str,
     tenant_name: str,
     support_email: str,
 ) -> str:
-    """Plain-text fallback for email clients that don't render HTML."""
+    """Plain-text fallback for email clients that don't render HTML (no password, I-13)."""
     return "\n".join([
         f"Hi {recipient_name},",
         "",
         "Hope you're doing great!",
         "",
-        f"Below are your secure login credentials to access {tenant_name}:",
+        f"You have been invited to join {tenant_name} on Outreach360.AI as {to_email}.",
         "",
-        f"  Email:    {to_email}",
-        f"  Password: {temporary_password}",
-        "",
-        "One-click login link (expires in "
+        "Sign in and choose your password with this link (works once, expires in "
         f"{settings.MAGIC_LOGIN_EXPIRE_HOURS} hours):",
         magic_login_link,
+        "",
+        "If the link has expired, ask your administrator to resend the invitation.",
+        "We will never email you a password.",
         "",
         f"Should you face any challenges, reach out at {support_email}.",
         "",
         "Disclaimer:",
-        "This email contains sensitive login information intended only for the",
-        "recipient. Keep your credentials secure and do not share with others.",
+        "This email contains a personal sign-in link intended only for the",
+        "recipient. Do not forward it or share the link with others.",
     ])
 
 
 def send_invitation_email(
     *,
     to_email: str,
-    temporary_password: str,
     magic_login_link: str,
     role: str,
     tenant_name: str,
@@ -294,7 +268,6 @@ def send_invitation_email(
     content = {
         "recipient_name": recipient_name_from_email(to_email),
         "to_email": to_email,
-        "temporary_password": temporary_password,
         "magic_login_link": magic_login_link,
         "tenant_name": tenant_name,
         "support_email": support_email,
@@ -303,7 +276,7 @@ def send_invitation_email(
         Source=f"{settings.SENDER_NAME or 'Outreach360.AI'} <{sender_email}>",
         Destination={"ToAddresses": [to_email]},
         Message={
-            "Subject": {"Data": f"Your Secure Login Credentials to {tenant_name}", "Charset": "UTF-8"},
+            "Subject": {"Data": f"You're invited to {tenant_name}: set your password", "Charset": "UTF-8"},
             "Body": {
                 "Text": {"Data": build_invite_text(**content), "Charset": "UTF-8"},
                 "Html": {"Data": build_invite_html(**content), "Charset": "UTF-8"},

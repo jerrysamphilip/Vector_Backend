@@ -1,0 +1,3 @@
+# C-2: maximum number of '# type: ignore' comments in app/ (ratchet: may only go down).
+# Updated 2026-10-18 by scripts/ci/check_type_ignores.py --update
+35

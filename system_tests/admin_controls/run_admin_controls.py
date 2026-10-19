@@ -69,16 +69,18 @@ def resend():
     s2, b2 = req("POST", f"/api/users/{uid}/resend-invite", None, OWNER)
     R.check("AC-010", "Resending straight away is refused (429, once a minute per user)",
             s == 201 and s2 == 429 and "seconds" in str((b2 or {}).get("detail", "")), (s, s2, b2))
-    old_hash = sql(f"SELECT password_hash FROM users WHERE user_id='{uid}'")
+    old_link = sql(f"SELECT token_hash FROM magic_login_tokens WHERE user_id='{uid}' AND used_at IS NULL")
     sql(f"UPDATE invitations SET created_at = NOW() - INTERVAL 2 MINUTE WHERE email='{email}'")
     s3, b3 = req("POST", f"/api/users/{uid}/resend-invite", None, OWNER)
     pending = sql(f"SELECT COUNT(*) FROM invitations WHERE email='{email}' AND status='PENDING'")
     revoked = sql(f"SELECT COUNT(*) FROM invitations WHERE email='{email}' AND status='REVOKED'")
     open_links = sql(f"SELECT COUNT(*) FROM magic_login_tokens WHERE user_id='{uid}' AND used_at IS NULL")
-    new_hash = sql(f"SELECT password_hash FROM users WHERE user_id='{uid}'")
-    R.check("AC-011", "After a minute: new temporary password and sign-in link; the old invitation and links are revoked",
+    new_link = sql(f"SELECT token_hash FROM magic_login_tokens WHERE user_id='{uid}' AND used_at IS NULL")
+    no_password = sql(f"SELECT password_hash IS NULL FROM users WHERE user_id='{uid}'")
+    R.check("AC-011", "After a minute: a new set-password link (no password, I-13); the old invitation and links are revoked",
             s3 == 200 and (b3 or {}).get("resent") is True and pending == "1" and int(revoked or 0) >= 1
-            and open_links == "1" and new_hash != old_hash, (s3, pending, revoked, open_links))
+            and open_links == "1" and new_link != old_link and no_password == "1"
+            and "password" not in str(b3).lower(), (s3, pending, revoked, open_links, no_password))
     s4, _ = req("POST", f"/api/users/{uid}/resend-invite", None, OWNER)
     R.check("AC-012", "A second resend within the minute is refused again (429)", s4 == 429, s4)
     sa_email = f"resend-sa-{rid}@systest.example"

@@ -2,7 +2,8 @@
 
 - Reactivate: only INACTIVE members; only a Super Admin can reactivate a Super Admin; an invited
   member cannot be activated around the invitation.
-- Invited sign-in: the temporary password works only while the invitation's sign-in link is live.
+- Invited sign-in (I-13): an invited account never signs in with a password (it has none; a legacy
+  one is refused too); it joins only through a live, unused sign-in link.
 - Platform tenant creation: the duplicate-name check is an exact (case-insensitive) match, so
   LIKE wildcards in a name do not match other tenants.
 """
@@ -33,15 +34,17 @@ def _user(client, tenant_id, label: str, role: str, status: str = "ACTIVE") -> d
     return out
 
 
-def _magic_link(user_id: str, expires_in: timedelta, used: bool = False) -> None:
+def _magic_link(user_id: str, expires_in: timedelta, used: bool = False) -> str:
     from app.core.security import hash_token
     from app.models.magic_login_token import MagicLoginToken
 
+    raw = uuid.uuid4().hex
     with SessionLocal() as db:
-        db.add(MagicLoginToken(user_id=user_id, token_hash=hash_token(uuid.uuid4().hex),
+        db.add(MagicLoginToken(user_id=user_id, token_hash=hash_token(raw),
                                expires_at=datetime.utcnow() + expires_in,
                                used_at=datetime.utcnow() if used else None))
         db.commit()
+    return raw
 
 
 @pytest.fixture(scope="module")
@@ -85,19 +88,27 @@ def _password_login(client, u):
     return client.post("/api/auth/login", json={"email": u["email"], "password": u["password"]})
 
 
-def test_rvf_f04_invited_login_needs_a_live_link(client, ws):
-    u = _user(client, ws["tenant_id"], "nolink", "AGENT", status="INVITED")
-    r = _password_login(client, u)
-    assert r.status_code == 403 and "invitation has expired" in r.json()["detail"], r.text
-
-    _magic_link(u["user_id"], timedelta(hours=-1))            # expired
-    _magic_link(u["user_id"], timedelta(hours=5), used=True)  # spent (revoked or resent)
-    assert _password_login(client, u).status_code == 403
-    assert sql("SELECT status FROM users WHERE user_id = :u", u=u["user_id"]) == "INVITED"
-
+def test_rvf_f04_invited_sign_in_needs_a_live_link(client, ws):
+    # A legacy invited account that still carries a password: refused, even with a live link
+    u = _user(client, ws["tenant_id"], "legacy", "AGENT", status="INVITED")
     _magic_link(u["user_id"], timedelta(hours=5))
     r = _password_login(client, u)
-    assert r.status_code == 200, r.text
+    assert r.status_code == 403 and "sign-in link" in r.json()["detail"], r.text
+    assert sql("SELECT status FROM users WHERE user_id = :u", u=u["user_id"]) == "INVITED"
+
+    # A new-style invited account has no password at all
+    sql("UPDATE users SET password_hash = NULL WHERE user_id = :u", u=u["user_id"])
+    assert _password_login(client, u).status_code == 401
+
+    expired = _magic_link(u["user_id"], timedelta(hours=-1))
+    spent = _magic_link(u["user_id"], timedelta(hours=5), used=True)  # revoked or resent
+    for token in (expired, spent):
+        assert client.post("/api/auth/magic-login", json={"token": token}).status_code == 401
+    assert sql("SELECT status FROM users WHERE user_id = :u", u=u["user_id"]) == "INVITED"
+
+    live = _magic_link(u["user_id"], timedelta(hours=5))
+    r = client.post("/api/auth/magic-login", json={"token": live})
+    assert r.status_code == 200 and r.json()["first_login"] is True, r.text
     assert sql("SELECT status FROM users WHERE user_id = :u", u=u["user_id"]) == "ACTIVE"
 
 

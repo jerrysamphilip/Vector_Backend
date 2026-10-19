@@ -31,6 +31,7 @@ from app.models.prospect_persona import ProspectPersona
 from app.models.user import User
 from app.services import contact_companies, crm, mentions
 from app.services.contact_field_service import definitions_in_order, label_map
+from app.utils import sql_like
 from app.services.contact_service import (
     MERGE_CHOOSABLE,
     can_access_contact,
@@ -137,11 +138,11 @@ def search_condition(q: str) -> ColumnElement:
     The digits-only phone match applies only when the query looks like a phone number (digits and
     phone punctuation, e.g. "737 555 0188", "+1 (737) 555-0188"). Otherwise a mixed query such as
     "zorblax66034" would also match every record whose text merely contains "66034"."""
-    term = q.strip().lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    conditions = [Prospect.search_text.like(f"%{term}%")]
+    term = q.strip().lower()
+    conditions = [sql_like.like(Prospect.search_text, term)]
     digits = phone_digits(q)
     if len(digits) >= 4 and digits != term and _PHONE_QUERY.fullmatch(q.strip()):
-        conditions.append(Prospect.search_text.like(f"%{digits}%"))
+        conditions.append(sql_like.like(Prospect.search_text, digits))
     return or_(*conditions)
 
 
@@ -268,6 +269,7 @@ def summaries(db: Session, prospects: List[Prospect]) -> List[dict]:
 
     return [{
         "prospect_id": p.prospect_id,
+        "row_version": p.row_version,  # send back as expected_version when editing (T-3)
         "first_name": p.first_name,
         "last_name": p.last_name,
         "full_name": p.full_name,
@@ -600,9 +602,9 @@ def deleted_page(db: Session, user: User, q: Optional[str], page: int, page_size
         Prospect.deleted_at > cutoff, Prospect.merged_into_id.is_(None))
     query = scope(query, db, user, Prospect.owner_id)  # own team's contacts only (BR-SH-02)
     if q and q.strip():
-        term = f"%{q.strip()}%"
-        query = query.filter(or_(Prospect.email.ilike(term), Prospect.first_name.ilike(term),
-                                 Prospect.last_name.ilike(term), Prospect.company_name.ilike(term)))
+        term = q.strip()
+        query = query.filter(or_(*[sql_like.ilike(c, term) for c in (
+            Prospect.email, Prospect.first_name, Prospect.last_name, Prospect.company_name)]))
     total = query.count()
     rows = query.order_by(Prospect.deleted_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     deleters = {u.user_id: u for u in db.query(User).filter(User.user_id.in_({p.deleted_by for p in rows if p.deleted_by}))}

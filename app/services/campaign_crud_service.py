@@ -38,6 +38,7 @@ from app.services.audit_service import AuditService
 from app.services.metrics_service import MetricsService
 from app.services.campaign_analytics_service import CampaignAnalyticsService
 from app.utils.email_utils import normalize_cta_link
+from app.utils.sql_like import ilike
 
 
 class CampaignCRUDService:
@@ -463,7 +464,7 @@ class CampaignCRUDService:
         
         if filters.campaign_name:
             query = query.filter(
-                Campaign.campaign_name.ilike(f"%{filters.campaign_name}%")
+                ilike(Campaign.campaign_name, filters.campaign_name)
             )
         
         # Get total count
@@ -505,6 +506,7 @@ class CampaignCRUDService:
                 campaign_id=c.campaign_id,
                 campaign_name=c.campaign_name,
                 status=CampaignStatus(c.status),
+                row_version=c.row_version or 1,
                 created_by=c.created_by,
                 creator_name=user_map.get(c.created_by),
                 sent_count=metrics["sent_count"],
@@ -788,6 +790,7 @@ class CampaignCRUDService:
             sender_title=campaign.sender_title,
             cta_link=campaign.cta_link,
             status=CampaignStatus(campaign.status),
+            row_version=campaign.row_version or 1,
             paused_reason=campaign.paused_reason,
             paused_at=campaign.paused_at,
             auto_paused=bool(campaign.auto_paused),
@@ -830,6 +833,7 @@ class CampaignCRUDService:
             campaign_id=campaign.campaign_id,
             campaign_name=campaign.campaign_name,
             status=CampaignStatus(campaign.status),
+            row_version=campaign.row_version or 1,
             created_by=campaign.created_by,
             creator_name=self._get_creator_name(campaign.created_by),
             sent_count=metrics["sent_count"],

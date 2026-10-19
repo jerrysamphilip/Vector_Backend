@@ -19,12 +19,14 @@ from sqlalchemy.orm import Session
 from app.core.auth import require_role
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import hash_password, hash_token
+from app.core.security import hash_token
 from app.models.campaign import Campaign
 from app.models.magic_login_token import MagicLoginToken
 from app.services.invitation_email import build_magic_login_link
+from app.services.invitation_service import show_once_link
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.utils.sql_like import ilike
 
 logger = logging.getLogger(__name__)
 
@@ -106,15 +108,16 @@ def _send_tenant_invite_email(to_email: str, tenant_name: str, magic_login_link:
 <html><body style="font-family:sans-serif;color:#1e293b;max-width:600px;margin:auto;padding:32px">
 <h2 style="color:#2d6bbf">Welcome to {tenant_name}</h2>
 <p>Your organization workspace <strong>{tenant_name}</strong> has been created on {settings.APP_NAME or 'SalesPro'}.</p>
-<p>You have been assigned the <strong>Super Admin</strong> role. Click below to activate your account:</p>
+<p>You have been assigned the <strong>Super Admin</strong> role. Click below to activate your account and choose your password:</p>
 <p style="margin:28px 0">
   <a href="{magic_login_link}" style="background:linear-gradient(135deg,#0046FF,#73C8D2);color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:600;display:inline-block">
     Activate Account
   </a>
 </p>
-<p style="color:#64748b;font-size:13px">This link expires in {getattr(settings, 'MAGIC_LOGIN_EXPIRE_HOURS', 72)} hours. If you didn't expect this, you can ignore it.</p>
+<p style="color:#64748b;font-size:13px">This link expires in {getattr(settings, 'MAGIC_LOGIN_EXPIRE_HOURS', 72)} hours and works once. We will never email you a password. If you didn't expect this, you can ignore it.</p>
 </body></html>"""
-    text_body = f"Welcome to {tenant_name}. Activate your account: {magic_login_link}"
+    text_body = (f"Welcome to {tenant_name}. Activate your account and choose your password "
+                 f"(the link works once): {magic_login_link}")
 
     sender_email = (settings.SENDER_EMAIL or "").strip()
     if not sender_email:
@@ -192,7 +195,7 @@ def list_tenants(
     )
 
     if search:
-        query = query.filter(Tenant.tenant_name.ilike(f"%{search}%"))
+        query = query.filter(ilike(Tenant.tenant_name, search))
     if status_filter:
         query = query.filter(Tenant.status == status_filter.upper())
     query = query.filter((User.user_id.is_(None)) | (User.role != "PLATFORM_ADMIN"))
@@ -292,11 +295,10 @@ def list_all_users(
     )
 
     if search:
-        search_term = f"%{search}%"
         query = query.filter(
-            (User.email.ilike(search_term))
-            | (User.first_name.ilike(search_term))
-            | (User.last_name.ilike(search_term))
+            ilike(User.email, search)
+            | ilike(User.first_name, search)
+            | ilike(User.last_name, search)
         )
     if role:
         query = query.filter(User.role == role.upper())
@@ -349,17 +351,14 @@ def create_tenant(
     db.add(tenant)
     db.flush()  # get tenant_id
 
-    # Create SUPER_ADMIN user with INVITED status
-    import string as _string
-    temp_password = "".join(
-        secrets.choice(_string.ascii_letters + _string.digits + "!@#$%") for _ in range(16)
-    )
+    # Create SUPER_ADMIN user with INVITED status and no password: they choose one through
+    # the emailed set-password link (I-13)
     admin_user = User(
         tenant_id=tenant.tenant_id,
         first_name=body.admin_first_name.strip(),
         last_name=body.admin_last_name.strip(),
         email=body.admin_email,
-        password_hash=hash_password(temp_password),
+        password_hash=None,
         role="SUPER_ADMIN",
         auth_provider="local",
         email_verified=True,
@@ -400,5 +399,7 @@ def create_tenant(
         "admin_user_id": admin_user.user_id,
         "admin_email": body.admin_email,
         "email_sent": email_result["sent"],
-        "magic_login_link": magic_link if not email_result["sent"] else None,
+        # Show-once fallback, local development without email only (refused in production / deployed)
+        "magic_login_link": (show_once_link(body.admin_email, magic_link, bool(email_result["sent"])) or {}).get(
+            "magic_login_link"),
     }

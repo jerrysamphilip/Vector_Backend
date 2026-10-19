@@ -1,0 +1,108 @@
+# NetworkPolicies for the Outreach 360 namespace (sales360 / sales360-stage): the compensating
+# control for in-cluster transport recorded in docs/adr/0008-internal-transport.md (rule P-3).
+# No namespace here: CI applies it with `kubectl apply -n $NAMESPACE` (CICD.yaml, opt-in through
+# the APPLY_NETWORK_POLICIES repository variable). Requires a CNI that enforces NetworkPolicy
+# (EKS: VPC CNI with enableNetworkPolicy=true, or Calico/Cilium).
+#
+# Kubelet liveness/readiness probes come from the node and are not subject to these policies.
+#
+# DECISION NEEDED before enabling: the ingress source. `backend-ingress` and the frontend repo's
+# `frontend-ingress` admit the ingress controller namespace `ingress-nginx`. With the AWS Load
+# Balancer Controller in IP mode the ALB is not a pod: replace that peer with the VPC CIDR
+# (ipBlock) of the ALB subnets.
+
+# 1. Nothing reaches any pod in the namespace unless a policy below allows it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  labels:
+    app.kubernetes.io/part-of: outreach360
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+
+---
+# 2. API (8001): from the ingress controller, the web pods (if a proxy is ever added there) and
+#    Prometheus (/metrics, METRICS_TOKEN). backend-worker gets no ingress at all (health on 8002 is
+#    only probed by the kubelet).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-ingress
+  labels:
+    app.kubernetes.io/part-of: outreach360
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app: frontend
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+        # ALB (AWS Load Balancer Controller, IP targets) instead of ingress-nginx:
+        # - ipBlock:
+        #     cidr: <VPC_CIDR>
+      ports:
+        - protocol: TCP
+          port: 8001
+
+---
+# 3. Egress of the API and the worker: DNS, MySQL (RDS) and the external services they call.
+#    Instance metadata (169.254.169.254) is excluded: credentials come from sales360-secret.
+#      443      SES / SNS / STS (boto3), OpenAI, Microsoft Graph / login, Google APIs, Sentry
+#      465/587  SMTP (implicit TLS / STARTTLS) for connected mailboxes and warm-up
+#      993/143  IMAP (implicit TLS / STARTTLS) for reply sync and warm-up
+#      3306     MySQL. DECISION: narrow 0.0.0.0/0 to the RDS subnet CIDR once known.
+#    A mailbox configured on a non-standard SMTP/IMAP port needs that port added here.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-egress
+  labels:
+    app.kubernetes.io/part-of: outreach360
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["backend", "backend-worker"]
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: ["169.254.169.254/32"]
+      ports:
+        - protocol: TCP
+          port: 3306
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 465
+        - protocol: TCP
+          port: 587
+        - protocol: TCP
+          port: 993
+        - protocol: TCP
+          port: 143

@@ -2,15 +2,16 @@
 """
 Workspace invitations: invite, resend, accept, list and revoke.
 
-An invitation creates the INVITED account up front with a temporary password and a
-one-click sign-in link (both emailed); it stays PENDING until the invitee first signs in
-or accepts. Revoking it deactivates the invited account. Errors are domain errors.
+An invitation creates the INVITED account up front WITHOUT a usable password and emails a
+one-time set-password (sign-in) link; the invitee chooses their own password on first use.
+No password is ever generated, emailed or returned in an API response (rule I-13). The
+invitation stays PENDING until the invitee first signs in or accepts. Revoking it
+deactivates the invited account. Errors are domain errors.
 """
 
 import logging
 import re
 import secrets
-import string
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -42,7 +43,6 @@ RESEND_COOLDOWN_SECONDS = 60  # one resend per invited user per minute
 INVITATION_VALID_DAYS = 7
 MIN_PASSWORD_LENGTH = 8
 _LOCAL_ENVIRONMENTS = ("development", "dev", "local")
-_PASSWORD_SPECIALS = "!@#$%&*"
 
 
 # ── Pure helpers ───────────────────────────────────────────────────
@@ -65,24 +65,18 @@ def derive_name_from_email(email: str) -> tuple[str, str]:
     return first[:100], last[:100]
 
 
-def generate_temporary_password() -> str:
-    """12 characters with at least one upper, lower, digit and special character."""
-    password = [
-        secrets.choice(string.ascii_uppercase),
-        secrets.choice(string.ascii_lowercase),
-        secrets.choice(string.digits),
-        secrets.choice(_PASSWORD_SPECIALS),
-    ]
-    alphabet = string.ascii_letters + string.digits + _PASSWORD_SPECIALS
-    password.extend(secrets.choice(alphabet) for _ in range(8))
-    secrets.SystemRandom().shuffle(password)
-    return "".join(password)
-
-
-def may_expose_credentials(email_sent: bool, environment: Optional[str], deployed: bool) -> bool:
-    """Never hand the sign-in link/password to the inviting admin (SEC-15); only a local
-    development setup without email gets them back so invites can still be tested."""
+def may_show_link_once(email_sent: bool, environment: Optional[str], deployed: bool) -> bool:
+    """The show-once fallback (I-13, SEC-15): the sign-in link (never a password) goes back to the
+    inviting admin only on a local development setup whose email delivery failed. Refused in
+    production and on any deployed environment."""
     return not email_sent and (environment or "").strip().lower() in _LOCAL_ENVIRONMENTS and not deployed
+
+
+def show_once_link(email: str, magic_login_link: str, email_sent: bool) -> Optional[Dict[str, str]]:
+    """The show-once payload for a response, or None (always None in production / deployed)."""
+    if settings.is_production or not may_show_link_once(email_sent, settings.ENVIRONMENT, is_deployed()):
+        return None
+    return {"email": email, "magic_login_link": magic_login_link}
 
 
 # ── Database helpers ───────────────────────────────────────────────
@@ -104,15 +98,13 @@ def reinvitable(db: Session, user: User) -> bool:
     return joined is None and invited is not None
 
 
-def _deliver(email: str, role: str, temporary_password: str, magic_login_link: str,
-             tenant_name: str, inviter: User) -> Dict[str, Any]:
+def _deliver(email: str, role: str, magic_login_link: str, tenant_name: str, inviter: User) -> Dict[str, Any]:
     """Send the invitation email; a delivery failure never fails the invitation itself."""
     inviter_name = f"{inviter.first_name or ''} {inviter.last_name or ''}".strip() or inviter.email
     delivery: Dict[str, Any] = {"attempted": True, "sent": False, "ses_message_id": None, "error": None}
     try:
         delivery.update(invitation_email.send_invitation_email(
             to_email=email,
-            temporary_password=temporary_password,
             magic_login_link=magic_login_link,
             role=role,
             tenant_name=tenant_name,
@@ -136,16 +128,16 @@ def _deliver(email: str, role: str, temporary_password: str, magic_login_link: s
 def issue_invite(db: Session, request: Request | None, current_user: User, email: str, role: str,
                  existing: User | None, keep_permissions: bool = False) -> Dict[str, Any]:
     """
-    Create (or reissue on `existing`) the invited account with a fresh temporary password,
-    a new sign-in link and a PENDING invitation, then email it. Callers have already checked
-    the role and revoked the previous pending invitation / links. Used by invite and resend.
+    Create (or reissue on `existing`) the invited account with no usable password, a new
+    set-password sign-in link and a PENDING invitation, then email the link. Callers have
+    already checked the role and revoked the previous pending invitation / links. Used by
+    invite and resend.
     """
     first_name, last_name = derive_name_from_email(email)
-    temporary_password = generate_temporary_password()
 
     if existing:
         user = existing
-        user.password_hash = hash_password(temporary_password)
+        user.password_hash = None  # no password until the invitee sets one (I-13)
         user.role = role
         if not keep_permissions:
             user.custom_permissions = None
@@ -157,7 +149,7 @@ def issue_invite(db: Session, request: Request | None, current_user: User, email
             first_name=first_name,
             last_name=last_name,
             email=email,
-            password_hash=hash_password(temporary_password),
+            password_hash=None,
             role=role,
             auth_provider="local",
             email_verified=True,
@@ -192,9 +184,7 @@ def issue_invite(db: Session, request: Request | None, current_user: User, email
 
     tenant = db.query(Tenant).filter(Tenant.tenant_id == current_user.tenant_id).first()
     tenant_name = tenant.tenant_name if tenant and tenant.tenant_name else "your workspace"
-    email_delivery = _deliver(email, role, temporary_password, magic_login_link, tenant_name, current_user)
-
-    expose = may_expose_credentials(bool(email_delivery.get("sent")), settings.ENVIRONMENT, is_deployed())
+    email_delivery = _deliver(email, role, magic_login_link, tenant_name, current_user)
     return {
         "invitation_id": invitation.invitation_id,
         "user_id": user.user_id,
@@ -203,11 +193,8 @@ def issue_invite(db: Session, request: Request | None, current_user: User, email
         "invite_token": None,
         "expires_at": invitation.expires_at.isoformat(),
         "email_delivery": email_delivery,
-        "manual_credentials": {
-            "email": email,
-            "password": temporary_password,
-            "magic_login_link": magic_login_link,
-        } if expose else None,
+        # Local development without email only: the sign-in link, shown once (never a password)
+        "show_once_link": show_once_link(email, magic_login_link, bool(email_delivery.get("sent"))),
     }
 
 
@@ -238,7 +225,7 @@ def invite_user(db: Session, request: Request, current_user: User, email: str, r
 
 
 def resend_invite(db: Session, request: Request, current_user: User, user_id: str) -> Dict[str, Any]:
-    """New temporary password and sign-in link for a still-INVITED account, once a minute."""
+    """New set-password sign-in link for a still-INVITED account (old links revoked), once a minute."""
     user = db.query(User).filter(User.user_id == user_id, User.tenant_id == current_user.tenant_id,
                                  User.role != "PLATFORM_ADMIN").first()
     if not user:

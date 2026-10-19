@@ -6,11 +6,13 @@ save it, and share it. Every run is limited to the viewer's records and their
 team's, so a shared report shows each person only what they may see.
 """
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func, or_
+from sqlalchemy import ColumnElement, Date, DateTime, Integer, Numeric, and_, func, or_
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
@@ -26,6 +28,7 @@ from app.models.user import User
 from app.services import sales as svc
 from app.services.contact_service import clean_str, scope, sees_everything
 from app.services.sales_settings import can_see_amounts
+from app.utils.sql_like import ilike
 
 router = APIRouter(prefix="/reports/custom", tags=["Custom reports"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -133,6 +136,69 @@ def _labels(db: Session, tenant_id: str, key: str, values) -> Dict[Any, str]:
     return {}
 
 
+def _value_kind(col: Any) -> str:
+    """numeric / date / enum / string, from the column's SQL type (month buckets are date_format text: string)."""
+    col_type = getattr(col, "type", None)
+    if isinstance(col_type, SAEnum) and col_type.enums:
+        return "enum"
+    if isinstance(col_type, (Integer, Numeric)):
+        return "numeric"
+    if isinstance(col_type, (Date, DateTime)):
+        return "date"
+    return "string"
+
+
+def _bad_value(label: str, message: str) -> HTTPException:
+    return HTTPException(status_code=422, detail=f"Filter on {label}: {message}")
+
+
+def _scalar_value(label: str, col: Any, value: Any) -> Any:
+    """One filter value checked against the column's type; anything that cannot be compared is a 422."""
+    if value is None or isinstance(value, (dict, list)):
+        raise _bad_value(label, "the value must be a single text, number or date")
+    kind = _value_kind(col)
+    if kind == "numeric":
+        try:
+            if isinstance(value, bool):
+                raise ValueError
+            return Decimal(str(value).strip())
+        except (InvalidOperation, ValueError):
+            raise _bad_value(label, f"{value!r} is not a number") from None
+    if kind == "date":
+        try:
+            return datetime.fromisoformat(str(value).strip())
+        except ValueError:
+            raise _bad_value(label, f"{value!r} is not a date (YYYY-MM-DD)") from None
+    text = str(value)
+    if kind == "enum" and text not in col.type.enums:
+        raise _bad_value(label, f"{value!r} must be one of {list(col.type.enums)}")
+    return text
+
+
+def _filter_condition(spec: dict, f: Dict[str, Any], user: User) -> ColumnElement[bool]:
+    """One report filter as a SQL condition. A list value means "any of" and is accepted only with is / is not."""
+    field, op, value = f.get("field"), f.get("operator") or "is", f.get("value")
+    if not isinstance(field, str) or not isinstance(op, str) or field not in spec["fields"] or op not in OPERATORS:
+        raise HTTPException(status_code=400, detail=f"Bad filter on {field}")
+    label, col = spec["fields"][field]
+    if op == "is_empty":
+        return or_(col.is_(None), col == "")
+    if op == "is_not_empty":
+        return and_(col.isnot(None), col != "")
+    if field == "owner" and value == "me":
+        value = user.user_id
+    if isinstance(value, list):
+        if op not in ("is", "is_not"):
+            raise _bad_value(label, f"a list of values is only allowed with 'is' / 'is not', not '{op}'")
+        match = col.in_([_scalar_value(label, col, v) for v in value])
+    else:
+        checked = _scalar_value(label, col, value)
+        if op == "contains":
+            return ilike(col, checked)
+        match = col == checked
+    return match if op == "is" else or_(col.is_(None), ~match)
+
+
 def run_definition(db: Session, user: User, d: Definition) -> dict:
     objects = _objects()
     spec = objects.get(d.object)
@@ -153,22 +219,7 @@ def run_definition(db: Session, user: User, d: Definition) -> dict:
         query = query.filter(Prospect.deleted_at.is_(None))
     query = scope(query, db, user, spec["owner"])
     for f in d.filters or []:
-        field, op, value = f.get("field"), f.get("operator") or "is", f.get("value")
-        if field not in spec["fields"] or op not in OPERATORS:
-            raise HTTPException(status_code=400, detail=f"Bad filter on {field}")
-        col = spec["fields"][field][1]
-        if field == "owner" and value == "me":
-            value = user.user_id
-        if op == "is":
-            query = query.filter(col.in_(value) if isinstance(value, list) else col == value)
-        elif op == "is_not":
-            query = query.filter(or_(col.is_(None), ~(col.in_(value) if isinstance(value, list) else col == value)))
-        elif op == "contains":
-            query = query.filter(col.ilike(f"%{value}%"))
-        elif op == "is_empty":
-            query = query.filter(or_(col.is_(None), col == ""))
-        else:
-            query = query.filter(col.isnot(None), col != "")
+        query = query.filter(_filter_condition(spec, f, user))
     if d.date_field:
         if d.date_field not in spec["dates"]:
             raise HTTPException(status_code=400, detail=f"date_field must be one of {list(spec['dates'])}")

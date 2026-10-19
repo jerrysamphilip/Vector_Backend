@@ -109,6 +109,8 @@ class CampaignWizardTemplateService:
         if openai_client is None:
             # No OpenAI key configured: a clear 503 instead of retrying and failing with a 500
             raise ExternalServiceUnavailable("AI generation is not configured on this server.")
+        # Only reads so far: end the transaction so none is held during the LLM call (T-1)
+        self.db.rollback()
 
         def _call_openai() -> Any:
             return openai_client.chat.completions.create(
@@ -129,6 +131,8 @@ class CampaignWizardTemplateService:
                     "AI service is temporarily unavailable. Please try again in a few moments.")
 
             new_content = response.choices[0].message.content.strip()
+            # Short write transaction: re-read the template (it may have been deleted meanwhile)
+            template = self.get_template_for_tenant(template_id, tenant_id)
             if field == 'subject':
                 template.subject = new_content
             else:

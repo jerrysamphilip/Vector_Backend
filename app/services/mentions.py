@@ -16,6 +16,7 @@ from app.models.contact_activity import ContactActivity
 from app.models.crm import NoteMention
 from app.models.user import User
 from app.services.notifications import notify
+from app.utils.sql_like import like
 
 MAX_MENTIONS = 20
 
@@ -33,10 +34,10 @@ def mentionable_users(db: Session, user: User, q: Optional[str] = None, limit: i
     query = db.query(User).filter(User.tenant_id == user.tenant_id, User.status == "ACTIVE",
                                   User.role.in_(("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")))
     if q and q.strip():
-        term = "%" + q.strip().lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-        query = query.filter(or_(func.lower(func.concat(func.coalesce(User.first_name, ""), " ",
-                                                        func.coalesce(User.last_name, ""))).like(term),
-                                 func.lower(User.email).like(term)))
+        term = q.strip().lower()
+        query = query.filter(or_(like(func.lower(func.concat(func.coalesce(User.first_name, ""), " ",
+                                                             func.coalesce(User.last_name, ""))), term),
+                                 like(func.lower(User.email), term)))
     query = query.order_by(User.first_name, User.last_name)
     if check_owner:
         from app.services.contact_service import can_see_owner

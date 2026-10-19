@@ -79,7 +79,7 @@ def resend_invite(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """
-    Send a pending invitation again: a new temporary password and a new sign-in link; the
+    Send a pending invitation again: a new set-password sign-in link (never a password); the
     previous invitation and links stop working. Only for accounts still INVITED, at most
     once a minute per user. Same guards as invite (tenant, role, manage_team).
     """

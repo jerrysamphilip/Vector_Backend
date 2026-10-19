@@ -29,6 +29,7 @@ from app.models import (
     Campaign,
 )
 from app.services.ai_email_service import classify_prospect, PERSONA_DISPLAY_NAMES
+from app.services.sender_identity import bind_tenant
 from app.services.sequence_generator import AI_FALLBACK_NOTICE, builtin_sequence_emails, generate_sequence_with_llm
 from app.prompts.llm_system_prompts import get_sequence_generation_system_prompt
 from app.utils.email_utils import normalize_cta_link, has_effective_cta_link, finalize_email_body
@@ -172,67 +173,104 @@ def generate_template_for_persona(
 
     Returns a single result dict (LLM success or fallback — never None).
     """
-    # Prompts are written for this campaign's tenant (its own company name)
-    from app.services.sender_identity import bind_tenant
-    _tenant_id = db.query(Campaign.tenant_id).filter(Campaign.campaign_id == campaign_id).scalar()
-    bind_tenant(_tenant_id, db)
-    # Get blueprint for this persona
+    blueprint = load_persona_blueprint(db, campaign_id, persona_type)
+    sequence, fallback_reason = generate_persona_sequence(
+        persona_type, blueprint, product_name, campaign_description, sequence_steps,
+        include_first_name_in_subject, creative_email, email_context, cta_link)
+    return save_persona_templates(
+        db, campaign_id, persona_type, prospects, sequence, fallback_reason, sequence_steps,
+        include_first_name_in_subject, cta_link, cta_enabled, step_to_seq_id)
+
+
+# IMPORTANT: the LLM gets ALL available placeholder tokens, so its templates carry every
+# {{token}} that can be replaced later
+_PLACEHOLDER_PROSPECT = {
+    # Basic Info
+    "first_name": "{{first_name}}",
+    "last_name": "{{last_name}}",
+    "full_name": "{{full_name}}",
+    # Company Info
+    "company_name": "{{company_name}}",
+    "designation": "{{designation}}",
+    "industry": "{{industry}}",
+    # Location - IMPORTANT for local context
+    "city": "{{city}}",
+    "location": "{{location}}",
+    "timezone": "{{timezone}}",
+    # Social
+    "linkedin_url": "{{linkedin_url}}",
+    # Sender Info
+    "our_company": "{{our_company}}",
+    "your_name": "{{your_name}}",
+    # CTA
+    "calendar_link": "{{calendar_link}}",
+}
+
+
+def load_persona_blueprint(db: Session, campaign_id: str, persona_type: str) -> Optional[PersonaBlueprint]:
+    """Binds the campaign's tenant for prompt branding (its own company name) and returns the
+    persona's active blueprint, detached from the session so it stays usable after the read
+    transaction ends: the LLM call must not run inside one (T-1)."""
+    tenant_id = db.query(Campaign.tenant_id).filter(Campaign.campaign_id == campaign_id).scalar()
+    bind_tenant(tenant_id, db)
     blueprint = db.query(PersonaBlueprint).filter(
         PersonaBlueprint.persona_type == persona_type,
-        PersonaBlueprint.is_active == True
+        PersonaBlueprint.is_active == True  # noqa: E712  (SQL expression)
     ).first()
+    if blueprint is not None:
+        db.expunge(blueprint)
+    return blueprint
 
-    num_emails = len(sequence_steps) if sequence_steps else 4  # Default to 4
-    sequence = None
-    fallback_reason = None
-    # Generate template using LLM
+
+def generate_persona_sequence(
+    persona_type: str,
+    blueprint: Optional[PersonaBlueprint],
+    product_name: str,
+    campaign_description: str,
+    sequence_steps: Optional[list],
+    include_first_name_in_subject: bool,
+    creative_email: bool,
+    email_context: str,
+    cta_link: str,
+) -> tuple:
+    """The LLM call for one persona's sequence. Uses no database session (callers end their
+    transaction first). Returns (sequence or None, fallback reason or None)."""
+    if not blueprint:
+        return None, "No persona blueprint for AI generation"
     try:
-        # IMPORTANT: Pass ALL available placeholder tokens
-        # This ensures the LLM outputs templates with ALL {{tokens}} that can be replaced later
-        prospect_data = {
-            # Basic Info
-            "first_name": "{{first_name}}",
-            "last_name": "{{last_name}}",
-            "full_name": "{{full_name}}",
-            # Company Info
-            "company_name": "{{company_name}}",
-            "designation": "{{designation}}",
-            "industry": "{{industry}}",
-            # Location - IMPORTANT for local context
-            "city": "{{city}}",
-            "location": "{{location}}",
-            "timezone": "{{timezone}}",
-            # Social
-            "linkedin_url": "{{linkedin_url}}",
-            # Sender Info
-            "our_company": "{{our_company}}",
-            "your_name": "{{your_name}}",
-            # CTA
-            "calendar_link": "{{calendar_link}}",
-        }
-
-        # Call LLM if blueprint exists
-        if blueprint:
-            sequence = generate_sequence_with_llm(
-                prospect_data=prospect_data,
-                blueprint=blueprint,
-                product_name=product_name,
-                product_description=campaign_description,
-                num_emails=num_emails,
-                cta_link=cta_link,
-                include_first_name_in_subject=include_first_name_in_subject,
-                creative_email=creative_email,
-                email_context=email_context,
-            )
-            if not sequence:
-                fallback_reason = "AI generation unavailable"
-        else:
-            fallback_reason = "No persona blueprint for AI generation"
+        sequence = generate_sequence_with_llm(
+            prospect_data=dict(_PLACEHOLDER_PROSPECT),
+            blueprint=blueprint,
+            product_name=product_name,
+            product_description=campaign_description,
+            num_emails=len(sequence_steps) if sequence_steps else 4,  # Default to 4
+            cta_link=cta_link,
+            include_first_name_in_subject=include_first_name_in_subject,
+            creative_email=creative_email,
+            email_context=email_context,
+        )
     except Exception as e:
         logger.exception("Error generating template for %s: %s", persona_type, e)
-        sequence = None
-        fallback_reason = f"AI generation failed: {e}"
+        return None, f"AI generation failed: {e}"
+    return sequence, (None if sequence else "AI generation unavailable")
 
+
+def save_persona_templates(
+    db: Session,
+    campaign_id: str,
+    persona_type: str,
+    prospects: List[Dict],
+    sequence: Optional[dict],
+    fallback_reason: Optional[str],
+    sequence_steps: Optional[list],
+    include_first_name_in_subject: bool,
+    cta_link: str,
+    cta_enabled: bool,
+    step_to_seq_id: Dict[int, str],
+) -> Dict:
+    """Adds (does not commit) one template per step from the generated sequence and returns the
+    persona's result dict."""
+    num_emails = len(sequence_steps) if sequence_steps else 4  # Default to 4
     # Every configured step gets a template: the AI's copy where it produced one, otherwise a
     # built-in starter template (D1: launch needs one template per step).
     builtin = None

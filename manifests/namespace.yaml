@@ -1,0 +1,32 @@
+# Namespaces for Outreach 360 with Pod Security Admission at `restricted` (rule P-1): the API server
+# rejects any pod that runs as root, keeps capabilities, allows privilege escalation or lacks a
+# seccomp profile, including third-party images. Cluster-scoped, so it is applied by a cluster
+# admin rather than CICD.yaml:
+#
+#   # 1. preview: lists running pods that would violate `restricted` (nothing is changed)
+#   kubectl label --dry-run=server --overwrite ns sales360 pod-security.kubernetes.io/enforce=restricted
+#   # 2. after the hardened backend AND frontend are deployed in the namespace:
+#   kubectl apply -f manifests/namespace.yaml
+#
+# The frontend (Vector_Frontend/manifests/deployment.yaml) deploys into the same namespaces and is
+# hardened to the same level, so deploy it before enforcing.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sales360
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sales360-stage
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

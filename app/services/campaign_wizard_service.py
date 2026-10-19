@@ -39,8 +39,11 @@ from app.models import (
     SendingInbox,
 )
 from app.models.domain_reputation import SendingDomain
+from app.core.concurrency import claim_version
 from app.core.errors import BadRequestError, ConflictError, NotFoundError
 from app.services.ai_email_service import classify_prospect
+from app.services.batch_processor_service import (batch_classify_prospects, generate_persona_sequence,
+                                                  load_persona_blueprint, save_persona_templates)
 from app.services.enrollment_rules import MAX_REJECTIONS_RETURNED, summarize
 from app.utils.email_context_detector import detect_email_context
 from app.utils.business_calendar import calculate_send_time
@@ -647,33 +650,50 @@ def generate_persona_template(
     """
     (Re)generate one persona's templates for the campaign. Works for any canonical persona, even
     one with no classified prospects yet. Only this persona's previous templates are replaced.
+
+    No transaction is open during the LLM call (T-1): the inputs are read (and new persona
+    classifications saved) and committed first; afterwards one short transaction re-checks the
+    campaign and swaps the persona's old templates for the new ones.
     """
-    from app.services.batch_processor_service import batch_classify_prospects, generate_template_for_persona
-
     campaign_id = campaign.campaign_id
+    email_context = detect_email_context(product_name, campaign_description)
+    cta_link = normalize_cta_link(campaign.cta_link)
     try:
-        email_context = detect_email_context(product_name, campaign_description)
-        cta_link = normalize_cta_link(campaign.cta_link)
-        cta_enabled = has_effective_cta_link(cta_link)
+        # Reuse (or create) classifications for this list; may yield 0 prospects for this persona.
+        prospects = batch_classify_prospects(db, list_id, tenant_id, excluded_prospect_ids).get(persona_type, [])
+        blueprint = load_persona_blueprint(db, campaign_id, persona_type)
+        db.commit()  # keep the classifications; no locks or snapshot held across the LLM call
+    except Exception:
+        db.rollback()
+        raise
 
+    sequence, fallback_reason = generate_persona_sequence(
+        persona_type, blueprint, product_name, campaign_description, sequence_steps,
+        include_first_name_in_subject, creative_email, email_context, cta_link)
+    return _replace_persona_templates(
+        db, campaign_id, persona_type, prospects, sequence, fallback_reason, sequence_steps,
+        include_first_name_in_subject, cta_link)
+
+
+def _replace_persona_templates(db: Session, campaign_id: str, persona_type: str, prospects: List[dict],
+                               sequence: Optional[dict], fallback_reason: Optional[str],
+                               sequence_steps: Optional[List[dict]], include_first_name_in_subject: bool,
+                               cta_link: str) -> Dict:
+    """The short write transaction after generation: re-reads the campaign (it may have been deleted
+    while the LLM ran) and its current steps, then replaces this persona's templates all-or-nothing."""
+    try:
+        if not db.query(Campaign.campaign_id).filter(Campaign.campaign_id == campaign_id).first():
+            raise NotFoundError("Campaign not found")
         step_to_seq_id = {s.step_number: s.sequence_id for s in db.query(EmailSequence).filter(
             EmailSequence.campaign_id == campaign_id
         ).all()}
-
-        # Reuse (or create) classifications for this list; may yield 0 prospects for this persona.
-        prospects = batch_classify_prospects(db, list_id, tenant_id, excluded_prospect_ids).get(persona_type, [])
-
         db.query(EmailTemplate).filter(
             EmailTemplate.campaign_id == campaign_id,
             EmailTemplate.designation == persona_type,
         ).delete(synchronize_session=False)
-
-        result = generate_template_for_persona(
-            db, campaign_id, persona_type, prospects,
-            product_name, campaign_description, sequence_steps,
-            include_first_name_in_subject, creative_email, email_context,
-            cta_link, cta_enabled, step_to_seq_id,
-        )
+        result = save_persona_templates(
+            db, campaign_id, persona_type, prospects, sequence, fallback_reason, sequence_steps,
+            include_first_name_in_subject, cta_link, has_effective_cta_link(cta_link), step_to_seq_id)
         db.commit()
         return result
     except Exception:
@@ -760,11 +780,14 @@ def enroll_list_into_campaign(
     }
 
 
-def activate_campaign_for_tenant(db: Session, tenant_id: str, campaign_id: str, user_id: str) -> Campaign:
-    """Wizard activation: no sender identity -> BadRequestError, not activatable -> ConflictError."""
+def activate_campaign_for_tenant(db: Session, tenant_id: str, campaign_id: str, user_id: str,
+                                 expected_version: Optional[int] = None) -> Campaign:
+    """Wizard activation: no sender identity -> BadRequestError, not activatable -> ConflictError,
+    a stale expected_version (the campaign's row_version the wizard loaded, T-3) -> 409."""
     from app.services.sender_identity import SenderIdentityMissing
 
-    get_campaign_for_tenant(db, campaign_id, tenant_id)
+    campaign = get_campaign_for_tenant(db, campaign_id, tenant_id)
+    claim_version(db, campaign, expected_version, record="campaign")
     try:
         campaign = step_7_activate_campaign(db, campaign_id, user_id)
     except SenderIdentityMissing as exc:

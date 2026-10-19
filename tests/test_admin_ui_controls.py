@@ -1,7 +1,7 @@
 """Admin UI controls round, in-process API tests (FastAPI TestClient + the test MySQL schema).
 
 - List rename / description edit (PATCH /lists/{id}) for created and uploaded lists.
-- Invitation resend (POST /api/users/{id}/resend-invite): new password + link, old ones revoked,
+- Invitation resend (POST /api/users/{id}/resend-invite): new set-password link, old ones revoked,
   once a minute per user, tenant / role / permission guarded.
 - Sales hierarchy from the users admin screen (PUT /team/hierarchy/{id}): cycle and input guards.
 - Add sending domain (POST /deliverability/domains) and its DNS guidance (GET .../dns-records).
@@ -118,10 +118,10 @@ def test_auc_f10_resend_issues_new_credentials_and_revokes_old(client, ws, mailb
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["resent"] is True and body["email"] == email and body["role"] == "AGENT"
-    assert body["email_delivery"]["sent"] is True and body["manual_credentials"] is None
+    assert body["email_delivery"]["sent"] is True and body["show_once_link"] is None
     second = mailbox[-1]
     assert second["to_email"] == email
-    assert second["temporary_password"] != first["temporary_password"]
+    assert "temporary_password" not in second
     assert second["magic_login_link"] != first["magic_login_link"]
     # One pending invitation (the new one); the old one is revoked and its links are spent
     assert sql("SELECT COUNT(*) FROM invitations WHERE email = :e AND status = 'PENDING'", e=email) == 1
@@ -131,8 +131,10 @@ def test_auc_f10_resend_issues_new_credentials_and_revokes_old(client, ws, mailb
     # Customised permissions survive a resend
     perms = client.get(f"/api/users/{uid}/permissions", headers=h).json()
     assert perms["is_custom"] is True and sorted(perms["permissions"]) == ["manage_campaigns", "view_analytics"]
-    # The old password no longer signs in, the new one does
-    assert client.post("/api/auth/login", json={"email": email, "password": first["temporary_password"]}).status_code != 200
+    # The old link no longer signs in (and the invited account has no password at all)
+    old_token = first["magic_login_link"].split("token=", 1)[1]
+    assert client.post("/api/auth/magic-login", json={"token": old_token}).status_code == 401
+    assert sql("SELECT password_hash FROM users WHERE user_id = :u", u=uid) is None
     # And again within the minute: refused
     assert client.post(f"/api/users/{uid}/resend-invite", headers=h).status_code == 429
 

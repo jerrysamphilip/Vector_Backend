@@ -77,6 +77,7 @@ class Lead(Base):
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
 
     __table_args__ = (
         Index("ix_leads_tenant_stage", "tenant_id", "stage"),
@@ -132,6 +133,7 @@ class Opportunity(Base):
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
 
     __table_args__ = (
         Index("ix_opps_tenant_status_close", "tenant_id", "status", "close_date"),
@@ -157,6 +159,7 @@ class Proposal(Base):
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
     # Discount approval (BR-SF-17): NOT_REQUIRED / PENDING / APPROVED / REJECTED (app/services/quote_approval.py)
     approval_status = Column(String(20), nullable=False, default="NOT_REQUIRED", server_default="NOT_REQUIRED")
     approval_discount_pct = Column(Numeric(5, 2), nullable=True)   # discount submitted / approved

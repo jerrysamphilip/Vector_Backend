@@ -17,6 +17,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
+from app.core.concurrency import claim_version, if_match_version, resolve_expected
 from app.core.database import get_db
 from app.models.account import Account
 from app.models.crm import ContactCompany, CrmTask, PropertyChange
@@ -29,6 +30,7 @@ from app.services.contact_query_service import user_name as _user_name
 from app.services import contact_companies, crm
 from app.services.contact_service import can_manage_contacts, can_see_owner, clean_str, scope, sees_everything, visible_user_ids
 from app.services.sales_settings import can_see_amounts, masked_for
+from app.utils.sql_like import ilike
 
 router = APIRouter(prefix="/accounts", tags=["Companies"])
 
@@ -54,6 +56,10 @@ class AccountWrite(BaseModel):
     owner_id: Optional[str] = None
     annual_revenue: Optional[str] = None
     lifecycle_stage: Optional[str] = None
+
+
+class AccountUpdate(AccountWrite):
+    expected_version: Optional[int] = Field(None, ge=1)  # the row_version the client loaded (T-3)
 
 
 def _require_manager(user: User):
@@ -93,7 +99,8 @@ def _visible_contacts(db: Session, user: User):
 
 def _account_dict(a: Account, owner: Optional[User] = None, contact_count: int = 0) -> dict:
     return {
-        "account_id": a.account_id, "name": a.name, "domain": a.domain, "website": a.website,
+        "account_id": a.account_id, "row_version": a.row_version, "name": a.name, "domain": a.domain,
+        "website": a.website,
         "phone": a.phone, "industry": a.industry, "emp_band": a.emp_band, "street": a.street,
         "city": a.city, "state": a.state, "postal_code": a.postal_code, "country": a.country,
         "description": a.description, "annual_revenue": float(a.annual_revenue) if a.annual_revenue is not None else None,
@@ -180,8 +187,8 @@ def list_accounts(
     if industry:
         query = query.filter(Account.industry == industry)
     if q and q.strip():
-        term = f"%{q.strip()}%"
-        query = query.filter(or_(Account.name.ilike(term), Account.domain.ilike(term), Account.industry.ilike(term)))
+        term = q.strip()
+        query = query.filter(or_(ilike(Account.name, term), ilike(Account.domain, term), ilike(Account.industry, term)))
 
     total = query.count()
     column = {"name": Account.name, "contacts": func.coalesce(counts.c.n, 0), "annual_revenue": Account.annual_revenue,
@@ -316,14 +323,15 @@ def get_account(account_id: str, db: Session = Depends(get_db), current_user: Us
 
 
 @router.patch("/{account_id}")
-def update_account(account_id: str, payload: AccountWrite, db: Session = Depends(get_db),
-                   current_user: User = Depends(tenant_user)):
+def update_account(account_id: str, payload: AccountUpdate, db: Session = Depends(get_db),
+                   current_user: User = Depends(tenant_user), if_match: Optional[int] = Depends(if_match_version)):
     account = _get_account(db, current_user, account_id)
     if not _can_see_account(db, current_user, account):
         raise HTTPException(status_code=404, detail="Company not found")
     if not _can_edit_account(db, current_user, account):
         raise HTTPException(status_code=403, detail="You can only edit companies you own")
     data = payload.model_dump(exclude_unset=True)
+    claim_version(db, account, resolve_expected(data.pop("expected_version", None), if_match), record="company")
     if "owner_id" in data and not can_manage_contacts(current_user):
         raise HTTPException(status_code=403, detail="Only users who manage prospects can reassign companies")
     before = crm.snapshot(account, EDITABLE)

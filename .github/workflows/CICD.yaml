@@ -26,6 +26,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # P-2: every FROM / image line must be pinned by digest (refresh with scripts/pin_images.py
+      # before a release, see docs/RELEASE.md). No network needed.
+      - name: Check image digest pins
+        run: python3 scripts/pin_images.py --check
+
       - name: Set environment based on branch
         run: |
           BRANCH=${GITHUB_REF##*/}
@@ -63,6 +68,10 @@ jobs:
       - name: Push Docker image to ECR
         run: |
           docker push $ECR_REPOSITORY:$IMAGE_TAG
+          # Deploy the pushed image by digest, never by its (mutable) tag (P-2)
+          DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' $ECR_REPOSITORY:$IMAGE_TAG | cut -d@ -f2)
+          case "$DIGEST" in sha256:*) ;; *) echo "No digest for pushed image" >&2; exit 1;; esac
+          echo "IMAGE_REF=$ECR_REPOSITORY:$IMAGE_TAG@$DIGEST" >> $GITHUB_ENV
 
       - name: Update kubeconfig
         run: |
@@ -72,7 +81,17 @@ jobs:
 
       - name: Update image in manifest
         run: |
-          sed -i "s|image:.*|image: $ECR_REPOSITORY:$IMAGE_TAG|g" $MANIFEST
+          sed -i "s|<ECR_IMAGE_URI>|$IMAGE_REF|g" $MANIFEST
+          # The rendered manifest may not keep any placeholder or tag-only image
+          python3 scripts/pin_images.py --check --strict $MANIFEST
+
+      # P-3 compensating control (docs/adr/0008-internal-transport.md). Opt-in per repository
+      # variable until the ingress source in manifests/networkpolicy.yaml is confirmed for the
+      # cluster: a wrong source there blocks all traffic to the app.
+      - name: Apply NetworkPolicies
+        if: vars.APPLY_NETWORK_POLICIES == 'true'
+        run: |
+          kubectl apply -n $NAMESPACE -f manifests/networkpolicy.yaml
 
       - name: Deploy to EKS
         run: |
@@ -89,4 +108,4 @@ jobs:
           echo "Environment: $ENV"
           echo "Namespace: $NAMESPACE"
           echo "Manifest: $MANIFEST"
-          echo "Image: $ECR_REPOSITORY:$IMAGE_TAG"
+          echo "Image: $IMAGE_REF"

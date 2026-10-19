@@ -31,6 +31,8 @@ class EmailSequence(Base):
     send_start_hour = Column(Integer, nullable=True)
     send_end_hour = Column(Integer, nullable=True)
 
+    row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
+
     # Relationships
     campaign = relationship("Campaign", back_populates="sequences")
     templates = relationship("EmailTemplate", back_populates="sequence", lazy="dynamic")

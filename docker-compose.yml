@@ -20,6 +20,8 @@ x-api-env: &api-env
   APP_PROFILE: local
   ENVIRONMENT: development
   DEBUG: ${DEBUG:-false}
+  # Self sign-up (POST /api/auth/register) is off unless set; the local stack and the system tests use it.
+  ALLOW_SELF_SIGNUP: ${ALLOW_SELF_SIGNUP:-true}
   # Mailbox SMTP/IMAP certificates are verified. Set MAIL_TLS_VERIFY=false in .env only to run the
   # system tests' self-signed fake IMAP server (system_tests/outreach); refused in production.
   MAIL_TLS_VERIFY: ${MAIL_TLS_VERIFY:-true}
@@ -66,9 +68,22 @@ x-api-env: &api-env
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
   GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
 
+# Same container hardening as the Kubernetes manifests (P-1): read-only root filesystem with a tmpfs
+# /tmp (plus the uploads volume), every capability dropped, no privilege escalation. The images
+# already run as non-root (api uid 10001, web nginx-unprivileged uid 101).
+x-hardened: &hardened
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+
 services:
+  # Local-dev only (production uses RDS). Pinned by digest like every other image (P-2); refresh
+  # with scripts/pin_images.py. The official entrypoint starts as root and drops to mysql.
   mysql:
-    image: mysql:8.4
+    image: mysql:8.4@sha256:24989179f58856db763f418010c1169fecc944e3ec1ea7e921572d83eb070f70
     environment:
       MYSQL_ROOT_PASSWORD: ${LOCAL_MYSQL_ROOT_PASSWORD:-root}
       MYSQL_DATABASE: ${LOCAL_MYSQL_DATABASE:-outreach_ai}
@@ -89,7 +104,8 @@ services:
   # One-shot: brings the schema to the latest Alembic revision and syncs persona blueprints
   migrate:
     build: {context: .}
-    image: vector-api
+    image: vector-api  # pin:ignore built locally by this file, never pulled
+    <<: *hardened
     command: ["python", "-m", "app.db.migrate"]
     environment: *api-env
     depends_on:
@@ -99,7 +115,8 @@ services:
 
   api:
     build: {context: .}
-    image: vector-api
+    image: vector-api  # pin:ignore built locally by this file, never pulled
+    <<: *hardened
     environment:
       <<: *api-env
       RUN_BACKGROUND_JOBS: "false"
@@ -121,7 +138,8 @@ services:
   # Background loops; every iteration takes a MySQL named lock, so scaling it never double-runs work
   worker:
     build: {context: .}
-    image: vector-api
+    image: vector-api  # pin:ignore built locally by this file, never pulled
+    <<: *hardened
     command: ["python", "-m", "app.worker"]
     environment:
       <<: *api-env
@@ -144,15 +162,16 @@ services:
       context: ${FRONTEND_DIR:-../Frontend}
       args:
         BASE_PATH: /vector/   # path under the shared hub nginx (http://localhost/vector/)
+    <<: *hardened
     volumes:
       - ${FRONTEND_DIR:-../Frontend}/docker/nginx.local.conf:/etc/nginx/nginx.conf:ro
     ports:
-      - "${WEB_PORT:-8190}:80"
+      - "${WEB_PORT:-8190}:8080"   # nginx-unprivileged listens on 8080 (non-root)
     depends_on:
       api:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 15s
       timeout: 3s
       retries: 3

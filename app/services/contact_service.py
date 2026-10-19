@@ -4,6 +4,7 @@ Shared contact-management logic: access rules, account linking, cascade delete
 and duplicate merging. Used by contacts_router, accounts_router and the upload flow.
 """
 
+import json
 import re
 import uuid
 from collections import defaultdict
@@ -200,6 +201,7 @@ def delete_contacts(db: Session, prospect_ids: list, actor_id: Optional[str] = N
         db.add(AuditLog(tenant_id=tenant_id, user_id=actor_id, action=reason, entity_type="contact", entity_id=pid))
     from app.models.sales import Lead, Opportunity
     from app.services.sales import delete_leads
+    _scrub_personal_copies(db, prospect_ids)
     message_ids = [m[0] for m in db.query(EmailMessage.message_id).filter(
         EmailMessage.prospect_id.in_(prospect_ids)
     ).all()]
@@ -222,6 +224,83 @@ def delete_contacts(db: Session, prospect_ids: list, actor_id: Optional[str] = N
     db.query(PropertyChange).filter(PropertyChange.object_type == "CONTACT",
                                     PropertyChange.object_id.in_(prospect_ids)).delete(synchronize_session=False)
     db.query(Prospect).filter(Prospect.prospect_id.in_(prospect_ids)).delete(synchronize_session=False)
+
+
+def _import_error_mentions(entry: dict, emails: Set[str]) -> bool:
+    """A rejected import row that carries one of these addresses (in any column, or the reason)."""
+    if not isinstance(entry, dict):
+        return False
+    values = entry.get("values") or {}
+    if isinstance(values, dict) and any(isinstance(v, str) and v.strip().lower() in emails
+                                        for v in values.values()):
+        return True
+    reason = str(entry.get("reason") or "").lower()
+    return any(e in reason for e in emails)
+
+
+def _redacted_webhook_payload(payload: str, event_id: str, event_type: str) -> str:
+    """The delivery envelope with `data` reduced to its *_id fields (no personal data)."""
+    try:
+        envelope = json.loads(payload)
+        if not isinstance(envelope, dict):
+            raise ValueError("not an object")
+    except ValueError:
+        envelope = {"id": event_id, "type": event_type}
+    data = envelope.get("data")
+    if not isinstance(data, dict):
+        data = {}
+    slim = {k: v for k, v in data.items() if k.endswith("_id") and isinstance(v, (str, int))}
+    slim["redacted"] = True
+    envelope["data"] = slim
+    return json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
+
+
+def _scrub_personal_copies(db: Session, prospect_ids: list) -> None:
+    """
+    Erasure (D-12): personal data of these contacts copied into rows that do not reference
+    them by foreign key. Caller commits.
+      - import_jobs.errors: rejected rows carrying the contact's address are removed;
+      - webhook_deliveries.payload: events naming the contact (id or address) keep only their
+        *_id fields; a still-pending delivery is sent in that redacted form;
+      - notifications: in-app notifications linking to the contact or its leads, or naming
+        its address, are deleted.
+    The suppression list (global_unsubscribes) keeps the address on purpose: it is what stops
+    the contact from being emailed again after erasure.
+    """
+    from app.models.crm import ImportJob
+    from app.models.sales import Lead
+    from app.models.sales_extra import Notification
+    from app.models.webhook import WebhookDelivery
+
+    people: dict = defaultdict(list)
+    for pid, tenant_id, email in db.query(Prospect.prospect_id, Prospect.tenant_id, Prospect.email).filter(
+            Prospect.prospect_id.in_(prospect_ids)).all():
+        people[tenant_id].append((pid, (email or "").strip().lower()))
+    for tenant_id, rows in people.items():
+        ids = [pid for pid, _ in rows]
+        emails = {e for _, e in rows if e}
+        lead_ids = [lid for (lid,) in db.query(Lead.lead_id).filter(Lead.prospect_id.in_(ids)).all()]
+
+        if emails:
+            for job in db.query(ImportJob).filter(ImportJob.tenant_id == tenant_id, ImportJob.errors.isnot(None)):
+                errors = job.errors if isinstance(job.errors, list) else []
+                kept = [e for e in errors if not _import_error_mentions(e, emails)]
+                if len(kept) != len(errors):
+                    job.errors = kept
+                    job.error_count = max(0, (job.error_count or 0) - (len(errors) - len(kept)))
+
+        needles = ids + sorted(emails)
+        for delivery in db.query(WebhookDelivery).filter(
+                WebhookDelivery.tenant_id == tenant_id,
+                or_(*[WebhookDelivery.payload.contains(n, autoescape=True) for n in needles])):
+            delivery.payload = _redacted_webhook_payload(delivery.payload, delivery.event_id, delivery.event_type)
+
+        links = [f"/app/contacts/{pid}" for pid in ids] + [f"/app/leads/{lid}" for lid in lead_ids]
+        named = [Notification.link.in_(links)]
+        for e in emails:
+            named += [Notification.title.contains(e, autoescape=True), Notification.body.contains(e, autoescape=True)]
+        db.query(Notification).filter(Notification.tenant_id == tenant_id, or_(*named)).delete(
+            synchronize_session=False)
 
 
 # ── Merge ──────────────────────────────────────────────────────────

@@ -19,7 +19,9 @@ from sqlalchemy import Exists, and_, exists, func, or_
 
 from app.core.database import SessionLocal
 from app.core.config import settings
+from app.core.auth import BLOCKED_TENANT_STATUSES
 from app.core.observability import record_email_sent
+from app.models.tenant import Tenant
 from app.models import (
     EmailMessage, 
     EmailTemplate, 
@@ -312,6 +314,8 @@ class EmailSchedulerService:
             )
             # JOIN Campaign so emails from PAUSED/COMPLETED campaigns are never picked up
             .join(Campaign, Campaign.campaign_id == EmailMessage.campaign_id)
+            # A suspended / deleted workspace sends nothing until it is reactivated
+            .join(Tenant, Tenant.tenant_id == Campaign.tenant_id)
             .outerjoin(step, step.sequence_id == EmailMessage.sequence_id)
             .filter(
                 EmailMessage.status.in_(["QUEUED", "SCHEDULED"]),
@@ -319,6 +323,7 @@ class EmailSchedulerService:
                 # Guard: never re-process an email that was already sent
                 EmailMessage.sent_at.is_(None),
                 Campaign.status == CampaignStatus.ACTIVE.value,
+                func.upper(func.coalesce(Tenant.status, "ACTIVE")).notin_(sorted(BLOCKED_TENANT_STATUSES)),
                 # Respect retry backoff: either no retry scheduled, or retry time has passed
                 or_(EmailMessage.next_retry_at.is_(None), EmailMessage.next_retry_at <= now),
                 ~self._earlier_step_pending(EmailMessage, step),
@@ -381,11 +386,17 @@ class EmailSchedulerService:
         with no final status, so delivery reconciliation gives it DELIVERED /
         UNCONFIRMED like any other send (B08). Otherwise it is marked FAILED
         with the reason, instead of hanging in SENDING forever.
+
+        Only claims older than STUCK_SENDING_MINUTES are reaped, so a send that is
+        in flight right now (scheduler or send-now) is never touched. A SENDING row
+        without a claim time (written before every claimant stamped one) gets one
+        now and is reaped a full threshold later if it is still SENDING then.
         """
+        self._date_undated_claims(db)
         cutoff = datetime.utcnow() - timedelta(minutes=self.STUCK_SENDING_MINUTES)
         stuck = db.query(EmailMessage).filter(
             EmailMessage.status == "SENDING", EmailMessage.sent_at.is_(None),
-            or_(EmailMessage.claimed_at < cutoff, EmailMessage.claimed_at.is_(None)),
+            EmailMessage.claimed_at < cutoff,
         ).all()
         if not stuck:
             return
@@ -414,6 +425,20 @@ class EmailSchedulerService:
         db.commit()
         logger.warning(f"[Scheduler] Interrupted sends: {accepted} recorded as sent "
                        f"(provider accepted), {failed} marked failed")
+
+    @staticmethod
+    def _date_undated_claims(db: Session) -> None:
+        """Start the stuck-send clock for legacy SENDING rows that carry no claimed_at."""
+        dated = db.query(EmailMessage).filter(
+            EmailMessage.status == "SENDING", EmailMessage.sent_at.is_(None),
+            EmailMessage.claimed_at.is_(None),
+        ).update({"claimed_at": datetime.utcnow()}, synchronize_session=False)
+        # Commit even when nothing matched: under REPEATABLE READ the UPDATE still holds next-key locks on
+        # the scanned status='SENDING' index range, and this session stays open for the whole batch, so
+        # every lane's claim (QUEUED -> SENDING) would wait on it until the read timeout.
+        db.commit()
+        if dated:
+            logger.info(f"[Scheduler] {dated} SENDING message(s) had no claim time; dated now")
 
     @staticmethod
     def send_key_for(email_msg: EmailMessage) -> Optional[str]:

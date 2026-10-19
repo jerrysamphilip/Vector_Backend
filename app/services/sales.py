@@ -189,7 +189,7 @@ def lead_dicts(db: Session, leads: List[Lead]) -> List[dict]:
     for l in leads:
         p = contacts.get(l.prospect_id)
         out.append({
-            "lead_id": l.lead_id, "prospect_id": l.prospect_id, "account_id": l.account_id,
+            "lead_id": l.lead_id, "row_version": l.row_version, "prospect_id": l.prospect_id, "account_id": l.account_id,
             "contact_name": p.full_name if p else None, "contact_email": p.email if p else None,
             "contact_title": p.designation if p else None,
             "company_name": accounts.get(l.account_id) or (p.company_name if p else None),
@@ -359,7 +359,7 @@ def opp_dicts(db: Session, opps: List[Opportunity]) -> List[dict]:
         amount = as_float(o.amount)
         p = contacts.get(o.prospect_id)
         out.append({
-            "opportunity_id": o.opportunity_id, "name": o.name, "account_id": o.account_id,
+            "opportunity_id": o.opportunity_id, "row_version": o.row_version, "name": o.name, "account_id": o.account_id,
             "company_name": accounts.get(o.account_id), "prospect_id": o.prospect_id,
             "contact_name": p.full_name if p else None, "contact_email": p.email if p else None,
             "lead_id": o.lead_id, "owner_id": o.owner_id, "owner_name": names.get(o.owner_id),

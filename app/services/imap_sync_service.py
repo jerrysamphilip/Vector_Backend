@@ -1,5 +1,5 @@
 
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 import hashlib
 import re
 import imaplib
@@ -44,6 +44,18 @@ def _is_unsubscribe_reply(text: str) -> bool:
         return False
     first = re.sub(r"[^a-z\- ]", "", lines[0].lower()).strip()
     return first in _UNSUB_PHRASES and len(lines[0]) <= 60
+
+class _InboxRef(NamedTuple):
+    """The inbox fields the folder sync needs, read once before the IMAP session starts."""
+    inbox_id: str
+    tenant_id: Optional[str]
+    email_address: str
+
+
+class _SyncPosition(NamedTuple):
+    uidvalidity: Optional[int]
+    last_uid: Optional[int]
+
 
 class IMAPSyncService:
     def __init__(self, db: Optional[Session] = None) -> None:
@@ -108,22 +120,31 @@ class IMAPSyncService:
             return False
 
         inbox_email_for_log = inbox.email_address if inbox else "Unknown"
+        # Plain values for the folder syncs: reading attributes of the ORM object after a
+        # commit would reload it, i.e. open a transaction during the IMAP round trips (T-1)
+        ref = _InboxRef(inbox_id=inbox.inbox_id, tenant_id=inbox.tenant_id, email_address=inbox.email_address)
         mail = None
         try:
             # Connect to IMAP: password, or XOAUTH2 for Microsoft 365 (BR-DF-05).
             # A socket timeout so a stalled server fails this inbox, not the loop.
             from app.services.ms365_oauth import imap_login, imap_secret
-            mail = open_imap(inbox.imap_host, inbox.imap_port, timeout=self.IMAP_TIMEOUT_SECONDS)
-            imap_login(mail, inbox.imap_username or inbox.email_address, imap_secret(self.db, inbox))
+            host, port = inbox.imap_host, inbox.imap_port
+            username = inbox.imap_username or inbox.email_address
+            secret = imap_secret(self.db, inbox)
+            # No transaction stays open across the IMAP session: each message is
+            # stored in its own short transaction instead (T-1)
+            self.db.commit()
+            mail = open_imap(host, port, timeout=self.IMAP_TIMEOUT_SECONDS)
+            imap_login(mail, username, secret)
 
             # 1. Sync INBOX (Received emails)
-            self._sync_folder(mail, inbox, "INBOX", days_back, direction="INBOUND")
+            self._sync_folder(mail, ref, "INBOX", days_back, direction="INBOUND")
 
             # 2. Sync SENT (Sent emails) - folder names vary by provider; use the
             #    first one that exists on this server.
             for folder in self.SENT_FOLDERS:
                 try:
-                    if self._sync_folder(mail, inbox, folder, days_back, direction="OUTBOUND"):
+                    if self._sync_folder(mail, ref, folder, days_back, direction="OUTBOUND"):
                         break
                 except (imaplib.IMAP4.abort, OSError):
                     raise  # connection is gone: stop this inbox
@@ -165,32 +186,80 @@ class IMAPSyncService:
         return '"' + name.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
     def _load_sync_state(self, inbox_model, folder_name) -> Any:
-        """The stored UID position for this folder, or None (also when the table is missing)."""
+        """
+        The stored UID position for this folder as a plain (uidvalidity, last_uid) pair,
+        None when there is none, or False when the table is missing. The read
+        transaction is closed before returning, so the IMAP search runs with none open.
+        """
         from app.models.imap_sync_state import ImapSyncState
         try:
-            with self.db.begin_nested():
-                return self.db.query(ImapSyncState).filter(
-                    ImapSyncState.inbox_id == inbox_model.inbox_id,
-                    ImapSyncState.folder == folder_name,
-                ).first()
+            row = self.db.query(ImapSyncState).filter(
+                ImapSyncState.inbox_id == inbox_model.inbox_id,
+                ImapSyncState.folder == folder_name,
+            ).first()
+            result = None if row is None else _SyncPosition(row.uidvalidity, row.last_uid)
+            self.db.commit()
+            return result
         except Exception as exc:
+            self.db.rollback()
             logger.warning(f"[IMAP] UID position unavailable ({exc.__class__.__name__}); "
                            f"using the date window")
             return False  # table missing: don't try to store either
 
     def _save_sync_state(self, state, inbox_model, folder_name, uidvalidity, last_uid) -> None:
+        """Upsert the UID position in the current transaction; the caller commits."""
         from app.models.imap_sync_state import ImapSyncState
         if state is False:
             return
         try:
             with self.db.begin_nested():
-                if state is None:
-                    state = ImapSyncState(inbox_id=inbox_model.inbox_id, folder=folder_name)
-                    self.db.add(state)
-                state.uidvalidity = uidvalidity
-                state.last_uid = last_uid
+                # Looked up each time: the position is now stored after every message (T-1)
+                row = self.db.query(ImapSyncState).filter(
+                    ImapSyncState.inbox_id == inbox_model.inbox_id,
+                    ImapSyncState.folder == folder_name,
+                ).first()
+                if row is None:
+                    row = ImapSyncState(inbox_id=inbox_model.inbox_id, folder=folder_name)
+                    self.db.add(row)
+                row.uidvalidity = uidvalidity
+                row.last_uid = last_uid
         except Exception as exc:
             logger.warning(f"[IMAP] Could not store UID position for {folder_name}: {exc}")
+
+    def _commit_sync_state(self, state, inbox_model, folder_name, uidvalidity, last_uid) -> None:
+        """Store the UID position in a short transaction of its own."""
+        try:
+            self._save_sync_state(state, inbox_model, folder_name, uidvalidity, last_uid)
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            logger.warning(f"[IMAP] Could not commit UID position for {folder_name}: {exc}")
+
+    def _record_reply_intent(self, replied_to_message_id: str, subject: str, body: str,
+                             sent_at: datetime) -> None:
+        """
+        AI intent classification for the "Positive Replies" metric. Runs after the
+        reply's own transaction committed, so the OpenAI round trip holds no
+        transaction or row lock (T-1); a positive result is written in a second
+        short transaction.
+        """
+        try:
+            intent = classify_reply_intent(subject, body)
+        except Exception as exc:  # the classifier already returns None on failure
+            logger.warning(f"[IMAP] Reply classification failed: {exc}")
+            return
+        if intent != "positive":
+            return
+        try:
+            self.db.add(EmailEvent(
+                message_id=replied_to_message_id,
+                event_type=EmailEvent.EVENT_POSITIVE_REPLY,
+                event_time=sent_at
+            ))
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            logger.warning(f"[IMAP] Could not store positive-reply event: {exc}")
 
     @staticmethod
     def _synthetic_message_id(from_: Optional[str], date_str: Optional[str], subject: Optional[str],
@@ -265,7 +334,7 @@ class IMAPSyncService:
         if not uids:
             logger.info(f"[IMAP] No new messages in {folder_name}")
             if uidvalidity is not None and (state is None or (state and state.uidvalidity != uidvalidity)):
-                self._save_sync_state(state, inbox_model, folder_name, uidvalidity, last_uid)
+                self._commit_sync_state(state, inbox_model, folder_name, uidvalidity, last_uid)
             return True
 
         logger.info(f"[IMAP] Found {len(uids)} new message(s) in {folder_name}")
@@ -274,12 +343,14 @@ class IMAPSyncService:
         for uid in uids:
             msg_id = str(uid)
             highest = max(highest, uid)
+            # (replied-to message id, subject, body, sent_at) when the reply needs AI
+            # classification, done after this message's transaction committed (T-1)
+            classify_job: Optional[tuple] = None
             try:
-                sp = self.db.begin_nested()  # SAVEPOINT per message — failure rolls back only this message
-                # Fetch message
+                # Fetch message — no transaction is open here: the previous message
+                # committed (or rolled back) before the next IMAP round trip (T-1)
                 status, msg_data = mail.uid('FETCH', msg_id, '(BODY.PEEK[])')
                 if status != 'OK' or not msg_data or not isinstance(msg_data[0], tuple):
-                    sp.rollback()
                     continue
                 
                 raw_email = msg_data[0][1]
@@ -305,7 +376,6 @@ class IMAPSyncService:
 
                 if not sender_email or not receiver_email:
                     logger.info(f"[IMAP] Skipped message — missing From or To header (From='{from_}' To='{to_}')")
-                    sp.rollback()
                     continue
                 
                 # Determine who is the Prospect
@@ -320,7 +390,7 @@ class IMAPSyncService:
                 ).first()
                 if not prospect:
                     logger.info(f"[IMAP] Skipped '{subject[:30]}' — {prospect_email} is not a known prospect.")
-                    sp.rollback()
+                    self.db.rollback()  # end the read transaction before the next fetch
                     continue # Ignore emails from unknown people for now
                 
                 logger.info(f"[IMAP] Processing email '{subject}' for prospect {prospect_email}")
@@ -357,7 +427,7 @@ class IMAPSyncService:
                     ).first()
                     if exists:
                         logger.debug(f"[IMAP] Skipped duplicate message {provider_msg_id}")
-                        sp.rollback()
+                        self.db.rollback()  # end the read transaction before the next fetch
                         continue
 
                 # Parse Date
@@ -579,7 +649,7 @@ class IMAPSyncService:
                         self.db.add(reply_event)
                         logger.info(f"[IMAP] Created REPLY event for msg {replied_to_msg.message_id}")
                         if not is_ooo:
-                            # Outbound webhooks (BR-SF-20), committed with this message's savepoint
+                            # Outbound webhooks (BR-SF-20), committed with this message's transaction
                             from app.services import webhooks
                             webhooks.email_replied(self.db, prospect.tenant_id, new_msg, replied_to_msg, prospect)
 
@@ -595,29 +665,28 @@ class IMAPSyncService:
                                 event_time=sent_at
                             ))
                         else:
-                            intent = classify_reply_intent(subject, body)
-                            if intent == "positive":
-                                self.db.add(EmailEvent(
-                                    message_id=replied_to_msg.message_id,
-                                    event_type=EmailEvent.EVENT_POSITIVE_REPLY,
-                                    event_time=sent_at
-                                ))
+                            classify_job = (replied_to_msg.message_id, subject, body, sent_at)
 
-                sp.commit()  # Release SAVEPOINT — persist this message
+                # Persist this message together with the UID position, so a later
+                # failure resumes after it instead of re-fetching it (T-1)
+                self._save_sync_state(state, inbox_model, folder_name, uidvalidity, uid)
+                self.db.commit()
 
             except (imaplib.IMAP4.abort, OSError):
-                sp.rollback()
+                self.db.rollback()
                 # Connection lost: keep the position at what was fully processed
-                self._save_sync_state(state, inbox_model, folder_name, uidvalidity, max(last_uid, uid - 1))
+                self._commit_sync_state(state, inbox_model, folder_name, uidvalidity, max(last_uid, uid - 1))
                 raise
             except Exception as e:
                 logger.warning(f"[IMAP] Failed to process message UID {msg_id} in {folder_name}: {e}")
-                sp.rollback()  # Roll back only this message; previous messages are safe
+                self.db.rollback()  # Roll back only this message; previous messages are committed
                 continue
 
+            if classify_job is not None:
+                self._record_reply_intent(*classify_job)
+
         # Next sync starts after the newest message seen here
-        self._save_sync_state(state, inbox_model, folder_name, uidvalidity, highest)
-        self.db.flush()
+        self._commit_sync_state(state, inbox_model, folder_name, uidvalidity, highest)
         return True
 
 # Create singleton instance

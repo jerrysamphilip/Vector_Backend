@@ -16,7 +16,6 @@ import secrets
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus, urlencode, urlparse
 
-import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -55,6 +54,8 @@ from app.models.refresh_token import RefreshToken
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.services import session_limits, token_revocation
+from app.services.audit_service import AuditService
+from app.services.ses_client import get_ses_client
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,10 @@ class RefreshRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
+    new_password: str
+
+
+class SetPasswordRequest(BaseModel):
     new_password: str
 
 
@@ -145,15 +150,6 @@ class MfaTenantPolicyRequest(BaseModel):
 _DEFAULT_PERMS: dict[str, list[str]] = {
     role: list(perms) for role, perms in ROLE_DEFAULT_PERMISSIONS.items()
 }
-
-
-def _has_live_invite_link(db: Session, user: User) -> bool:
-    """An INVITED account may sign in only while its emailed sign-in link is unused and unexpired."""
-    return db.query(MagicLoginToken.token_id).filter(
-        MagicLoginToken.user_id == user.user_id,
-        MagicLoginToken.used_at.is_(None),
-        MagicLoginToken.expires_at > datetime.utcnow(),
-    ).first() is not None
 
 
 def _user_dict(user: User) -> dict:
@@ -253,11 +249,8 @@ def _complete_sign_in(user: User, db: Session, request: Request, response: Respo
 
 
 def _get_ses_client():
-    client_kwargs = {"region_name": settings.AWS_REGION}
-    if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
-        client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
-        client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
-    return boto3.client("ses", **client_kwargs)
+    """The shared SES client (one per region/credentials, not one per reset email, T-5)."""
+    return get_ses_client()
 
 
 def _build_reset_link(token: str) -> str:
@@ -413,24 +406,21 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
     user = db.query(User).filter(User.email == body.email).first()
 
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
-        rate_limit.record_login_failure(body.email)
+        rate_limit.record_login_failure(request, body.email)
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    rate_limit.record_login_success(body.email)
+    rate_limit.record_login_success(request, body.email)
 
     if user.status not in ("ACTIVE", "INVITED"):
         raise HTTPException(status_code=403, detail="Account is suspended or inactive")
-    if user.status == "INVITED" and not _has_live_invite_link(db, user):
-        # The temporary password is only valid while the invitation's sign-in link is
+    if user.status == "INVITED":
+        # I-13: an invited account has no password of its own yet; it joins only through the
+        # emailed set-password link (/magic-login), never with a password.
         raise HTTPException(status_code=403,
-                            detail="Your invitation has expired. Ask your administrator to resend it.")
+                            detail="Finish joining with the sign-in link in your invitation email. "
+                                   "If it has expired, ask your administrator to resend it.")
     ensure_tenant_active(db, user)
 
-    # Activate invited user on first login
-    is_first_login = user.status == "INVITED"
-    if is_first_login:
-        user.status = "ACTIVE"
-
-    return _complete_sign_in(user, db, request, response, first_login=is_first_login)
+    return _complete_sign_in(user, db, request, response)
 
 
 def _refresh_token_from(request: Request, body: RefreshRequest | None, csrf: bool) -> str | None:
@@ -655,6 +645,27 @@ def google_auth_url():
     )
     return {"auth_url": f"https://accounts.google.com/o/oauth2/v2/auth?{params}", "state": state}
 
+GOOGLE_LINK_REFUSED = ("An account with this email already exists. Sign in with your email and password; "
+                       "signing in with Google is not linked to existing accounts automatically.")
+
+
+def _link_google_account(db: Session, user: User, google_id: str, email: str) -> None:
+    """Attach a Google identity to an existing account found by its (Google-verified) email.
+
+    Only for email domains listed in SSO_LINK_ALLOWED_DOMAINS (default: none), otherwise 409: whoever controls
+    a Google account for the address must not silently take over a password account (I-12). An account
+    already linked to a different Google identity is never re-linked. Every link is audit-logged."""
+    domain = email.rsplit("@", 1)[-1].strip().lower()
+    if user.google_id or domain not in settings.sso_link_allowed_domains:
+        logger.warning("Google sign-in refused for existing account %s (auto-link not allowed for %s)", user.user_id, domain)
+        raise HTTPException(status_code=409, detail=GOOGLE_LINK_REFUSED)
+    user.google_id = google_id
+    user.auth_provider = "google"
+    logger.info("Google identity linked to existing account %s (domain %s)", user.user_id, domain)
+    if user.tenant_id:
+        AuditService(db).log_action(user.tenant_id, user.user_id, "LINK", "google_sso", user.user_id)
+
+
 @router.post("/google/callback", response_model=TokenResponse, response_model_exclude_none=True)
 def google_callback(body: GoogleCallbackRequest, request: Request, response: Response,
                     db: Session = Depends(get_db)):
@@ -696,10 +707,8 @@ def google_callback(body: GoogleCallbackRequest, request: Request, response: Res
         if user.status not in ("ACTIVE", "INVITED"):
             raise HTTPException(status_code=403, detail="Account is suspended or inactive")
         ensure_tenant_active(db, user)
-        # Existing user — link Google if not already
-        if not user.google_id:
-            user.google_id = google_id
-            user.auth_provider = "google"
+        if user.google_id != google_id:
+            _link_google_account(db, user, google_id, email)
         if avatar and not user.avatar_url:
             user.avatar_url = avatar
         user.email_verified = True
@@ -800,6 +809,37 @@ def change_password(
         # The refresh cookie was just revoked with the rest; give this browser a fresh session
         _deliver_tokens(_issue_tokens(current_user, db), request, response)
     return {"message": "Password changed successfully"}
+
+
+@router.post("/me/set-password")
+def set_initial_password(
+    body: SetPasswordRequest,
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    First password for an invited account (I-13). Invitees never receive a password: they sign
+    in once with the emailed link (/magic-login) and choose one here, so no current password is
+    asked. Only for a local account that has no password yet; everyone else uses PUT /me/password.
+    """
+    if current_user.password_hash or (current_user.auth_provider or "local") != "local":
+        raise HTTPException(status_code=409, detail="A password is already set. Use change password instead.")
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+
+    current_user.password_hash = hash_password(body.new_password)
+    # Other sessions (if any) end; this browser keeps a fresh one
+    db.query(RefreshToken).filter(
+        RefreshToken.user_id == current_user.user_id,
+        RefreshToken.revoked_at.is_(None),
+    ).update({"revoked_at": datetime.utcnow()})
+    db.commit()
+    logger.info("Initial password set for user %s", current_user.user_id)
+    if wants_cookies(request):
+        _deliver_tokens(_issue_tokens(current_user, db), request, response)
+    return {"message": "Password set successfully"}
 
 
 # ── Two-factor authentication (TOTP) ──────────────────────

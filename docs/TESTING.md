@@ -331,7 +331,7 @@ These variables control the commands, and none of them is tied to a scratchpad:
 - every catalogued case (`system_tests/*/TEST_CASES.md`) with its latest status
 - every recorded case that is not in a catalogue (NF, E2E, UIC, UIO, UIF, API sweep grouped by endpoint)
 
-Statuses come from each suite's `results.json`, overlaid with the latest run's `summary.json`. Pass the BRD (as markdown/text) with `--brd` or `TEST_BRD_PATH`, or put it at `docs/BRD.md`; then requirements that no case covers are listed too. Re-run `trace` after a test run.
+Statuses come from each suite's `results.json`, overlaid with the latest run's `summary.json`. The requirement list is the checked-in register `docs/REQUIREMENTS.md` (ID, requirement, status); `--brd FILE` or `TEST_BRD_PATH` points it at another list (any BRD markdown/text works), and requirements that no case covers are listed too. Re-run `trace` after a test run. `python3 scripts/test.py trace --check` is the CI gate (docs/CI_GATES.md): it fails, without needing any results, when a requirement with status Fixed, Decision or Change request has no case in a catalogue or suite script.
 
 ## 7. Known constraints (the runner plans around them)
 

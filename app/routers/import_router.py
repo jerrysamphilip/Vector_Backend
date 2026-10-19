@@ -40,6 +40,7 @@ from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.user import User
 from app.services import crm
 from app.services.contact_service import can_access_contact, can_manage_contacts, can_see_owner, normalize_tags
+from app.utils.http_files import content_disposition
 
 router = APIRouter(prefix="/imports", tags=["Imports"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
@@ -197,6 +198,19 @@ def preview(file: UploadFile = File(...), db: Session = Depends(get_db), current
             "new_types": list(FIELD_TYPES),
         },
     }
+
+
+def _add_list_members(db: Session, list_id: str, prospect_ids: List[str]) -> None:
+    """Adds one chunk's contacts to the import's static list, in that chunk's transaction, so a
+    later failure keeps the list consistent with the contacts already committed."""
+    ids = list(dict.fromkeys(prospect_ids))
+    if not ids:
+        return
+    existing = {r[0] for r in db.query(ProspectListMember.prospect_id).filter(
+        ProspectListMember.list_id == list_id, ProspectListMember.prospect_id.in_(ids))}
+    for pid in ids:
+        if pid not in existing:
+            db.add(ProspectListMember(list_id=list_id, prospect_id=pid, is_new_prospect=True))
 
 
 @router.post("", status_code=201)
@@ -527,6 +541,8 @@ def run_import(
                 saved = (dict(stats), len(errors), set(companies_touched), len(list_members), dict(seen_emails))
                 try:
                     process_chunk(chunk)
+                    if target_list:  # list membership commits with its chunk, not at the very end
+                        _add_list_members(db, target_list.list_id, list_members[saved[3]:])
                     db.commit()
                     break
                 except OperationalError as exc:
@@ -547,12 +563,6 @@ def run_import(
                     seen_emails.update(saved[4])
                     time.sleep(random.uniform(0.1, 0.5) * (attempt + 1))
 
-        if target_list and list_members:
-            existing_members = {r[0] for r in db.query(ProspectListMember.prospect_id).filter(
-                ProspectListMember.list_id == target_list.list_id)}
-            for pid in dict.fromkeys(list_members):
-                if pid not in existing_members:
-                    db.add(ProspectListMember(list_id=target_list.list_id, prospect_id=pid, is_new_prospect=True))
         job.status = "COMPLETED"
     except Exception as exc:  # keep the history row truthful
         db.rollback()
@@ -613,4 +623,4 @@ def import_errors(import_id: str, db: Session = Depends(get_db), current_user: U
         writer.writerow(crm.csv_safe_row([e["row"], e["reason"]] + [(e.get("values") or {}).get(c) for c in columns]))
     name = re.sub(r"[^\w.-]+", "_", job.file_name.rsplit(".", 1)[0])
     return StreamingResponse(iter([out.getvalue().encode("utf-8-sig")]), media_type="text/csv",
-                             headers={"Content-Disposition": f'attachment; filename="{name}-errors.csv"'})
+                             headers={"Content-Disposition": content_disposition(f"{name}-errors.csv")})

@@ -17,10 +17,12 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
+from app.core.auth import BLOCKED_TENANT_STATUSES
 from app.core.config import settings
+from app.models.tenant import Tenant
 from app.core.database import SessionLocal
 from app.models.inbox_warmup_event import InboxWarmupEvent
 from app.models.inbox_warmup_metric import InboxWarmupMetric
@@ -80,7 +82,9 @@ class WarmupService:
         }
 
         try:
-            inbox_query = db.query(SendingInbox)
+            # Suspended / deleted workspaces do not warm up (no sending at all)
+            inbox_query = db.query(SendingInbox).join(Tenant, Tenant.tenant_id == SendingInbox.tenant_id).filter(
+                func.upper(func.coalesce(Tenant.status, "ACTIVE")).notin_(sorted(BLOCKED_TENANT_STATUSES)))
             if tenant_id:
                 inbox_query = inbox_query.filter(SendingInbox.tenant_id == tenant_id)
 

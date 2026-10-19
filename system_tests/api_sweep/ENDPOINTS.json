@@ -30,6 +30,200 @@
     ],
     "title": "AcceptInviteRequest"
    },
+   "AccountUpdate": {
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "domain": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Domain"
+     },
+     "website": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 500
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Website"
+     },
+     "phone": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 50
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Phone"
+     },
+     "industry": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Industry"
+     },
+     "emp_band": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 50
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Emp Band"
+     },
+     "street": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Street"
+     },
+     "city": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "City"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "postal_code": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 20
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Postal Code"
+     },
+     "country": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Country"
+     },
+     "description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Description"
+     },
+     "owner_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Owner Id"
+     },
+     "annual_revenue": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Annual Revenue"
+     },
+     "lifecycle_stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lifecycle Stage"
+     },
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version"
+     }
+    },
+    "type": "object",
+    "title": "AccountUpdate"
+   },
    "AccountWrite": {
     "properties": {
      "name": {
@@ -227,6 +421,18 @@
      "campaign_id": {
       "type": "string",
       "title": "Campaign Id"
+     },
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version"
      }
     },
     "type": "object",
@@ -1346,7 +1552,7 @@
        }
       ],
       "title": "Daily Batch Size",
-      "description": "Max new prospects to email per day (e.g. 100 \u2192 day 1: 1-100, day 2: 101-200)"
+      "description": "Max new prospects to email per day (e.g. 100 → day 1: 1-100, day 2: 101-200)"
      },
      "start_date": {
       "anyOf": [
@@ -1475,6 +1681,11 @@
      },
      "status": {
       "$ref": "#/components/schemas/CampaignStatus"
+     },
+     "row_version": {
+      "type": "integer",
+      "title": "Row Version",
+      "default": 1
      },
      "created_by": {
       "type": "string",
@@ -1719,6 +1930,11 @@
      },
      "status": {
       "$ref": "#/components/schemas/CampaignStatus"
+     },
+     "row_version": {
+      "type": "integer",
+      "title": "Row Version",
+      "default": 1
      },
      "paused_reason": {
       "anyOf": [
@@ -1981,6 +2197,17 @@
       "type": "string",
       "format": "date-time",
       "title": "Changed At"
+     },
+     "row_version": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Row Version"
      }
     },
     "type": "object",
@@ -2219,7 +2446,7 @@
        }
       ],
       "title": "Unsubscribe Mode",
-      "description": "'plain' or 'html' \u2014 controls unsubscribe footer style"
+      "description": "'plain' or 'html' — controls unsubscribe footer style"
      },
      "daily_batch_size": {
       "anyOf": [
@@ -2273,11 +2500,43 @@
       ],
       "title": "Inbox Ids",
       "description": "Update list of Sending Inboxes"
+     },
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version",
+      "description": "row_version the client loaded (T-3)"
      }
     },
     "type": "object",
     "title": "CampaignUpdate",
     "description": "Schema for updating an existing campaign."
+   },
+   "CampaignVersionedAction": {
+    "properties": {
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version"
+     }
+    },
+    "type": "object",
+    "title": "CampaignVersionedAction",
+    "description": "Optional body of launch / pause / resume: the row_version the client loaded (T-3)."
    },
    "ChangePasswordRequest": {
     "properties": {
@@ -3266,6 +3525,18 @@
        }
       ],
       "title": "Email"
+     },
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version"
      }
     },
     "type": "object",
@@ -3962,6 +4233,18 @@
        }
       ],
       "title": "Reason"
+     },
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version"
      }
     },
     "type": "object",
@@ -5834,6 +6117,18 @@
        }
       ],
       "title": "Recycle In Days"
+     },
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version"
      }
     },
     "type": "object",
@@ -5892,6 +6187,18 @@
       },
       "type": "array",
       "title": "Lines"
+     },
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version"
      }
     },
     "type": "object",
@@ -6446,6 +6753,18 @@
        }
       ],
       "title": "Forecast Category"
+     },
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version"
      }
     },
     "type": "object",
@@ -6733,6 +7052,18 @@
        }
       ],
       "title": "Notes"
+     },
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version"
      }
     },
     "type": "object",
@@ -6846,6 +7177,17 @@
        }
       ],
       "title": "Notes"
+     },
+     "row_version": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Row Version"
      }
     },
     "type": "object",
@@ -7101,6 +7443,18 @@
        }
       ],
       "title": "Poc Country"
+     },
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version"
      }
     },
     "type": "object",
@@ -9953,6 +10307,11 @@
       "type": "integer",
       "title": "Wait Days"
      },
+     "row_version": {
+      "type": "integer",
+      "title": "Row Version",
+      "default": 1
+     },
      "stop_on_reply": {
       "type": "boolean",
       "title": "Stop On Reply"
@@ -10091,11 +10450,37 @@
        }
       ],
       "title": "Template Id"
+     },
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version",
+      "description": "row_version the client loaded (T-3)"
      }
     },
     "type": "object",
     "title": "SequenceStepUpdate",
     "description": "Schema for updating a sequence step."
+   },
+   "SetPasswordRequest": {
+    "properties": {
+     "new_password": {
+      "type": "string",
+      "title": "New Password"
+     }
+    },
+    "type": "object",
+    "required": [
+     "new_password"
+    ],
+    "title": "SetPasswordRequest"
    },
    "SignalIn": {
     "properties": {
@@ -10227,6 +10612,18 @@
        }
       ],
       "title": "Note"
+     },
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version"
      }
     },
     "type": "object",
