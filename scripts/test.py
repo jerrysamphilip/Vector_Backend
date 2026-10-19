@@ -694,7 +694,10 @@ def db_action(action, quiet=False):
         say(f"database '{name}' in {CFG['MYSQL_CONTAINER']}: " + (f"exists, {nums[1]} tables" if nums[0] != "0" else "does not exist"))
         return 0
     sqls = {
-        "create": [f"CREATE DATABASE IF NOT EXISTS `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        # utf8mb4's own default collation (0900_ai_ci), like the CI mysql service: tables whose model sets
+        # mysql_charset="utf8mb4" get that collation whatever the schema default is, so a unicode_ci schema
+        # makes the other tables' FKs to them fail with MySQL 3780 (e.g. sales_settings -> tenants).
+        "create": [f"CREATE DATABASE IF NOT EXISTS `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci",
                    f"GRANT ALL PRIVILEGES ON `{name}`.* TO 'vector'@'%'"],
         "drop": [f"DROP DATABASE IF EXISTS `{name}`"],
     }

@@ -433,8 +433,11 @@ class EmailSchedulerService:
             EmailMessage.status == "SENDING", EmailMessage.sent_at.is_(None),
             EmailMessage.claimed_at.is_(None),
         ).update({"claimed_at": datetime.utcnow()}, synchronize_session=False)
+        # Commit even when nothing matched: under REPEATABLE READ the UPDATE still holds next-key locks on
+        # the scanned status='SENDING' index range, and this session stays open for the whole batch, so
+        # every lane's claim (QUEUED -> SENDING) would wait on it until the read timeout.
+        db.commit()
         if dated:
-            db.commit()
             logger.info(f"[Scheduler] {dated} SENDING message(s) had no claim time; dated now")
 
     @staticmethod

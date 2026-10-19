@@ -121,6 +121,29 @@ def test_stuck_sweep_reaps_only_stale_claims_and_dates_legacy_rows(client, tenan
     assert status(fresh) == "SENDING"
 
 
+def test_stuck_sweep_with_nothing_to_date_leaves_no_locks_for_the_lane_claims(client, tenant_rf):
+    """The batch session runs the sweep and stays open while the lanes claim messages in their own sessions.
+    A zero-row 'date undated claims' UPDATE must not keep its next-key locks on the SENDING range (it did:
+    every claim waited until the read timeout)."""
+    from sqlalchemy import text
+
+    from app.services.email_scheduler_service import email_scheduler
+
+    h = tenant_rf["headers"]
+    cid = _campaign(client, h, "Sweep locks")["campaign_id"]
+    pid = _contact(client, h, "sweeplock")
+    mid = _queued_message(cid, pid)
+    sql("UPDATE email_messages SET claimed_at = UTC_TIMESTAMP() WHERE status = 'SENDING' AND claimed_at IS NULL")
+    with SessionLocal() as batch:
+        email_scheduler._recover_stuck_sends(batch)  # batch session left open, as in process_due_emails
+        with SessionLocal() as lane:
+            lane.execute(text("SET SESSION innodb_lock_wait_timeout = 2"))
+            claimed = lane.execute(text("UPDATE email_messages SET status = 'SENDING', claimed_at = UTC_TIMESTAMP() "
+                                        "WHERE message_id = :m AND status = 'QUEUED'"), {"m": mid}).rowcount
+            lane.commit()
+    assert claimed == 1
+
+
 # ── T-2 import: memberships per chunk ────────────────────────
 
 def test_import_failure_mid_way_keeps_list_members_of_committed_chunks(client, tenant_rf, monkeypatch):
