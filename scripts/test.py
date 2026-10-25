@@ -973,9 +973,9 @@ def pytest_plan(suite, args, report_dir, where):
     if ca:
         argv += ["-v", f"{Path(ca).resolve()}:/tmp/ca.crt:ro"]
         pip_cert = "--cert /tmp/ca.crt "
-    # The app image has the runtime dependencies; add pytest/httpx unless the image already has them.
+    # The app image has the runtime dependencies; add pytest/httpx/pytest-cov unless the image already has them.
     argv += ["--entrypoint", "sh", CFG["PY_IMAGE"], "-c",
-             "python -c 'import pytest, httpx' 2>/dev/null || "
+             "python -c 'import pytest, httpx, pytest_cov' 2>/dev/null || "
              f"pip install -q --disable-pip-version-check {pip_cert}-r requirements-dev.txt >/tmp/pip.log 2>&1 "
              f"|| {{ cat /tmp/pip.log; exit 3; }}; python -m pytest "
              + " ".join(shlex.quote(a) for a in pyargs) + f" --junitxml=/src/{rel(inside)}"]

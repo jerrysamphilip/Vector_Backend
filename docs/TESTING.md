@@ -72,6 +72,35 @@ The unit layer starts with tests for e-mail parsing and reply extraction, the bu
 - `python3 scripts/test.py collect` snapshots the results files the suites last wrote into a report, without running anything. Use it to make a baseline for comparison.
 - `python3 scripts/test.py trace` regenerates `docs/TRACEABILITY.md` (see section 6).
 
+### Coverage
+
+Coverage of `app/` is measured per layer with pytest-cov (settings in `.coveragerc`: `source = app`, branch
+coverage on). The unit number shows how much logic is tested without a database; the functional number is
+the total the API tests reach. CI fails when either drops below its floor in `ci/coverage_floor.json`
+(docs/CI_GATES.md, "Coverage").
+
+```bash
+# unit layer (no database); add --cov-report=html:reports/coverage-unit/html for a browsable report
+python3 scripts/test.py run unit --where host \
+  --extra="--cov=app --cov-report=term --cov-report=json:reports/coverage-unit/coverage.json"
+python3 scripts/ci/check_coverage.py --layer unit --report reports/coverage-unit/coverage.json
+
+# functional layer (throwaway schema); the runner passes --extra on to pytest the same way
+python3 scripts/test.py run functional \
+  --extra="--cov=app --cov-report=term --cov-report=json:reports/coverage-functional/coverage.json"
+python3 scripts/ci/check_coverage.py --layer functional --report reports/coverage-functional/coverage.json
+
+# a single module while writing tests
+python -m pytest tests/unit/test_email_utils.py --cov=app.utils --cov-report=term-missing
+```
+
+`check_coverage.py` prints line % and branch % per package next to the floors. After adding tests, raise the
+floors with `--update` and commit `ci/coverage_floor.json` with the tests.
+
+Do not run two layers with coverage at the same time from the same checkout: both write `.coverage*` data
+files in the repository root and pytest-cov combines whatever it finds there, so the numbers mix. Give each
+run its own data file instead, e.g. `COVERAGE_FILE=reports/.coverage-unit`.
+
 ### Exit codes
 
 | Code | Meaning |
@@ -396,6 +425,6 @@ The exceptions all reuse their own data or touch something shared, never demo da
 
 `.github/workflows/ci.yml` has these jobs:
 
-- `unit`: ruff plus `scripts/test.py run unit`, with no database. It runs on every push and PR.
-- `test`: ruff, pip-audit, migrations and the functional layer against a `mysql:8.4` service. It runs on every push and PR, and gates `CICD.yaml` deploys together with `unit` and `secrets`.
+- `unit`: ruff, the gates in docs/CI_GATES.md and `scripts/test.py run unit` with coverage, then the unit coverage floor (`scripts/ci/check_coverage.py`), with no database. It runs on every push and PR and uploads `coverage-unit` (JSON, XML, HTML).
+- `test`: ruff, pip-audit, migrations and the functional layer with coverage against a `mysql:8.4` service, then the functional coverage floor; uploads `coverage-functional`. It runs on every push and PR, and gates `CICD.yaml` deploys together with `unit` and `secrets`.
 - `live-stack`: only on **Run workflow** (`workflow_dispatch`). It builds the whole compose stack on the runner and installs Playwright, and for `e2e` / `all` it wires the SES stand-in. Then it runs `scripts/test.py run <layer> --keep-going --restart-api-between` and uploads `reports/ci-live`. It needs the secret `FRONTEND_REPO_TOKEN` (read access to Vector_Frontend).

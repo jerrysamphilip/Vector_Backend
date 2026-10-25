@@ -49,7 +49,7 @@ current violations sit in a shrinking baseline.
 | ID | Chunk | Owns | Size |
 |---|---|---|---|
 | L0 | ADR 0009 layering; `app/domain`, `app/repositories`, `app/adapters` skeletons; base `Repository`/`UnitOfWork` Protocols; import-linter contracts for the table above with today's violations baselined | `docs/adr/0009*`, `.importlinter`, new packages | S |
-| Q0 | Coverage gate: pytest-cov on unit + functional, ratcheting floor file `ci/coverage_floor.txt` | `.github/workflows/ci.yml`, `scripts/ci/` | S |
+| Q0 | Coverage gate: pytest-cov on unit + functional, ratcheting floor file `ci/coverage_floor.json` | `.github/workflows/ci.yml`, `scripts/ci/` | S |
 | DEC | DECISIONS.md: DEC-22 stay on MySQL 8.4 vs PostgreSQL (default: MySQL) | `docs/DECISIONS.md` | XS |
 
 ### Wave 1 — database (D1, D2 sequential; then D3, D4, D5, D7, D8 in parallel)
