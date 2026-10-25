@@ -38,6 +38,14 @@ Rules:
   compared against a baseline in reviews; a change to it is an API change.
 - **core/utils** never import services or routers.
 
+**Target layers ([ADR 0009](adr/0009-layered-architecture.md)).** The rules above describe today's code.
+The target adds `app/domain/` (pure parameter and value objects, e.g. `Paging` / `Sort`),
+`app/repositories/` (all SQL, tenant-scoped, per aggregate; `Repository` / `UnitOfWork` in `base.py`) and
+`app/adapters/` (external systems behind Protocols): routers call one service function and import no
+SQLAlchemy or models, services own the unit of work and import no SQLAlchemy or FastAPI. Aggregates move
+one at a time ([REFACTOR_PLAN.md](REFACTOR_PLAN.md)); `.importlinter` enforces the target with a
+shrinking baseline of today's imports.
+
 ## 2. Multi-tenancy and the sales hierarchy
 
 Every business row carries `tenant_id` (a workspace). There is no row-level security in MySQL, so
