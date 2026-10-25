@@ -24,7 +24,7 @@ items in [REVIEW_RESPONSES.md](REVIEW_RESPONSES.md) and [DECISIONS.md](DECISIONS
 | Domain / query | `app/domain` | Typed query/filter objects (parameter objects), value objects, pure rules | I/O |
 | Repository | `app/repositories` | All SQL and ORM mapping, per aggregate | Business rules |
 | Adapters | `app/adapters` | SES, IMAP/SMTP, OpenAI, storage, Microsoft 365 behind Protocols | Business rules |
-| UI | frontend `src/api` + react-query | Calls routes only, through one read hook and mutations | Hand-rolled fetch in effects |
+| UI | frontend `src/api` + react-query; Tailwind 4 + Radix UI primitives | Calls routes only, through one read hook and mutations | Hand-rolled fetch in effects or hand-rolled accessible widgets |
 
 Unit tests per layer: route (fake service), service (fake repository + fake adapters), domain (pure).
 Repositories and queries are tested against MySQL in the functional layer. Import-linter enforces the table;
@@ -97,6 +97,7 @@ shrink complexity / local-import / import-linter baselines (C-1, C-4, C-5).
 | F2 | Errors shown with the request reference everywhere; remove console-only catches (W-10) | S |
 | F3a/F3b | Render tests for the 49 pages, two halves (W-11) | M + M |
 | F4 | Frontend session: http.js refresh/CSRF/idle on react-query + one auth context | S |
+| F5 | UI component framework: keep Tailwind 4; move dialogs, menus, selects, tabs, toasts onto Radix UI primitives (shadcn/ui style) and retire the hand-rolled `useDialog`; visual output unchanged | M |
 
 ### Wave 5 — decision-gated ⏸
 
