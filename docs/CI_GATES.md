@@ -31,7 +31,7 @@ introduced (2026-10-18), the gate enforces a checked-in, dated **baseline** inst
 | Release identity | `scripts/ci/check_version.py`: `VERSION` is SemVer, is the newest `CHANGELOG.md` section, not hard-coded in config, app images in `manifests/` are the placeholder or tagged with it, docs mention no other release | unit | `VERSION` (1.1.0) | - |
 | I-11 fail closed | `tests/unit/test_production_guards.py` (subprocess start-ups): default/missing JWT secret, `MAIL_TLS_VERIFY=false`, missing `ENVIRONMENT` in Kubernetes, wildcard CORS origin and missing `METRICS_TOKEN` are refused in production; `/docs` off and self sign-up off by default | unit (unit layer) | - | - |
 | Route consistency | `system_tests/contract/check_contract.py`: every frontend API call has a backend route with that method (OpenAPI generated from the commit) | contract | needs read access to Vector_Frontend: secret `FRONTEND_REPO_TOKEN` (contents:read), else the workflow token (public repo only); without access the job passes with a **warning annotation** | 0 unmatched |
-| Coverage (unit) | pytest-cov on the unit layer (`.coveragerc`: `app`, branch coverage on), then `scripts/ci/check_coverage.py --layer unit`: line % and branch % for `app` and per package may not fall more than 0.1 pp below the floor | unit | `ci/coverage_floor.json` (`layers.unit`) | app 38.07 % line / 12.67 % branch |
+| Coverage (unit) | pytest-cov on the unit layer (`.coveragerc`: `app`, branch coverage on), then `scripts/ci/check_coverage.py --layer unit`: line % and branch % for `app` and per package may not fall more than 0.1 pp below the floor | unit | `ci/coverage_floor.json` (`layers.unit`) | app 40.33 % line / 13.78 % branch |
 | Coverage (functional) | the same on the functional layer (`--layer functional`) | test | `ci/coverage_floor.json` (`layers.functional`) | app 60.07 % line / 38.29 % branch |
 | Dependency audit | `scripts/ci/run_pip_audit.py` (pip-audit on requirements.txt) | test | `ci/pip_audit_ignore.txt` (id, package, added, review by, reason) | 2 (python-jose, ecdsa; review 2026-12-31) |
 | Secrets | gitleaks | secrets | `.gitleaks.toml` | - |
@@ -72,7 +72,7 @@ branch % for `app` as a whole and for each package listed under `packages` in `c
 (`app.routers`, `app.services`, `app.core`, `app.utils`, `app.domain`, `app.repositories`; a package is
 measured only when the report has statements for it) and compares them with that layer's floors:
 
-- a value more than `tolerance_pp` (0.1 percentage points) below its floor **fails**;
+- a value more than its layer's tolerance below its floor **fails**: `tolerance_pp_by_layer` (unit 0.1 pp; functional 0.5 pp, because threaded / timing-dependent paths move per-package figures by a few tenths between identical runs), else `tolerance_pp`;
 - a floor whose package is no longer in the report **fails** (renamed or removed: lower it explicitly);
 - a package without a floor (`NEW`) or a value 1 pp or more above its floor (`ABOVE`) is reported only.
 

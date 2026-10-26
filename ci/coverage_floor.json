@@ -1,6 +1,10 @@
 {
   "_comment": "Coverage floors per test layer (line/branch %, branch coverage on). Ratchet: raised by scripts/ci/check_coverage.py --update, lowered only with --allow-lower REASON (logged under 'lowered'). docs/CI_GATES.md",
   "tolerance_pp": 0.1,
+  "tolerance_pp_by_layer": {
+    "unit": 0.1,
+    "functional": 0.5
+  },
   "packages": [
     "app.routers",
     "app.services",

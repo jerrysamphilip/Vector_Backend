@@ -161,3 +161,10 @@ def test_allow_lower_needs_update_and_reason(tmp_path):
         cc.main(["--layer", "unit", "--report", str(report), "--allow-lower", "x"])
     with pytest.raises(SystemExit):
         cc.main(["--layer", "unit", "--report", str(report), "--update", "--allow-lower", " "])
+
+
+def test_layer_tolerance_override():
+    data = {"tolerance_pp": 0.1, "tolerance_pp_by_layer": {"functional": 0.5}}
+    assert cc.layer_tolerance(data, "functional") == 0.5
+    assert cc.layer_tolerance(data, "unit") == 0.1
+    assert cc.layer_tolerance({}, "unit") == cc.DEFAULT_TOLERANCE

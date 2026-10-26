@@ -205,7 +205,7 @@ def write_floors(path: str, data: dict) -> None:
     data["_comment"] = ("Coverage floors per test layer (line/branch %, branch coverage on). Ratchet: raised by "
                         "scripts/ci/check_coverage.py --update, lowered only with --allow-lower REASON "
                         "(logged under 'lowered'). docs/CI_GATES.md")
-    ordered = {k: data[k] for k in ("_comment", "tolerance_pp", "packages", "layers", "lowered") if k in data}
+    ordered = {k: data[k] for k in ("_comment", "tolerance_pp", "tolerance_pp_by_layer", "packages", "layers", "lowered") if k in data}
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(ordered, fh, indent=2)
         fh.write("\n")
@@ -220,9 +220,17 @@ def table(layer: str, current: dict, floors: dict) -> list[str]:
     return rows
 
 
+def layer_tolerance(data: dict, layer: str) -> float:
+    """Allowed drop below a floor, in percentage points: `tolerance_pp_by_layer[layer]`, else `tolerance_pp`.
+    The functional layer runs threads and timing-dependent paths, so its per-package figures vary by a few
+    tenths of a point between identical runs; the unit layer is deterministic."""
+    by_layer = data.get("tolerance_pp_by_layer", {})
+    return float(by_layer.get(layer, data.get("tolerance_pp", DEFAULT_TOLERANCE)))
+
+
 def update(data: dict, path: str, layer: str, current: dict, allow_lower: str | None) -> int:
     layer_floors = data["layers"].get(layer, {})
-    tol = float(data.get("tolerance_pp", DEFAULT_TOLERANCE))
+    tol = layer_tolerance(data, layer)
     failing = [f for f in compare(current, layer_floors, tol) if f.failing]
     if failing and not allow_lower:
         print("refusing to update: these would need a lower floor (pass --allow-lower \"REASON\"):",
@@ -263,7 +271,8 @@ def check(data: dict, layer: str, current: dict) -> int:
     if floors is None:
         print(f"FAIL: no floors for layer '{layer}' (record them with --update)")
         return 1
-    findings = compare(current, floors, float(data.get("tolerance_pp", DEFAULT_TOLERANCE)))
+    tol = layer_tolerance(data, layer)
+    findings = compare(current, floors, tol)
     rows = table(layer, current, floors)
     print("\n".join(rows))
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -273,7 +282,7 @@ def check(data: dict, layer: str, current: dict) -> int:
     for f in findings:
         print(f)
     failures = sum(f.failing for f in findings)
-    print(f"Coverage ({layer}): {failures} failure(s); tolerance {data.get('tolerance_pp', DEFAULT_TOLERANCE)} pp")
+    print(f"Coverage ({layer}): {failures} failure(s); tolerance {tol} pp")
     return 1 if failures else 0
 
 
