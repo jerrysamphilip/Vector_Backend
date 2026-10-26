@@ -6,6 +6,11 @@ branch = True
 relative_files = True
 # Functional tests run the app in-process; threads started by the app are measured too.
 concurrency = thread
+# app/db holds migration helpers and seed scripts, not application logic. They run only when a test
+# process migrates the schema itself (locally) and not in CI (migrated in a separate step), so
+# including them would make the totals depend on where the tests run.
+omit =
+    app/db/*
 
 [report]
 skip_empty = True

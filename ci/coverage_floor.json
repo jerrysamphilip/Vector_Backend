@@ -12,8 +12,8 @@
   "layers": {
     "unit": {
       "app": {
-        "line": 38.38,
-        "branch": 12.96
+        "line": 40.33,
+        "branch": 13.78
       },
       "app.core": {
         "line": 69.69,
@@ -42,8 +42,8 @@
     },
     "functional": {
       "app": {
-        "line": 60.07,
-        "branch": 38.29
+        "line": 61.93,
+        "branch": 39.37
       },
       "app.core": {
         "line": 83.67,
