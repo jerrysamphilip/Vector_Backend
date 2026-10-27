@@ -3,12 +3,12 @@
 Campaign models including state events and prospect enrollments.
 """
 
-from sqlalchemy import Column, String, Boolean, Integer, Date, Time, TIMESTAMP, ForeignKey, Text, UniqueConstraint, CheckConstraint
+from sqlalchemy import Column, String, Boolean, Integer, Date, Time, ForeignKey, Text, UniqueConstraint, CheckConstraint
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class Campaign(Base):
@@ -25,10 +25,10 @@ class Campaign(Base):
     status = Column(String(50), default="DRAFT")  # DRAFT / ACTIVE / PAUSED / COMPLETED
     # Why the campaign is paused; auto_paused marks a pause by the deliverability guard (BR-DF-07)
     paused_reason = Column(Text, nullable=True)
-    paused_at = Column(TIMESTAMP, nullable=True)
+    paused_at = Column(UtcDateTime, nullable=True)
     auto_paused = Column(Boolean, default=False)
     # Health checks only count sends after this (set when a user resumes after an auto-pause)
-    health_baseline_at = Column(TIMESTAMP, nullable=True)
+    health_baseline_at = Column(UtcDateTime, nullable=True)
     
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=False)
     sender_name = Column(String(100), nullable=True)  # For {{your_name}} token
@@ -65,8 +65,8 @@ class Campaign(Base):
     start_date = Column(Date, nullable=True)
     end_date = Column(Date, nullable=True)
 
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
     row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
 
     # Relationships
@@ -103,7 +103,7 @@ class CampaignStateEvent(Base):
     to_state = Column(String(50), nullable=False)
     reason = Column(Text, nullable=True)
     
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     # Relationships
     campaign = relationship("Campaign", back_populates="state_events")
@@ -128,12 +128,12 @@ class CampaignProspect(Base):
     prospect_id = Column(String(36), ForeignKey("prospects.prospect_id"), nullable=False)
 
     current_step = Column(Integer, default=1)
-    next_scheduled_at = Column(TIMESTAMP, nullable=True)
+    next_scheduled_at = Column(UtcDateTime, nullable=True)
 
     status = Column(String(50), default="ACTIVE")  # ACTIVE / OPENED / COMPLETED / PAUSED / RECONNECT_ELIGIBLE / BOUNCED / REPLIED / UNSUBSCRIBED — see app/utils/campaign_prospect_status.py for the write-priority rules
     stopped_reason = Column(String(100), nullable=True)
 
-    enrolled_at = Column(TIMESTAMP, server_default=func.now())
+    enrolled_at = Column(UtcDateTime, server_default=NOW6)
 
     # Relationships
     campaign = relationship("Campaign", back_populates="prospects")

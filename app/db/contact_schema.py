@@ -60,7 +60,7 @@ _PHASE1_COLUMNS = {
         "lead_status": "VARCHAR(30) NULL",
         "lead_source": "VARCHAR(100) NULL",
         "legal_basis": "VARCHAR(40) NULL",
-        "deleted_at": "TIMESTAMP NULL",
+        "deleted_at": "DATETIME(6) NULL",
         "deleted_by": "VARCHAR(36) NULL",
         "merged_into_id": "VARCHAR(36) NULL",
     },
@@ -69,7 +69,7 @@ _PHASE1_COLUMNS = {
         "postal_code": "VARCHAR(20) NULL",
         "annual_revenue": "DECIMAL(18,2) NULL",
         "lifecycle_stage": "VARCHAR(30) NULL",
-        "deleted_at": "TIMESTAMP NULL",
+        "deleted_at": "DATETIME(6) NULL",
         "deleted_by": "VARCHAR(36) NULL",
     },
     "prospect_lists": {
@@ -143,7 +143,7 @@ def ensure_phase1_schema(engine) -> None:
             "SELECT DATETIME_PRECISION FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
             "AND TABLE_NAME = 'property_changes' AND COLUMN_NAME = 'changed_at'")).scalar()
         if precision is not None and precision < 6:
-            conn.execute(text("ALTER TABLE property_changes MODIFY changed_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)"))
+            conn.execute(text("ALTER TABLE property_changes MODIFY changed_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)"))
         if "prospects.lifecycle_stage" in added:
             for sql in BACKFILL_LIFECYCLE_SQL:
                 conn.execute(text(sql))

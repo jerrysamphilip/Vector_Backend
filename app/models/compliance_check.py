@@ -4,12 +4,12 @@ Compliance Check model for email content validation.
 Tracks GDPR, CAN-SPAM, spam score, and disallowed phrases.
 """
 
-from sqlalchemy import Column, String, Boolean, Float, TIMESTAMP, ForeignKey, JSON
+from sqlalchemy import Column, String, Boolean, Float, ForeignKey, JSON
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class ComplianceCheck(Base):
@@ -48,7 +48,7 @@ class ComplianceCheck(Base):
     failure_reasons = Column(JSON, nullable=True)  # List of reasons for failure
     
     # Metadata
-    checked_at = Column(TIMESTAMP, server_default=func.now())
+    checked_at = Column(UtcDateTime, server_default=NOW6)
     checked_by = Column(String(50), default="system")  # system or user_id
 
     # Relationships

@@ -16,7 +16,7 @@ _COLUMNS = {
         "notify_email": "TINYINT(1) NOT NULL DEFAULT 1",
     },
     # Phase 2 "Should" features (BR-SF-02, 06, 08, 11, 16)
-    "leads": {"recycle_at": "TIMESTAMP NULL"},
+    "leads": {"recycle_at": "DATETIME(6) NULL"},
     "opportunities": {
         "forecast_category": "VARCHAR(12) NULL",
         "forecast_category_manual": "TINYINT(1) NOT NULL DEFAULT 0",

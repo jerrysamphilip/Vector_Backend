@@ -3,12 +3,12 @@
 Campaign Group models for grouping campaigns with shared limits.
 """
 
-from sqlalchemy import Column, String, Integer, TIMESTAMP, ForeignKey
+from sqlalchemy import Column, String, Integer, ForeignKey
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class CampaignGroup(Base):
@@ -27,7 +27,7 @@ class CampaignGroup(Base):
     cooling_period_hours = Column(Integer, default=24)
     max_emails_per_day = Column(Integer, default=500)
     
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="campaign_groups")

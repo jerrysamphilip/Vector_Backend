@@ -3,11 +3,11 @@
 Audit Log model for compliance and accountability.
 """
 
-from sqlalchemy import Column, String, TIMESTAMP, ForeignKey
-from sqlalchemy.sql import func
+from sqlalchemy import Column, String, ForeignKey
 import uuid
 
 from app.models import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class AuditLog(Base):
@@ -25,7 +25,7 @@ class AuditLog(Base):
     entity_type = Column(String(100), nullable=False)  # campaign, prospect, template, etc
     entity_id = Column(String(36), nullable=True)
     
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     __table_args__ = (
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},

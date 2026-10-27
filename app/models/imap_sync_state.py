@@ -9,10 +9,10 @@ UIDVALIDITY changes (folder recreated / renumbered) the stored UID is
 meaningless and the sync falls back to a date window once.
 """
 
-from sqlalchemy import Column, String, BigInteger, TIMESTAMP
-from sqlalchemy.sql import func
+from sqlalchemy import Column, String, BigInteger
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class ImapSyncState(Base):
@@ -23,7 +23,7 @@ class ImapSyncState(Base):
     folder = Column(String(255), primary_key=True)
     uidvalidity = Column(BigInteger, nullable=True)
     last_uid = Column(BigInteger, nullable=False, default=0)
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     __table_args__ = (
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},

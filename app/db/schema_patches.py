@@ -69,7 +69,7 @@ _INBOX_COLUMNS = {
     "imap_port": "INT DEFAULT 993",
     "imap_username": "VARCHAR(255) NULL",
     "imap_password": "VARCHAR(255) NULL",
-    "last_sync_at": "TIMESTAMP NULL",
+    "last_sync_at": "DATETIME(6) NULL",
     "warmup_status": "VARCHAR(50) DEFAULT 'ACTIVE'",
     "warmup_pool": "VARCHAR(50) DEFAULT 'FOUNDATION'",
     "warmup_reputation": "FLOAT DEFAULT 65",
@@ -81,7 +81,7 @@ _INBOX_COLUMNS = {
     "warmup_identifier": "VARCHAR(120) NULL",
     "warmup_issue_code": "VARCHAR(100) NULL",
     "warmup_issue_message": "TEXT NULL",
-    "warmup_last_activity_at": "TIMESTAMP NULL",
+    "warmup_last_activity_at": "DATETIME(6) NULL",
     "warmup_today_sent": "INT DEFAULT 0",
     "warmup_today_opened": "INT DEFAULT 0",
     "warmup_today_replied": "INT DEFAULT 0",
@@ -106,7 +106,7 @@ def patch_core_columns(bind) -> None:
         for table, columns in (("campaigns", _CAMPAIGN_COLUMNS),
                                ("email_templates", _TEMPLATE_COLUMNS),
                                ("sending_inboxes", _INBOX_COLUMNS),
-                               ("global_unsubscribes", {"suppression_expires_at": "TIMESTAMP NULL"}),
+                               ("global_unsubscribes", {"suppression_expires_at": "DATETIME(6) NULL"}),
                                ("company_profiles", {"tenant_id": "VARCHAR(36) NULL"}),
                                ("users", _USER_COLUMNS)):
             cols = _add_missing_columns(conn, table, columns)

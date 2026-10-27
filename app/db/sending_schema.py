@@ -16,22 +16,22 @@ logger = logging.getLogger(__name__)
 _COLUMNS = {
     "email_messages": {
         "send_key": "VARCHAR(330) NULL",
-        "claimed_at": "TIMESTAMP NULL",
+        "claimed_at": "DATETIME(6) NULL",
         "ses_message_id": "VARCHAR(100) NULL",
         "final_status": "VARCHAR(30) NULL",
-        "final_status_at": "TIMESTAMP NULL",
+        "final_status_at": "DATETIME(6) NULL",
     },
     "campaigns": {
         "paused_reason": "TEXT NULL",
-        "paused_at": "TIMESTAMP NULL",
+        "paused_at": "DATETIME(6) NULL",
         "auto_paused": "TINYINT(1) NOT NULL DEFAULT 0",
-        "health_baseline_at": "TIMESTAMP NULL",
+        "health_baseline_at": "DATETIME(6) NULL",
     },
     "sending_inboxes": {
         "auth_type": "VARCHAR(30) NOT NULL DEFAULT 'PASSWORD'",
         "oauth_refresh_token": "TEXT NULL",
         "oauth_access_token": "TEXT NULL",
-        "oauth_expires_at": "TIMESTAMP NULL",
+        "oauth_expires_at": "DATETIME(6) NULL",
         "oauth_error": "TEXT NULL",
         "imap_last_error": "TEXT NULL",
     },
@@ -39,7 +39,7 @@ _COLUMNS = {
         "sends_24h": "INT NOT NULL DEFAULT 0",
         "bounce_rate_24h": "FLOAT NOT NULL DEFAULT 0",
         "complaint_rate_24h": "FLOAT NOT NULL DEFAULT 0",
-        "health_checked_at": "TIMESTAMP NULL",
+        "health_checked_at": "DATETIME(6) NULL",
     },
 }
 

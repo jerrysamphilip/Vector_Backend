@@ -4,12 +4,12 @@
 Models for tracking Sending Domain Health, Reputation, and Deliverability Alerts.
 """
 
-from sqlalchemy import Column, String, Integer, Boolean, Float, Text, TIMESTAMP, ForeignKey, JSON, Index, UniqueConstraint
+from sqlalchemy import Column, String, Integer, Boolean, Float, Text, ForeignKey, JSON, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 class SendingDomain(Base):
     """
@@ -52,11 +52,11 @@ class SendingDomain(Base):
     sends_24h = Column(Integer, default=0)
     bounce_rate_24h = Column(Float, default=0.0)
     complaint_rate_24h = Column(Float, default=0.0)
-    health_checked_at = Column(TIMESTAMP, nullable=True)
+    health_checked_at = Column(UtcDateTime, nullable=True)
     
     # Metadata
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     # Relationships
     snapshots = relationship("DomainHealthSnapshot", back_populates="domain", cascade="all, delete-orphan")
@@ -78,7 +78,7 @@ class DomainHealthSnapshot(Base):
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=True, index=True)
     domain_name = Column(String(255), nullable=False)  # denormalised for display
     
-    snapshot_at = Column(TIMESTAMP, server_default=func.now())
+    snapshot_at = Column(UtcDateTime, server_default=NOW6)
     
     # Key Metrics at time of snapshot
     reputation_score = Column(Integer, nullable=False)
@@ -115,8 +115,8 @@ class ReputationAlert(Base):
     is_resolved = Column(Boolean, default=False)
     resolution_notes = Column(Text, nullable=True)
     
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    resolved_at = Column(TIMESTAMP, nullable=True)
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    resolved_at = Column(UtcDateTime, nullable=True)
 
     # Relationships
     domain = relationship("SendingDomain", back_populates="alerts")

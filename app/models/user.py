@@ -3,14 +3,14 @@
 User model with role-based access control and authentication.
 """
 
-from sqlalchemy import BigInteger, Integer, Column, String, Boolean, DateTime, Text, TIMESTAMP, ForeignKey, UniqueConstraint, JSON
+from sqlalchemy import BigInteger, Integer, Column, String, Boolean, Text, ForeignKey, UniqueConstraint, JSON
 from sqlalchemy.sql import expression
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.core.encrypted_type import EncryptedString
 from app.models import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class User(Base):
@@ -48,8 +48,8 @@ class User(Base):
     # null = use role defaults. Set explicitly by SUPER_ADMIN to override defaults.
     custom_permissions = Column(JSON, nullable=True, default=None)
 
-    last_login_at = Column(TIMESTAMP, nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    last_login_at = Column(UtcDateTime, nullable=True)
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     # Sales hierarchy (BR-SH-01/02): level 1 CEO / COO / Sales Head, 2 Business
     # Development, 3 Business Executive, 4 Market Research. NULL = not in the
@@ -67,7 +67,7 @@ class User(Base):
     mfa_enabled = Column(Boolean, nullable=False, default=False, server_default=expression.false())
     mfa_secret = Column(EncryptedString, nullable=True)
     mfa_recovery_codes = Column(Text, nullable=True)
-    mfa_enabled_at = Column(DateTime, nullable=True)
+    mfa_enabled_at = Column(UtcDateTime, nullable=True)
     mfa_last_step = Column(BigInteger, nullable=True)
 
     # Relationships

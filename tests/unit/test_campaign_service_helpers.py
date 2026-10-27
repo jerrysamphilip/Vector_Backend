@@ -102,11 +102,11 @@ def test_router_cursor_parser_still_maps_to_http_400():
     assert (exc.value.status_code, exc.value.detail) == (400, "Invalid cursor")
 
 
-def test_run_start_is_naive_utc_whole_seconds():
+def test_run_start_is_naive_utc_microseconds():
     aware = datetime(2031, 3, 4, 12, 0, 5, 999, tzinfo=ZoneInfo("Asia/Kolkata"))
-    assert normalize_run_start(aware) == datetime(2031, 3, 4, 6, 30, 5)
-    assert normalize_run_start(datetime(2031, 3, 4, 1, 2, 3, 400)) == datetime(2031, 3, 4, 1, 2, 3)
-    assert normalize_run_start(None, now=datetime(2031, 1, 1, 0, 0, 0, 7)) == datetime(2031, 1, 1)
+    assert normalize_run_start(aware) == datetime(2031, 3, 4, 6, 30, 5, 999)
+    assert normalize_run_start(datetime(2031, 3, 4, 1, 2, 3, 400)) == datetime(2031, 3, 4, 1, 2, 3, 400)
+    assert normalize_run_start(None, now=datetime(2031, 1, 1, 0, 0, 0, 7)) == datetime(2031, 1, 1, 0, 0, 0, 7)
     assert normalize_run_start(datetime(2031, 1, 1, tzinfo=timezone.utc)).tzinfo is None
 
 

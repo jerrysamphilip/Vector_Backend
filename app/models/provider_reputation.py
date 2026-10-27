@@ -4,10 +4,10 @@ Phase 1 stores external metrics/events without changing send behavior.
 """
 
 import uuid
-from sqlalchemy import Column, String, Float, Text, TIMESTAMP, JSON, Integer, ForeignKey, Index
-from sqlalchemy.sql import func
+from sqlalchemy import Column, String, Float, Text, JSON, Integer, ForeignKey, Index
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 # Every row belongs to the tenant that ingested it (tenant_id NULL = legacy, invisible to tenants).
 
@@ -31,7 +31,7 @@ class ExternalReputationMetric(Base):
 
     source = Column(String(50), default="MANUAL")  # MANUAL / FEED_URL
     raw_payload = Column(JSON, nullable=True)
-    ingested_at = Column(TIMESTAMP, server_default=func.now())
+    ingested_at = Column(UtcDateTime, server_default=NOW6)
 
 
 class ExternalFeedbackEvent(Base):
@@ -44,11 +44,11 @@ class ExternalFeedbackEvent(Base):
     provider = Column(String(50), nullable=False)  # JMRP / SNDS / GOOGLE_POSTMASTER
     domain_name = Column(String(255), nullable=False)
     event_type = Column(String(50), nullable=False, default="COMPLAINT")
-    event_time = Column(TIMESTAMP, nullable=True)
+    event_time = Column(UtcDateTime, nullable=True)
 
     recipient_hash = Column(String(255), nullable=True)  # Store hashed/obfuscated recipient ID
     raw_payload = Column(JSON, nullable=True)
-    ingested_at = Column(TIMESTAMP, server_default=func.now())
+    ingested_at = Column(UtcDateTime, server_default=NOW6)
 
 
 class ExternalIngestionRun(Base):
@@ -64,5 +64,5 @@ class ExternalIngestionRun(Base):
     status = Column(String(20), nullable=False, default="SUCCESS")  # SUCCESS / FAILED / SKIPPED
     records_ingested = Column(Integer, nullable=False, default=0)
     error_message = Column(Text, nullable=True)
-    started_at = Column(TIMESTAMP, server_default=func.now())
-    completed_at = Column(TIMESTAMP, nullable=True)
+    started_at = Column(UtcDateTime, server_default=NOW6)
+    completed_at = Column(UtcDateTime, nullable=True)

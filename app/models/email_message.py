@@ -3,12 +3,12 @@
 Email Message and Event models for the SMTP sequencing engine.
 """
 
-from sqlalchemy import Column, String, SmallInteger, Integer, Text, TIMESTAMP, ForeignKey, JSON, Index
+from sqlalchemy import Column, String, SmallInteger, Integer, Text, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class EmailMessage(Base):
@@ -27,13 +27,13 @@ class EmailMessage(Base):
     template_id = Column(String(36), ForeignKey("email_templates.template_id"), nullable=True)  # Link to AI template for performance tracking
 
     # Scheduling
-    scheduled_at = Column(TIMESTAMP, nullable=True)
-    sent_at = Column(TIMESTAMP, nullable=True)
+    scheduled_at = Column(UtcDateTime, nullable=True)
+    sent_at = Column(UtcDateTime, nullable=True)
     # Set once the provider (SES) confirms the message was delivered to the
     # recipient's mail server. NULL means "sent, delivery not yet confirmed" —
     # kept separate from `status` since most reporting queries treat
     # status == "SENT" as the successful-send bucket.
-    delivered_at = Column(TIMESTAMP, nullable=True)
+    delivered_at = Column(UtcDateTime, nullable=True)
 
     # Status
     # Status
@@ -53,7 +53,7 @@ class EmailMessage(Base):
     # Retry Logic
     retry_count = Column(Integer, default=0)
     max_retries = Column(Integer, default=3)
-    next_retry_at = Column(TIMESTAMP, nullable=True)
+    next_retry_at = Column(UtcDateTime, nullable=True)
     failure_reason = Column(Text, nullable=True)
     last_error_code = Column(String(50), nullable=True)
 
@@ -61,7 +61,7 @@ class EmailMessage(Base):
     # recipient, "<campaign>:<step>:<email>". The unique index means the same
     # step can never be claimed twice for the same address, even concurrently.
     send_key = Column(String(330), nullable=True, unique=True)
-    claimed_at = Column(TIMESTAMP, nullable=True)
+    claimed_at = Column(UtcDateTime, nullable=True)
 
     # Delivery outcome (BR-DF-04). SES's own id, for matching events that arrive
     # without our message_id tag, and the final status every sent email gets
@@ -69,7 +69,7 @@ class EmailMessage(Base):
     # UNCONFIRMED (SES never reported back).
     ses_message_id = Column(String(100), nullable=True, index=True)
     final_status = Column(String(30), nullable=True)
-    final_status_at = Column(TIMESTAMP, nullable=True)
+    final_status_at = Column(UtcDateTime, nullable=True)
 
     # Relationships
     campaign = relationship("Campaign", back_populates="messages")
@@ -100,7 +100,7 @@ class EmailEvent(Base):
     
     # Event Type: 1=SENT, 2=OPEN, 3=CLICK, 4=REPLY, 5=BOUNCE, 6=UNSUBSCRIBE
     event_type = Column(SmallInteger, nullable=False)
-    event_time = Column(TIMESTAMP, server_default=func.now())
+    event_time = Column(UtcDateTime, server_default=NOW6)
     event_metadata = Column(JSON, nullable=True)  # Renamed from 'metadata' (reserved)
 
     # Relationships

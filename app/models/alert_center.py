@@ -9,12 +9,11 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
-    TIMESTAMP,
     UniqueConstraint,
 )
-from sqlalchemy.sql import func
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class AlertPreference(Base):
@@ -38,8 +37,8 @@ class AlertPreference(Base):
     email_enabled = Column(Boolean, nullable=False, default=False)
     cooldown_minutes = Column(Integer, nullable=False, default=360)
 
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     __table_args__ = (
         UniqueConstraint(
@@ -65,11 +64,11 @@ class AlertEmailDispatch(Base):
     alert_key = Column(String(255), nullable=False)
     recipient_email = Column(String(255), nullable=False)
 
-    last_sent_at = Column(TIMESTAMP, nullable=True)
+    last_sent_at = Column(UtcDateTime, nullable=True)
     send_count = Column(Integer, nullable=False, default=0)
 
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     __table_args__ = (
         UniqueConstraint(

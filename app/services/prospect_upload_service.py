@@ -501,7 +501,7 @@ def confirm_upload(
                     prospect_id=prospect_id,
                     is_new_prospect=email in new_prospects,
                     # Preserve original upload row order for deterministic list display.
-                    # Use seconds (not microseconds) because TIMESTAMP precision may drop micros.
+                    # One second apart: readable in exports and unambiguous at any precision.
                     added_at=base_added_at + timedelta(seconds=idx),
                 )
             )

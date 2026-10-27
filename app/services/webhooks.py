@@ -108,8 +108,7 @@ def emit_event(db: Session, tenant_id: Optional[str], event_type: str, data: dic
                 db.add(WebhookDelivery(tenant_id=tenant_id, endpoint_id=endpoint_id, event_id=event_id,
                                        event_type=event_type, payload=body, status="PENDING",
                                        attempts=0,
-                                       # whole seconds: MySQL rounds fractions UP, which would make a
-                                       # just-queued row look not yet due to the job running this second
+                                       # whole seconds: never later than the job's own now
                                        next_attempt_at=now.replace(microsecond=0)))
                 queued += 1
         return queued

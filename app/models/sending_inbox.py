@@ -3,12 +3,13 @@
 Sending Inbox model for SMTP email accounts.
 """
 
-from sqlalchemy import Column, String, Boolean, Integer, TIMESTAMP, ForeignKey, Float, Text
+from sqlalchemy import Column, String, Boolean, Integer, ForeignKey, Float, Text
 from app.core.encrypted_type import EncryptedString, EncryptedText
 from sqlalchemy.orm import relationship
 import uuid
 
 from app.models.base import Base
+from app.models.types import UtcDateTime
 
 
 class SendingInbox(Base):
@@ -36,7 +37,7 @@ class SendingInbox(Base):
     auth_type = Column(String(30), default="PASSWORD")
     oauth_refresh_token = Column(EncryptedText, nullable=True)
     oauth_access_token = Column(EncryptedText, nullable=True)
-    oauth_expires_at = Column(TIMESTAMP, nullable=True)
+    oauth_expires_at = Column(UtcDateTime, nullable=True)
     oauth_error = Column(Text, nullable=True)
     imap_last_error = Column(Text, nullable=True)   # last reply-sync failure, shown on the inbox
 
@@ -45,7 +46,7 @@ class SendingInbox(Base):
     imap_port = Column(Integer, default=993)
     imap_username = Column(String(255), nullable=True)
     imap_password = Column(EncryptedString, nullable=True)  # encrypted at rest
-    last_sync_at = Column(TIMESTAMP, nullable=True)
+    last_sync_at = Column(UtcDateTime, nullable=True)
     
     # Rate Limiting
     # 500/day is the post-warmup baseline this application is sized for (see
@@ -61,14 +62,14 @@ class SendingInbox(Base):
     # reputation gradually — it's just no longer the default.
     warmup_enabled = Column(Boolean, default=False)
     warmup_day = Column(Integer, default=0)                    # Current warmup day (0 = day of creation)
-    warmup_start_date = Column(TIMESTAMP, nullable=True)       # When warmup started
+    warmup_start_date = Column(UtcDateTime, nullable=True)       # When warmup started
     max_emails_per_day = Column(Integer, nullable=True)        # User override (null = use warmup schedule)
     # Seconds between emails for this inbox. 60s supports up to 1440/day over a
     # full 24h day; a restricted campaign send_window shrinks that ceiling
     # (window_seconds / delay_between_emails) — see current_daily_limit.
     delay_between_emails = Column(Integer, default=60)
     emails_sent_today = Column(Integer, default=0)             # Counter reset daily
-    last_daily_reset = Column(TIMESTAMP, nullable=True)        # When counter was last reset
+    last_daily_reset = Column(UtcDateTime, nullable=True)        # When counter was last reset
 
     # Warm-up operations settings / health
     warmup_status = Column(String(50), default="ACTIVE")       # ACTIVE / PAUSED / ISSUE / COOLING / DISABLED
@@ -82,14 +83,14 @@ class SendingInbox(Base):
     warmup_identifier = Column(String(120), nullable=True)
     warmup_issue_code = Column(String(100), nullable=True)
     warmup_issue_message = Column(Text, nullable=True)
-    warmup_last_activity_at = Column(TIMESTAMP, nullable=True)
+    warmup_last_activity_at = Column(UtcDateTime, nullable=True)
     warmup_today_sent = Column(Integer, default=0)
     warmup_today_opened = Column(Integer, default=0)
     warmup_today_replied = Column(Integer, default=0)
     warmup_today_saved = Column(Integer, default=0)
 
     # Status
-    last_sent_at = Column(TIMESTAMP, nullable=True)
+    last_sent_at = Column(UtcDateTime, nullable=True)
     is_in_cooling = Column(Boolean, default=False)
     status = Column(String(50), default="ACTIVE")  # ACTIVE / PAUSED / WARMING
 

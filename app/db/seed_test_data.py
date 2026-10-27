@@ -9,10 +9,11 @@ import logging
 logger = logging.getLogger(__name__)
 sys.path.insert(0, '.')
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 import uuid
 
 from sqlalchemy.orm import Session
+from app.core.clock import utcnow
 from app.core.database import SessionLocal
 from app.models.campaign import Campaign, CampaignProspect
 from app.models.email_sequence import EmailSequence
@@ -86,9 +87,9 @@ This is email step {seq.step_number} of the "{campaign.campaign_name}" campaign.
                     tone="professional",
                     ai_model="gpt-4o-mini",
                     is_ai_generated=True,
-                    generated_at=datetime.utcnow(),
+                    generated_at=utcnow(),
                     personalization_tokens=["{{first_name}}", "{{company_name}}"],
-                    created_at=datetime.utcnow()
+                    created_at=utcnow()
                 )
                 db.add(template)
                 templates_created += 1
@@ -137,7 +138,7 @@ This is email step {seq.step_number} of the "{campaign.campaign_name}" campaign.
                     campaign_prospect = CampaignProspect(
                         campaign_id=campaign.campaign_id,
                         prospect_id=existing.prospect_id,
-                        enrolled_at=datetime.utcnow(),
+                        enrolled_at=utcnow(),
                         status="ACTIVE"
                     )
                     db.add(campaign_prospect)

@@ -4,12 +4,12 @@ Activities logged against a single contact: notes, calls and meetings.
 Emails are not stored here; the contact timeline reads them from email_messages.
 """
 
-from sqlalchemy import Column, String, Text, Integer, TIMESTAMP, ForeignKey
+from sqlalchemy import Column, String, Text, Integer, ForeignKey
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 ACTIVITY_TYPES = ("NOTE", "CALL", "MEETING", "EMAIL")
 
@@ -32,11 +32,11 @@ class ContactActivity(Base):
     body = Column(Text, nullable=True)
     outcome = Column(String(100), nullable=True)  # e.g. Connected, Left voicemail, No answer
     duration_minutes = Column(Integer, nullable=True)
-    occurred_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
+    occurred_at = Column(UtcDateTime, nullable=False, server_default=NOW6)
 
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     prospect = relationship("Prospect", back_populates="activities")
     author = relationship("User", foreign_keys=[created_by])

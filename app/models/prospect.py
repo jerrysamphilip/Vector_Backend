@@ -4,12 +4,12 @@ Prospect and Global Unsubscribe models.
 GDPR compliant with consent tracking and anonymization support.
 """
 
-from sqlalchemy import Column, String, Boolean, Integer, SmallInteger, TIMESTAMP, ForeignKey, JSON, UniqueConstraint, Index, Computed
+from sqlalchemy import Column, String, Boolean, Integer, SmallInteger, ForeignKey, JSON, UniqueConstraint, Index, Computed
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 SEARCH_TEXT_SQL = (
@@ -48,7 +48,7 @@ class Prospect(Base):
     legal_basis = Column(String(40), nullable=True)
 
     # Soft delete with 90-day restore (BR-CM-35); merged duplicates point at the kept record
-    deleted_at = Column(TIMESTAMP, nullable=True)
+    deleted_at = Column(UtcDateTime, nullable=True)
     deleted_by = Column(String(36), nullable=True)
     merged_into_id = Column(String(36), nullable=True)
 
@@ -79,7 +79,7 @@ class Prospect(Base):
     # GDPR Consent
     consent_status = Column(String(50), default="OPT_IN")  # OPT_IN / UNSUBSCRIBED
     consent_source = Column(String(100), nullable=True)
-    consent_timestamp = Column(TIMESTAMP, nullable=True)
+    consent_timestamp = Column(UtcDateTime, nullable=True)
 
     # Contact score on fit and engagement (BR-CM-43): 0-100 each, total and grade A-D;
     # NULL until first scored. Kept on the row so list sort / filter stay one indexed query.
@@ -87,15 +87,15 @@ class Prospect(Base):
     fit_score = Column(SmallInteger, nullable=True)
     engagement_score = Column(SmallInteger, nullable=True)
     score_grade = Column(String(1), nullable=True)
-    scored_at = Column(TIMESTAMP, nullable=True)
+    scored_at = Column(UtcDateTime, nullable=True)
 
     # Validation & Anonymization
     is_valid_email = Column(Boolean, default=True)
     is_anonymized = Column(Boolean, default=False)
-    anonymized_at = Column(TIMESTAMP, nullable=True)
+    anonymized_at = Column(UtcDateTime, nullable=True)
 
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
     # Optimistic concurrency (T-3, app/core/concurrency.py): bumped by every user edit
     row_version = Column(Integer, nullable=False, default=1, server_default="1")
 
@@ -140,12 +140,12 @@ class GlobalUnsubscribe(Base):
 
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), primary_key=True)
     email = Column(String(255), primary_key=True)
-    unsubscribed_at = Column(TIMESTAMP, server_default=func.now())
+    unsubscribed_at = Column(UtcDateTime, server_default=NOW6)
     reason = Column(String(255), nullable=True)
     # When the suppression period expires. After this datetime, the prospect
     # can be enrolled in new campaigns again.
     # NULL = permanent block (legacy rows or explicitly permanent).
-    suppression_expires_at = Column(TIMESTAMP, nullable=True)
+    suppression_expires_at = Column(UtcDateTime, nullable=True)
 
     __table_args__ = (
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},

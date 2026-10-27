@@ -4,12 +4,12 @@ ProspectPersona model - stores AI-inferred persona data for each prospect.
 Links to Prospect (1:1) without modifying the Prospect model.
 """
 
-from sqlalchemy import Column, String, Float, TIMESTAMP, ForeignKey, JSON
+from sqlalchemy import Column, String, Float, ForeignKey, JSON
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class ProspectPersona(Base):
@@ -32,7 +32,7 @@ class ProspectPersona(Base):
     inferred_pain_points = Column(JSON, nullable=True)
     
     # Metadata
-    classified_at = Column(TIMESTAMP, server_default=func.now())
+    classified_at = Column(UtcDateTime, server_default=NOW6)
 
     # Relationships
     prospect = relationship("Prospect", backref="persona", uselist=False)

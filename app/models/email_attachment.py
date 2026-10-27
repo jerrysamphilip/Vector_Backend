@@ -5,12 +5,12 @@ Uploaded files are stored on local disk (see app.core.config.ATTACHMENTS_DIR);
 this table stores the metadata + path needed to serve and to attach at send time.
 """
 
-from sqlalchemy import Column, String, Integer, TIMESTAMP, ForeignKey
+from sqlalchemy import Column, String, Integer, ForeignKey
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class EmailAttachment(Base):
@@ -24,7 +24,7 @@ class EmailAttachment(Base):
     size_bytes = Column(Integer, nullable=False)
     storage_path = Column(String(500), nullable=False)  # path relative to ATTACHMENTS_DIR
 
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     template = relationship("EmailTemplate", back_populates="attachments")
 

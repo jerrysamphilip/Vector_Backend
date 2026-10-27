@@ -19,6 +19,9 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - Checked-in requirements register `docs/REQUIREMENTS.md` (BRD v2.0, 92 requirements, status per requirement);
   `scripts/test.py trace` reads it by default and `trace --check` is the CI gate.
 - `VERSION` file as the single release identity.
+- DATETIME(6) for every time column (chunk D2, migration 0018): no 2038 limit, microsecond precision; every
+  connection runs in UTC (`time_zone = '+00:00'`). `app/core/clock.py` `utcnow()` replaces `datetime.utcnow()`
+  (deprecated); ruff DTZ003 rejects new uses. API timestamps now carry microseconds.
 - One collation (chunk D1, migration 0017): every table, column and connection on utf8mb4 / `utf8mb4_0900_ai_ci`
   (`app/core/db_charset.py`), set on the table instead of taken from the schema default. A schema created as
   `utf8mb4_unicode_ci` (an RDS default) used to fail the build with MySQL 3780; 0017 converts existing mixed tables.

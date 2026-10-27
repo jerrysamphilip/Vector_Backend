@@ -12,6 +12,10 @@ from typing import Generator
 from app.core.config import settings
 from app.core.db_charset import MYSQL_CHARSET, MYSQL_COLLATION
 
+# Every connection runs in UTC (D2): times are stored as naive UTC in DATETIME(6), and CURRENT_TIMESTAMP(6)
+# defaults, NOW() and TIMESTAMP conversions use the session time zone, so the server's own must not matter.
+MYSQL_TIME_ZONE = "+00:00"
+MYSQL_INIT_COMMAND = f"SET time_zone = '{MYSQL_TIME_ZONE}'"
 
 # Create SQLAlchemy engine with connection pooling
 engine = create_engine(
@@ -29,6 +33,7 @@ engine = create_engine(
         "write_timeout": 30,       # Drop writes that hang
         "charset": MYSQL_CHARSET,  # Session charset / collation match the tables (D1)
         "collation": MYSQL_COLLATION,
+        "init_command": MYSQL_INIT_COMMAND,  # Session time zone UTC (D2)
     },
 )
 

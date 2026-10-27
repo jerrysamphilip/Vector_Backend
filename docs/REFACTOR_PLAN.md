@@ -57,7 +57,7 @@ current violations sit in a shrinking baseline.
 | ID | Chunk | Owns | Size |
 |---|---|---|---|
 | D1 ✅ | One collation (0017); `scripts/test.py` and compose use it. Done: `app/core/db_charset.py`, every table and connection declares it | migration, `app/db/*` charset settings | S |
-| D2 | DATETIME(6) everywhere (0018); `app/core/clock.py` `utcnow()` (aware UTC) replaces 224 `datetime.utcnow()` | all models' time columns, every `utcnow` call site | L (mechanical) |
+| D2 ✅ | DATETIME(6) everywhere (0018); `app/core/clock.py` `utcnow()` (naive UTC: the columns hold UTC without a zone) replaces 224 `datetime.utcnow()`; ruff DTZ003 bans new ones | all models' time columns, every `utcnow` call site | L (mechanical) |
 | D3 | `tenant_id` on email_messages, email_events, campaign_prospects, email_templates, email_sequences, email_template_versions, prospect_list_members, proposal_lines, campaign_state_events, … (0019) with backfill, tenant-first indexes, writers set it, per-table isolation tests | those models + their writers | L |
 | D4 | UUIDv7 default for new primary keys (`app/core/ids.py`), no data change | `app/core/ids.py`, model defaults | S |
 | D5 | CHECK constraints for email/campaign/deal/proposal/lead status machines (0020); shared status enums in `app/domain/status.py` | migration, `app/domain/status.py` | M |

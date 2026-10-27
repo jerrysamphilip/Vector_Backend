@@ -3,12 +3,12 @@
 Conversation model for grouping email messages between a prospect and an inbox.
 """
 
-from sqlalchemy import Column, String, Boolean, TIMESTAMP, ForeignKey, Text
+from sqlalchemy import Column, String, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class Conversation(Base):
@@ -27,9 +27,9 @@ class Conversation(Base):
     status = Column(String(50), default="OPEN")  # OPEN / CLOSED / SNOOZED
     is_unread = Column(Boolean, default=True)
     
-    last_message_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    last_message_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     # Relationships
     tenant = relationship("Tenant")

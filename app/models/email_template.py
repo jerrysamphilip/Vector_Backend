@@ -3,12 +3,12 @@
 AI Prompts, Email Templates, and Version History models.
 """
 
-from sqlalchemy import Column, String, Boolean, Integer, Text, TIMESTAMP, ForeignKey, JSON
+from sqlalchemy import Column, String, Boolean, Integer, Text, ForeignKey, JSON
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class AIPrompt(Base):
@@ -21,7 +21,7 @@ class AIPrompt(Base):
     prompt_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     base_prompt = Column(Text, nullable=False)
     persona_rules = Column(JSON, nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     # Relationships
     templates = relationship("EmailTemplate", back_populates="ai_prompt", lazy="dynamic")
@@ -59,19 +59,19 @@ class EmailTemplate(Base):
     
     # Enhanced AI Generation Metadata
     model_settings = Column(JSON, nullable=True)  # {"temperature": 0.7, "max_tokens": 500}
-    generated_at = Column(TIMESTAMP, nullable=True)  # When AI generated this content
+    generated_at = Column(UtcDateTime, nullable=True)  # When AI generated this content
     cta_text = Column(String(255), nullable=True)  # Call-to-action text
     cta_link = Column(Text, nullable=True)  # Call-to-action URL/Link
     personalization_tokens = Column(JSON, nullable=True)  # ["{{first_name}}", "{{company}}"]
 
     # Approval Workflow
     approved_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    approved_at = Column(TIMESTAMP, nullable=True)
+    approved_at = Column(UtcDateTime, nullable=True)
     
     # Retention
-    expires_at = Column(TIMESTAMP, nullable=True)  # 12 months from creation for retention policy
+    expires_at = Column(UtcDateTime, nullable=True)  # 12 months from creation for retention policy
     
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     # Relationships
     campaign = relationship("Campaign", back_populates="templates")
@@ -104,7 +104,7 @@ class EmailTemplateVersion(Base):
     version_number = Column(Integer, nullable=False)
     
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=False)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
     is_active = Column(Boolean, default=True)
 
     # Relationships

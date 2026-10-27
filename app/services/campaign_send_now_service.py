@@ -62,10 +62,10 @@ def format_cursor(step_number: int, message_id: str) -> str:
 
 
 def normalize_run_start(since: Optional[datetime], now: Optional[datetime] = None) -> datetime:
-    """The run's start as naive UTC in whole seconds (sent_at has no fractions, so a send in this
-    run is never "before" it). An aware ``since`` is converted to UTC; no ``since`` means now."""
+    """The run's start as naive UTC, microsecond precision like sent_at (DATETIME(6)), so a send in
+    this run is never "before" it. An aware ``since`` is converted to UTC; no ``since`` means now."""
     started_at = since.astimezone(timezone.utc).replace(tzinfo=None) if since and since.tzinfo else since
-    return (started_at or now or utcnow()).replace(microsecond=0)
+    return started_at or now or utcnow()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
