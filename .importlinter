@@ -164,24 +164,8 @@ ignore_imports =
     app.routers.contact_scoring_router -> app.models.prospect
     app.routers.contact_scoring_router -> app.models.user
     app.routers.contact_scoring_router -> sqlalchemy
-    app.routers.contacts_router -> app.models.user
-    app.routers.contacts_router -> sqlalchemy
     app.routers.conversation_router -> app.models.user
     app.routers.conversation_router -> sqlalchemy
-    app.routers.crm_router -> app.models.account
-    app.routers.crm_router -> app.models.crm
-    app.routers.crm_router -> app.models.prospect
-    app.routers.crm_router -> app.models.user
-    app.routers.crm_router -> sqlalchemy
-    app.routers.custom_reports_router -> app.models.account
-    app.routers.custom_reports_router -> app.models.campaign
-    app.routers.custom_reports_router -> app.models.contact_activity
-    app.routers.custom_reports_router -> app.models.crm
-    app.routers.custom_reports_router -> app.models.prospect
-    app.routers.custom_reports_router -> app.models.sales
-    app.routers.custom_reports_router -> app.models.sales_extra
-    app.routers.custom_reports_router -> app.models.user
-    app.routers.custom_reports_router -> sqlalchemy
     app.routers.deliverability_router -> app.models.campaign
     app.routers.deliverability_router -> app.models.domain_reputation
     app.routers.deliverability_router -> app.models.email_message
@@ -224,41 +208,6 @@ ignore_imports =
     app.routers.prospect_list_router -> app.models.prospect_persona
     app.routers.prospect_list_router -> app.models.user
     app.routers.prospect_list_router -> sqlalchemy
-    app.routers.quotes_router -> app.models.account
-    app.routers.quotes_router -> app.models.prospect
-    app.routers.quotes_router -> app.models.sales
-    app.routers.quotes_router -> app.models.sales_extra
-    app.routers.quotes_router -> app.models.tenant
-    app.routers.quotes_router -> app.models.user
-    app.routers.quotes_router -> sqlalchemy
-    app.routers.reports_router -> app.models.campaign
-    app.routers.reports_router -> app.models.user
-    app.routers.reports_router -> sqlalchemy
-    app.routers.sales_admin_router -> app.models.prospect
-    app.routers.sales_admin_router -> app.models.sales_extra
-    app.routers.sales_admin_router -> app.models.user
-    app.routers.sales_admin_router -> sqlalchemy
-    app.routers.sales_kpi_router -> app.models.sales
-    app.routers.sales_kpi_router -> app.models.user
-    app.routers.sales_kpi_router -> sqlalchemy
-    app.routers.sales_reports_router -> app.models.campaign
-    app.routers.sales_reports_router -> app.models.contact_activity
-    app.routers.sales_reports_router -> app.models.crm
-    app.routers.sales_reports_router -> app.models.email_message
-    app.routers.sales_reports_router -> app.models.prospect
-    app.routers.sales_reports_router -> app.models.sales
-    app.routers.sales_reports_router -> app.models.sales_extra
-    app.routers.sales_reports_router -> app.models.user
-    app.routers.sales_reports_router -> sqlalchemy
-    app.routers.sales_router -> app.models.account
-    app.routers.sales_router -> app.models.contact_activity
-    app.routers.sales_router -> app.models.crm
-    app.routers.sales_router -> app.models.email_message
-    app.routers.sales_router -> app.models.prospect
-    app.routers.sales_router -> app.models.sales
-    app.routers.sales_router -> app.models.sales_extra
-    app.routers.sales_router -> app.models.user
-    app.routers.sales_router -> sqlalchemy
     app.routers.ses_webhook_router -> app.models
     app.routers.ses_webhook_router -> app.models.automation_rule
     app.routers.ses_webhook_router -> app.models.campaign
@@ -267,12 +216,6 @@ ignore_imports =
     app.routers.subject_variant_router -> app.models.campaign
     app.routers.subject_variant_router -> app.models.user
     app.routers.subject_variant_router -> sqlalchemy
-    app.routers.tasks_router -> app.models.account
-    app.routers.tasks_router -> app.models.crm
-    app.routers.tasks_router -> app.models.prospect
-    app.routers.tasks_router -> app.models.sales
-    app.routers.tasks_router -> app.models.user
-    app.routers.tasks_router -> sqlalchemy
     app.routers.template_router -> app.models.campaign
     app.routers.template_router -> app.models.email_attachment
     app.routers.template_router -> app.models.email_sequence
@@ -307,7 +250,6 @@ ignore_imports =
     app.services.audit_service -> sqlalchemy
     app.services.automation_rule_service -> sqlalchemy
     app.services.batch_processor_service -> sqlalchemy
-    app.services.campaign_analytics_service -> sqlalchemy
     app.services.campaign_crud_service -> sqlalchemy
     app.services.campaign_email_service -> sqlalchemy
     app.services.campaign_query_service -> sqlalchemy
@@ -319,16 +261,7 @@ ignore_imports =
     app.services.campaign_wizard_service -> sqlalchemy
     app.services.campaign_wizard_template_service -> sqlalchemy
     app.services.compliance_service -> sqlalchemy
-    app.services.contact_activity_service -> sqlalchemy
-    app.services.contact_companies -> sqlalchemy
-    app.services.contact_field_service -> sqlalchemy
-    app.services.contact_query_service -> sqlalchemy
     app.services.contact_scoring -> sqlalchemy
-    app.services.contact_service -> sqlalchemy
-    app.services.contact_write_service -> sqlalchemy
-    app.services.conversation_service -> sqlalchemy
-    app.services.crm -> sqlalchemy
-    app.services.crm_kpis -> sqlalchemy
     app.services.daily_limit -> sqlalchemy
     app.services.deliverability_service -> sqlalchemy
     app.services.domain_tenancy -> sqlalchemy
@@ -336,7 +269,6 @@ ignore_imports =
     app.services.email_sender_service -> sqlalchemy
     app.services.enrollment_rules -> sqlalchemy
     app.services.execution_service -> sqlalchemy
-    app.services.forecast_snapshots -> sqlalchemy
     app.services.imap_sync_service -> sqlalchemy
     app.services.invitation_email -> fastapi
     app.services.invitation_service -> fastapi
@@ -350,12 +282,7 @@ ignore_imports =
     app.services.platform_flags -> sqlalchemy
     app.services.prospect_upload_service -> sqlalchemy
     app.services.provider_ingestion_service -> sqlalchemy
-    app.services.quote_approval -> sqlalchemy
     app.services.reconnect_service -> sqlalchemy
-    app.services.reports_service -> sqlalchemy
-    app.services.sales -> sqlalchemy
-    app.services.sales_jobs -> sqlalchemy
-    app.services.sales_settings -> sqlalchemy
     app.services.send_safety -> sqlalchemy
     app.services.sender_identity -> sqlalchemy
     app.services.sequence_generator -> sqlalchemy

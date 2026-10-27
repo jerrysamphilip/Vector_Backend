@@ -12,6 +12,16 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 `docs/REQUIREMENTS.md`; test traceability: `docs/TRACEABILITY.md`.
 
 ### Added
+- Layered architecture applied to contacts (reference, `docs/LAYER_PATTERN.md`), sales and reports: typed domain
+  query objects, repositories holding all SQL, services owning the unit of work, thin routers, `Mapped[]` models
+  with identical DDL. OpenAPI and report outputs unchanged (golden test `tests/test_a6_report_outputs.py`).
+  73 import-layer exceptions, 16 complexity hotspots, 71 function-local imports and 9 `# type: ignore` removed.
+- Campaigns: duplicate (migration 0022), clear fields with null, enrolment dry run, timing columns, removed
+  contacts hidden and re-enrolable, weighted inbox rotation.
+- Inbox: reply classification POSITIVE / NEUTRAL / NEGATIVE / OUT_OF_OFFICE / UNSUBSCRIBE (rules first, LLM only
+  within the daily cap; migration 0023); confident unsubscribes suppress, low-confidence ones are flagged for
+  review; conversation search, labels, campaign, activity timeline and paging; sending-pipeline alerts (no mailbox,
+  limit reached, failure rate, missing delivery events, SES unavailable, stuck sending); resume a paused mailbox.
 - CI gates for the NTS Build Standard Addendum (`docs/CI_GATES.md`): complexity (C-1), type-ignore ratchet (C-2),
   no `assert` in app code (C-3, ruff S101 + bandit B101), import-layer contracts and function-local import
   register (C-4/C-5), requirement traceability, release identity, frontend/backend route contract, blocking
@@ -37,6 +47,8 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - Layered test framework (`scripts/test.py`: unit, functional, system, e2e, ui) and the `docs/TESTING.md` guide.
 
 ### Changed
+- Conversations follow the contact owner/team visibility scope (an agent sees the conversations of the contacts
+  they can see); before, any member of the workspace saw all of them.
 - Refactor: routers are thin HTTP adapters over services; service-layer domain errors (`app/core/errors.py`);
   typing for app/core, app/services, app/utils (mypy in CI); architecture notes in `docs/ARCHITECTURE.md`.
 - The AGENT role gets `manage_campaigns` by default; role defaults have a single source.

@@ -72,7 +72,7 @@ current violations sit in a shrinking baseline.
 
 | ID | Chunk | Size |
 |---|---|---|
-| L1 | **Contacts aggregate** as the reference: typed `Mapped[]` models for prospects/accounts link; `app/domain/contacts.py` (ContactFilter, sort, paging); `app/repositories/contacts.py`; services call the repository Protocol; routers thin; UUID path IDs; response models; unit tests per layer; remove the aggregate's baseline entries | L |
+| L1 ✅ | **Contacts aggregate** (done; pattern in [LAYER_PATTERN.md](LAYER_PATTERN.md)) as the reference: typed `Mapped[]` models for prospects/accounts link; `app/domain/contacts.py` (ContactFilter, sort, paging); `app/repositories/contacts.py`; services call the repository Protocol; routers thin; UUID path IDs; response models; unit tests per layer; remove the aggregate's baseline entries | L |
 
 ### Wave 3 — aggregates in parallel (same pattern as L1; disjoint files)
 
@@ -80,10 +80,10 @@ current violations sit in a shrinking baseline.
 |---|---|---|
 | A1 | Accounts, lists, prospect lists, recycle bin | M |
 | A2 | Campaigns, sequences, templates, wizard, subject variants | L |
-| A3 | Sales: leads, opportunities, proposals, quotes, sales admin, sales reports | L |
+| A3 ✅ | Sales: leads, opportunities, proposals, quotes, sales admin, sales reports | L |
 | A4 | Inbox: conversations, IMAP sync, SES webhook, deliverability, sending inboxes | L |
 | A5 | Auth, users, invitations, platform admin, tenants | M |
-| A6 | Reports, custom reports, CRM KPIs, analytics | M |
+| A6 ✅ | Reports, custom reports, CRM KPIs, analytics | M |
 | A7 | Import, automation rules, webhooks, contact scoring, notifications | M |
 | A8 | Worker side: email scheduler, sender, warmup, send-now — split the complexity hotspots (93/80/55) | L |
 
