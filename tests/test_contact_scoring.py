@@ -10,6 +10,7 @@ import uuid
 import pytest
 
 from tests.conftest import RUN, SessionLocal, auth, login, register_tenant, sql
+from app.core.clock import utcnow
 
 # A small deterministic model: fit from tags only, total = fit
 TAG_MODEL = {
@@ -181,17 +182,16 @@ def test_email_engagement_counted_by_recompute(client, tenant_s):
     h = tenant_s["headers"]
     _put_model(client, h, ENGAGEMENT_MODEL)
     pid = _contact(client, h, "mail")["prospect_id"]
-    from datetime import datetime
     from app.models.email_message import EmailEvent, EmailMessage
     with SessionLocal() as db:
         out = EmailMessage(prospect_id=pid, direction="OUTBOUND", status="SENT", subject="Hi", to_email="x@example.com",
-                           sent_at=datetime.utcnow())
+                           sent_at=utcnow())
         db.add(out)
         db.flush()
         for etype in (EmailEvent.EVENT_OPEN, EmailEvent.EVENT_OPEN, EmailEvent.EVENT_CLICK, EmailEvent.EVENT_POSITIVE_REPLY):
-            db.add(EmailEvent(message_id=out.message_id, event_type=etype, event_time=datetime.utcnow()))
+            db.add(EmailEvent(message_id=out.message_id, event_type=etype, event_time=utcnow()))
         db.add(EmailMessage(prospect_id=pid, direction="INBOUND", status="RECEIVED", subject="Re: Hi",
-                            to_email="me@example.com", sent_at=datetime.utcnow()))
+                            to_email="me@example.com", sent_at=utcnow()))
         db.commit()
     r = client.post(f"/contacts/{pid}/score/recompute", headers=h)
     assert r.status_code == 200, r.text

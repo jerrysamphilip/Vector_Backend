@@ -8,11 +8,12 @@
   LIKE wildcards in a name do not match other tenants.
 """
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
 from tests.conftest import RUN, SessionLocal, auth, login, register_tenant, sql
+from app.core.clock import utcnow
 
 
 def _user(client, tenant_id, label: str, role: str, status: str = "ACTIVE") -> dict:
@@ -41,8 +42,8 @@ def _magic_link(user_id: str, expires_in: timedelta, used: bool = False) -> str:
     raw = uuid.uuid4().hex
     with SessionLocal() as db:
         db.add(MagicLoginToken(user_id=user_id, token_hash=hash_token(raw),
-                               expires_at=datetime.utcnow() + expires_in,
-                               used_at=datetime.utcnow() if used else None))
+                               expires_at=utcnow() + expires_in,
+                               used_at=utcnow() if used else None))
         db.commit()
     return raw
 

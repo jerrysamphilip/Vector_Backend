@@ -7,8 +7,9 @@ Service for evaluating and executing automation rules.
 import logging
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import timedelta
 
+from app.core.clock import utcnow
 from app.core.database import SessionLocal
 from app.models.automation_rule import AutomationRule, TriggerType, ActionType
 from app.models import (
@@ -117,7 +118,7 @@ class AutomationRuleService:
             prospect_id=prospect_id,
             template_id=template_id,
             status="QUEUED",
-            scheduled_at=datetime.utcnow(),
+            scheduled_at=utcnow(),
             retry_count=0,
             to_email=prospect.email  # Required field
         )

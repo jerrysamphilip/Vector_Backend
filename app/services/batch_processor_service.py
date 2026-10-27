@@ -15,10 +15,10 @@ Prompts: app/prompts/llm_system_prompts.py
 
 from typing import Dict, List, Optional
 from collections import defaultdict
-from datetime import datetime
 from sqlalchemy.orm import Session
 import uuid
 
+from app.core.clock import utcnow
 from app.models import (
     Prospect,
     ProspectListMember,
@@ -303,7 +303,7 @@ def save_persona_templates(
                 "step_number": i,
                 "schedule_day": sequence_steps[i-1]["wait_days"] if sequence_steps and len(sequence_steps) >= i else (i-1)*2
             },
-            generated_at=datetime.utcnow(),
+            generated_at=utcnow(),
         )
         db.add(template)
 

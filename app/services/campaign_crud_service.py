@@ -7,9 +7,10 @@ sequence configuration, and prospect listing.
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from typing import List, Optional, Tuple, Set, Dict
-from datetime import datetime, timedelta, time
+from datetime import timedelta, time
 import uuid
 
+from app.core.clock import utcnow
 from app.core.config import settings
 
 from app.models.campaign import Campaign, CampaignStateEvent, CampaignProspect
@@ -355,7 +356,7 @@ class CampaignCRUDService:
         old_status = campaign.status
         campaign.status = CampaignStatus.PAUSED.value
         campaign.paused_reason = reason
-        campaign.paused_at = datetime.utcnow()
+        campaign.paused_at = utcnow()
         campaign.auto_paused = False
 
         # Freeze all queued emails so the scheduler doesn't pick them up
@@ -390,7 +391,7 @@ class CampaignCRUDService:
         campaign.status = CampaignStatus.ACTIVE.value
         if campaign.auto_paused:
             # The user has reviewed the auto-pause: judge health on sends from now on (BR-DF-07)
-            campaign.health_baseline_at = datetime.utcnow()
+            campaign.health_baseline_at = utcnow()
         campaign.auto_paused = False
         campaign.paused_reason = None
         campaign.paused_at = None

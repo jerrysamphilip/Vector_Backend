@@ -33,7 +33,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from helpers import (FakeImap, HOST_FROM_CONTAINERS, business_tz, get_user, get_workspace, load_state,  # noqa: E402
                      q, reply_mime, req, rows, save_state, scalar, ses_bounce, ses_complaint, ses_delivery,
-                     ses_post, sql, upload_csv, wait_until)
+                     ses_post, sql, upload_csv, utcnow, wait_until)
 from common import Results, run_id, WEB, login  # noqa: E402
 
 SCRATCH = os.environ.get("PW_DIR", "/tmp/claude-0/-home-user/b764cdf9-b625-5070-aae1-e6d130b3e7df/scratchpad")
@@ -235,7 +235,7 @@ def t_jwt():
 def t_webhook_auth():
     raw = ses_delivery("nonexistent", "x@example.com")
     env = {"Type": "Notification", "MessageId": str(uuid.uuid4()), "TopicArn": "arn:aws:sns:us-east-1:1:x",
-           "Message": json.dumps(raw), "Timestamp": datetime.utcnow().isoformat() + "Z", "SignatureVersion": "1",
+           "Message": json.dumps(raw), "Timestamp": utcnow().isoformat() + "Z", "SignatureVersion": "1",
            "Signature": "AAAA", "SigningCertURL": "https://evil.example/cert.pem"}
     s1, b1 = req("POST", "/webhooks/ses/notifications", env)
     rec("OUT-002", "Wrapped SNS notification with invalid signature is rejected (403)", s1 == 403, f"{s1} {b1}")
@@ -499,7 +499,7 @@ def t_events():
     st = mstatus(m[1])
     rec("OUT-041", "Delivery event without our tag is matched by the SES message id", st[2] == "DELIVERED", f"{s} {b} {st}")
 
-    stamp = datetime.utcnow().isoformat() + "Z"
+    stamp = utcnow().isoformat() + "Z"
     ev = ses_delivery(m[2], em("evt2"), sent[m[2]][0], src, stamp=stamp)
     r1, r2 = ses_post(ev), ses_post(ev)
     n = scalar(f"SELECT COUNT(*) FROM email_events WHERE message_id={q(m[2])} AND event_type=10")
@@ -588,7 +588,7 @@ def t_autopause():
         got and c[1] == "1" and "bounce" in c[2].lower() and frozen == "0" and took <= 60, f"{c} took={took:.1f}s pending={frozen}")
     d = rows(f"SELECT IFNULL(health_checked_at,''), IFNULL(bounce_rate_24h,0), IFNULL(sends_24h,0) FROM sending_domains "
              f"WHERE domain_name={q(SHARED)} AND tenant_id={q(A.tenant_id)}")  # one row per workspace since 0005
-    fresh = d and d[0][0] and (datetime.utcnow() - datetime.fromisoformat(d[0][0])).total_seconds() < 300
+    fresh = d and d[0][0] and (utcnow() - datetime.fromisoformat(d[0][0])).total_seconds() < 300
     rec("OUT-073", "Domain health is recomputed at the risk event (24h sends / bounce rate stored)",
         bool(fresh) and float(d[0][1]) > 0, f"sending_domains={d}")
     bc = camp(bcid)
@@ -993,7 +993,7 @@ def check_scheduler_cases(sc):
     rec("OUT-060", "A second email for an already-sent step to the same address is cancelled, not sent",
         st[0] == "CANCELLED" and "duplicate" in st[1].lower(), f"{st[:2]}")
     st = mstatus(sc["window"])
-    resched = st[5] and datetime.fromisoformat(st[5]) > datetime.utcnow() + timedelta(minutes=20)
+    resched = st[5] and datetime.fromisoformat(st[5]) > utcnow() + timedelta(minutes=20)
     rec("OUT-035", "Due email outside the campaign send window is held and re-queued, not sent",
         st[0] == "QUEUED" and resched and st[3] == "0", f"{st}")
     no_window = "no time zone is on a US business day right now (weekend/US holiday); the scheduler's " \
@@ -1006,7 +1006,7 @@ def check_scheduler_cases(sc):
         return
     st = mstatus(sc["cap"])
     rec("OUT-034", "Inbox daily cap reached: email re-queued for later, not sent",
-        st[0] == "QUEUED" and st[5] and datetime.fromisoformat(st[5]) > datetime.utcnow() + timedelta(hours=1), f"{st}")
+        st[0] == "QUEUED" and st[5] and datetime.fromisoformat(st[5]) > utcnow() + timedelta(hours=1), f"{st}")
     st = mstatus(sc["personal"])
     rec("OUT-037", "Personal-address recipient blocked before SES with a reason",
         st[0] == "FAILED" and "PERSONAL" in st[4] and st[2] == "FAILED", f"{st}")

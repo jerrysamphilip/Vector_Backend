@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from tests.conftest import RUN, SessionLocal, register_tenant
+from app.core.clock import utcnow
 
 
 @pytest.fixture(scope="module")
@@ -34,7 +35,7 @@ def test_sent_and_opened_counts_are_consistent(client, tenant_m):
     cid = r.json()["campaign_id"]
     p1, p2, p3 = (_contact(client, h, n) for n in ("one", "two", "three"))
 
-    now = datetime.utcnow()
+    now = utcnow()
     with SessionLocal() as db:
         s1 = EmailSequence(campaign_id=cid, step_number=1, wait_days=0)
         s2 = EmailSequence(campaign_id=cid, step_number=2, wait_days=2)
@@ -143,12 +144,7 @@ def test_planned_follow_ups_follow_shifted_first_step(client, tenant_m, monkeypa
 
     saturday = datetime(2026, 10, 10, 15, 0)  # launch on a Saturday afternoon (UTC)
 
-    class FrozenDatetime(datetime):
-        @classmethod
-        def utcnow(cls):
-            return saturday
-
-    monkeypatch.setattr(ces, "datetime", FrozenDatetime)
+    monkeypatch.setattr(ces, "utcnow", lambda: saturday)
     h = tenant_m["headers"]
     cid = _campaign_with_steps(client, h, "Weekend")
     pid = _contact(client, h, "weekend")
@@ -255,7 +251,7 @@ def test_automation_send_is_not_a_duplicate_of_step_one(client, tenant_m):
         to = db.execute(__import__("sqlalchemy").text(
             "SELECT email FROM prospects WHERE prospect_id = :p"), {"p": pid}).scalar()
         db.add(EmailMessage(campaign_id=cid, prospect_id=pid, sequence_id=seq.sequence_id, status="SENT",
-                            to_email=to, sent_at=datetime.utcnow()))
+                            to_email=to, sent_at=utcnow()))
         rule = AutomationRule(campaign_id=cid, name="Offer", trigger_type="EMAIL_OPENED",
                               action_type="SEND_EMAIL", action_config={"template_id": tpl.template_id})
         db.add(rule)

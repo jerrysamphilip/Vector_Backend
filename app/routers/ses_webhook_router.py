@@ -7,12 +7,12 @@ AWS SNS Webhook handlers for SES bounces, complaints, and delivery notifications
 import json
 import logging
 import uuid
-from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.database import get_db
 from app.core.config import settings
 from app.models import EmailMessage, EmailEvent, Prospect, GlobalUnsubscribe
@@ -345,7 +345,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
             db.add(EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_SENDER_BOUNCE,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "bounce_type": bounce_type,
@@ -367,7 +367,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_BOUNCE,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "bounce_type": bounce_type,
@@ -386,7 +386,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
                 db.add(EmailEvent(
                     message_id=email_message.message_id,
                     event_type=EmailEvent.EVENT_SENDER_BOUNCE,
-                    event_time=datetime.utcnow(),
+                    event_time=utcnow(),
                     event_metadata={
                         "dedupe_key": message.get("_dedupe_key"),
                         "bounce_type": bounce_type,
@@ -417,7 +417,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
                     to_email=email_message.from_email or "",
                     from_email=email or "",
                     status="SENT",
-                    sent_at=datetime.utcnow(),
+                    sent_at=utcnow(),
                 )
                 db.add(bounce_msg)
 
@@ -426,7 +426,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
                 ).first()
                 if conv:
                     conv.is_unread = True
-                    conv.last_message_at = datetime.utcnow()
+                    conv.last_message_at = utcnow()
 
             # Update metrics
             metrics_service = MetricsService(db)
@@ -506,7 +506,7 @@ async def _handle_complaint(message: dict, db: Session) -> dict:
                 event = EmailEvent(
                     message_id=email_message.message_id,
                     event_type=EmailEvent.EVENT_UNSUBSCRIBE,
-                    event_time=datetime.utcnow(),
+                    event_time=utcnow(),
                     event_metadata={
                         "dedupe_key": message.get("_dedupe_key"),
                         "complaint_type": complaint_type,
@@ -549,13 +549,13 @@ async def _handle_delivery(message: dict, db: Session) -> dict:
         # so delivery confirmation is tracked via delivered_at + an event
         # instead of transitioning status away from SENT.
         if email_message and email_message.status == "SENT" and not email_message.delivered_at:
-            email_message.delivered_at = datetime.utcnow()
+            email_message.delivered_at = utcnow()
             set_final_status(email_message, "DELIVERED", email_message.delivered_at)
 
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_DELIVERED,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "smtp_response": delivery_info.get("smtpResponse"),
@@ -592,7 +592,7 @@ async def _handle_open(message: dict, db: Session) -> dict:
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_OPEN,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "ip_address": open_info.get("ipAddress"),
@@ -648,7 +648,7 @@ async def _handle_click(message: dict, db: Session) -> dict:
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_CLICK,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "ip_address": click_info.get("ipAddress"),
@@ -707,7 +707,7 @@ async def _handle_reject(message: dict, db: Session) -> dict:
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_BOUNCE,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "reason": reject_info.get("reason"),
@@ -744,7 +744,7 @@ async def _handle_delivery_delay(message: dict, db: Session) -> dict:
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_SENT,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "delay_type": delay_type,
@@ -820,7 +820,7 @@ async def _handle_subscription(message: dict, db: Session) -> dict:
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_UNSUBSCRIBE,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "contact_list": contact_list,

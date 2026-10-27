@@ -6,11 +6,11 @@ Role defaults come from app/core/auth.py (ROLE_DEFAULT_PERMISSIONS), which enfor
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import ROLE_DEFAULT_PERMISSIONS
 from app.core.errors import BadRequestError, ConflictError, NotFoundError, PermissionDenied
 from app.models.audit import AuditLog
@@ -106,7 +106,7 @@ def spend_magic_links(db: Session, user_id: str) -> None:
     """Mark the user's unused one-click sign-in links as used."""
     db.query(MagicLoginToken).filter(
         MagicLoginToken.user_id == user_id, MagicLoginToken.used_at.is_(None)
-    ).update({MagicLoginToken.used_at: datetime.utcnow()}, synchronize_session=False)
+    ).update({MagicLoginToken.used_at: utcnow()}, synchronize_session=False)
 
 
 def revoke_pending_invitations(db: Session, user: User) -> None:

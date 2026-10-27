@@ -10,6 +10,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
 
+from app.core.clock import utcnow
 from app.core.concurrency import claim_version, if_match_version, resolve_expected
 from app.core.database import get_db
 from app.core.errors import DomainError
@@ -270,7 +271,7 @@ async def enroll_prospects(
     from app.models.email_sequence import EmailSequence
     step1 = db.query(EmailSequence).filter(EmailSequence.campaign_id == campaign_id,
                                            EmailSequence.step_number == 1).first()
-    now = datetime.utcnow()
+    now = utcnow()
     first_at = now + timedelta(days=step1.wait_days if step1 and step1.wait_days else 0)
     for prospect in eligible:
         db.add(CampaignProspect(campaign_id=campaign_id, prospect_id=prospect.prospect_id, current_step=1,

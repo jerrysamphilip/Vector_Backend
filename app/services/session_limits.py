@@ -28,6 +28,7 @@ from enum import Enum
 
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.models.refresh_token import RefreshToken
 
@@ -173,7 +174,7 @@ def begin_refresh(db: Session, token_hash: str, activity_header: str | None,
     Returns the (locked) token and the lineage its replacement inherits; the caller checks the user,
     calls ``mark_rotated`` and issues the new pair. Raises SessionRefused (after committing any
     revocation it made) otherwise."""
-    now = now or datetime.utcnow()
+    now = now or utcnow()
     rt = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).with_for_update().first()
     if rt is None:
         raise SessionRefused(CODE_INVALID, "Invalid or expired refresh token")
@@ -213,5 +214,5 @@ def begin_refresh(db: Session, token_hash: str, activity_header: str | None,
 
 
 def mark_rotated(rt: RefreshToken, now: datetime | None = None) -> None:
-    rt.revoked_at = now or datetime.utcnow()
+    rt.revoked_at = now or utcnow()
     rt.revoked_reason = REASON_ROTATED

@@ -18,6 +18,7 @@ from typing import Iterable, Optional, Set
 from sqlalchemy import ColumnElement, func, or_
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.models import CampaignProspect, EmailMessage, GlobalUnsubscribe, Prospect
 from app.utils.campaign_prospect_status import set_prospect_status
@@ -28,7 +29,7 @@ PENDING = ("QUEUED", "SCHEDULED")
 
 
 def active_clause(now: Optional[datetime] = None) -> ColumnElement[bool]:
-    now = now or datetime.utcnow()
+    now = now or utcnow()
     return or_(GlobalUnsubscribe.suppression_expires_at.is_(None), GlobalUnsubscribe.suppression_expires_at > now)
 
 
@@ -89,7 +90,7 @@ def suppress(
     email_l = (email or "").strip().lower()
     if not email_l or not tenant_id:
         return {"cancelled": 0, "contacts": 0}
-    now = datetime.utcnow()
+    now = utcnow()
     expires = voluntary_expiry(now) if kind == "UNSUBSCRIBE" else None
 
     entry = db.query(GlobalUnsubscribe).filter(

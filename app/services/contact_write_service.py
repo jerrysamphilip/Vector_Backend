@@ -9,12 +9,12 @@ commits its own unit of work; errors are domain errors (app/core/errors.py).
 """
 
 import uuid
-from datetime import datetime
 from typing import Any, Callable, Collection, Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.concurrency import claim_version, resolve_expected
 from app.core.errors import BadRequestError, ConflictError, DomainError, NotFoundError, PermissionDenied
 from app.models.account import Account
@@ -122,7 +122,7 @@ def sync_subscription(db: Session, prospect: Prospect, status: str, user: User) 
                  kind="UNSUBSCRIBE", source="MANUAL")
     else:
         lift(db, prospect.tenant_id, prospect.email)
-    prospect.consent_timestamp = datetime.utcnow()
+    prospect.consent_timestamp = utcnow()
     prospect.consent_source = "MANUAL"
 
 
@@ -228,7 +228,7 @@ def create_contact(db: Session, user: User, payload: ContactCreate) -> Prospect:
         email_provider=email_provider,
         consent_status="UNSUBSCRIBED" if unsubscribed else "OPT_IN",
         consent_source="MANUAL",
-        consent_timestamp=datetime.utcnow(),
+        consent_timestamp=utcnow(),
         is_valid_email=True,
         owner_id=user.user_id,
         lifecycle_stage="LEAD",

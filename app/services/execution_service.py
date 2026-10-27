@@ -7,9 +7,10 @@ Handles the recurring loop of picking eligible prospects and generating email me
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_
 from typing import List, Optional, Tuple, Set
-from datetime import datetime, timedelta
+from datetime import timedelta
 import uuid
 
+from app.core.clock import utcnow
 from app.models.campaign import Campaign, CampaignProspect
 from app.schemas.campaign_schema import CampaignStatus
 from app.models.prospect import Prospect, GlobalUnsubscribe
@@ -97,7 +98,7 @@ class CampaignExecutionService:
         # - Prospect status in Campaign is ACTIVE
         # - Scheduled time <= NOW
         
-        now = datetime.utcnow()
+        now = utcnow()
         
         eligible_candidates = self.db.query(CampaignProspect).join(
             Campaign, CampaignProspect.campaign_id == Campaign.campaign_id
@@ -200,7 +201,7 @@ class CampaignExecutionService:
                     ).scalar() or 0
 
                 scheduled_at = schedule_email_in_window(
-                    base_utc=datetime.utcnow(),
+                    base_utc=utcnow(),
                     timezone_str=effective_tz,
                     send_window_start=cp.campaign.send_window_start,
                     send_window_end=cp.campaign.send_window_end,
@@ -239,7 +240,7 @@ class CampaignExecutionService:
                 if next_step:
                     cp.current_step = next_step_number
                     # Calculate delay
-                    cp.next_scheduled_at = datetime.utcnow() + timedelta(days=next_step.wait_days)
+                    cp.next_scheduled_at = utcnow() + timedelta(days=next_step.wait_days)
                 else:
                     # End of sequence
                     set_prospect_status(cp, "COMPLETED")
@@ -267,7 +268,7 @@ class CampaignExecutionService:
             return False
             
         # 2. Cool-off Window (24h)
-        cutoff = datetime.utcnow() - timedelta(hours=24)
+        cutoff = utcnow() - timedelta(hours=24)
         last_sent = self.db.query(EmailMessage).filter(
             EmailMessage.prospect_id == cp.prospect_id,
             EmailMessage.sent_at > cutoff

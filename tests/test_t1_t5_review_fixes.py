@@ -9,12 +9,13 @@
 import io
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
 from tests.conftest import RUN, SessionLocal, engine, register_tenant, sql
 from tests.query_budget import queries_for
+from app.core.clock import utcnow
 
 
 @pytest.fixture(scope="module")
@@ -47,7 +48,7 @@ def _queued_message(cid, pid, status="QUEUED", claimed_at=None):
     with SessionLocal() as db:
         msg = EmailMessage(campaign_id=cid, prospect_id=pid, direction="OUTBOUND", status=status,
                            subject="Hi", body_text="Hello", to_email=f"{pid}@x.example.com",
-                           scheduled_at=datetime.utcnow(), claimed_at=claimed_at)
+                           scheduled_at=utcnow(), claimed_at=claimed_at)
         db.add(msg)
         db.commit()
         return msg.message_id
@@ -100,8 +101,8 @@ def test_stuck_sweep_reaps_only_stale_claims_and_dates_legacy_rows(client, tenan
     h = tenant_rf["headers"]
     cid = _campaign(client, h, "Sweep")["campaign_id"]
     pid = _contact(client, h, "sweep")
-    stale_at = datetime.utcnow() - timedelta(minutes=email_scheduler.STUCK_SENDING_MINUTES + 5)
-    fresh = _queued_message(cid, pid, "SENDING", datetime.utcnow())
+    stale_at = utcnow() - timedelta(minutes=email_scheduler.STUCK_SENDING_MINUTES + 5)
+    fresh = _queued_message(cid, pid, "SENDING", utcnow())
     stale = _queued_message(cid, pid, "SENDING", stale_at)
     legacy = _queued_message(cid, pid, "SENDING", None)
 
@@ -328,7 +329,7 @@ def test_ms365_token_refresh_outside_transaction_without_committing_caller(clien
     with SessionLocal() as db:
         inbox = db.query(SendingInbox).filter(SendingInbox.inbox_id == inbox_id).one()
         inbox.auth_type, inbox.oauth_refresh_token = ms365_oauth.AUTH_TYPE, "refresh-1"
-        inbox.oauth_access_token, inbox.oauth_expires_at = "old", datetime.utcnow() - timedelta(minutes=1)
+        inbox.oauth_access_token, inbox.oauth_expires_at = "old", utcnow() - timedelta(minutes=1)
         db.commit()
 
     def fake_token_request(data):
@@ -348,7 +349,7 @@ def test_ms365_token_refresh_outside_transaction_without_committing_caller(clien
 
     # A caller with staged work: the token is stored, the caller's change is not committed
     sql("UPDATE sending_inboxes SET oauth_expires_at = :t WHERE inbox_id = :i",
-        t=datetime.utcnow() - timedelta(minutes=1), i=inbox_id)
+        t=utcnow() - timedelta(minutes=1), i=inbox_id)
     monkeypatch.setattr(ms365_oauth, "_token_request", lambda data: {"access_token": "third", "expires_in": 60})
     with SessionLocal() as db:
         inbox = db.query(SendingInbox).filter(SendingInbox.inbox_id == inbox_id).one()

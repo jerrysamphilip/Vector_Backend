@@ -8,10 +8,12 @@ request of the day pays one small insert, every later one a dictionary lookup.
 """
 import logging
 import threading
-from datetime import date, datetime
+from datetime import date
 from typing import Dict, Optional
 
 from sqlalchemy import text
+
+from app.core.clock import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +23,7 @@ _MAX_CACHE = 50_000                   # plenty for one workspace fleet; cleared 
 
 
 def utc_today() -> date:
-    return datetime.utcnow().date()
+    return utcnow().date()
 
 
 def should_record(user_id: str, day: date) -> bool:

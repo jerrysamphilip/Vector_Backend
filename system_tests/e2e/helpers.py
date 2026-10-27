@@ -284,7 +284,7 @@ def utcnow():
 # ───────────────────────────── SES event builders (SNS-shaped payloads the webhook accepts) ─────────────────────────────
 
 def iso(minutes_ago=0):
-    return (datetime.utcnow() - timedelta(minutes=minutes_ago)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    return (utcnow() - timedelta(minutes=minutes_ago)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def _mail_for(message_id, ses_id, source, dest):

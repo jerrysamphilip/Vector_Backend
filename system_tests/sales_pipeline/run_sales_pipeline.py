@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
@@ -28,6 +28,11 @@ HELD = "DAILY_NEW_CONTACT_LIMIT"
 
 
 # ───────────────────────────── helpers ─────────────────────────────
+
+def utcnow():
+    """Naive UTC now, like app.core.clock.utcnow (the app package is not importable here)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 
 def ok(s, expect=(200, 201)):
     return s in ((expect,) if isinstance(expect, int) else expect)
@@ -563,7 +568,7 @@ def _():
     missing = b1.get("detail", "") if isinstance(b1, dict) else ""
     must(req("PATCH", f"/leads/{lid}", {"qualification": {"authority": True, "timeline": True, "notes": "BANT ok"}}, t))
     s2, b2 = req("PATCH", f"/leads/{lid}", {"stage": "SQL", "next_step": "Send pricing",
-                                             "next_step_at": (datetime.utcnow() - timedelta(days=1)).isoformat() + "Z"}, t)
+                                             "next_step_at": (utcnow() - timedelta(days=1)).isoformat() + "Z"}, t)
     lc = must(contact_detail(t, L["c"]["prospect_id"]))["lifecycle_stage"]
     R.check("SP-065", "SQL needs all four BANT criteria; missing ones are named; once met: SQL, qualified_at set, contact → SQL",
             s1 == 400 and "decision maker" in missing and "timeline" in missing and "Budget" not in missing
@@ -699,7 +704,7 @@ def _():
     L["dq"] = l["lead_id"]
     s, b = req("PATCH", f"/leads/{l['lead_id']}", {"stage": "DISQUALIFIED", "disqualified_reason": "No budget",
                                                    "recycle_in_days": 30}, t)
-    days = (datetime.fromisoformat(b["recycle_at"]) - datetime.utcnow()).days if s == 200 and b.get("recycle_at") else None
+    days = (datetime.fromisoformat(b["recycle_at"]) - utcnow()).days if s == 200 and b.get("recycle_at") else None
     R.check("SP-075", "Disqualify needs a reason (BR-SF-02); reason and recycle date (30 days) stored",
             s == 200 and b["stage"] == "DISQUALIFIED" and b["disqualified_reason"] == "No budget" and days in (29, 30),
             f"{s} days={days}")
@@ -1200,7 +1205,7 @@ def _():
         row = lambda m: sql(f"SELECT CONCAT_WS('|', status, IFNULL(last_error_code,'-'), IFNULL(DATE(scheduled_at),'-'), "  # noqa: E731
                             f"IFNULL(failure_reason,'-')) FROM email_messages WHERE message_id='{m}'")
         held = poll(lambda: HELD in row(m_new) and row(m_new), timeout=200)
-        tomorrow = str(date.today() + timedelta(days=1)) if datetime.utcnow().date() == date.today() else str(datetime.utcnow().date() + timedelta(days=1))
+        tomorrow = str(date.today() + timedelta(days=1)) if utcnow().date() == date.today() else str(utcnow().date() + timedelta(days=1))
         r = row(m_new)
         R.check("SP-139", "Worker: 501st new contact's first email is held (QUEUED, DAILY_NEW_CONTACT_LIMIT) and rescheduled to tomorrow",
                 bool(held) and r.startswith("QUEUED|") and f"|{tomorrow}|" in r, f"row={r}", "defect")

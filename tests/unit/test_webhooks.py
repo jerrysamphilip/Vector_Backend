@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.core.clock import utcnow
 from app.utils import webhooks as wh
 
 
@@ -352,10 +353,10 @@ def test_wh_u38_success_marks_delivered_and_resets_failures(svc):
 
 def test_wh_u39_failure_schedules_the_next_attempt_with_backoff(svc):
     d, ep = _delivery(), _endpoint()
-    before = datetime.utcnow()
+    before = utcnow()
     svc.record_result(None, d, ep, {"code": 503, "error": "HTTP 503", "duration_ms": 5})
     assert d.status == "PENDING" and d.attempts == 1 and d.last_error == "HTTP 503"
-    assert before + timedelta(seconds=59) <= d.next_attempt_at <= datetime.utcnow() + timedelta(seconds=61)
+    assert before + timedelta(seconds=59) <= d.next_attempt_at <= utcnow() + timedelta(seconds=61)
     assert ep.consecutive_failures == 1 and ep.last_failure_at
 
 

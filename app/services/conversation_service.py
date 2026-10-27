@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 from typing import List, Optional
 import uuid
-from datetime import datetime
 
+from app.core.clock import utcnow
 from app.models.conversation import Conversation
 from app.models.email_message import EmailMessage
 from app.schemas.conversation_schema import ConversationListItem, ConversationListResponse, ConversationDetailResponse
@@ -123,11 +123,11 @@ class ConversationService:
             from_email=conv.inbox.email_address,
             direction="OUTBOUND",
             status="QUEUED",
-            scheduled_at=datetime.utcnow(),
+            scheduled_at=utcnow(),
             sent_at=None
         )
         
-        conv.last_message_at = datetime.utcnow()
+        conv.last_message_at = utcnow()
         conv.is_unread = False
         
         self.db.add(new_msg)

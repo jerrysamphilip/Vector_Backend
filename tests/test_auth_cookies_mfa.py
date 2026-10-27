@@ -1,11 +1,12 @@
 """Browser sessions in httpOnly cookies (+ CSRF) and two-factor sign-in (TOTP)."""
 
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.clock import utcnow
 from app.core import totp
 from app.main import app
 from tests.conftest import RUN, SessionLocal, auth, register_tenant, sql
@@ -312,7 +313,7 @@ def test_magic_login_requires_mfa(client):
     raw = secrets.token_urlsafe(32)
     with SessionLocal() as db:
         db.add(MagicLoginToken(user_id=user_id, token_hash=hash_token(raw),
-                               expires_at=datetime.utcnow() + timedelta(hours=1)))
+                               expires_at=utcnow() + timedelta(hours=1)))
         db.commit()
 
     r = client.post("/api/auth/magic-login", json={"token": raw})

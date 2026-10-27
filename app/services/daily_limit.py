@@ -14,6 +14,7 @@ from typing import Dict, Optional, Tuple
 from sqlalchemy import ColumnElement, func
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.models.campaign import Campaign
 from app.models.email_message import EmailMessage
@@ -34,7 +35,7 @@ def _attributed_user() -> ColumnElement[str]:
 
 
 def sent_today(db: Session, user_id: str, day: Optional[date] = None) -> int:
-    start, end = _day_bounds(day or datetime.utcnow().date())
+    start, end = _day_bounds(day or utcnow().date())
     return db.query(func.count(EmailMessage.message_id)) \
         .join(EmailSequence, EmailSequence.sequence_id == EmailMessage.sequence_id) \
         .join(Prospect, Prospect.prospect_id == EmailMessage.prospect_id) \
@@ -66,7 +67,7 @@ def status_for(db: Session, user: User) -> dict:
 
 
 def next_day_start() -> datetime:
-    return datetime.combine(datetime.utcnow().date() + timedelta(days=1), time.min)
+    return datetime.combine(utcnow().date() + timedelta(days=1), time.min)
 
 
 class DailyLimiter:
@@ -77,7 +78,7 @@ class DailyLimiter:
         self._counts: Dict[Tuple[str, date], int] = {}
 
     def reserve(self, db: Session, user_id: str) -> bool:
-        key = (user_id, datetime.utcnow().date())
+        key = (user_id, utcnow().date())
         if key not in self._counts:
             self._counts = {k: v for k, v in self._counts.items() if k[1] == key[1]}  # drop old days
             self._counts[key] = sent_today(db, user_id, key[1])
@@ -87,7 +88,7 @@ class DailyLimiter:
         return True
 
     def release(self, user_id: str) -> None:
-        key = (user_id, datetime.utcnow().date())
+        key = (user_id, utcnow().date())
         if self._counts.get(key):
             self._counts[key] -= 1
 

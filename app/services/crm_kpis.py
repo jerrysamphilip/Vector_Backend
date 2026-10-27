@@ -21,6 +21,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.services import sales as svc
 
 logger = logging.getLogger(__name__)
@@ -214,7 +215,7 @@ def duplicate_counts(db: Session, tenant_id: str, owners: Optional[Set[str]]) ->
     fingerprint = tuple(db.execute(fp_query, {"tenant": tenant_id, **params}).one())
     cache_key = (tenant_id, None if owners is None else frozenset(owners))
     hit = _DUP_CACHE.get(cache_key)
-    now = datetime.utcnow()
+    now = utcnow()
     if hit and hit[0] == fingerprint and (now - hit[2]).total_seconds() < DUP_CACHE_SECONDS:
         return hit[1]
     result = _duplicate_counts_sql(db, tenant_id, owners, owner_sql, params)
@@ -334,4 +335,4 @@ def adoption(db: Session, tenant_id: str, anchor: date, members: Optional[Set[st
     rows = db.query(UserActivityDay.user_id, UserActivityDay.day).filter(
         UserActivityDay.tenant_id == tenant_id, UserActivityDay.day >= windows[0][0],
         UserActivityDay.day < windows[-1][1]).all()
-    return adoption_weeks(rows, licensed, windows, today or datetime.utcnow().date())
+    return adoption_weeks(rows, licensed, windows, today or utcnow().date())

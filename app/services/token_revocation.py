@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
+
 
 def is_revoked(db: Session, jti: str | None) -> bool:
     if not jti:
@@ -27,8 +29,8 @@ def revoke(db: Session, payload: dict) -> None:
         return
     exp = payload.get("exp")
     expires_at = (datetime.fromtimestamp(exp, tz=timezone.utc).replace(tzinfo=None)
-                  if isinstance(exp, (int, float)) else datetime.utcnow())
-    db.execute(text("DELETE FROM revoked_access_tokens WHERE expires_at < :now"), {"now": datetime.utcnow()})
+                  if isinstance(exp, (int, float)) else utcnow())
+    db.execute(text("DELETE FROM revoked_access_tokens WHERE expires_at < :now"), {"now": utcnow()})
     db.execute(text("INSERT IGNORE INTO revoked_access_tokens (jti, user_id, expires_at) VALUES (:j, :u, :e)"),
                {"j": jti, "u": payload.get("sub"), "e": expires_at})
     db.commit()

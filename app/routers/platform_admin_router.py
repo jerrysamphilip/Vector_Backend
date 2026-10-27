@@ -6,7 +6,7 @@ Provides cross-tenant management: tenant listing, user overview, platform stats.
 
 import logging
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -16,6 +16,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import require_role
 from app.core.config import settings
 from app.core.database import get_db
@@ -374,7 +375,7 @@ def create_tenant(
     magic_token = MagicLoginToken(
         user_id=admin_user.user_id,
         token_hash=hash_token(raw_token),
-        expires_at=datetime.utcnow() + timedelta(hours=expire_hours),
+        expires_at=utcnow() + timedelta(hours=expire_hours),
     )
     db.add(magic_token)
     db.commit()

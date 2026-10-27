@@ -6,11 +6,12 @@ running in tests, so the delivery job is driven by calling deliver_due() directl
 """
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
 from tests.conftest import RUN, SessionLocal, auth, login, register_tenant, sql
+from app.core.clock import utcnow
 
 BASE = "/integrations/webhooks"
 PUBLIC_IP = "93.184.216.34"
@@ -368,11 +369,11 @@ def test_wh_f14_failure_is_retried_with_backoff(client, ws, rx):
     ep = _create(client, ws["h"], ["contact.created"], url=_url("flaky"))
     rx.code = 500
     _contact(client, ws["h"])
-    before = datetime.utcnow()
+    before = utcnow()
     _deliver()
     d = _deliveries(ep["endpoint_id"])[-1]
     assert d["status"] == "PENDING" and d["attempts"] == 1 and d["response_code"] == 500 and "HTTP 500" in d["last_error"]
-    assert before + timedelta(seconds=50) <= d["next_attempt_at"] <= datetime.utcnow() + timedelta(seconds=70)
+    assert before + timedelta(seconds=50) <= d["next_attempt_at"] <= utcnow() + timedelta(seconds=70)
     _deliver()
     assert len(rx.for_url("flaky")) == 1
     # When the time comes, it is sent again and succeeds

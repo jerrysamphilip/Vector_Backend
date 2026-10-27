@@ -23,6 +23,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.models.account import Account
 from app.models.contact_activity import ContactActivity
 from app.models.contact_scoring import ContactScoringModel
@@ -49,7 +50,7 @@ _PROSPECT_COLUMNS = (
 
 
 def _now() -> datetime:
-    return datetime.utcnow().replace(microsecond=0)
+    return utcnow().replace(microsecond=0)
 
 
 # ── Model ─────────────────────────────────────────────────────────

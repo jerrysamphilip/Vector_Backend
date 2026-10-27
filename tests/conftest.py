@@ -52,6 +52,7 @@ def _run_migrations() -> None:
 
 _run_migrations()
 
+from app.core.clock import utcnow  # noqa: E402
 from app.main import app  # noqa: E402  (also creates/patches the schema on the older layout)
 from app.core.database import SessionLocal, engine  # noqa: E402
 
@@ -187,7 +188,6 @@ def tenant_a_data(client, tenant_a):
     assert r.status_code == 201, r.text
     prospect_id = r.json()["prospect_id"]
 
-    from datetime import datetime
     from app.models.conversation import Conversation
     from app.models.email_message import EmailMessage
 
@@ -201,7 +201,7 @@ def tenant_a_data(client, tenant_a):
             campaign_id=campaign_id, conversation_id=conv.id, prospect_id=prospect_id,
             inbox_id=inbox_id, template_id=template_id, direction="OUTBOUND", status="SENT",
             subject="Hello Pat", body_text=f"Hi Pat, see {known_link}",
-            to_email=prospect_email, from_email=f"sender@{domain}", sent_at=datetime.utcnow(),
+            to_email=prospect_email, from_email=f"sender@{domain}", sent_at=utcnow(),
         )
         db.add(msg)
         db.commit()

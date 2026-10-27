@@ -16,12 +16,12 @@ The pure rules live in app/services/ab_testing.py.
 """
 
 from collections import defaultdict
-from datetime import datetime
 from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from sqlalchemy import func
 from sqlalchemy.orm import Query, Session
 
+from app.core.clock import utcnow
 from app.models.campaign import Campaign
 from app.models.email_message import EmailEvent, EmailMessage
 from app.models.email_sequence import EmailSequence
@@ -374,7 +374,7 @@ class SubjectVariantService:
         if decision["status"] != ab_testing.WINNER_FOUND or decision["label"] != variant.label:
             raise SubjectVariantError(409, f"Variant {variant.label} is not the winner: {decision['reason']}")
         variant.is_winner = True
-        variant.promoted_at = datetime.utcnow()
+        variant.promoted_at = utcnow()
         variant.promoted_by = user_id
         self.db.flush()
         moved = self.resync_step(campaign, seq)

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, or_
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import require_role
 from app.core.database import get_db
 from app.models.account import Account
@@ -54,7 +55,7 @@ def task_dict(db: Session, t: CrmTask, names: dict = None) -> dict:
         names.update({u.user_id: f"{u.first_name} {u.last_name}".strip() for u in db.query(User).filter(User.user_id.in_(need))})
     contact = db.query(Prospect).filter(Prospect.prospect_id == t.prospect_id).first() if t.prospect_id else None
     company = db.query(Account.account_id, Account.name).filter(Account.account_id == t.account_id).first() if t.account_id else None
-    now = datetime.utcnow()
+    now = utcnow()
     return {
         "task_id": t.task_id, "title": t.title, "notes": t.notes, "task_type": t.task_type,
         "priority": t.priority, "status": t.status, "due_at": t.due_at, "reminder_at": t.reminder_at,
@@ -159,7 +160,7 @@ def list_tasks(
         query = query.filter(CrmTask.owner_id == current_user.user_id)
     if status != "ALL":
         query = query.filter(CrmTask.status == status)
-    now = datetime.utcnow()
+    now = utcnow()
     today_end = now.replace(hour=23, minute=59, second=59)
     if due == "overdue":
         query = query.filter(CrmTask.due_at < now)
@@ -200,7 +201,7 @@ def create_task(payload: TaskWrite, db: Session = Depends(get_db), current_user:
                    opportunity_id=data.get("opportunity_id"))
     db.add(task)
     if deal:
-        deal.updated_at = datetime.utcnow()
+        deal.updated_at = utcnow()
     if task.owner_id != current_user.user_id:
         from app.services.notifications import notify
         notify(db, current_user.tenant_id, [task.owner_id], "TASK", f"New task: {task.title}",
@@ -227,7 +228,7 @@ def update_task(task_id: str, payload: TaskWrite, db: Session = Depends(get_db),
             raise HTTPException(status_code=400, detail="Give the task a title")
         setattr(task, field, value)
     if "status" in data:
-        task.completed_at = datetime.utcnow() if task.status == "DONE" else None
+        task.completed_at = utcnow() if task.status == "DONE" else None
     db.commit()
     if "status" in data and task.prospect_id:
         # Completed tasks count towards the contact's engagement score (BR-CM-43)

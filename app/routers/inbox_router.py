@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
+from app.core.clock import utcnow
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.auth import require_role, require_permission
@@ -32,7 +33,6 @@ from app.services.email_sender_service import email_sender
 from app.models.inbox_warmup_metric import InboxWarmupMetric
 from app.models.inbox_warmup_event import InboxWarmupEvent
 from app.models.join_tables import campaign_inboxes
-from datetime import datetime
 import uuid
 import logging
 
@@ -172,7 +172,7 @@ def create_inbox(
         imap_password=data.imap_password,
         # Warm-up settings
         warmup_enabled=data.warmup_enabled if data.warmup_enabled is not None else True,
-        warmup_start_date=datetime.utcnow() if (data.warmup_enabled is not False) else None,
+        warmup_start_date=utcnow() if (data.warmup_enabled is not False) else None,
         max_emails_per_day=data.max_emails_per_day,
         delay_between_emails=data.delay_between_emails or 60,
         warmup_auto_adjust=data.warmup_auto_adjust if data.warmup_auto_adjust is not None else True,
@@ -309,7 +309,7 @@ def update_inbox(
     if "warmup_enabled" in updates:
         enabling = bool(updates["warmup_enabled"])
         if enabling and not inbox.warmup_start_date:
-            inbox.warmup_start_date = datetime.utcnow()
+            inbox.warmup_start_date = utcnow()
             inbox.warmup_day = 0
         inbox.warmup_status = "ACTIVE" if enabling else "DISABLED"
         if enabling:
@@ -443,7 +443,7 @@ def test_imap_connection(
             return result
 
         # Search last 7 days
-        past_date = datetime.utcnow() - timedelta(days=7)
+        past_date = utcnow() - timedelta(days=7)
         months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
         date_cutoff = f"{past_date.day}-{months[past_date.month - 1]}-{past_date.year}"
         status, data = mail.search(None, f'(SINCE "{date_cutoff}")')

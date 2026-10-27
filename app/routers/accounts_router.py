@@ -7,7 +7,7 @@ soft delete: the company is hidden (contacts keep their link) and can be restore
 90 days.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import require_role
 from app.core.concurrency import claim_version, if_match_version, resolve_expected
 from app.core.database import get_db
@@ -259,7 +260,7 @@ def backfill(db: Session = Depends(get_db), current_user: User = Depends(tenant_
 @router.get("/deleted")
 def deleted_accounts(db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
     _require_manager(current_user)
-    cutoff = datetime.utcnow() - timedelta(days=crm.RESTORE_WINDOW_DAYS)
+    cutoff = utcnow() - timedelta(days=crm.RESTORE_WINDOW_DAYS)
     rows = db.query(Account).filter(Account.tenant_id == current_user.tenant_id, Account.deleted_at.isnot(None),
                                     Account.deleted_at > cutoff).order_by(Account.deleted_at.desc()).all()
     rows = [a for a in rows if _can_see_account(db, current_user, a)]
@@ -365,7 +366,7 @@ def delete_account(account_id: str, db: Session = Depends(get_db), current_user:
         raise HTTPException(status_code=404, detail="Company not found")
     if not _can_edit_account(db, current_user, account):
         raise HTTPException(status_code=403, detail="You can only delete companies you or your team own")
-    account.deleted_at, account.deleted_by = datetime.utcnow(), current_user.user_id
+    account.deleted_at, account.deleted_by = utcnow(), current_user.user_id
     db.add(PropertyChange(tenant_id=current_user.tenant_id, object_type="COMPANY", object_id=account_id,
                           field="deleted", new_value="deleted", source="UI", changed_by=current_user.user_id))
     db.commit()

@@ -15,13 +15,13 @@ Outbound webhooks (BRD v2.0 BR-SF-20), workspace admins only:
 """
 import json
 import uuid
-from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import require_role
 from app.core.database import get_db
 from app.models.user import User
@@ -192,7 +192,7 @@ def send_test(endpoint_id: str, db: Session = Depends(get_db), current_user: Use
     """Send a webhook.test event now (one attempt, does not count toward auto-disable)."""
     ep = _get(db, current_user, endpoint_id)
     event_id = str(uuid.uuid4())
-    body = wh.build_body(event_id, wh.TEST_EVENT, datetime.utcnow(), current_user.tenant_id, {
+    body = wh.build_body(event_id, wh.TEST_EVENT, utcnow(), current_user.tenant_id, {
         "endpoint_id": ep.endpoint_id, "message": "Test event from Outreach 360", "sent_by": current_user.email})
     d = WebhookDelivery(delivery_id=str(uuid.uuid4()), tenant_id=current_user.tenant_id, endpoint_id=ep.endpoint_id,
                         event_id=event_id, event_type=wh.TEST_EVENT, payload=body.decode(), status="PENDING",
@@ -252,7 +252,7 @@ def redeliver(endpoint_id: str, delivery_id: str, db: Session = Depends(get_db),
     copy = WebhookDelivery(delivery_id=str(uuid.uuid4()), tenant_id=ep.tenant_id, endpoint_id=ep.endpoint_id,
                            event_id=original.event_id, event_type=original.event_type, payload=original.payload,
                            status="PENDING", attempts=0,
-                           next_attempt_at=datetime.utcnow().replace(microsecond=0),  # MySQL rounds fractions up
+                           next_attempt_at=utcnow().replace(microsecond=0),  # MySQL rounds fractions up
                            is_test=False, redelivery_of=original.delivery_id)
     db.add(copy)
     db.commit()

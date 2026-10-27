@@ -20,7 +20,6 @@ import random
 import re
 import time
 import uuid
-from datetime import datetime
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -30,6 +29,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import require_role
 from app.core.database import get_db
 from app.models.account import Account
@@ -496,7 +496,7 @@ def run_import(
                         p = Prospect(prospect_id=str(uuid.uuid4()), tenant_id=tenant_id, email=email,
                                      email_type="PERSONAL" if crm.is_personal_domain(crm.email_domain(email)) else "BUSINESS",
                                      email_provider=crm.email_domain(email), consent_source="IMPORT",
-                                     consent_timestamp=datetime.utcnow(), is_valid_email=True,
+                                     consent_timestamp=utcnow(), is_valid_email=True,
                                      consent_status="UNSUBSCRIBED" if email.lower() in unsubscribed else "OPT_IN",
                                      owner_id=vals.get("owner_id") or owner_id or current_user.user_id,
                                      lifecycle_stage="LEAD", lead_status="NEW")
@@ -576,7 +576,7 @@ def run_import(
         job.error_count = len(errors)
         job.errors = [{"row": e["row"], "reason": e["reason"],
                        "values": {k: (None if v is None else str(v)) for k, v in e["values"].items()}} for e in errors[:MAX_ROWS]]
-        job.finished_at = datetime.utcnow()
+        job.finished_at = utcnow()
         if target_list:
             job.options = {**(job.options or {}), "list_id": target_list.list_id, "list_name": target_list.list_name}
         db.commit()

@@ -3,10 +3,11 @@
 from typing import Any, Dict, Optional, Tuple
 import uuid
 import math
-from datetime import datetime, timedelta
+from datetime import timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from sqlalchemy.exc import IntegrityError
+from app.core.clock import utcnow
 from app.core.errors import ConflictError
 
 from app.models import (
@@ -491,7 +492,7 @@ def confirm_upload(
             )
         )
 
-        base_added_at = datetime.utcnow()
+        base_added_at = utcnow()
         for idx, (email, prospect_id) in enumerate(prospect_id_map.items()):
             db.add(
                 ProspectListMember(

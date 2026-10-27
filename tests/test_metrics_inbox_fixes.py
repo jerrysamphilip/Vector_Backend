@@ -4,9 +4,9 @@ and the unified inbox list shows the reply as the latest message with a plain-te
 snippet (OUT-052).
 """
 
-from datetime import datetime
 
 from tests.conftest import RUN, SessionLocal, register_tenant
+from app.core.clock import utcnow
 
 
 def _contact(client, h, label, domain):
@@ -27,7 +27,7 @@ def test_clicked_is_unique_prospects_on_every_screen(client):
     cid = r.json()["campaign_id"]
     p1, p2, p3 = (_contact(client, h, n, "clicks") for n in ("one", "two", "three"))
 
-    now = datetime.utcnow()
+    now = utcnow()
     with SessionLocal() as db:
         s1 = EmailSequence(campaign_id=cid, step_number=1, wait_days=0)
         db.add(s1)
@@ -91,7 +91,7 @@ def test_unified_inbox_lists_reply_last_with_plain_text_snippet(client):
     pid = _contact(client, h, "pat", "conv")
     pid2 = _contact(client, h, "sam", "conv")
 
-    same_second = datetime.utcnow().replace(microsecond=0)
+    same_second = utcnow().replace(microsecond=0)
     with SessionLocal() as db:
         conv = Conversation(tenant_id=t["tenant_id"], prospect_id=pid, inbox_id=inbox_id, subject="Hello")
         conv2 = Conversation(tenant_id=t["tenant_id"], prospect_id=pid2, inbox_id=inbox_id, subject="Hi")

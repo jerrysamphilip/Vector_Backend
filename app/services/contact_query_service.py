@@ -19,6 +19,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Query, Session
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.core.clock import utcnow
 from app.core.errors import BadRequestError, NotFoundError, PermissionDenied
 from app.models.account import Account
 from app.models.campaign import Campaign, CampaignProspect
@@ -573,7 +574,7 @@ def export_contacts(db: Session, user: User, fmt: str, columns: Optional[str], f
                 values.append("; ".join(v) if isinstance(v, list) else v)
             rows.append(crm.csv_safe_row(values))  # no formula injection in Excel / Sheets
 
-    stamp = datetime.utcnow().strftime("%Y%m%d-%H%M")
+    stamp = utcnow().strftime("%Y%m%d-%H%M")
     if fmt == "xlsx":
         from openpyxl import Workbook
         wb = Workbook()
@@ -596,7 +597,7 @@ def export_contacts(db: Session, user: User, fmt: str, columns: Optional[str], f
 # ── Recently deleted (BR-CM-35) ────────────────────────────────────
 
 def deleted_page(db: Session, user: User, q: Optional[str], page: int, page_size: int) -> dict:
-    cutoff = datetime.utcnow() - timedelta(days=crm.RESTORE_WINDOW_DAYS)
+    cutoff = utcnow() - timedelta(days=crm.RESTORE_WINDOW_DAYS)
     query = db.query(Prospect).filter(
         Prospect.tenant_id == user.tenant_id, Prospect.deleted_at.isnot(None),
         Prospect.deleted_at > cutoff, Prospect.merged_into_id.is_(None))

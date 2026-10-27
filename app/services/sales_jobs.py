@@ -4,11 +4,12 @@ Background sales jobs (BRD v2.0 5.12):
   stale_deals()    alerts owners about open deals with no activity, or past their close date (BR-SF-05)
 Notifications they raise are emailed by notifications.email_pending (BR-SF-07).
 """
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.models.prospect import Prospect
 from app.models.sales import Lead, Opportunity
 from app.services import crm, sales as svc
@@ -17,7 +18,7 @@ from app.services.sales_settings import get_settings
 
 
 def recycle_leads(db: Session) -> int:
-    now = datetime.utcnow()
+    now = utcnow()
     due = db.query(Lead).filter(Lead.stage == "DISQUALIFIED", Lead.recycle_at.isnot(None), Lead.recycle_at <= now).all()
     for lead in due:
         if db.query(Lead.lead_id).filter(Lead.prospect_id == lead.prospect_id, Lead.lead_id != lead.lead_id,
@@ -41,7 +42,7 @@ def stale_deals(db: Session) -> int:
     tenants = {t for (t,) in db.query(Opportunity.tenant_id).filter(Opportunity.status == "OPEN").distinct()}
     for tenant_id in tenants:
         days = int(get_settings(db, tenant_id).get("stale_deal_days") or 14)
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = utcnow() - timedelta(days=days)
         candidates = db.query(Opportunity).filter(Opportunity.tenant_id == tenant_id, Opportunity.status == "OPEN",
                                                   or_(Opportunity.updated_at < cutoff, Opportunity.close_date < date.today())).all()
         touch = svc.last_activity(db, [o.opportunity_id for o in candidates])

@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from tests.conftest import RUN, SessionLocal, auth, login, register_tenant, sql
+from app.core.clock import utcnow
 
 KEYS = ["duplicate_contact_rate", "reply_to_lead", "lead_to_sql", "sql_to_win", "forecast_accuracy", "crm_adoption"]
 
@@ -165,7 +166,7 @@ def test_duplicate_contact_rate(client, ws):
 def test_reply_to_lead_conversion(client, ws):
     h = ws["h"]
     rep1, rep2 = ws["rep1"]["user_id"], ws["rep2"]["user_id"]
-    recent = datetime.utcnow() - timedelta(days=5)
+    recent = utcnow() - timedelta(days=5)
     p1 = _contact(client, h, "rl1", first_name="One", owner_id=rep1)
     p2 = _contact(client, h, "rl2", first_name="Two", owner_id=rep2)
     p3 = _contact(client, h, "rl3", first_name="Three", owner_id=rep2)
@@ -178,7 +179,7 @@ def test_reply_to_lead_conversion(client, ws):
     _positive_reply(p2, recent)
     _positive_reply(p3, recent)
     _positive_reply(p4, recent)
-    _positive_reply(p5, datetime.utcnow() - timedelta(days=200))   # outside the period
+    _positive_reply(p5, utcnow() - timedelta(days=200))   # outside the period
     # The reply's inbound message, so the one-click flow has something to turn into a lead
     inbound = str(uuid.uuid4())
     sql("INSERT INTO email_messages (message_id, prospect_id, direction, status, to_email, subject, body_text, sent_at) "

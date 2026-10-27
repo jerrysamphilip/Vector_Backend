@@ -8,11 +8,11 @@ message N keeps messages 1..N-1 and the next sync resumes from there.
 import email.message
 import imaplib
 import uuid
-from datetime import datetime
 
 import pytest
 
 from tests.conftest import RUN, SessionLocal, engine, register_tenant, sql
+from app.core.clock import utcnow
 
 UIDVALIDITY = 777
 
@@ -111,7 +111,7 @@ def thread(client, mailbox_env):
         out = EmailMessage(prospect_id=prospect_id, inbox_id=mailbox_env["inbox_id"], direction="OUTBOUND",
                            status="SENT", subject="Hello", body_text="Hi", to_email=prospect_email,
                            from_email=mailbox_env["inbox_email"], provider_message_id=provider_id,
-                           sent_at=datetime.utcnow())
+                           sent_at=utcnow())
         db.add(out)
         db.commit()
         out_id = out.message_id

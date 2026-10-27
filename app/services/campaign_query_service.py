@@ -8,12 +8,13 @@ campaign first (``get_campaign_for_tenant``) and then ask for its data.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.errors import NotFoundError
 from app.models.campaign import Campaign, CampaignProspect
 from app.models.email_message import EmailEvent, EmailMessage
@@ -186,7 +187,7 @@ class CampaignQueryService:
 
     def get_analytics(self, campaign_id: str, days: int, today: Optional[date] = None) -> Dict[str, Any]:
         """Daily bar chart, per-step metrics, lead status breakdown and lifetime totals."""
-        end_date = today or datetime.utcnow().date()
+        end_date = today or utcnow().date()
         start_date = end_date - timedelta(days=days - 1)
         bar_data = self._daily_metrics(campaign_id, start_date, end_date)
         sequences = self._sequence_metrics(campaign_id)

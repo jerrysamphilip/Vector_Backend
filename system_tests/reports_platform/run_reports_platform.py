@@ -15,7 +15,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -29,6 +29,11 @@ ARGS = set(sys.argv[1:])
 TODAY = date.today()
 CUR_FY = fy_of(TODAY)
 CTX = {}
+
+
+def utcnow():
+    """Naive UTC now, like app.core.clock.utcnow (the app package is not importable here)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def j(x):
@@ -1006,7 +1011,7 @@ def t_audit():
     U, uid, ST = CTX["U"], CTX["uid"], CTX["ST"]
     tok = U["owner"]["token"]
     wid = CTX["W"]
-    t0 = datetime.utcnow() - timedelta(minutes=5)
+    t0 = utcnow() - timedelta(minutes=5)
     s, b = req("PATCH", f"/opportunities/{wid}", {"owner_id": uid["ex2"], "amount": 61000,
                                                   "close_date": "2027-01-20", "stage_id": ST["Proposal"]["stage_id"]}, tok)
     assert s == 200, (s, b)
@@ -1170,7 +1175,7 @@ def t_recycle():
     s, b = get(tok, f"/leads/{CTX['L']['L4']}")
     ra = b.get("recycle_at") if s == 200 else None
     try:
-        days = (datetime.fromisoformat(str(ra)) - datetime.utcnow()).days
+        days = (datetime.fromisoformat(str(ra)) - utcnow()).days
     except Exception:
         days = None
     R.check("RP-081", "Disqualified lead keeps its reason and a recycle date (30 days) and shows in the report",

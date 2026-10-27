@@ -10,7 +10,6 @@ Upload lists from the Prospects page are static lists too. Deleting a list here 
 deletes contacts (unlike the Prospects page's upload-list delete).
 """
 
-from datetime import datetime
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -18,6 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import require_role
 from app.core.database import get_db
 from app.models.prospect import Prospect
@@ -189,7 +189,7 @@ def add_members(list_id: str, payload: Members, db: Session = Depends(get_db), c
     existing = {r[0] for r in db.query(ProspectListMember.prospect_id).filter(
         ProspectListMember.list_id == list_id, ProspectListMember.prospect_id.in_(valid))}
     added = [pid for pid in payload.prospect_ids if pid in valid and pid not in existing]
-    now = datetime.utcnow()
+    now = utcnow()
     for pid in dict.fromkeys(added):
         db.add(ProspectListMember(list_id=list_id, prospect_id=pid, is_new_prospect=False, added_at=now))
     db.commit()

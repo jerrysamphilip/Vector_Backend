@@ -6,7 +6,7 @@ Email tracking endpoints for open and click tracking.
 import base64
 import html
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 from urllib.parse import quote_plus, unquote_plus, urlparse
 
@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Form, Response
 from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import verify_tracking_url
@@ -49,7 +50,7 @@ def track_open(
             event = EmailEvent(
                 message_id=message_id,
                 event_type=EmailEvent.EVENT_OPEN,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={"source": "tracking_pixel"}
             )
             db.add(event)
@@ -142,7 +143,7 @@ def track_click(
             event = EmailEvent(
                 message_id=message_id,
                 event_type=EmailEvent.EVENT_CLICK,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "url": destination,
                     "signed": bool(sig),
@@ -178,7 +179,7 @@ def _unsubscribe(db: Session, email_message: EmailMessage, message_id: str, sour
     db.add(EmailEvent(
         message_id=message_id,
         event_type=EmailEvent.EVENT_UNSUBSCRIBE,
-        event_time=datetime.utcnow(),
+        event_time=utcnow(),
         event_metadata={"source": source},
     ))
 

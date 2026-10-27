@@ -19,7 +19,7 @@ import base64
 import logging
 import imaplib
 import smtplib
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -28,6 +28,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.sending_inbox import SendingInbox
@@ -61,7 +62,7 @@ def _endpoint(path: str) -> str:
 def make_state(inbox_id: str, tenant_id: str, user_id: str, nonce: str | None = None) -> str:
     payload = {"inbox_id": inbox_id, "tenant_id": tenant_id, "user_id": user_id, "purpose": "ms365_oauth",
                "nonce": nonce,
-               "exp": datetime.utcnow() + timedelta(minutes=STATE_TTL_MINUTES)}
+               "exp": utcnow() + timedelta(minutes=STATE_TTL_MINUTES)}
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
@@ -101,7 +102,7 @@ def _token_request(data: dict) -> dict:
 def _token_fields(tokens: dict) -> dict:
     """The inbox columns a token response sets (the refresh token only when a new one came back)."""
     fields = {"oauth_access_token": tokens["access_token"],
-              "oauth_expires_at": datetime.utcnow() + timedelta(seconds=int(tokens.get("expires_in", 3600))),
+              "oauth_expires_at": utcnow() + timedelta(seconds=int(tokens.get("expires_in", 3600))),
               "oauth_error": None}
     if tokens.get("refresh_token"):
         fields["oauth_refresh_token"] = tokens["refresh_token"]
@@ -137,7 +138,7 @@ def access_token(db: Session, inbox: SendingInbox) -> OAuthToken:
     should ask for the token before staging writes, as IMAP sync and the inbox tests do.
     """
     if inbox.oauth_access_token and inbox.oauth_expires_at and \
-            inbox.oauth_expires_at > datetime.utcnow() + timedelta(minutes=5):
+            inbox.oauth_expires_at > utcnow() + timedelta(minutes=5):
         return OAuthToken(inbox.oauth_access_token)
     if not inbox.oauth_refresh_token:
         raise OAuthError("Microsoft 365 is not connected for this mailbox. Reconnect it.")

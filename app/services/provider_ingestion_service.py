@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.models.provider_reputation import (
     ExternalReputationMetric,
@@ -47,7 +48,7 @@ class ProviderIngestionService:
             status=status,
             records_ingested=records_ingested,
             error_message=error_message,
-            completed_at=datetime.utcnow(),
+            completed_at=utcnow(),
         )
         db.add(run)
         db.commit()
@@ -142,7 +143,7 @@ class ProviderIngestionService:
         rows = payload if isinstance(payload, list) else [payload or {}]
         count = 0
         for row in rows:
-            metric_date = str(row.get("date") or datetime.utcnow().date())
+            metric_date = str(row.get("date") or utcnow().date())
             if not dry_run:
                 db.add(ExternalReputationMetric(
                     tenant_id=tenant_id,
@@ -174,7 +175,7 @@ class ProviderIngestionService:
             rows = list(reader)
 
         for row in rows:
-            metric_date = str(row.get("date") or row.get("Date") or datetime.utcnow().date())
+            metric_date = str(row.get("date") or row.get("Date") or utcnow().date())
             if not dry_run:
                 db.add(ExternalReputationMetric(
                     tenant_id=tenant_id,

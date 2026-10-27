@@ -17,6 +17,7 @@ from sqlalchemy import and_, exists, func, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, aliased
 
+from app.core.clock import utcnow
 from app.core.errors import BadRequestError
 from app.models.campaign import Campaign, CampaignProspect
 from app.models.email_message import EmailEvent, EmailMessage
@@ -64,7 +65,7 @@ def normalize_run_start(since: Optional[datetime], now: Optional[datetime] = Non
     """The run's start as naive UTC in whole seconds (sent_at has no fractions, so a send in this
     run is never "before" it). An aware ``since`` is converted to UTC; no ``since`` means now."""
     started_at = since.astimezone(timezone.utc).replace(tzinfo=None) if since and since.tzinfo else since
-    return (started_at or now or datetime.utcnow()).replace(microsecond=0)
+    return (started_at or now or utcnow()).replace(microsecond=0)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -219,7 +220,7 @@ class CampaignSendNowService:
         if not inbox:
             return None
         sent_today = inbox.emails_sent_today or 0
-        if not inbox.last_daily_reset or inbox.last_daily_reset.date() < datetime.utcnow().date():
+        if not inbox.last_daily_reset or inbox.last_daily_reset.date() < utcnow().date():
             sent_today = 0
         return inbox if sent_today >= email_sender.get_inbox_daily_limit(inbox) else None
 
@@ -231,7 +232,7 @@ class CampaignSendNowService:
             EmailMessage.message_id == email_msg.message_id,
             EmailMessage.status.in_(PENDING_STATUSES)
         # claimed_at dates the claim, so the stuck-SENDING sweep only reaps it once it is stale
-        ).update({"status": "SENDING", "claimed_at": datetime.utcnow()}, synchronize_session=False)
+        ).update({"status": "SENDING", "claimed_at": utcnow()}, synchronize_session=False)
         db.commit()  # commit the lock acquisition immediately
         if rows_updated == 0:
             logger.info(f"[SendNow] Skipping email {email_msg.message_id}, not in QUEUED state "
@@ -289,7 +290,7 @@ class CampaignSendNowService:
                                       "reason": f"Temporary sending error, left queued: {send_exc}"})
             else:
                 email_msg.status = "FAILED"
-                email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+                email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
                 email_msg.failure_reason = str(send_exc)[:1000]
                 tally.failed += 1
                 tally.errors.append(f"{prospect.email}: {send_exc}")
@@ -311,7 +312,7 @@ class CampaignSendNowService:
     def _record_sent(self, email_msg: EmailMessage, result: Dict[str, Any], from_email_address: Optional[str]) -> None:
         db = self.db
         email_msg.status = "SENT"
-        email_msg.sent_at = datetime.utcnow()
+        email_msg.sent_at = utcnow()
         email_msg.provider_message_id = result.get("ses_message_id")
         email_msg.from_email = from_email_address
 
@@ -319,10 +320,10 @@ class CampaignSendNowService:
             sent_inbox = db.query(SendingInbox).filter(SendingInbox.inbox_id == email_msg.inbox_id).first()
             if sent_inbox:
                 sent_inbox.emails_sent_today = (sent_inbox.emails_sent_today or 0) + 1
-                sent_inbox.last_sent_at = datetime.utcnow()
+                sent_inbox.last_sent_at = utcnow()
 
         db.add(EmailEvent(message_id=email_msg.message_id, event_type=EmailEvent.EVENT_SENT,
-                          event_time=datetime.utcnow()))
+                          event_time=utcnow()))
         self._advance_prospect(email_msg)
 
     def _advance_prospect(self, email_msg: EmailMessage) -> None:
@@ -347,7 +348,7 @@ class CampaignSendNowService:
             cp.current_step = next_step_number
             cp.next_scheduled_at = email_scheduler.schedule_next_step(
                 db, email_msg, next_step, email_msg.sent_at
-            ) or datetime.utcnow() + timedelta(days=next_step.wait_days)
+            ) or utcnow() + timedelta(days=next_step.wait_days)
         else:
             cp.status = "COMPLETED"
             cp.next_scheduled_at = None

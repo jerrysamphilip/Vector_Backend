@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple
 from datetime import datetime, timedelta
 import uuid
 
+from app.core.clock import utcnow
 from app.core.config import settings
 
 from app.models.campaign import Campaign, CampaignProspect, CampaignStateEvent
@@ -215,7 +216,7 @@ class CampaignEmailService:
             EmailSequence.step_number == 1
         ).first()
         start_delay_days = step1.wait_days if step1 else 0
-        scheduled_time = datetime.utcnow() + timedelta(days=start_delay_days)
+        scheduled_time = utcnow() + timedelta(days=start_delay_days)
 
         new_enrollments = []
         enrolled_count = 0
@@ -227,7 +228,7 @@ class CampaignEmailService:
                 prospect_id=prospect.prospect_id,
                 current_step=1,
                 status="ACTIVE",
-                enrolled_at=datetime.utcnow(),
+                enrolled_at=utcnow(),
                 next_scheduled_at=scheduled_time
             ))
             enrolled_count += 1
@@ -412,7 +413,7 @@ class CampaignEmailService:
 
         for t in unapproved_templates:
             t.approved_by = user_id
-            t.approved_at = datetime.utcnow()
+            t.approved_at = utcnow()
 
         self.db.flush()
 
@@ -510,7 +511,7 @@ class CampaignEmailService:
             if t.designation is None or t.designation == "":
                 template_map[(t.sequence_id, None)] = t
 
-        base_time = datetime.utcnow()
+        base_time = utcnow()
         if campaign.start_date:
             try:
                 import zoneinfo

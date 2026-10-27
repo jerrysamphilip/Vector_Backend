@@ -13,7 +13,7 @@ issues the session.
 import logging
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 from urllib.parse import quote_plus, urlencode, urlparse
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -25,6 +25,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core import rate_limit, totp
 from app.core.auth import ROLE_DEFAULT_PERMISSIONS, ensure_tenant_active, get_current_user, require_role
 from app.core.auth_cookies import (
@@ -185,7 +186,7 @@ def _issue_tokens(user: User, db: Session, device_info: str = None, first_login:
     """Create access + refresh tokens and persist the refresh token.
 
     lineage: the session a rotated token belongs to (refresh); None starts a new session (sign-in)."""
-    now = datetime.utcnow()
+    now = utcnow()
     lineage = lineage or session_limits.new_lineage(now)
     access_token = create_access_token(user.user_id, user.tenant_id, user.role)
     raw_refresh = generate_refresh_token()
@@ -203,7 +204,7 @@ def _issue_tokens(user: User, db: Session, device_info: str = None, first_login:
     )
     db.add(rt)
 
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = utcnow()
     db.commit()
     # Signing in counts as activity for the CRM adoption KPI
     from app.services.user_activity import record_for
@@ -503,7 +504,7 @@ def logout(
             RefreshToken.revoked_at.is_(None),
         ).first()
         if rt:
-            rt.revoked_at = datetime.utcnow()
+            rt.revoked_at = utcnow()
             rt.revoked_reason = session_limits.REASON_LOGOUT
             db.commit()
     _revoke_presented_access_token(request, db)
@@ -533,7 +534,7 @@ def forgot_password(body: ForgotPasswordRequest, request: Request, db: Session =
     reset_record = PasswordResetToken(
         user_id=user.user_id,
         token_hash=hash_token(raw_token),
-        expires_at=datetime.utcnow() + timedelta(minutes=settings.PASSWORD_RESET_EXPIRE_MINUTES),
+        expires_at=utcnow() + timedelta(minutes=settings.PASSWORD_RESET_EXPIRE_MINUTES),
     )
     db.add(reset_record)
     db.commit()
@@ -565,8 +566,8 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     if not reset_record:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
-    if reset_record.expires_at < datetime.utcnow():
-        reset_record.used_at = datetime.utcnow()
+    if reset_record.expires_at < utcnow():
+        reset_record.used_at = utcnow()
         db.commit()
         raise HTTPException(status_code=400, detail="Reset token has expired")
 
@@ -578,12 +579,12 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     if not user.auth_provider:
         user.auth_provider = "local"
 
-    reset_record.used_at = datetime.utcnow()
+    reset_record.used_at = utcnow()
 
     db.query(RefreshToken).filter(
         RefreshToken.user_id == user.user_id,
         RefreshToken.revoked_at.is_(None),
-    ).update({"revoked_at": datetime.utcnow()})
+    ).update({"revoked_at": utcnow()})
 
     db.commit()
     logger.info(f"Password reset completed for {user.email}")
@@ -603,8 +604,8 @@ def magic_login(body: MagicLoginRequest, request: Request, response: Response, d
     if not magic_record:
         raise HTTPException(status_code=401, detail="Invalid or expired magic login token")
 
-    if magic_record.expires_at < datetime.utcnow():
-        magic_record.used_at = datetime.utcnow()
+    if magic_record.expires_at < utcnow():
+        magic_record.used_at = utcnow()
         db.commit()
         raise HTTPException(status_code=401, detail="Magic login token has expired")
 
@@ -618,7 +619,7 @@ def magic_login(body: MagicLoginRequest, request: Request, response: Response, d
     if is_first_login:
         user.status = "ACTIVE"
 
-    magic_record.used_at = datetime.utcnow()
+    magic_record.used_at = utcnow()
     return _complete_sign_in(user, db, request, response, first_login=is_first_login)
 
 
@@ -802,7 +803,7 @@ def change_password(
     db.query(RefreshToken).filter(
         RefreshToken.user_id == current_user.user_id,
         RefreshToken.revoked_at.is_(None),
-    ).update({"revoked_at": datetime.utcnow()})
+    ).update({"revoked_at": utcnow()})
 
     db.commit()
     if wants_cookies(request):
@@ -834,7 +835,7 @@ def set_initial_password(
     db.query(RefreshToken).filter(
         RefreshToken.user_id == current_user.user_id,
         RefreshToken.revoked_at.is_(None),
-    ).update({"revoked_at": datetime.utcnow()})
+    ).update({"revoked_at": utcnow()})
     db.commit()
     logger.info("Initial password set for user %s", current_user.user_id)
     if wants_cookies(request):
@@ -961,7 +962,7 @@ def mfa_enable(body: MfaCodeRequest, current_user: User = Depends(get_current_us
     _check_second_factor(db, current_user, body.code, None, allow_recovery=False)
     codes, hashes = totp.generate_recovery_codes()
     current_user.mfa_enabled = True
-    current_user.mfa_enabled_at = datetime.utcnow()
+    current_user.mfa_enabled_at = utcnow()
     current_user.mfa_recovery_codes = hashes
     _mfa_audit(db, current_user, "ENABLE")
     db.commit()

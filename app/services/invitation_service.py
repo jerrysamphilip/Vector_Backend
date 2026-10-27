@@ -12,7 +12,7 @@ deactivates the invited account. Errors are domain errors.
 import logging
 import re
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -20,6 +20,7 @@ from fastapi import Request
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.errors import BadRequestError, ConflictError, GoneError, NotFoundError, TooManyRequests
 from app.core.secrets_guard import is_deployed
@@ -164,7 +165,7 @@ def issue_invite(db: Session, request: Request | None, current_user: User, email
     db.add(MagicLoginToken(
         user_id=user.user_id,
         token_hash=hash_token(raw_magic_token),
-        expires_at=datetime.utcnow() + timedelta(hours=settings.MAGIC_LOGIN_EXPIRE_HOURS),
+        expires_at=utcnow() + timedelta(hours=settings.MAGIC_LOGIN_EXPIRE_HOURS),
     ))
 
     # The invitation stays PENDING until the invitee first signs in (or uses
@@ -177,7 +178,7 @@ def issue_invite(db: Session, request: Request | None, current_user: User, email
         role=role,
         token=hash_token(raw_magic_token),
         status="PENDING",
-        expires_at=datetime.utcnow() + timedelta(days=INVITATION_VALID_DAYS),
+        expires_at=utcnow() + timedelta(days=INVITATION_VALID_DAYS),
     )
     db.add(invitation)
     db.commit()
@@ -261,7 +262,7 @@ def accept_invite(db: Session, body: AcceptInviteRequest) -> Dict[str, Any]:
     if not invitation:
         raise NotFoundError("Invalid or expired invitation")
 
-    if invitation.expires_at < datetime.utcnow():
+    if invitation.expires_at < utcnow():
         invitation.status = "EXPIRED"
         db.commit()
         raise GoneError("Invitation has expired")
@@ -309,7 +310,7 @@ def list_invitations(db: Session, current_user: User) -> List[Dict[str, Any]]:
     """All invitations of the tenant, newest first; overdue PENDING ones are marked EXPIRED."""
     invitations = db.query(Invitation).filter(
         Invitation.tenant_id == current_user.tenant_id).order_by(Invitation.created_at.desc()).all()
-    now = datetime.utcnow()
+    now = utcnow()
     for inv in invitations:
         if inv.status == "PENDING" and inv.expires_at < now:
             inv.status = "EXPIRED"

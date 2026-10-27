@@ -6,11 +6,11 @@ approve all pending.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.errors import DomainError, NotFoundError, OperationFailed
 from app.models.campaign import Campaign
 from app.models.email_sequence import EmailSequence
@@ -116,7 +116,7 @@ class CampaignTemplateService:
             template.tone = tone
             template.ai_model = result.get("model_used", DEFAULT_AI_MODEL)
             template.is_ai_generated = True
-            template.generated_at = datetime.utcnow()
+            template.generated_at = utcnow()
             template.approved_by = None
             template.approved_at = None
             self.db.commit()
@@ -130,7 +130,7 @@ class CampaignTemplateService:
     def approve(self, campaign_id: str, template_id: str, user_id: str) -> EmailTemplate:
         template = self._get_template(campaign_id, template_id)
         template.approved_by = user_id
-        template.approved_at = datetime.utcnow()
+        template.approved_at = utcnow()
         self.db.commit()
         return template
 
@@ -143,7 +143,7 @@ class CampaignTemplateService:
         approved_ids = []
         for template in templates:
             template.approved_by = user_id
-            template.approved_at = datetime.utcnow()
+            template.approved_at = utcnow()
             approved_ids.append(template.template_id)
         self.db.commit()
         return approved_ids

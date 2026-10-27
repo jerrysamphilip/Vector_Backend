@@ -11,12 +11,12 @@ Voluntary unsubscribes are never overrideable.
 """
 
 import logging
-from datetime import datetime
 from typing import List, Optional, Dict
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.models.campaign import CampaignProspect
 from app.models.prospect import Prospect, GlobalUnsubscribe
 
@@ -53,7 +53,7 @@ class ProspectRevalidationService:
     def _is_within_lockout(self, record: GlobalUnsubscribe) -> bool:
         if record.suppression_expires_at is None:
             return True
-        return record.suppression_expires_at > datetime.utcnow()
+        return record.suppression_expires_at > utcnow()
 
     def get_blocked_reason(self, tenant_id: str, email: str) -> Optional[str]:
         record = self.db.query(GlobalUnsubscribe).filter(

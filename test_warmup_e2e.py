@@ -14,6 +14,8 @@ sys.path.insert(0, ".")
 
 import requests
 
+from app.core.clock import utcnow  # noqa: E402  (after sys.path setup)
+
 BASE = "http://127.0.0.1:8001"
 
 # Pre-generate JWT directly to avoid bcrypt timeout in test environment
@@ -427,7 +429,7 @@ class FakeInbox:
     imap_host = "imap.gmail.com"
     imap_username = "user"
     imap_password = "pass"
-    last_sync_at = datetime.utcnow() - timedelta(hours=1)
+    last_sync_at = utcnow() - timedelta(hours=1)
 
 fi = FakeInbox()
 code, msg, blocking = ws._assess_health(fi, [fi, fi])
@@ -452,7 +454,7 @@ code, _, blocking = ws._assess_health(fi2, [fi2, fi])  # imap missing, 2 inboxes
 check(code == "IMAP_NOT_CONFIGURED" and not blocking, "no IMAP → IMAP_NOT_CONFIGURED not blocking")
 
 fi3 = FakeInbox()
-fi3.last_sync_at = datetime.utcnow() - timedelta(hours=30)
+fi3.last_sync_at = utcnow() - timedelta(hours=30)
 code, _, blocking = ws._assess_health(fi3, [fi3, fi])
 check(code == "SYNC_STALE" and not blocking, "stale sync → SYNC_STALE not blocking")
 

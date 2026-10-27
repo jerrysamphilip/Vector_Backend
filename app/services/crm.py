@@ -20,6 +20,7 @@ from typing import Any, Iterable, Optional
 from sqlalchemy import ColumnElement, Numeric, and_, cast, func, not_, or_
 from sqlalchemy.orm import Query, Session
 
+from app.core.clock import utcnow
 from app.models.account import Account
 from app.models.campaign import CampaignProspect
 from app.models.crm import PropertyChange
@@ -221,7 +222,7 @@ def resolve_company(db: Session, tenant_id: str, email: Optional[str] = None,
 
 def soft_delete_contacts(db: Session, prospects: list, user_id: Optional[str]) -> int:
     """Hide contacts for 90 days and stop anything still queued to them."""
-    now = datetime.utcnow()
+    now = utcnow()
     ids = [p.prospect_id for p in prospects if p.deleted_at is None]
     if not ids:
         return 0
@@ -246,7 +247,7 @@ def soft_delete_contacts(db: Session, prospects: list, user_id: Optional[str]) -
 def restore_contacts(db: Session, tenant_id: str, ids: list, user_id: Optional[str],
                      user: Optional[User] = None) -> int:
     """Restore soft-deleted contacts; with `user`, only those inside their visibility (BR-SH-02)."""
-    cutoff = datetime.utcnow() - timedelta(days=RESTORE_WINDOW_DAYS)
+    cutoff = utcnow() - timedelta(days=RESTORE_WINDOW_DAYS)
     query = db.query(Prospect).filter(
         Prospect.tenant_id == tenant_id, Prospect.prospect_id.in_(ids),
         Prospect.deleted_at.isnot(None), Prospect.deleted_at > cutoff, Prospect.merged_into_id.is_(None),
@@ -265,7 +266,7 @@ def restore_contacts(db: Session, tenant_id: str, ids: list, user_id: Optional[s
 def purge_expired(db: Session) -> int:
     """Permanently delete contacts and companies deleted more than 90 days ago."""
     from app.services.contact_service import delete_contacts
-    cutoff = datetime.utcnow() - timedelta(days=RESTORE_WINDOW_DAYS)
+    cutoff = utcnow() - timedelta(days=RESTORE_WINDOW_DAYS)
     ids = [r[0] for r in db.query(Prospect.prospect_id).filter(
         Prospect.deleted_at.isnot(None), Prospect.deleted_at <= cutoff).limit(5000)]
     delete_contacts(db, ids, reason="PURGE_CONTACT")  # recycle bin expiry, by the system
@@ -364,7 +365,7 @@ def _compare(column, operator, value, is_text=True) -> ColumnElement[bool]:
         low, high = (_as_list(value) + [None, None])[:2]
         return column.between(low, high)
     if operator == "in_last_days":
-        return column >= datetime.utcnow() - timedelta(days=int(value))
+        return column >= utcnow() - timedelta(days=int(value))
     raise FilterError(f"Unknown operator: {operator}")
 
 

@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, Session, aliased
 from sqlalchemy import Exists, and_, exists, func, or_
 
+from app.core.clock import utcnow
 from app.core.database import SessionLocal
 from app.core.config import settings
 from app.core.auth import BLOCKED_TENANT_STATUSES
@@ -198,7 +199,7 @@ class EmailSchedulerService:
         
         try:
             # Query emails due for sending
-            now = datetime.utcnow()
+            now = utcnow()
             
             from sqlalchemy import or_
             from app.models.campaign import Campaign
@@ -393,7 +394,7 @@ class EmailSchedulerService:
         now and is reaped a full threshold later if it is still SENDING then.
         """
         self._date_undated_claims(db)
-        cutoff = datetime.utcnow() - timedelta(minutes=self.STUCK_SENDING_MINUTES)
+        cutoff = utcnow() - timedelta(minutes=self.STUCK_SENDING_MINUTES)
         stuck = db.query(EmailMessage).filter(
             EmailMessage.status == "SENDING", EmailMessage.sent_at.is_(None),
             EmailMessage.claimed_at < cutoff,
@@ -407,7 +408,7 @@ class EmailSchedulerService:
             ).distinct()
         }
         accepted = failed = 0
-        now = datetime.utcnow()
+        now = utcnow()
         for msg in stuck:
             if msg.ses_message_id or msg.provider_message_id or msg.delivered_at \
                     or msg.message_id in provider_events:
@@ -432,7 +433,7 @@ class EmailSchedulerService:
         dated = db.query(EmailMessage).filter(
             EmailMessage.status == "SENDING", EmailMessage.sent_at.is_(None),
             EmailMessage.claimed_at.is_(None),
-        ).update({"claimed_at": datetime.utcnow()}, synchronize_session=False)
+        ).update({"claimed_at": utcnow()}, synchronize_session=False)
         # Commit even when nothing matched: under REPEATABLE READ the UPDATE still holds next-key locks on
         # the scanned status='SENDING' index range, and this session stays open for the whole batch, so
         # every lane's claim (QUEUED -> SENDING) would wait on it until the read timeout.
@@ -469,7 +470,7 @@ class EmailSchedulerService:
             rows = db.query(EmailMessage).filter(
                 EmailMessage.message_id == email_msg.message_id,
                 EmailMessage.status.in_(["QUEUED", "SCHEDULED"]),
-            ).update({"status": "SENDING", "send_key": key, "claimed_at": datetime.utcnow()},
+            ).update({"status": "SENDING", "send_key": key, "claimed_at": utcnow()},
                      synchronize_session=False)
             db.commit()
         except IntegrityError:
@@ -564,7 +565,7 @@ class EmailSchedulerService:
                     f"re-queuing for 1 hour."
                 )
                 email_msg.status = "QUEUED"
-                email_msg.scheduled_at = datetime.utcnow() + timedelta(hours=1)
+                email_msg.scheduled_at = utcnow() + timedelta(hours=1)
                 db.commit()
                 return "skipped"
 
@@ -655,7 +656,7 @@ class EmailSchedulerService:
                     )
                     email_msg.status = "QUEUED"
                     email_msg.send_key = None
-                    email_msg.scheduled_at = datetime.utcnow() + timedelta(hours=1)
+                    email_msg.scheduled_at = utcnow() + timedelta(hours=1)
                     return "skipped"
 
                 sender_name = campaign.sender_name or f"{user.first_name} {user.last_name}"
@@ -678,7 +679,7 @@ class EmailSchedulerService:
                  window_end = campaign.send_window_end or time(17, 0)
 
                  is_valid_time = is_within_send_window(
-                     current_utc=datetime.utcnow(),
+                     current_utc=utcnow(),
                      timezone_str=effective_tz,
                      send_window_start=window_start,
                      send_window_end=window_end
@@ -693,7 +694,7 @@ class EmailSchedulerService:
                      email_msg.status = "QUEUED"
                      email_msg.send_key = None
                      # Add small delay so we don't spam the checks immediately
-                     email_msg.scheduled_at = datetime.utcnow() + timedelta(minutes=30)
+                     email_msg.scheduled_at = utcnow() + timedelta(minutes=30)
                      return "skipped"
 
             # ---------------------------------------------------------
@@ -711,13 +712,13 @@ class EmailSchedulerService:
                 ).first()
                 if inbox:
                     # Reset daily counter if new day
-                    today = datetime.utcnow().date()
+                    today = utcnow().date()
                     if not inbox.last_daily_reset or inbox.last_daily_reset.date() < today:
                         inbox.emails_sent_today = 0
-                        inbox.last_daily_reset = datetime.utcnow()
+                        inbox.last_daily_reset = utcnow()
                         # Advance warmup day based on start date
                         if inbox.warmup_enabled and inbox.warmup_start_date:
-                            inbox.warmup_day = (datetime.utcnow() - inbox.warmup_start_date).days
+                            inbox.warmup_day = (utcnow() - inbox.warmup_start_date).days
 
                         # Visibility check (once/day): warn if the configured
                         # per-email pacing can't mathematically reach the
@@ -748,7 +749,7 @@ class EmailSchedulerService:
                         )
                         email_msg.status = "QUEUED"
                         email_msg.send_key = None
-                        email_msg.scheduled_at = datetime.utcnow() + timedelta(
+                        email_msg.scheduled_at = utcnow() + timedelta(
                             hours=inbox.cooling_period_hours
                         )
                         return "skipped"
@@ -762,7 +763,7 @@ class EmailSchedulerService:
                         gap = inbox.delay_between_emails + random.uniform(-spread, spread)
                         since = []
                         if inbox.last_sent_at:
-                            since.append((datetime.utcnow() - inbox.last_sent_at).total_seconds())
+                            since.append((utcnow() - inbox.last_sent_at).total_seconds())
                         if inbox.inbox_id in self._last_send:
                             since.append(_time.monotonic() - self._last_send[inbox.inbox_id])
                         if since:
@@ -806,7 +807,7 @@ class EmailSchedulerService:
 
             # Restart the stuck-send clock now: pacing waits above happen after the
             # claim, and the SENDING sweeper must only see time actually spent in SES.
-            email_msg.claimed_at = datetime.utcnow()
+            email_msg.claimed_at = utcnow()
             db.commit()
 
             # Send via SES. Permanent errors (rejected / invalid address) raise
@@ -836,7 +837,7 @@ class EmailSchedulerService:
                 # this batch can overwrite status back to QUEUED via session state.
                 email_msg.status = "SENT"
                 record_email_sent("sent")
-                email_msg.sent_at = datetime.utcnow()
+                email_msg.sent_at = utcnow()
                 email_msg.from_email = from_email_address
                 # Store the MIME Message-ID (not the SES ID) so IMAP sync can
                 # match prospect replies via the In-Reply-To header.
@@ -852,14 +853,14 @@ class EmailSchedulerService:
                 if email_msg.inbox_id:
                     db.query(SendingInbox).filter(SendingInbox.inbox_id == email_msg.inbox_id).update({
                         SendingInbox.emails_sent_today: func.coalesce(SendingInbox.emails_sent_today, 0) + 1,
-                        SendingInbox.last_sent_at: datetime.utcnow(),
+                        SendingInbox.last_sent_at: utcnow(),
                     }, synchronize_session=False)
 
                 # Create sent event
                 event = EmailEvent(
                     message_id=email_msg.message_id,
                     event_type=EmailEvent.EVENT_SENT,
-                    event_time=datetime.utcnow(),
+                    event_time=utcnow(),
                     event_metadata={"ses_message_id": result.get("ses_message_id")}
                 )
                 db.add(event)
@@ -888,7 +889,7 @@ class EmailSchedulerService:
                 # same content would be refused again, so fail now with the reason.
                 if str(result.get("status", "")).startswith("BLOCKED"):
                     email_msg.status = "FAILED"
-                    email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+                    email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
                     email_msg.failure_reason = result.get("error", "Blocked before sending")
                     email_msg.last_error_code = str(result.get("status"))[:50]
                     logger.warning(f"[Scheduler] Email blocked for {prospect.email}: {result.get('error')}")
@@ -904,12 +905,12 @@ class EmailSchedulerService:
                     # Schedule retry with exponential backoff
                     email_msg.status = "QUEUED"
                     email_msg.send_key = None
-                    email_msg.next_retry_at = datetime.utcnow() + timedelta(
+                    email_msg.next_retry_at = utcnow() + timedelta(
                         minutes=2 ** email_msg.retry_count
                     )
                     email_msg.last_error_code = result.get("error", "")[:50]
                 if email_msg.status == "FAILED":
-                    email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+                    email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
                 
                 logger.warning(
                     f"[Scheduler] Email failed for {prospect.email}: {result.get('error')}"
@@ -920,7 +921,7 @@ class EmailSchedulerService:
             # SES may have accepted the message before the connection failed:
             # retrying could send it twice (BR-DF-06), so stop here and say why.
             email_msg.status = "FAILED"
-            email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+            email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
             email_msg.failure_reason = f"Send outcome unknown, not retried to avoid a duplicate: {e}"[:1000]
             logger.error(f"[Scheduler] Ambiguous send failure for {email_msg.message_id}: {e}")
             return "failed"
@@ -933,7 +934,7 @@ class EmailSchedulerService:
             email_msg.last_error_code = str(e)[:50]
             if email_msg.retry_count >= (email_msg.max_retries or 3):
                 email_msg.status = "FAILED"
-                email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+                email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
                 email_msg.failure_reason = (f"Temporary sending error persisted after "
                                             f"{email_msg.retry_count} attempts: {e}")[:1000]
                 logger.error(f"[Scheduler] Giving up on {email_msg.message_id} after transient errors: {e}")
@@ -942,7 +943,7 @@ class EmailSchedulerService:
                 record_email_sent("retry")
                 email_msg.status = "QUEUED"
                 email_msg.send_key = None
-                email_msg.next_retry_at = datetime.utcnow() + timedelta(
+                email_msg.next_retry_at = utcnow() + timedelta(
                     minutes=2 ** email_msg.retry_count
                 )
                 logger.warning(f"[Scheduler] Transient failure, will retry: {e}")
@@ -951,7 +952,7 @@ class EmailSchedulerService:
         except PermanentEmailFailure as e:
             # Non-retryable error: fail fast, record why (B06)
             email_msg.status = "FAILED"
-            email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+            email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
             email_msg.failure_reason = str(e)[:1000]
             email_msg.last_error_code = (getattr(e, "code", None) or "PERMANENT")[:50]
             logger.error(f"[Scheduler] Permanent failure: {e}")
@@ -970,7 +971,7 @@ class EmailSchedulerService:
             logger.error(f"[Scheduler] Unexpected error: {e}")
             record_email_sent("error")
             email_msg.status = "FAILED"
-            email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+            email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
             email_msg.failure_reason = f"Unexpected: {str(e)[:200]}"
             return "failed"
 
@@ -998,7 +999,7 @@ class EmailSchedulerService:
                     subject=email_msg.subject,
                     status="OPEN",
                     is_unread=False,
-                    last_message_at=datetime.utcnow()
+                    last_message_at=utcnow()
                 )
                 db.add(conv)
                 db.flush()
@@ -1035,7 +1036,7 @@ class EmailSchedulerService:
                     EmailSequence.step_number == sent_step.step_number + 1,
                 ).first()
                 if following:
-                    self.schedule_next_step(db, email_msg, following, email_msg.sent_at or datetime.utcnow())
+                    self.schedule_next_step(db, email_msg, following, email_msg.sent_at or utcnow())
 
             if not campaign_prospect:
                 return
@@ -1066,8 +1067,8 @@ class EmailSchedulerService:
                 # More steps remain — advance to next step and schedule
                 campaign_prospect.current_step = next_step_number
                 campaign_prospect.next_scheduled_at = self.schedule_next_step(
-                    db, email_msg, next_step, email_msg.sent_at or datetime.utcnow()
-                ) or datetime.utcnow() + timedelta(days=next_step.wait_days or 0)
+                    db, email_msg, next_step, email_msg.sent_at or utcnow()
+                ) or utcnow() + timedelta(days=next_step.wait_days or 0)
                 logger.info(
                     f"[Scheduler] Prospect {email_msg.prospect_id} advanced to step {next_step_number}, "
                     f"next send in {next_step.wait_days} day(s)"
@@ -1180,7 +1181,7 @@ def rebase_overdue_on_resume(db: Session, campaign) -> int:
     Contacts whose next step is still in the future are left alone.
     Returns the number of messages moved. Does not commit.
     """
-    now = datetime.utcnow()
+    now = utcnow()
     pending = db.query(EmailMessage).filter(
         EmailMessage.campaign_id == campaign.campaign_id,
         EmailMessage.status.in_(["PAUSED_BY_CAMPAIGN", "QUEUED", "SCHEDULED"]),

@@ -12,6 +12,7 @@ import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 
+from app.core.clock import utcnow
 from app.core.observability import record_imap_sync
 from app.core.tls import open_imap
 
@@ -27,10 +28,6 @@ from app.utils.campaign_prospect_status import set_prospect_status
 from app.utils.conversation_lock import conversation_creation_lock
 
 logger = logging.getLogger(__name__)
-
-def _utcnow() -> datetime:
-    """Return current UTC time as a naive datetime (compatible with DB-stored naive values)."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 _UNSUB_PHRASES = {"unsubscribe", "please unsubscribe", "please unsubscribe me", "unsubscribe me", "remove me",
@@ -82,7 +79,7 @@ class IMAPSyncService:
             # One bad mailbox must never stop the others (B11)
             try:
                 # Sync each inbox about every 4 minutes, so replies show within 10 (BR-DF-05)
-                if inbox.last_sync_at and (_utcnow() - inbox.last_sync_at).total_seconds() < 240:
+                if inbox.last_sync_at and (utcnow() - inbox.last_sync_at).total_seconds() < 240:
                     continue
 
                 # Date window used only when a folder has no UID position yet:
@@ -91,7 +88,7 @@ class IMAPSyncService:
                     days_back = 7
                 else:
                     since = inbox.last_sync_at - self.SINCE_OVERLAP
-                    days_back = min(7, max(1, (_utcnow() - since).days + 1))
+                    days_back = min(7, max(1, (utcnow() - since).days + 1))
 
                 logger.info(f"Background syncing IMAP for {inbox.email_address} (days_back={days_back})")
                 self.sync_inbox(inbox, days_back=days_back)
@@ -152,7 +149,7 @@ class IMAPSyncService:
                     logger.debug(f"[IMAP] Sent folder {folder!r} not usable: {exc}")
                     continue
 
-            inbox.last_sync_at = datetime.utcnow()
+            inbox.last_sync_at = utcnow()
             inbox.imap_last_error = None
             self.db.commit()
             return True
@@ -161,7 +158,7 @@ class IMAPSyncService:
             self.db.rollback()
             # Keep the failure visible on the inbox instead of only in the logs
             try:
-                inbox.imap_last_error = f"{datetime.utcnow():%Y-%m-%d %H:%M} UTC: {e}"[:2000]
+                inbox.imap_last_error = f"{utcnow():%Y-%m-%d %H:%M} UTC: {e}"[:2000]
                 self.db.commit()
             except Exception as save_exc:
                 logger.warning("[IMAP] Could not store the sync error on inbox %s: %s", inbox.inbox_id, save_exc)
@@ -431,7 +428,7 @@ class IMAPSyncService:
                         continue
 
                 # Parse Date
-                sent_at = datetime.utcnow()
+                sent_at = utcnow()
                 if date_str:
                     try:
                         sent_at = parsedate_to_datetime(date_str)
