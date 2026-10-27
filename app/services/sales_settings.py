@@ -2,16 +2,18 @@
 Per-workspace sales settings (BRD v2.0 BR-SF-02, 03, 05, 12).
 
 Stored as one JSON document per workspace; missing keys fall back to DEFAULTS,
-so new settings never need a migration.
+so new settings never need a migration. Reads and writes go through
+``SalesSettingsRepository`` (app/repositories/sales_admin.py); the merge rules and the
+amount masking below are pure.
+
+The ``db``-taking functions keep the signature other modules call them with.
 """
 import copy
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Optional
 
-from sqlalchemy.orm import Session
-
-from app.models.sales_extra import SalesSetting
-from app.models.user import User
+from app.repositories.sales import SqlSession
+from app.repositories.sales_admin import SalesSettingsRepository, SqlAlchemySalesSettingsRepository
 
 DEFAULTS = {
     # BR-SF-03: how leads without an owner are assigned
@@ -38,20 +40,21 @@ DEFAULTS = {
 }
 
 
-def get_settings(db: Session, tenant_id: str) -> dict:
-    row = db.query(SalesSetting).filter(SalesSetting.tenant_id == tenant_id).first()
+# ── Pure rules ───────────────────────────────────────────────
+
+def merge_settings(stored: Optional[dict]) -> dict:
+    """DEFAULTS overlaid with what the workspace stored (nested dicts merged one level deep)."""
     merged: Dict[str, Any] = copy.deepcopy(DEFAULTS)
-    if row and row.settings:
-        for key, value in row.settings.items():
-            if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
-                merged[key].update(value)
-            else:
-                merged[key] = value
+    for key, value in (stored or {}).items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key].update(value)
+        else:
+            merged[key] = value
     return merged
 
 
-def save_settings(db: Session, tenant_id: str, changes: dict) -> dict:
-    current = get_settings(db, tenant_id)
+def apply_changes(current: dict, changes: dict) -> dict:
+    """``current`` with the known keys of ``changes`` applied (unknown keys are ignored)."""
     for key, value in changes.items():
         if key not in DEFAULTS:
             continue
@@ -59,26 +62,55 @@ def save_settings(db: Session, tenant_id: str, changes: dict) -> dict:
             current[key].update(value)
         else:
             current[key] = value
-    row = db.query(SalesSetting).filter(SalesSetting.tenant_id == tenant_id).first()
-    if row:
-        row.settings = current
-    else:
-        db.add(SalesSetting(tenant_id=tenant_id, settings=current))
-    db.flush()
     return current
 
 
-def can_see_amounts(db: Session, user: User, settings: Optional[dict] = None) -> bool:
+def amounts_visible(user: Any, settings: dict) -> bool:
     """Amount and revenue fields are hidden from the roles / levels the workspace lists (BR-SF-12)."""
     if user.role in ("SUPER_ADMIN", "ADMIN"):
         return True
-    s = settings or getattr(user, "_sales_settings", None) or get_settings(db, user.tenant_id)
-    user._sales_settings = s
-    if user.role in (s.get("amount_hidden_roles") or []):
+    if user.role in (settings.get("amount_hidden_roles") or []):
         return False
-    if user.sales_level and user.sales_level in (s.get("amount_hidden_levels") or []):
+    if user.sales_level and user.sales_level in (settings.get("amount_hidden_levels") or []):
         return False
     return True
+
+
+# ── Repository-backed ────────────────────────────────────────
+
+def load_settings(repo: SalesSettingsRepository, tenant_id: str) -> dict:
+    return merge_settings(repo.stored(tenant_id))
+
+
+def store_settings(repo: SalesSettingsRepository, tenant_id: str, changes: dict) -> dict:
+    """Merge ``changes`` into the stored document and stage it (caller commits)."""
+    current = apply_changes(load_settings(repo, tenant_id), changes)
+    repo.save(tenant_id, current)
+    return current
+
+
+def amounts_allowed(repo: SalesSettingsRepository, user: Any, settings: Optional[dict] = None) -> bool:
+    """can_see_amounts over a repository; the workspace settings are cached on the user object."""
+    if user.role in ("SUPER_ADMIN", "ADMIN"):
+        return True
+    s = settings or getattr(user, "_sales_settings", None) or load_settings(repo, user.tenant_id)
+    user._sales_settings = s
+    return amounts_visible(user, s)
+
+
+# ── Session API (signatures other modules use) ───────────────
+
+def get_settings(db: SqlSession, tenant_id: str) -> dict:
+    return load_settings(SqlAlchemySalesSettingsRepository(db), tenant_id)
+
+
+def save_settings(db: SqlSession, tenant_id: str, changes: dict) -> dict:
+    return store_settings(SqlAlchemySalesSettingsRepository(db), tenant_id, changes)
+
+
+def can_see_amounts(db: SqlSession, user: Any, settings: Optional[dict] = None) -> bool:
+    """Amount and revenue fields are hidden from the roles / levels the workspace lists (BR-SF-12)."""
+    return amounts_allowed(SqlAlchemySalesSettingsRepository(db), user, settings)
 
 
 MONEY_KEYS = {
@@ -131,5 +163,9 @@ def mask_money(data, keys=MONEY_KEYS) -> Any:
     return data
 
 
-def masked_for(db: Session, user: User, data, keys=MONEY_KEYS) -> Any:
-    return data if can_see_amounts(db, user) else mask_money(data, keys)
+def masked_with(repo: SalesSettingsRepository, user: Any, data, keys=MONEY_KEYS) -> Any:
+    return data if amounts_allowed(repo, user) else mask_money(data, keys)
+
+
+def masked_for(db: SqlSession, user: Any, data, keys=MONEY_KEYS) -> Any:
+    return masked_with(SqlAlchemySalesSettingsRepository(db), user, data, keys)
