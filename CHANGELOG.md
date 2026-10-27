@@ -19,6 +19,9 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - Checked-in requirements register `docs/REQUIREMENTS.md` (BRD v2.0, 92 requirements, status per requirement);
   `scripts/test.py trace` reads it by default and `trace --check` is the CI gate.
 - `VERSION` file as the single release identity.
+- One collation (chunk D1, migration 0017): every table, column and connection on utf8mb4 / `utf8mb4_0900_ai_ci`
+  (`app/core/db_charset.py`), set on the table instead of taken from the schema default. A schema created as
+  `utf8mb4_unicode_ci` (an RDS default) used to fail the build with MySQL 3780; 0017 converts existing mixed tables.
 - Session limits (ADR 0007): 30-minute idle timeout, 12-hour absolute cap, refresh-token reuse detection that
   revokes the whole session (migration 0015).
 - BRD section 8 KPIs: duplicate rate, reply-to-lead, CRM adoption, forecast accuracy (actual / committed);

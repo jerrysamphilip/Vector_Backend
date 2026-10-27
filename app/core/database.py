@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from typing import Generator
 
 from app.core.config import settings
+from app.core.db_charset import MYSQL_CHARSET, MYSQL_COLLATION
 
 
 # Create SQLAlchemy engine with connection pooling
@@ -26,6 +27,8 @@ engine = create_engine(
         "connect_timeout": 10,     # Fail fast if DB is unreachable
         "read_timeout": 30,        # Drop reads that hang
         "write_timeout": 30,       # Drop writes that hang
+        "charset": MYSQL_CHARSET,  # Session charset / collation match the tables (D1)
+        "collation": MYSQL_COLLATION,
     },
 )
 
