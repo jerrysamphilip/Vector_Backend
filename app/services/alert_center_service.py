@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -18,7 +18,11 @@ from app.models.campaign import Campaign
 from app.models.domain_reputation import ReputationAlert
 from app.models.sending_inbox import SendingInbox
 from app.models.user import User
+from app.domain.inbox_sending import (ALERT_DELIVERY_EVENTS_MISSING, ALERT_INBOX_LIMIT_REACHED,
+                                      ALERT_NO_ACTIVE_MAILBOX, ALERT_SEND_FAILURE_RATE, ALERT_SES_UNAVAILABLE,
+                                      ALERT_STUCK_SENDING, SENDING_ALERT_TYPES)
 from app.services.email_sender_service import email_sender
+from app.services.sending_alerts import collect_sending_alerts
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +37,14 @@ ALL_ALERT_TYPES = (
     ALERT_TYPE_INBOX_PAUSED,
     ALERT_TYPE_INBOX_SYNC_STALE,
     ALERT_TYPE_CAMPAIGN_PAUSED,
+    # Sending pipeline (S-11, app/services/sending_alerts.py)
+    *SENDING_ALERT_TYPES,
 )
 
 INBOX_ALERT_TYPES = (
     ALERT_TYPE_INBOX_PAUSED,
     ALERT_TYPE_INBOX_SYNC_STALE,
+    ALERT_INBOX_LIMIT_REACHED,
 )
 
 PREF_SCOPE_USER = "USER"
@@ -50,7 +57,18 @@ DEFAULT_PREFS = {
     ALERT_TYPE_INBOX_PAUSED: {"enabled": True, "email_enabled": False, "cooldown_minutes": 360},
     ALERT_TYPE_INBOX_SYNC_STALE: {"enabled": True, "email_enabled": False, "cooldown_minutes": 360},
     ALERT_TYPE_CAMPAIGN_PAUSED: {"enabled": True, "email_enabled": False, "cooldown_minutes": 360},
+    # Sending pipeline: problems that stop mail are e-mailed by default, with a shorter cooldown
+    ALERT_NO_ACTIVE_MAILBOX: {"enabled": True, "email_enabled": True, "cooldown_minutes": 360},
+    ALERT_INBOX_LIMIT_REACHED: {"enabled": True, "email_enabled": False, "cooldown_minutes": 720},
+    ALERT_SEND_FAILURE_RATE: {"enabled": True, "email_enabled": True, "cooldown_minutes": 180},
+    ALERT_DELIVERY_EVENTS_MISSING: {"enabled": True, "email_enabled": True, "cooldown_minutes": 180},
+    ALERT_SES_UNAVAILABLE: {"enabled": True, "email_enabled": True, "cooldown_minutes": 60},
+    ALERT_STUCK_SENDING: {"enabled": True, "email_enabled": False, "cooldown_minutes": 180},
 }
+
+
+def _default_cooldown(alert_type: str) -> int:
+    return int(DEFAULT_PREFS.get(alert_type, {}).get("cooldown_minutes", 360))
 
 
 class AlertCenterService:
@@ -89,7 +107,7 @@ class AlertCenterService:
                 return {
                     "enabled": bool(specific.enabled),
                     "email_enabled": bool(specific.email_enabled),
-                    "cooldown_minutes": int(specific.cooldown_minutes or 360),
+                    "cooldown_minutes": int(specific.cooldown_minutes or _default_cooldown(alert_type)),
                 }
 
         if user_id:
@@ -99,7 +117,7 @@ class AlertCenterService:
                 return {
                     "enabled": bool(user_pref.enabled),
                     "email_enabled": bool(user_pref.email_enabled),
-                    "cooldown_minutes": int(user_pref.cooldown_minutes or 360),
+                    "cooldown_minutes": int(user_pref.cooldown_minutes or _default_cooldown(alert_type)),
                 }
 
         return dict(DEFAULT_PREFS.get(alert_type, {"enabled": True, "email_enabled": False, "cooldown_minutes": 360}))
@@ -193,6 +211,8 @@ class AlertCenterService:
                             "scope_id": inbox.inbox_id,
                         }
                     )
+
+        alerts.extend(collect_sending_alerts(db, tenant_id, inboxes, now_utc))
 
         paused_campaigns = (
             db.query(Campaign)
@@ -355,7 +375,11 @@ class AlertCenterService:
         first = next((part.strip() for part in raw.split(",") if part.strip()), "http://localhost:5173")
         return first.rstrip("/")
 
-    async def dispatch_alert_emails_for_tenant(self, db: Session, tenant_id: str) -> Dict[str, int]:
+    async def dispatch_alert_emails_for_tenant(self, db: Session, tenant_id: str,
+                                               only_types: Optional[Iterable[str]] = None) -> Dict[str, int]:
+        """E-mail each admin the alerts their preferences ask for (cooldown per alert and recipient);
+        ``only_types`` limits it to those alert types (the sending_alerts job passes SENDING_ALERT_TYPES)."""
+        wanted = set(only_types) if only_types is not None else None
         recipients = (
             db.query(User.user_id, User.email)
             .filter(
@@ -377,71 +401,62 @@ class AlertCenterService:
 
         for recipient_user_id, recipient_email in recipients:
             alerts = self.collect_dashboard_alerts(db, tenant_id, user_id=recipient_user_id)
+            if wanted is not None:
+                alerts = [a for a in alerts if a.get("alert_type") in wanted]
             if not alerts:
                 continue
 
             for alert in alerts:
-                if not alert.get("email_enabled"):
-                    skipped_count += 1
-                    continue
-
-                alert_key = alert["id"]
-                cooldown_minutes = int(alert.get("cooldown_minutes") or 360)
-                cooldown_delta = timedelta(minutes=max(cooldown_minutes, 1))
-                route = alert.get("route") or ""
-                route_url = f"{frontend_base}{route}" if route.startswith("/") else frontend_base
-
-                subject = f"[Alert Center] {alert.get('severity', 'INFO')} - {alert.get('title', 'Alert')}"
-                body = (
-                    f"Alert: {alert.get('title', 'Alert')}\n"
-                    f"Severity: {alert.get('severity', 'INFO')}\n"
-                    f"Source: {alert.get('source', 'SYSTEM')}\n\n"
-                    f"{alert.get('message', '')}\n\n"
-                    f"Open in app: {route_url}\n"
-                )
-
-                dispatch = (
-                    db.query(AlertEmailDispatch)
-                    .filter(
-                        AlertEmailDispatch.tenant_id == tenant_id,
-                        AlertEmailDispatch.alert_key == alert_key,
-                        AlertEmailDispatch.recipient_email == recipient_email,
-                    )
-                    .first()
-                )
-
-                if dispatch and dispatch.last_sent_at and (now - dispatch.last_sent_at) < cooldown_delta:
-                    skipped_count += 1
-                    continue
-
-                try:
-                    result = await email_sender.send_plain_email(
-                        to_email=recipient_email,
-                        subject=subject,
-                        body_content=body,
-                    )
-                    if result.get("success"):
-                        if not dispatch:
-                            dispatch = AlertEmailDispatch(
-                                tenant_id=tenant_id,
-                                alert_key=alert_key,
-                                recipient_email=recipient_email,
-                            )
-                            db.add(dispatch)
-                        dispatch.last_sent_at = now
-                        dispatch.send_count = int(dispatch.send_count or 0) + 1
-                        sent_count += 1
-                    else:
-                        failed_count += 1
-                        logger.warning(
-                            f"[ALERT-EMAIL] Failed recipient={recipient_email} key={alert_key}: {result.get('error')}"
-                        )
-                except Exception as exc:
-                    failed_count += 1
-                    logger.error(f"[ALERT-EMAIL] Unexpected failure recipient={recipient_email} key={alert_key}: {exc}")
+                outcome = await self._email_alert(db, tenant_id, alert, recipient_email, now, frontend_base)
+                sent_count += outcome == "sent"
+                skipped_count += outcome == "skipped"
+                failed_count += outcome == "failed"
 
         db.commit()
         return {"sent": sent_count, "skipped": skipped_count, "failed": failed_count}
+
+    async def _email_alert(self, db: Session, tenant_id: str, alert: Dict[str, Any], recipient_email: str,
+                           now: Any, frontend_base: str) -> str:
+        """E-mail one alert to one admin unless disabled or within its cooldown: sent / skipped / failed."""
+        if not alert.get("email_enabled"):
+            return "skipped"
+        alert_key = alert["id"]
+        cooldown_delta = timedelta(minutes=max(int(alert.get("cooldown_minutes") or 360), 1))
+        route = alert.get("route") or ""
+        route_url = f"{frontend_base}{route}" if route.startswith("/") else frontend_base
+        subject = f"[Alert Center] {alert.get('severity', 'INFO')} - {alert.get('title', 'Alert')}"
+        body = (
+            f"Alert: {alert.get('title', 'Alert')}\n"
+            f"Severity: {alert.get('severity', 'INFO')}\n"
+            f"Source: {alert.get('source', 'SYSTEM')}\n\n"
+            f"{alert.get('message', '')}\n\n"
+            f"Open in app: {route_url}\n"
+        )
+        dispatch = (
+            db.query(AlertEmailDispatch)
+            .filter(
+                AlertEmailDispatch.tenant_id == tenant_id,
+                AlertEmailDispatch.alert_key == alert_key,
+                AlertEmailDispatch.recipient_email == recipient_email,
+            )
+            .first()
+        )
+        if dispatch and dispatch.last_sent_at and (now - dispatch.last_sent_at) < cooldown_delta:
+            return "skipped"
+        try:
+            result = await email_sender.send_plain_email(to_email=recipient_email, subject=subject, body_content=body)
+        except Exception as exc:
+            logger.error(f"[ALERT-EMAIL] Unexpected failure recipient={recipient_email} key={alert_key}: {exc}")
+            return "failed"
+        if not result.get("success"):
+            logger.warning(f"[ALERT-EMAIL] Failed recipient={recipient_email} key={alert_key}: {result.get('error')}")
+            return "failed"
+        if not dispatch:
+            dispatch = AlertEmailDispatch(tenant_id=tenant_id, alert_key=alert_key, recipient_email=recipient_email)
+            db.add(dispatch)
+        dispatch.last_sent_at = now
+        dispatch.send_count = int(dispatch.send_count or 0) + 1
+        return "sent"
 
     async def evaluate_and_dispatch_all(self, db: Session) -> Dict[str, Any]:
         tenant_ids: set = set()

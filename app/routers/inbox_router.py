@@ -25,7 +25,7 @@ from app.schemas.inbox_schema import (
     WarmupOverviewResponse,
     InboxWarmupDetailResponse,
 )
-from app.services import oauth_binding
+from app.services import oauth_binding, sending_alerts
 from app.services.imap_sync_service import IMAPSyncService
 from app.services.deliverability_service import deliverability_service
 from app.services.warmup_service import warmup_service
@@ -208,11 +208,31 @@ def list_inboxes(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
 ):
-    """List all available sending inboxes."""
+    """List all available sending inboxes, with pause reason and today's capacity (F-20)."""
     inboxes = db.query(SendingInbox).filter(
         SendingInbox.tenant_id == current_user.tenant_id
     ).order_by(SendingInbox.email_address).all()
-    return inboxes
+    return _with_status(db, current_user.tenant_id, inboxes)
+
+
+def _with_status(db, tenant_id: str, inboxes) -> List[SendingInboxResponse]:
+    status = sending_alerts.mailbox_status(db, tenant_id, inboxes)
+    return [SendingInboxResponse.model_validate(i).model_copy(update=status.get(i.inbox_id, {})) for i in inboxes]
+
+
+@router.post("/{inbox_id}/resume", response_model=SendingInboxResponse,
+             dependencies=[Depends(require_permission("manage_inboxes"))])
+def resume_inbox(
+    inbox_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("SUPER_ADMIN", "ADMIN")),
+):
+    """Resume sending from a paused mailbox (F-20); logged in its activity. No-op when already active."""
+    try:
+        inbox = sending_alerts.resume_inbox(db, current_user, inbox_id)
+    except sending_alerts.InboxNotFound:
+        raise HTTPException(status_code=404, detail="Inbox not found")
+    return _with_status(db, current_user.tenant_id, [inbox])[0]
 
 
 @router.get("/ses/quota")
@@ -282,7 +302,7 @@ def get_inbox(
     ).first()
     if not inbox:
         raise HTTPException(status_code=404, detail="Inbox not found")
-    return inbox
+    return _with_status(db, current_user.tenant_id, [inbox])[0]
 
 @router.put("/{inbox_id}", response_model=SendingInboxResponse, dependencies=[Depends(require_permission("manage_inboxes"))])
 def update_inbox(

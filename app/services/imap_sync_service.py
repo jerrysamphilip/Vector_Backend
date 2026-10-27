@@ -4,6 +4,7 @@ import hashlib
 import re
 import imaplib
 import email
+import email.message
 from email.header import decode_header
 from email.utils import parsedate_to_datetime, parseaddr
 import logging
@@ -25,7 +26,11 @@ from app.models.email_sequence import EmailSequence
 from app.models.prospect import GlobalUnsubscribe
 from app.utils.email_utils import (extract_latest_message_text, normalize_subject, ses_id_from_message_id,
                                    thread_message_ids)
-from app.utils.reply_classifier import is_out_of_office, classify_reply_intent
+from app.domain import inbox_reply_rules
+from app.domain.inbox import LabelSource, ReplyClassification, ReplyLabel
+from app.repositories.inbox_replies import ReplyUnitOfWork
+from app.services.reply_classifier import ReplyClassificationService, apply_label, classify_reply_intent
+from app.utils.reply_classifier import is_out_of_office
 from app.utils.campaign_prospect_status import set_prospect_status
 from app.utils.conversation_lock import conversation_creation_lock
 
@@ -240,31 +245,56 @@ class IMAPSyncService:
             self.db.rollback()
             logger.warning(f"[IMAP] Could not commit UID position for {folder_name}: {exc}")
 
-    def _record_reply_intent(self, replied_to_message_id: str, subject: str, body: str,
-                             sent_at: datetime) -> None:
+    def _classify_reply(self, reply_message_id: str, replied_to_message_id: Optional[str]) -> None:
         """
-        AI intent classification for the "Positive Replies" metric. Runs after the
-        reply's own transaction committed, so the OpenAI round trip holds no
-        transaction or row lock (T-1); a positive result is written in a second
-        short transaction.
+        Reply classification (S-09) after the reply's own transaction committed, so the LLM round
+        trip holds no transaction or row lock (T-1). The label, its events and an unsubscribe are
+        written by ReplyClassificationService in a second short transaction; a failure leaves the
+        reply unlabelled for the reply_classification job.
         """
+        service = ReplyClassificationService(
+            ReplyUnitOfWork.for_session(self.db),
+            # Looked up at call time: tests stub classify_reply_intent on this module
+            llm=lambda subject, body: classify_reply_intent(subject, body),
+        )
         try:
-            intent = classify_reply_intent(subject, body)
-        except Exception as exc:  # the classifier already returns None on failure
-            logger.warning(f"[IMAP] Reply classification failed: {exc}")
-            return
-        if intent != "positive":
-            return
-        try:
-            self.db.add(EmailEvent(
-                message_id=replied_to_message_id,
-                event_type=EmailEvent.EVENT_POSITIVE_REPLY,
-                event_time=sent_at
-            ))
-            self.db.commit()
+            service.classify_and_store(reply_message_id, replied_to_message_id)
         except Exception as exc:
             self.db.rollback()
-            logger.warning(f"[IMAP] Could not store positive-reply event: {exc}")
+            logger.warning(f"[IMAP] Reply classification failed (retried by the job): {exc}")
+
+    @staticmethod
+    def _decode_subject(msg: Any) -> str:
+        subject = ""
+        for part, encoding in decode_header(msg["Subject"] or ""):
+            if isinstance(part, bytes):
+                subject += part.decode(encoding or "utf-8", errors="ignore")
+            else:
+                subject += part
+        return subject
+
+    @staticmethod
+    def _plain_body(msg: email.message.Message) -> str:
+        """The first text/plain part (or the whole payload of a single-part message), decoded."""
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain":
+                    try:
+                        return part.get_payload(decode=True).decode(errors="ignore")  # type: ignore[union-attr]
+                    except AttributeError:  # no decodable payload
+                        pass
+            return ""
+        try:
+            return msg.get_payload(decode=True).decode(errors="ignore")  # type: ignore[union-attr]
+        except AttributeError:  # no decodable payload
+            return ""
+
+    @staticmethod
+    def _ooo_label(auto_submitted: Optional[str]) -> ReplyClassification:
+        """The label of a reply the sync already recognised as an out-of-office auto-reply."""
+        if inbox_reply_rules.is_auto_reply_header({"Auto-Submitted": auto_submitted}):
+            return ReplyClassification(ReplyLabel.OUT_OF_OFFICE, 1.0, LabelSource.HEADER, "Auto-Submitted header")
+        return ReplyClassification(ReplyLabel.OUT_OF_OFFICE, 0.8, LabelSource.RULES, "Out-of-office wording")
 
     @staticmethod
     def _synthetic_message_id(from_: Optional[str], date_str: Optional[str], subject: Optional[str],
@@ -437,8 +467,8 @@ class IMAPSyncService:
         for uid in uids:
             msg_id = str(uid)
             highest = max(highest, uid)
-            # (replied-to message id, subject, body, sent_at) when the reply needs AI
-            # classification, done after this message's transaction committed (T-1)
+            # (reply message id, replied-to message id) when the reply needs classification,
+            # done after this message's transaction committed (T-1)
             classify_job: Optional[tuple] = None
             try:
                 # Fetch message — no transaction is open here: the previous message
@@ -451,14 +481,7 @@ class IMAPSyncService:
                 msg = email.message_from_bytes(raw_email)
                 
                 # Parse Headers
-                subject_header = msg["Subject"] or ""
-                decoded_list = decode_header(subject_header)
-                subject = ""
-                for part, encoding in decoded_list:
-                    if isinstance(part, bytes):
-                        subject += part.decode(encoding or "utf-8", errors="ignore")
-                    else:
-                        subject += part
+                subject = self._decode_subject(msg)
                 
                 from_ = msg.get("From") or ""
                 to_ = msg.get("To") or ""
@@ -490,20 +513,7 @@ class IMAPSyncService:
                 logger.info(f"[IMAP] Processing email '{subject}' for prospect {prospect_email}")
 
                 # Parse body
-                body = ""
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        if part.get_content_type() == "text/plain":
-                            try:
-                                body = part.get_payload(decode=True).decode(errors="ignore")  # type: ignore[union-attr]
-                                break
-                            except AttributeError:  # no decodable payload
-                                pass
-                else:
-                    try:
-                        body = msg.get_payload(decode=True).decode(errors="ignore")  # type: ignore[union-attr]
-                    except AttributeError:  # no decodable payload
-                        pass
+                body = self._plain_body(msg)
 
                 # Store only the newest human-readable reply block.
                 raw_body = body
@@ -655,7 +665,8 @@ class IMAPSyncService:
                     # --- Reply-based unsubscribe detection ---
                     # Check if the reply body is essentially just "unsubscribe"
                     reply_text = extract_latest_message_text(raw_body, strip_boilerplate=False).strip().lower()
-                    if _is_unsubscribe_reply(reply_text):
+                    opt_out = inbox_reply_rules.pre_classify(subject, reply_text)
+                    if opt_out is not None and opt_out.suppresses:
                         try:
                             # Every campaign in the workspace, not just this one (BR-DF-08)
                             from app.services.suppression import suppress
@@ -670,6 +681,7 @@ class IMAPSyncService:
                                     event_time=sent_at
                                 ))
 
+                            apply_label(new_msg, opt_out)  # labelled and acted on here: not classified again
                             logger.info(f"[IMAP] Auto-unsubscribed {prospect.email} (reply-based)")
                         except Exception as e:
                             logger.warning(f"[IMAP] Failed to auto-unsubscribe {prospect.email}: {e}")
@@ -693,19 +705,19 @@ class IMAPSyncService:
                             from app.services import webhooks
                             webhooks.email_replied(self.db, prospect.tenant_id, new_msg, replied_to_msg, prospect)
 
-                        # Tag the reply as OOO or (if not OOO) run AI intent
-                        # classification for the "Positive Replies" metric.
-                        # Both are additive to EVENT_REPLY, not a replacement —
-                        # the analytics layer derives "clean replies" as
-                        # replied_count - ooo_count.
+                        # OOO is additive to EVENT_REPLY, not a replacement — the
+                        # analytics layer derives "clean replies" as replied_count - ooo_count.
                         if is_ooo:
                             self.db.add(EmailEvent(
                                 message_id=replied_to_msg.message_id,
                                 event_type=EmailEvent.EVENT_REPLY_OOO,
                                 event_time=sent_at
                             ))
-                        else:
-                            classify_job = (replied_to_msg.message_id, subject, body, sent_at)
+                    # Label the reply (S-09): OOO here, everything else after this commit
+                    if is_ooo:
+                        apply_label(new_msg, self._ooo_label(msg.get("Auto-Submitted")))
+                    elif new_msg.reply_classified_at is None:
+                        classify_job = (new_msg.message_id, replied_to_msg.message_id if replied_to_msg else None)
 
                 # Persist this message together with the UID position, so a later
                 # failure resumes after it instead of re-fetching it (T-1)
@@ -723,7 +735,7 @@ class IMAPSyncService:
                 continue
 
             if classify_job is not None:
-                self._record_reply_intent(*classify_job)
+                self._classify_reply(*classify_job)
 
         # Next sync starts after the newest message seen here
         self._commit_sync_state(state, inbox_model, folder_name, uidvalidity, highest)

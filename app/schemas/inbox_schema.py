@@ -65,6 +65,14 @@ class SendingInboxResponse(BaseModel):
     warmup_today_replied: Optional[int] = 0
     warmup_today_saved: Optional[int] = 0
 
+    # Paused mailbox and capacity (F-20), filled by the router from app/services/sending_alerts.py:
+    # why / since when it is paused, emails it can send per day (limit capped by pacing), sent and left today
+    paused_reason: Optional[str] = None
+    paused_at: Optional[datetime] = None
+    daily_capacity: Optional[int] = None
+    sent_today: Optional[int] = None
+    remaining_today: Optional[int] = None
+
     class Config:
         from_attributes = True
 

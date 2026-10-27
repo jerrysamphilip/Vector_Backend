@@ -24,6 +24,8 @@ import app.models  # noqa: F401  (resolve SQLAlchemy relationships before any qu
 from app.core.config import settings
 from app.core.observability import record_job_heartbeat
 from app.core.database import SessionLocal
+from app.services import reply_classifier, sending_alerts
+from app.services.alert_center_service import alert_center_service as sending_alert_center
 
 logger = logging.getLogger("app.jobs")
 
@@ -243,6 +245,27 @@ async def webhooks_iteration() -> Optional[float]:
     return 2 if sent >= webhooks.BATCH_SIZE else None
 
 
+async def reply_classification_iteration() -> None:
+    # Reply labels (S-09): replies of the last 30 days still unlabelled (LLM error, crash between
+    # steps, stored before labelling existed); LLM spend stays under the daily budget (llm_budget)
+    stats = await _run_in_thread(reply_classifier.classify_pending)
+    if stats.get("pending"):
+        logger.info("Reply classification: %s", stats)
+
+
+async def sending_alerts_iteration() -> None:
+    # Sending-pipeline alerts (S-11): copy the SES breaker state for every process, compute each
+    # workspace's sending alerts and e-mail admins who asked for them (cooldown per alert)
+    result = await _run_in_thread(sending_alerts.run_job)
+    tenants = result.get("tenants_with_alerts") or []
+    if not tenants:
+        return
+    with SessionLocal() as db:
+        for tenant_id in tenants:
+            await sending_alert_center.dispatch_alert_emails_for_tenant(
+                db, tenant_id, only_types=sending_alerts.SENDING_ALERT_TYPES)
+
+
 def all_jobs() -> List[Job]:
     return [
         Job("scheduler", 30, scheduler_iteration),
@@ -255,6 +278,8 @@ def all_jobs() -> List[Job]:
         Job("sales_jobs", 60, sales_jobs_iteration),
         Job("contact_scoring", 300, contact_scoring_iteration),
         Job("webhooks", 15, webhooks_iteration),
+        Job("reply_classification", 300, reply_classification_iteration),
+        Job("sending_alerts", 60, sending_alerts_iteration),
     ]
 
 

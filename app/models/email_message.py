@@ -3,7 +3,7 @@
 Email Message and Event models for the SMTP sequencing engine.
 """
 
-from sqlalchemy import Column, Computed, String, SmallInteger, Integer, Text, ForeignKey, JSON, Index
+from sqlalchemy import Boolean, Column, Computed, Float, String, SmallInteger, Integer, Text, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -86,6 +86,18 @@ class EmailMessage(Base):
     final_status = Column(String(30), nullable=True)
     final_status_at = Column(UtcDateTime, nullable=True)
 
+    # Reply classification (S-09), INBOUND rows only: POSITIVE / NEUTRAL / NEGATIVE / OUT_OF_OFFICE /
+    # UNSUBSCRIBE with a confidence (0-1) and where it came from (HEADER / RULES / LLM). NULL
+    # reply_classified_at = not classified yet; the reply_classification job retries those (at most
+    # app.domain.inbox.MAX_CLASSIFY_ATTEMPTS attempts). A low-confidence UNSUBSCRIBE is flagged for
+    # review (reply_needs_review) instead of suppressing the contact. Migration 0023_reply_classification.
+    reply_label = Column(String(20), nullable=True)
+    reply_confidence = Column(Float, nullable=True)
+    reply_label_source = Column(String(10), nullable=True)
+    reply_classified_at = Column(UtcDateTime, nullable=True)
+    reply_classify_attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    reply_needs_review = Column(Boolean, nullable=False, default=False, server_default="0")
+
     # Relationships
     campaign = relationship("Campaign", back_populates="messages")
     prospect = relationship("Prospect", back_populates="email_messages")
@@ -100,6 +112,8 @@ class EmailMessage(Base):
         # Per-inbox send history / daily counts (item 19)
         Index("ix_email_messages_inbox_sent", "inbox_id", "sent_at"),
         Index("ux_email_messages_step_key", "step_key", unique=True),
+        # Replies still to classify (reply_classification job)
+        Index("ix_email_messages_reply_pending", "direction", "reply_classified_at", "sent_at"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
