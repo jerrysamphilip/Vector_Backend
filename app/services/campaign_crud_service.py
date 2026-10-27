@@ -6,7 +6,7 @@ sequence configuration, and prospect listing.
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
-from typing import List, Optional, Tuple, Set, Dict
+from typing import Callable, List, Optional, Tuple, Set, Dict
 from datetime import timedelta, time
 import uuid
 
@@ -38,8 +38,20 @@ from app.services.audit_service import AuditService
 from app.services.metrics_service import MetricsService
 from app.services.send_guards import require_active_inbox
 from app.services.campaign_analytics_service import CampaignAnalyticsService
+from app.services.inbox_rotation import InboxRotation
+from app.services.sequence_stop import stops_sequence
+from app.domain.campaigns import StepMessage, is_removed, lead_timing
+from app.repositories.campaigns import CampaignsRepository
+from app.models.email_attachment import EmailAttachment
 from app.utils.email_utils import normalize_cta_link
 from app.utils.sql_like import ilike
+
+
+def _step_stopper(status: Optional[str]) -> Callable[[StepMessage], bool]:
+    """Whether a contact with this enrolment status must not get a given step (sequence_stop.py)."""
+    def stopped(message: StepMessage) -> bool:
+        return stops_sequence(message, status)
+    return stopped
 
 
 class CampaignCRUDService:
@@ -153,39 +165,14 @@ class CampaignCRUDService:
         if not campaign:
             return None
         
-        # Update fields if provided
-        if data.campaign_name is not None:
-            campaign.campaign_name = data.campaign_name
-        if data.sender_name is not None:
-            campaign.sender_name = data.sender_name
-        if data.sender_title is not None:
-            campaign.sender_title = data.sender_title
-        if data.cta_link is not None:
-            campaign.cta_link = normalize_cta_link(data.cta_link)
-        if data.send_window_start is not None:
-            campaign.send_window_start = data.send_window_start
-        if data.send_window_end is not None:
-            campaign.send_window_end = data.send_window_end
-        if data.respect_timezone is not None:
-            campaign.respect_timezone = data.respect_timezone
-        if data.campaign_timezone is not None:
-            campaign.campaign_timezone = data.campaign_timezone
-        if data.start_date is not None:
-            campaign.start_date = data.start_date
-        if data.end_date is not None:
-            campaign.end_date = data.end_date
-        if data.sending_mode is not None:
-            campaign.sending_mode = data.sending_mode
-        if data.min_gap_minutes is not None:
-            campaign.min_gap_minutes = data.min_gap_minutes
-        if data.batch_size is not None:
-            campaign.batch_size = data.batch_size
-        if data.batch_gap_minutes is not None:
-            campaign.batch_gap_minutes = data.batch_gap_minutes
-        if getattr(data, 'unsubscribe_mode', None) is not None:
-            campaign.unsubscribe_mode = data.unsubscribe_mode
-        if data.daily_batch_size is not None:
-            campaign.daily_batch_size = data.daily_batch_size
+        # A field left out is unchanged; an explicit null clears the clearable ones (S-23,
+        # CampaignUpdate.changes / CLEARABLE_FIELDS)
+        for name, value in data.changes().items():
+            if name == "cta_link":
+                value = normalize_cta_link(value) if value else None
+            setattr(campaign, name, value)
+        if campaign.start_date and campaign.end_date and campaign.end_date < campaign.start_date:
+            raise ValueError("end_date must be on or after start_date")
 
         # Update Inboxes
         if data.inbox_ids is not None:
@@ -251,6 +238,10 @@ class CampaignCRUDService:
             EmailTemplate.campaign_id == campaign_id
         ).all()]
         if template_ids:
+            # Attachment rows (not files: a duplicate may share a file with its source)
+            self.db.query(EmailAttachment).filter(
+                EmailAttachment.template_id.in_(template_ids)
+            ).delete(synchronize_session=False)
             self.db.query(EmailTemplateVersion).filter(
                 EmailTemplateVersion.template_id.in_(template_ids)
             ).delete(synchronize_session=False)
@@ -483,13 +474,8 @@ class CampaignCRUDService:
         metrics_map = self.analytics.get_bulk_metrics(campaign_ids)
         
         # 1b. Bulk prospect counts per campaign
-        prospect_count_rows = self.db.query(
-            CampaignProspect.campaign_id,
-            func.count(CampaignProspect.id)
-        ).filter(
-            CampaignProspect.campaign_id.in_(campaign_ids)
-        ).group_by(CampaignProspect.campaign_id).all()
-        prospect_count_map = {r[0]: r[1] for r in prospect_count_rows}
+        # Contacts the user removed are not counted (S-21)
+        prospect_count_map = CampaignsRepository(self.db).prospect_counts(campaign_ids)
         
         # 2. Bulk fetch creator names
         user_ids = list(set(c.created_by for c in campaigns))
@@ -542,15 +528,22 @@ class CampaignCRUDService:
     # PROSPECTS
     # =============================
 
-    def get_enrolled_prospects(self, campaign_id: str) -> List:
-        """Get all enrolled prospects for a campaign with their details."""
+    def get_enrolled_prospects(self, campaign_id: str, include_removed: bool = False) -> List:
+        """
+        Enrolled prospects of a campaign with their details and lead-list timing columns (F-12):
+        ``prospect.timing`` (app/domain/campaigns.LeadTiming) and ``prospect.removed``. Contacts the user
+        removed are left out unless ``include_removed`` (S-21).
+        """
         # Query campaign_prospects and join with prospects table for full details
-        enrolled = (
-            self.db.query(CampaignProspect, Prospect)
-            .join(Prospect, CampaignProspect.prospect_id == Prospect.prospect_id)
-            .filter(CampaignProspect.campaign_id == campaign_id)
-            .all()
-        )
+        enrolled = [
+            (cp, p) for cp, p in (
+                self.db.query(CampaignProspect, Prospect)
+                .join(Prospect, CampaignProspect.prospect_id == Prospect.prospect_id)
+                .filter(CampaignProspect.campaign_id == campaign_id)
+                .all()
+            )
+            if include_removed or not is_removed(cp.status, cp.stopped_reason)
+        ]
         
         # Return with combined data
         results = []
@@ -595,8 +588,11 @@ class CampaignCRUDService:
                 if pid not in notes_map:  # Keep the most recent one
                     notes_map[pid] = {"notes": note, "list_id": lid}
         
+        timing = self._lead_timing(campaign_id, enrolled)
         for cp, prospect in enrolled:
             prospect.status = cp.status  # Add campaign-specific status
+            prospect.timing = timing.get(prospect.prospect_id)
+            prospect.removed = is_removed(cp.status, cp.stopped_reason)
             prospect.assigned_inbox = inbox_map.get(prospect.prospect_id)
             note_data = notes_map.get(prospect.prospect_id, {})
             prospect.notes = note_data.get("notes")
@@ -605,9 +601,33 @@ class CampaignCRUDService:
         
         return results
 
+    def _lead_timing(self, campaign_id: str, enrolled: List) -> Dict:
+        """{prospect_id: LeadTiming} for the enrolments shown (one query per fact, not per contact)."""
+        campaign = self.get(campaign_id)
+        if campaign is None or not enrolled:
+            return {}
+        repo = CampaignsRepository(self.db)
+        ids = [cp.prospect_id for cp, _ in enrolled]
+        messages = repo.step_messages(campaign.tenant_id, campaign_id, ids)
+        ooo = repo.ooo_prospects(campaign.tenant_id, campaign_id, ids)
+        steps_total = repo.step_count(campaign.tenant_id, campaign_id)
+        sending = campaign.status == CampaignStatus.ACTIVE.value
+        return {
+            cp.prospect_id: lead_timing(
+                messages.get(cp.prospect_id, []), steps_total=steps_total, stopped_reason=cp.stopped_reason,
+                ooo=cp.prospect_id in ooo, sending=sending,
+                step_stopped=_step_stopper(cp.status),
+            )
+            for cp, _ in enrolled
+        }
+
     # =============================
     # HELPER METHODS
     # =============================
+
+    def validate_and_load_inboxes(self, tenant_id: str, inbox_ids: List[str]) -> List[SendingInbox]:
+        """Public name of _validate_and_load_inboxes (used by campaign duplication)."""
+        return self._validate_and_load_inboxes(tenant_id, inbox_ids)
     
     def _validate_and_load_inboxes(self, tenant_id: str, inbox_ids: List[str]) -> List[SendingInbox]:
         """
@@ -738,13 +758,13 @@ class CampaignCRUDService:
             if chosen_inbox:
                 prospect_sender_map[sent_message.prospect_id] = chosen_inbox
 
-        next_rotation_index = 0
+        # New contacts are shared out by each mailbox's effective daily limit (S-18)
+        rotation = InboxRotation(active_inboxes)
         for message in pending_messages:
             assigned_inbox = prospect_sender_map.get(message.prospect_id)
             if not assigned_inbox:
-                assigned_inbox = active_inboxes[next_rotation_index % len(active_inboxes)]
+                assigned_inbox = rotation.take()
                 prospect_sender_map[message.prospect_id] = assigned_inbox
-                next_rotation_index += 1
 
             message.inbox_id = assigned_inbox.inbox_id
             message.from_email = assigned_inbox.email_address
@@ -763,10 +783,8 @@ class CampaignCRUDService:
         ).scalar() or 0
     
     def _get_prospect_count(self, campaign_id: str) -> int:
-        """Get number of enrolled prospects."""
-        return self.db.query(func.count(CampaignProspect.id)).filter(
-            CampaignProspect.campaign_id == campaign_id
-        ).scalar() or 0
+        """Number of enrolled prospects, not counting the ones the user removed (S-21)."""
+        return CampaignsRepository(self.db).prospect_counts([campaign_id]).get(campaign_id, 0)
     
     def _to_response(self, campaign: Campaign) -> CampaignResponse:
         """Convert Campaign to full response."""
@@ -828,6 +846,7 @@ class CampaignCRUDService:
             sequence_count=self._get_sequence_count(campaign.campaign_id),
             prospect_count=self._get_prospect_count(campaign.campaign_id),
             sending_inboxes=sending_inboxes,
+            source_campaign_id=campaign.source_campaign_id,
         )
     
     def _to_list_item(self, campaign: Campaign) -> CampaignListItem:

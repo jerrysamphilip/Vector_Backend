@@ -68,6 +68,10 @@ class Campaign(Base):
     created_at = Column(UtcDateTime, server_default=NOW6)
     updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
     row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
+    # The campaign this one was duplicated from (POST /campaigns/{id}/duplicates); NULL for an
+    # original. SET NULL keeps the copy when its source is deleted (alembic 0022_campaign_source).
+    source_campaign_id = Column(String(36), ForeignKey("campaigns.campaign_id", ondelete="SET NULL"),
+                                nullable=True, index=True)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="campaigns")

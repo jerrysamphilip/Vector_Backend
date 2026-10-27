@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Tuple
 from datetime import datetime, timedelta
 import uuid
+import zoneinfo
 
 from app.core.clock import utcnow
 from app.core.config import settings
@@ -21,7 +22,10 @@ from app.models.email_sequence import EmailSequence
 from app.models.email_message import EmailMessage
 from app.models.email_template import EmailTemplate
 from app.schemas.campaign_schema import CampaignStatus, CampaignEnrollmentRequest
+from app.domain.campaigns import REMOVED_BY_USER
+from app.services import enrollment_rules
 from app.services.audit_service import AuditService
+from app.services.inbox_rotation import InboxRotation
 from app.services.send_guards import require_active_inbox
 from app.utils.email_utils import (
     normalize_unsubscribe_footer,
@@ -36,7 +40,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-REMOVED_BY_USER = "Removed from campaign by user"
+__all__ = ["CampaignEmailService", "REMOVED_BY_USER"]
+
+
+def _pick_template(template_map: dict, sequence_id: str, persona_type: Optional[str]) -> Optional[EmailTemplate]:
+    """The step's template for the persona, else its generic one, else any of the step's templates."""
+    template = template_map.get((sequence_id, persona_type)) or template_map.get((sequence_id, None))
+    if template:
+        return template
+    return next((t for key, t in template_map.items() if key[0] == sequence_id), None)
 
 
 class CampaignEmailService:
@@ -175,20 +187,40 @@ class CampaignEmailService:
     ) -> int:
         return self.enroll_prospects_with_report(campaign_id, user_id, request)[0]
 
+    def _screen_request(
+        self, campaign: Campaign, request: CampaignEnrollmentRequest, skip_ids: Optional[set] = None,
+    ) -> Tuple[List[Prospect], List[dict]]:
+        """The campaign page's enrolment rules for a request: (eligible, rejections). Reads only."""
+        candidate_ids = list(request.prospect_ids or [])
+        if request.list_ids:
+            candidate_ids.extend(enrollment_rules.list_member_ids(self.db, campaign.tenant_id, request.list_ids))
+        if not candidate_ids:
+            return [], []
+        prospects, rejections = enrollment_rules.load_tenant_prospects(self.db, campaign.tenant_id, candidate_ids)
+        cooloff_ids = enrollment_rules.sent_within(self.db, [p.prospect_id for p in prospects], hours=24)
+        eligible, screened_out = enrollment_rules.screen(
+            self.db, campaign.tenant_id, campaign.campaign_id, prospects, recently_contacted=cooloff_ids,
+            skip_ids=skip_ids, allow_reenrol=True)
+        return eligible, rejections + screened_out
+
+    def check_enrollment(self, campaign: Campaign, request: CampaignEnrollmentRequest) -> dict:
+        """Dry run of enroll_prospects_with_report (S-20): same rules, nothing written."""
+        eligible, rejections = self._screen_request(campaign, request)
+        return enrollment_rules.check(eligible, rejections)
+
     def enroll_prospects_with_report(
         self,
         campaign_id: str,
         user_id: str,
-        request: CampaignEnrollmentRequest
+        request: CampaignEnrollmentRequest,
+        skip_ids: Optional[set] = None,
     ) -> Tuple[int, List[dict]]:
         """
         Enroll prospects into campaign (Stage 3 Gate). Returns (enrolled_count, rejections),
-        with a reason for every contact not enrolled (app/services/enrollment_rules.py):
-        global unsubscribe, opted out, invalid email, already enrolled, or an email sent
-        in the last 24h (cool-off).
+        with a reason for every contact not enrolled (app/services/enrollment_rules.py).
+        ``skip_ids``: contacts never to enrol here (a duplicate skipping its source's contacts).
+        A contact removed earlier and never emailed is re-enrolled on its kept row (S-21).
         """
-        from app.services import enrollment_rules
-
         campaign = self.db.query(Campaign).filter(
             Campaign.campaign_id == campaign_id
         ).first()
@@ -198,19 +230,9 @@ class CampaignEmailService:
         if campaign.status not in [CampaignStatus.DRAFT.value, CampaignStatus.PAUSED.value, CampaignStatus.ACTIVE.value]:
             raise ValueError("Cannot enroll prospects in current campaign status")
 
-        # 1. Gather candidates, scoped to the campaign's workspace
-        candidate_ids = list(request.prospect_ids or [])
-        if request.list_ids:
-            candidate_ids.extend(enrollment_rules.list_member_ids(self.db, campaign.tenant_id, request.list_ids))
-
-        if not candidate_ids:
-            return 0, []
-
-        prospects, rejections = enrollment_rules.load_tenant_prospects(self.db, campaign.tenant_id, candidate_ids)
-        cooloff_ids = enrollment_rules.sent_within(self.db, [p.prospect_id for p in prospects], hours=24)
-        eligible, screened_out = enrollment_rules.screen(
-            self.db, campaign.tenant_id, campaign_id, prospects, recently_contacted=cooloff_ids)
-        rejections.extend(screened_out)
+        eligible, rejections = self._screen_request(campaign, request, skip_ids)
+        if not eligible:
+            return 0, rejections
 
         # Calculate Schedule Start
         step1 = self.db.query(EmailSequence).filter(
@@ -220,44 +242,44 @@ class CampaignEmailService:
         start_delay_days = step1.wait_days if step1 else 0
         scheduled_time = utcnow() + timedelta(days=start_delay_days)
 
-        new_enrollments = []
-        enrolled_count = 0
-
-        for prospect in eligible:
-            new_enrollments.append(CampaignProspect(
+        reactivated = enrollment_rules.reactivate_removed(
+            self.db, campaign.tenant_id, campaign_id, [p.prospect_id for p in eligible], scheduled_time)
+        new_enrollments = [
+            CampaignProspect(
                 id=str(uuid.uuid4()),
                 campaign_id=campaign_id,
                 prospect_id=prospect.prospect_id,
                 current_step=1,
                 status="ACTIVE",
                 enrolled_at=utcnow(),
-                next_scheduled_at=scheduled_time
-            ))
-            enrolled_count += 1
+                next_scheduled_at=scheduled_time,
+            )
+            for prospect in eligible if prospect.prospect_id not in reactivated
+        ]
+        enrolled_count = len(eligible)
 
         if new_enrollments:
             self.db.bulk_save_objects(new_enrollments)
-            self.db.flush()
+        self.db.flush()
 
-        if enrolled_count > 0:
-            self.audit.log_action(
-                tenant_id=campaign.tenant_id,
-                user_id=user_id,
-                action=f"{AuditService.ACTION_UPDATE}_ENROLLED_{enrolled_count}",
-                entity_type=AuditService.ENTITY_CAMPAIGN,
-                entity_id=campaign_id,
-            )
+        self.audit.log_action(
+            tenant_id=campaign.tenant_id,
+            user_id=user_id,
+            action=f"{AuditService.ACTION_UPDATE}_ENROLLED_{enrolled_count}",
+            entity_type=AuditService.ENTITY_CAMPAIGN,
+            entity_id=campaign_id,
+        )
 
-            # Campaign already launched: _preschedule_all_emails() normally only
-            # runs once, at launch(). Without this, prospects enrolled after
-            # launch get a CampaignProspect row but no EmailMessage rows are
-            # ever created for them, so the scheduler (which only ever reads
-            # pre-existing EmailMessage rows) silently never emails them.
-            # The idempotency guard inside _preschedule_all_emails skips
-            # prospects/steps that already have a message, so this only backfills
-            # the newly enrolled prospects.
-            if campaign.status in (CampaignStatus.ACTIVE.value, CampaignStatus.PAUSED.value):
-                self._preschedule_all_emails(campaign_id)
+        # Campaign already launched: _preschedule_all_emails() normally only
+        # runs once, at launch(). Without this, prospects enrolled after
+        # launch get a CampaignProspect row but no EmailMessage rows are
+        # ever created for them, so the scheduler (which only ever reads
+        # pre-existing EmailMessage rows) silently never emails them.
+        # The idempotency guard inside _preschedule_all_emails skips
+        # prospects/steps that already have a message, so this only backfills
+        # the newly enrolled prospects.
+        if campaign.status in (CampaignStatus.ACTIVE.value, CampaignStatus.PAUSED.value):
+            self._preschedule_all_emails(campaign_id)
 
         return enrolled_count, rejections
 
@@ -516,17 +538,7 @@ class CampaignEmailService:
             if t.designation is None or t.designation == "":
                 template_map[(t.sequence_id, None)] = t
 
-        base_time = utcnow()
-        if campaign.start_date:
-            try:
-                import zoneinfo
-                tz = zoneinfo.ZoneInfo(campaign.campaign_timezone or "UTC")
-                start_dt = datetime.combine(campaign.start_date, datetime.min.time(), tzinfo=tz)
-                start_utc = start_dt.astimezone(zoneinfo.ZoneInfo("UTC")).replace(tzinfo=None)
-                if start_utc > base_time:
-                    base_time = start_utc
-            except Exception as e:
-                logger.error("Error parsing campaign start date: %s", e)
+        base_time = self._schedule_base_time(campaign)
 
         from app.services.sender_identity import campaign_sender_name
         sender_name = campaign_sender_name(self.db, campaign)
@@ -537,6 +549,10 @@ class CampaignEmailService:
         prospects = sorted(prospects, key=lambda cp: (cp.prospect_id or ""))
         total_prospects = len(prospects)
         active_inboxes = [inbox for inbox in (campaign.inboxes or []) if (inbox.status or "").upper() == "ACTIVE"]
+        # Contacts are shared out by each mailbox's effective daily limit (S-18, inbox_rotation.py);
+        # a contact keeps the mailbox an earlier step of theirs was already bound to (sticky sender)
+        rotation = InboxRotation(active_inboxes)
+        bound_inbox = self._bound_inboxes(campaign_id, {i.inbox_id: i for i in active_inboxes})
 
         # Batch-load everything the per-prospect/per-step loop below needs, so
         # launching a campaign with hundreds of prospects doesn't issue
@@ -552,10 +568,14 @@ class CampaignEmailService:
             for p in self.db.query(Prospect).filter(Prospect.prospect_id.in_(prospect_ids)).all()
         }
 
+        # A step email cancelled because the user removed the contact does not count: a contact
+        # re-enrolled after removal (never emailed, S-21) gets its steps scheduled again
         existing_message_keys = {
-            (pid, sid) for pid, sid in self.db.query(
-                EmailMessage.prospect_id, EmailMessage.sequence_id
+            (pid, sid) for pid, sid, status, reason in self.db.query(
+                EmailMessage.prospect_id, EmailMessage.sequence_id, EmailMessage.status,
+                EmailMessage.failure_reason,
             ).filter(EmailMessage.campaign_id == campaign_id).all()
+            if not (status == "CANCELLED" and reason == REMOVED_BY_USER)
         }
 
         from app.models.prospect_persona import ProspectPersona
@@ -587,7 +607,10 @@ class CampaignEmailService:
 
             cumulative_wait_days = 0
             prev_scheduled_at = None  # planned time of this prospect's previous step
-            assigned_inbox = active_inboxes[prospect_index % len(active_inboxes)] if active_inboxes else None
+            assigned_inbox = None
+            if active_inboxes and any((cp.prospect_id, seq.sequence_id) not in existing_message_keys
+                                      for seq in sequences):
+                assigned_inbox = bound_inbox.get(cp.prospect_id) or rotation.next()
 
             # Daily batch throttle: shift prospect's base_time by N business days
             # so the first batch goes day 1, second batch goes day 2, etc.
@@ -637,22 +660,9 @@ class CampaignEmailService:
 
                 from app.services.ai_email_service import classify_prospect
 
-                existing_persona_type = persona_by_prospect_id.get(prospect.prospect_id)
-                if existing_persona_type:
-                    persona_type = existing_persona_type
-                else:
-                    persona_type, _ = classify_prospect(prospect.designation or "", prospect.company_name)
-
-                template = template_map.get((seq.sequence_id, persona_type))
-                if not template:
-                    template = template_map.get((seq.sequence_id, None))
-
-                if not template:
-                    for key, t in template_map.items():
-                        if key[0] == seq.sequence_id:
-                            template = t
-                            break
-
+                persona_type = persona_by_prospect_id.get(prospect.prospect_id) or classify_prospect(
+                    prospect.designation or "", prospect.company_name)[0]
+                template = _pick_template(template_map, seq.sequence_id, persona_type)
                 if not template:
                     continue
 
@@ -701,6 +711,33 @@ class CampaignEmailService:
         messages_created = self._insert_new_messages(new_messages)
         logger.info("[PRESCHEDULE] Created %s messages", messages_created)
         return messages_created
+
+    @staticmethod
+    def _schedule_base_time(campaign: Campaign) -> datetime:
+        """Now, or the campaign's start date (midnight in its timezone, as naive UTC) when later."""
+        base_time = utcnow()
+        if campaign.start_date:
+            try:
+                tz = zoneinfo.ZoneInfo(campaign.campaign_timezone or "UTC")
+                start_dt = datetime.combine(campaign.start_date, datetime.min.time(), tzinfo=tz)
+                start_utc = start_dt.astimezone(zoneinfo.ZoneInfo("UTC")).replace(tzinfo=None)
+                if start_utc > base_time:
+                    base_time = start_utc
+            except Exception as e:
+                logger.error("Error parsing campaign start date: %s", e)
+        return base_time
+
+    def _bound_inboxes(self, campaign_id: str, active_by_id: dict) -> dict:
+        """{prospect_id: active mailbox} of contacts that already have a step email bound to one."""
+        if not active_by_id:
+            return {}
+        rows = self.db.query(EmailMessage.prospect_id, EmailMessage.inbox_id).filter(
+            EmailMessage.campaign_id == campaign_id, EmailMessage.inbox_id.in_(list(active_by_id)),
+        ).order_by(EmailMessage.sent_at.is_(None), EmailMessage.sent_at.desc()).all()
+        out: dict = {}
+        for pid, inbox_id in rows:
+            out.setdefault(pid, active_by_id[inbox_id])
+        return out
 
     def _insert_new_messages(self, messages: List[EmailMessage]) -> int:
         """

@@ -34,7 +34,7 @@
     "app/services/alert_center_service.py::AlertCenterService.collect_dashboard_alerts": 21,
     "app/services/batch_processor_service.py::batch_classify_prospects": 21,
     "app/services/campaign_crud_service.py::CampaignCRUDService._rebind_pending_messages_for_campaign": 21,
-    "app/services/campaign_email_service.py::CampaignEmailService._preschedule_all_emails": 54,
+    "app/services/campaign_email_service.py::CampaignEmailService._preschedule_all_emails": 52,
     "app/services/contact_field_service.py::clean_custom_value": 23,
     "app/services/contact_query_service.py::filtered_query": 27,
     "app/services/contact_query_service.py::timeline": 34,

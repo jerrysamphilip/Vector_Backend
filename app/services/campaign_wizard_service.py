@@ -45,7 +45,11 @@ from app.core.errors import BadRequestError, ConflictError, NotFoundError
 from app.services.ai_email_service import classify_prospect
 from app.services.batch_processor_service import (batch_classify_prospects, generate_persona_sequence,
                                                   load_persona_blueprint, save_persona_templates)
+from app.schemas.campaign_schema import CampaignEnrollmentRequest, EnrollmentCheckRequest
+from app.services import enrollment_rules
+from app.services.campaign_email_service import CampaignEmailService
 from app.services.enrollment_rules import MAX_REJECTIONS_RETURNED, summarize
+from app.repositories.campaigns import CampaignsRepository
 from app.utils.email_context_detector import detect_email_context
 from app.utils.business_calendar import calculate_send_time
 from app.utils.email_utils import (
@@ -266,7 +270,8 @@ def step_4_run_safety_checks(
     cool_off_ids = enrollment_rules.enrolled_elsewhere_within(
         db, [p.prospect_id for p in prospects], cool_off_days) if prospects else set()
     safe_prospects, rejections = enrollment_rules.screen(
-        db, tenant_id, campaign_id, prospects, recently_contacted=cool_off_ids)
+        db, tenant_id, campaign_id, prospects, recently_contacted=cool_off_ids,
+        allow_reenrol=campaign_id is not None)
     counts = enrollment_rules.summarize(rejections)
 
     return {
@@ -314,7 +319,12 @@ def step_5_bulk_enroll(
         )
     }
 
-    new_prospects = [p for p in prospects if p.prospect_id not in existing_ids]
+    # Contacts removed from this campaign before being emailed come back on their kept row (S-21)
+    reactivated = {
+        cp.prospect_id: cp for cp in CampaignsRepository(db).removed_rows(
+            campaign.tenant_id, campaign_id, [p.prospect_id for p in prospects])
+    } if campaign else {}
+    new_prospects = [p for p in prospects if p.prospect_id not in existing_ids or p.prospect_id in reactivated]
     total = len(new_prospects)
     enrolled = 0
 
@@ -329,14 +339,17 @@ def step_5_bulk_enroll(
             min_gap_minutes=min_gap_minutes,
         )
 
-        enrollment = CampaignProspect(
-            campaign_id=campaign_id,
-            prospect_id=prospect.prospect_id,
-            status="ACTIVE",
-            enrolled_at=utcnow(),
-            next_scheduled_at=scheduled_at,
-        )
-        db.add(enrollment)
+        if prospect.prospect_id in reactivated:
+            enrollment_rules.reactivate_removed(db, campaign.tenant_id, campaign_id, [prospect.prospect_id],
+                                                scheduled_at)
+        else:
+            db.add(CampaignProspect(
+                campaign_id=campaign_id,
+                prospect_id=prospect.prospect_id,
+                status="ACTIVE",
+                enrolled_at=utcnow(),
+                next_scheduled_at=scheduled_at,
+            ))
         enrolled += 1
 
     db.commit()
@@ -734,6 +747,34 @@ def preview_list_segmentation(db: Session, tenant_id: str, list_id: str, rules: 
     }
 
 
+def _screen_list(db: Session, tenant_id: str, campaign_id: str, list_id: str, rules: SegmentationRules,
+                 cool_off_days: int, excluded_prospect_ids: Optional[List[str]]) -> Dict:
+    """Wizard steps 2-4 for one list: what enrolment and its dry run both use (S-20)."""
+    get_campaign_for_tenant(db, campaign_id, tenant_id)
+    get_list_for_tenant(db, list_id, tenant_id)
+    all_prospects = step_2_get_prospects_from_list(db, list_id, excluded_prospect_ids)
+    segment_rejections: List[Dict] = []
+    segmented = step_3_apply_segmentation(db, all_prospects, rules, segment_rejections)
+    safety = step_4_run_safety_checks(db, tenant_id, segmented, cool_off_days, campaign_id=campaign_id)
+    return {"all": all_prospects, "segmented": segmented, "safety": safety,
+            "rejections": segment_rejections + safety["rejections"]}
+
+
+def check_list_enrollment(
+    db: Session,
+    tenant_id: str,
+    campaign_id: str,
+    list_id: str,
+    rules: SegmentationRules,
+    cool_off_days: int,
+    excluded_prospect_ids: Optional[List[str]],
+) -> Dict:
+    """Dry run of enroll_list_into_campaign: who would be enrolled and why the others would not."""
+    screened = _screen_list(db, tenant_id, campaign_id, list_id, rules, cool_off_days, excluded_prospect_ids)
+    return {"list_total": len(screened["all"]),
+            **enrollment_rules.check(screened["safety"]["safe_prospects"], screened["rejections"])}
+
+
 def enroll_list_into_campaign(
     db: Session,
     tenant_id: str,
@@ -744,32 +785,20 @@ def enroll_list_into_campaign(
     excluded_prospect_ids: Optional[List[str]],
 ) -> Dict:
     """Segment a list, run the safety checks and bulk-enroll whoever passes."""
-    get_campaign_for_tenant(db, campaign_id, tenant_id)
-    get_list_for_tenant(db, list_id, tenant_id)
-
-    all_prospects = step_2_get_prospects_from_list(db, list_id, excluded_prospect_ids)
-    logger.info(f"[ENROLL] Step 2 - Prospects from list '{list_id}': {len(all_prospects)}")
-    logger.info(f"[ENROLL] Step 3 - Segmentation rules: exclude_personal={rules.exclude_personal_emails}, "
-                f"persona_types={rules.persona_types}")
-
-    segment_rejections: List[Dict] = []
-    segmented = step_3_apply_segmentation(db, all_prospects, rules, segment_rejections)
-    logger.info(f"[ENROLL] Step 3 - After segmentation: {len(segmented)} "
-                f"(dropped {len(all_prospects) - len(segmented)})")
-
-    safety = step_4_run_safety_checks(db, tenant_id, segmented, cool_off_days, campaign_id=campaign_id)
-    logger.info(f"[ENROLL] Step 4 - Safety: safe={safety['safe_count']}, unsub={safety['unsubscribed_count']}, "
-                f"invalid={safety['invalid_count']}, cool_off={safety['cool_off_count']}")
+    screened = _screen_list(db, tenant_id, campaign_id, list_id, rules, cool_off_days, excluded_prospect_ids)
+    all_prospects, segmented, safety = screened["all"], screened["segmented"], screened["safety"]
+    logger.info("[ENROLL] list %s: %s contacts, %s after segmentation, %s safe",
+                list_id, len(all_prospects), len(segmented), safety["safe_count"])
 
     enrolled = step_5_bulk_enroll(db, campaign_id, safety["safe_prospects"])
-    logger.info(f"[ENROLL] Step 5 - Enrolled: {enrolled}")
+    logger.info("[ENROLL] Step 5 - Enrolled: %s", enrolled)
 
     return {
         "campaign_id": campaign_id,
         "enrolled_count": enrolled,
         "sequences_created": 0,
         "status": "READY_TO_ACTIVATE",
-        **_rejection_report(segment_rejections + safety["rejections"]),
+        **_rejection_report(screened["rejections"]),
         "_debug": {
             "prospects_in_list": len(all_prospects),
             "after_segmentation": len(segmented),
@@ -826,3 +855,17 @@ def run_campaign_wizard_for_tenant(
     except ValueError as exc:
         db.rollback()
         raise BadRequestError(str(exc)) from exc
+
+
+def check_enrollment_request(db: Session, campaign: Campaign, request: EnrollmentCheckRequest) -> Dict:
+    """
+    POST /campaigns/{id}/enrollments/checks (S-20) for a tenant-scoped campaign: the dry run of the
+    campaign page's enrolment (``path='campaign'``) or of the wizard's (``path='wizard'``).
+    """
+    if request.path == "wizard":
+        rules = SegmentationRules(persona_types=request.persona_types,
+                                  exclude_personal_emails=request.exclude_personal_emails)
+        return check_list_enrollment(db, campaign.tenant_id, campaign.campaign_id, request.list_id or "", rules,
+                                     request.cool_off_days, request.excluded_prospect_ids)
+    enrol = CampaignEnrollmentRequest(list_ids=request.list_ids, prospect_ids=request.prospect_ids)
+    return CampaignEmailService(db).check_enrollment(campaign, enrol)

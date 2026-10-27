@@ -466,7 +466,12 @@ async def delete_attachment(
         raise HTTPException(status_code=404, detail="Attachment not found")
 
     file_path = _attachments_dir() / attachment.storage_path
-    if file_path.exists():
+    # A duplicated campaign shares the stored file: remove it only when no other attachment uses it
+    shared = db.query(EmailAttachment).filter(
+        EmailAttachment.storage_path == attachment.storage_path,
+        EmailAttachment.attachment_id != attachment.attachment_id,
+    ).first()
+    if not shared and file_path.exists():
         try:
             file_path.unlink()
         except OSError:

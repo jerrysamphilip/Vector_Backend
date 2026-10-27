@@ -24,8 +24,13 @@ from app.core.database import get_db
 from app.core.errors import BadRequestError
 from app.models.campaign import Campaign
 from app.models.user import User
+from app.domain.campaigns import DuplicateOverrides
 from app.schemas.campaign_schema import (
     CampaignCreate,
+    CampaignDuplicateRequest,
+    CampaignDuplicateResponse,
+    EnrollmentCheckRequest,
+    PersonaGap,
     CampaignEnrollmentRequest,
     CampaignFilter,
     CampaignListResponse,
@@ -42,7 +47,9 @@ from app.schemas.sequence_schema import (
     SequenceStepUpdate,
 )
 from app.services.audit_service import AuditService
+from app.services.campaign_duplicate_service import CampaignDuplicateService
 from app.services.campaign_query_service import CampaignQueryService
+from app.services import campaign_wizard_service
 from app.services.campaign_schedule_service import CampaignScheduleService
 from app.services.campaign_send_now_service import (
     SEND_NOW_BATCH,
@@ -217,6 +224,69 @@ async def update_campaign(
         handle_route_error(e, context="update_campaign")
 
 
+@router.post("/{campaign_id}/duplicates", response_model=CampaignDuplicateResponse, status_code=201,
+             dependencies=MANAGE_CAMPAIGNS)
+def duplicate_campaign(
+    campaign_id: str,
+    data: CampaignDuplicateRequest,
+    service: CampaignService = Depends(get_campaign_service),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(*ANY_ROLE)),
+) -> CampaignDuplicateResponse:
+    """
+    Duplicate a campaign as a new DRAFT (S-12): settings, steps, every persona's templates, subject
+    variants, attachment metadata and automation rules. Optional overrides (name, dates, send window,
+    timezone, mailboxes) and contacts to enrol (list_ids / prospect_ids; by default skipping contacts
+    already in the source). Returns the copy, what was copied, and personas without templates.
+    """
+    opts = DuplicateOverrides(
+        campaign_name=data.campaign_name, start_date=data.start_date, end_date=data.end_date,
+        send_window_start=data.send_window_start, send_window_end=data.send_window_end,
+        campaign_timezone=data.campaign_timezone, inbox_ids=data.inbox_ids,
+        list_ids=tuple(data.list_ids or ()), prospect_ids=tuple(data.prospect_ids or ()),
+        skip_source_prospects=data.skip_source_prospects, copy_automation_rules=data.copy_automation_rules,
+        copy_attachments=data.copy_attachments,
+    )
+    result = CampaignDuplicateService(db).duplicate(current_user.tenant_id, current_user.user_id, campaign_id, opts)
+    enrollment = None
+    if result.enrollment is not None:
+        count, rejections = result.enrollment["enrolled_count"], result.enrollment["rejections"]
+        enrollment = {
+            "enrolled_count": count,
+            "rejected_count": len(rejections),
+            "rejected_summary": summarize(rejections),
+            "rejected": rejections[:MAX_REJECTIONS_RETURNED],
+            "daily_limit_notice": enrollment_notice(db, current_user, count, result.enrolled_prospect_ids, [],
+                                                    result.campaign_id),
+        }
+    return CampaignDuplicateResponse(
+        campaign=service.get_with_details(result.campaign_id),
+        source_campaign_id=result.source_campaign_id,
+        copied=result.copied,
+        skipped_inboxes=result.skipped_inboxes,
+        enrollment=enrollment,
+        persona_gaps=[PersonaGap(persona_type=g.persona_type, prospect_count=g.prospect_count,
+                                 missing_steps=list(g.missing_steps)) for g in result.persona_gaps],
+    )
+
+
+@router.post("/{campaign_id}/enrollments/checks", response_model=None, dependencies=MANAGE_CAMPAIGNS)
+def check_enrollment(
+    campaign_id: str,
+    request: EnrollmentCheckRequest,
+    queries: CampaignQueryService = Depends(get_query_service),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(*ANY_ROLE)),
+) -> Dict[str, Any]:
+    """
+    Enrolment dry run (S-20): who would be enrolled and, for everyone else, the reason, using the same
+    rules as the real enrolment of ``path`` (``campaign``: POST /campaigns/{id}/prospects; ``wizard``:
+    POST /campaigns/{id}/enrollments). Nothing is written.
+    """
+    campaign = _get_campaign_for_user(queries, campaign_id, current_user)
+    return campaign_wizard_service.check_enrollment_request(db, campaign, request)
+
+
 @router.post("/{campaign_id}/sequences", response_model=SequenceStepResponse, status_code=201,
              dependencies=MANAGE_CAMPAIGNS)
 async def add_sequence_step(
@@ -336,12 +406,17 @@ def _enrolled_prospect_view(p: Any) -> Dict[str, Any]:
         "notes_list_id": getattr(p, 'notes_list_id', None),
         "status": p.status if hasattr(p, 'status') else 'ACTIVE',
         "assigned_inbox": getattr(p, 'assigned_inbox', None),
+        "removed": bool(getattr(p, 'removed', False)),
+        # Lead-list timing columns (F-12): last_sent_at, delivered_at, bounce_reason, ooo,
+        # steps_sent, steps_total, next_email_at, stopped_reason
+        **(p.timing.as_dict() if getattr(p, 'timing', None) is not None else {}),
     }
 
 
 @router.get("/{campaign_id}/prospects", status_code=200, response_model=None)
 async def get_enrolled_prospects(
     campaign_id: str,
+    include_removed: bool = Query(False, description="Also list contacts removed from the campaign"),
     service: CampaignService = Depends(get_campaign_service),
     queries: CampaignQueryService = Depends(get_query_service),
     current_user: User = Depends(require_role(*ANY_ROLE)),
@@ -351,7 +426,8 @@ async def get_enrolled_prospects(
     """
     try:
         _get_campaign_for_user(queries, campaign_id, current_user)
-        return [_enrolled_prospect_view(p) for p in service.get_enrolled_prospects(campaign_id)]
+        return [_enrolled_prospect_view(p)
+                for p in service.get_enrolled_prospects(campaign_id, include_removed=include_removed)]
     except Exception as e:
         handle_route_error(e, context="get_enrolled_prospects")
 

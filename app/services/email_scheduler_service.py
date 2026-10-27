@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, Session, aliased
 from sqlalchemy import Exists, and_, exists, func, or_
 
+from app.repositories.campaigns import not_removed
 from app.core.clock import utcnow
 from app.core.database import SessionLocal
 from app.core.config import settings
@@ -582,8 +583,9 @@ class EmailSchedulerService:
 
             for c in active_campaigns:
                 # Check total enrolled prospects
+                # Contacts removed from the campaign by the user (S-21) neither count nor keep it open
                 total_prospects = db.query(func.count(CampaignProspect.id)).filter(
-                    CampaignProspect.campaign_id == c.campaign_id
+                    CampaignProspect.campaign_id == c.campaign_id, not_removed()
                 ).scalar()
                 
                 if total_prospects == 0:
@@ -592,7 +594,7 @@ class EmailSchedulerService:
                 # 2. Check if there are any non-terminal prospects left
                 active_prospects = db.query(func.count(CampaignProspect.id)).filter(
                     CampaignProspect.campaign_id == c.campaign_id,
-                    CampaignProspect.status.in_(non_terminal_states)
+                    CampaignProspect.status.in_(non_terminal_states), not_removed()
                 ).scalar()
 
                 if active_prospects == 0:
