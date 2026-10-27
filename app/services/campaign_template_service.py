@@ -107,6 +107,7 @@ class CampaignTemplateService:
                 cta_link=cta_link,
                 creative_email=creative_email,
                 custom_instruction=custom_instruction or "",  # callee only checks truthiness
+                step_number=step_number,  # follow-ups get the follow-up tone, not the intro's
             ) or fallback_template(step_number, designation, cta_link)
 
             if regenerate_subject:

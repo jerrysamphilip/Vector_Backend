@@ -103,8 +103,6 @@ def test_inv_u06_bodies_have_link_and_no_password():
 
 
 def test_role_defaults_have_one_source_and_agent_manages_campaigns():
-    import asyncio
-
     from app.core import auth
     from app.routers import auth_router
 
@@ -115,7 +113,7 @@ def test_role_defaults_have_one_source_and_agent_manages_campaigns():
         assert auth._DEFAULT_PERMS[role] == frozenset(perms)
 
     agent = SimpleNamespace(role="AGENT", custom_permissions=None)
-    asyncio.run(auth.require_permission("manage_campaigns")(current_user=agent))
+    auth.require_permission("manage_campaigns")(current_user=agent)  # plain def (F004): runs in the threadpool
     with pytest.raises(Exception) as exc:
-        asyncio.run(auth.require_permission("manage_team")(current_user=agent))
+        auth.require_permission("manage_team")(current_user=agent)
     assert getattr(exc.value, "status_code", None) == 403

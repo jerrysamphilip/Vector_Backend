@@ -7,6 +7,11 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
+# Upper bound for delay_between_emails, in seconds (F021): pacing never sleeps, but a longer gap
+# would only starve the inbox's queue
+MAX_DELAY_BETWEEN_EMAILS = 3600
+
+
 class SendingInboxResponse(BaseModel):
     inbox_id: str
     email_address: str
@@ -81,7 +86,8 @@ class SendingInboxUpdate(BaseModel):
     # Warm-up & Throttle settings
     warmup_enabled: Optional[bool] = None
     max_emails_per_day: Optional[int] = Field(None, ge=0, le=100000)
-    delay_between_emails: Optional[int] = None
+    # Seconds between two sends from this inbox; at most an hour (F021)
+    delay_between_emails: Optional[int] = Field(None, ge=0, le=MAX_DELAY_BETWEEN_EMAILS)
     warmup_auto_adjust: Optional[bool] = None
     warmup_randomize: Optional[bool] = None
     warmup_reply_rate_target: Optional[int] = None
@@ -107,7 +113,7 @@ class SendingInboxCreate(BaseModel):
     # Warm-up & Throttle settings
     warmup_enabled: Optional[bool] = False
     max_emails_per_day: Optional[int] = Field(None, ge=0, le=100000)      # null = use warmup schedule
-    delay_between_emails: Optional[int] = 60       # seconds between emails
+    delay_between_emails: Optional[int] = Field(60, ge=0, le=MAX_DELAY_BETWEEN_EMAILS)  # seconds between emails
     warmup_auto_adjust: Optional[bool] = True
     warmup_randomize: Optional[bool] = True
     warmup_reply_rate_target: Optional[int] = 35

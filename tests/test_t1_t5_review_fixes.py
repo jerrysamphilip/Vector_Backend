@@ -36,6 +36,18 @@ def _campaign(client, h, label):
     return r.json()
 
 
+def _active_inbox(client, h, label):
+    """An ACTIVE sending inbox: campaign mail is never sent from the platform address (item 12)."""
+    domain = f"{label}-{uuid.uuid4().hex[:6]}{RUN}.example.com"
+    r = client.post("/inboxes", headers=h, json={
+        "email_address": f"sender@{domain}", "smtp_host": "127.0.0.1", "smtp_port": 1,
+        "smtp_username": "sender", "smtp_password": "fixture-smtp-pass",
+        "imap_host": "127.0.0.1", "imap_port": 1, "imap_username": "sender",
+        "imap_password": "fixture-imap-pass", "warmup_enabled": False})
+    assert r.status_code == 201, r.text
+    return r.json()["inbox_id"]
+
+
 def assert_no_open_transaction(where: str) -> None:
     """No pooled connection is checked out, i.e. no session holds a transaction (T-1)."""
     assert engine.pool.checkedout() == 0, f"DB connection checked out during {where}"
@@ -66,6 +78,7 @@ def test_send_now_claim_is_dated_and_sweep_leaves_it_alone(client, tenant_rf, mo
 
     h = tenant_rf["headers"]
     cid = _campaign(client, h, "Send now race")["campaign_id"]
+    sql("INSERT INTO campaign_inboxes (campaign_id, inbox_id) VALUES (:c, :i)", c=cid, i=_active_inbox(client, h, "race"))
     pid = _contact(client, h, "race")
     with SessionLocal() as db:
         t = EmailTemplate(campaign_id=cid, subject="Hi", body="Hello")

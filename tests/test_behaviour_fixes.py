@@ -364,7 +364,13 @@ def test_bf_f08_send_now_batches_with_cursor(client, tenant_bf, monkeypatch):
     monkeypatch.setattr(email_sender, "send_with_retry", fake_send)
     monkeypatch.setattr(settings, "DAILY_NEW_CONTACT_LIMIT", 10_000)
     h = tenant_bf["headers"]
-    cid = _campaign(client, h, "Send now batches")
+    r = client.post("/inboxes", headers=h, json={
+        "email_address": f"sender@sendnow-bf{RUN}.example.com", "smtp_host": "127.0.0.1", "smtp_port": 1,
+        "smtp_username": "sender", "smtp_password": "fixture-smtp-pass", "imap_host": "127.0.0.1",
+        "imap_port": 1, "imap_username": "sender", "imap_password": "fixture-imap-pass", "warmup_enabled": False})
+    assert r.status_code == 201, r.text
+    # Campaign mail goes only from the campaign's own active inbox (item 12)
+    cid = _campaign(client, h, "Send now batches", inbox_ids=[r.json()["inbox_id"]])
     s1, s2 = _steps(cid, 2)
     pids = [_contact(client, h, f"sn{i}") for i in range(6)]
     with SessionLocal() as db:

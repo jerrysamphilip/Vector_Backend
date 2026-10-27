@@ -14,6 +14,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, case
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.clock import utcnow
@@ -366,7 +367,11 @@ def create_tenant(
         status="INVITED",
     )
     db.add(admin_user)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:  # one live account per email across workspaces (F017), or a concurrent create
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A user with this email already exists")
 
     # Generate magic login token
     raw_token = secrets.token_urlsafe(48)

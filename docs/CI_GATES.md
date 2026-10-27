@@ -19,7 +19,7 @@ introduced (2026-10-18), the gate enforces a checked-in, dated **baseline** inst
 
 | Rule | Gate | Job / step | Baseline / config | Baseline size (2026-10-18) |
 |---|---|---|---|---|
-| C-1 complexity | `scripts/ci/check_complexity.py` (radon): no function over cyclomatic complexity 20; baselined functions may not rise; average < 5 | unit | `ci/complexity_baseline.json` (function -> score; `average_ceiling`) | 120 functions; average 5.24 (ceiling 5.24, target < 5) |
+| C-1 complexity | `scripts/ci/check_complexity.py` (radon): no function over cyclomatic complexity 20; baselined functions may not rise; average < 5 | unit | `ci/complexity_baseline.json` (function -> score; `average_ceiling`) | 115 functions; average 4.89 (under the target of 5, so the fixed limit applies; no ceiling) |
 | C-2 typing | mypy (`mypy.ini`, unchanged) plus `scripts/ci/check_type_ignores.py`: count of `# type: ignore` in app/ may not grow | unit | `ci/type_ignore_baseline.txt` | 35 |
 | C-3 no `assert` in app code | ruff `S101` for `app/**` (`ruff.toml`; test code exempt) and `bandit -r app -t B101` | unit | none (0 hits) | 0 |
 | C-4 layering | `lint-imports`, contract "layered architecture": main/worker > jobs > routers / db > services > schemas / prompts > utils > models > core | unit | `.importlinter` `ignore_imports` (BASELINE section, each with a TODO) | 7 imports |

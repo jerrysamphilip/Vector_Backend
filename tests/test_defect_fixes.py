@@ -276,7 +276,9 @@ def test_oversize_values_are_422(client, tenant_m):
     rec = {"email": f"big.{RUN}@oversize{RUN}.example.com", "first_name": "B" * 5000, "status": "ACCEPTED"}
     r = client.post("/uploads/x/confirmations", headers=h,
                     json={"upload_id": "00000000-0000-0000-0000-000000000000", "title": "T", "records": [rec]})
-    assert r.status_code == 422, r.text
+    # The upload re-validates rows: an over-long value is that row's reason, not a failed request
+    assert r.status_code == 200, r.text
+    assert r.json()["inserted"] == 0 and "First Name is too long" in r.json()["not_added"][0]["reason"]
 
 
 # ── 8. Company-only files suggest company fields ──

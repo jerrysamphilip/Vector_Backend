@@ -14,14 +14,17 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import email.utils
 
+from http.client import HTTPException
+
 import boto3
-from botocore.exceptions import (
-    BotoCoreError, ClientError, ConnectionClosedError, ConnectTimeoutError,
-    EndpointConnectionError, ReadTimeoutError,
-)
+from botocore.config import Config as BotoConfig
+from botocore.exceptions import BotoCoreError, ClientError, HTTPClientError
+from botocore.exceptions import ConnectionError as BotoConnectionError
+from urllib3.exceptions import HTTPError as Urllib3HTTPError
 
 from app.core.config import settings
 from app.models import EmailMessage, EmailTemplate, Prospect
+from app.services.send_errors import PERMANENT_CODES, SENDER_CODES, FailureKind, classify_ses_error
 from app.utils.email_utils import (
     normalize_unsubscribe_footer,
     strip_cta_content_no_link,
@@ -43,12 +46,36 @@ class TransientEmailFailure(Exception):
     pass
 
 
+class DeferredEmailFailure(TransientEmailFailure):
+    """
+    The message is fine but cannot go out right now for a reason outside it (item 14): the
+    sending platform (``kind`` PLATFORM: SES account paused, throttled, unavailable, configuration
+    set missing, no connection before the request left) or the sending identity (``kind`` SENDER:
+    address / MAIL FROM domain not verified). Callers re-queue it without spending the message's
+    retry budget; send_with_retry never retries it in place.
+    """
+
+    kind = FailureKind.PLATFORM
+
+    def __init__(self, message: str, code: Optional[str] = None) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class PlatformEmailFailure(DeferredEmailFailure):
+    kind = FailureKind.PLATFORM
+
+
+class SenderEmailFailure(DeferredEmailFailure):
+    kind = FailureKind.SENDER
+
+
 class PermanentEmailFailure(Exception):
     """
     Non-retryable SES error (rejected, invalid email). `recipient_fault` is True
     when the recipient address itself was refused (invalid / blacklisted), which
-    is when the address should be suppressed; account or configuration errors
-    are permanent for this attempt but say nothing about the contact.
+    is when the address should be suppressed; other permanent errors say nothing
+    about the contact.
     """
 
     def __init__(self, message: str, code: Optional[str] = None, recipient_fault: bool = False) -> None:
@@ -57,33 +84,21 @@ class PermanentEmailFailure(Exception):
         self.recipient_fault = recipient_fault
 
 
-# SES error codes that will fail the same way on every retry
-PERMANENT_SES_ERRORS = {
-    "MessageRejected",
-    "MailFromDomainNotVerified",
-    "MailFromDomainNotVerifiedException",
-    "ConfigurationSetDoesNotExist",
-    "ConfigurationSetDoesNotExistException",
-    "AccountSendingPausedException",
-    "InvalidParameterValue",   # malformed message (e.g. duplicate headers, bad address)
-    "ValidationError",
-}
-
-_RECIPIENT_FAULT = re.compile(
-    r"blacklist|illegal address|invalid (recipient|address|email)|missing final '@domain'"
-    r"|address (is )?(invalid|malformed)|local address contains|domain contains|suppression list",
-    re.IGNORECASE,
-)
+# SES error codes that will fail the same way on every retry (see app/services/send_errors.py
+# for which of them are the platform's or the sender's fault rather than the message's)
+PERMANENT_SES_ERRORS = PERMANENT_CODES | SENDER_CODES
 
 
 def classify_client_error(error_code: str, error_message: str) -> Exception:
-    """Map an SES ClientError to a permanent or transient failure (B06)."""
+    """Map an SES ClientError to a deferred, permanent or transient failure (B06, item 14)."""
     text = f"{error_code}: {error_message}"
-    if error_code in PERMANENT_SES_ERRORS:
-        recipient = (error_code in ("MessageRejected", "InvalidParameterValue", "ValidationError")
-                     and bool(_RECIPIENT_FAULT.search(error_message or ""))
-                     and "not verified" not in (error_message or "").lower())
-        return PermanentEmailFailure(text, code=error_code, recipient_fault=recipient)
+    kind = classify_ses_error(error_code, error_message)
+    if kind is FailureKind.PLATFORM:
+        return PlatformEmailFailure(text, code=error_code)
+    if kind is FailureKind.SENDER:
+        return SenderEmailFailure(text, code=error_code)
+    if kind in (FailureKind.RECIPIENT, FailureKind.PERMANENT):
+        return PermanentEmailFailure(text, code=error_code, recipient_fault=kind is FailureKind.RECIPIENT)
     return TransientEmailFailure(text)
 
 
@@ -96,14 +111,22 @@ class AmbiguousEmailFailure(Exception):
     pass
 
 
-def classify_botocore_error(exc: BotoCoreError) -> Exception:
-    # The request never left (no connection): safe to retry
-    if isinstance(exc, (EndpointConnectionError, ConnectTimeoutError)):
-        return TransientEmailFailure(str(exc))
-    # It was sent but no answer came back: outcome unknown
-    if isinstance(exc, (ReadTimeoutError, ConnectionClosedError)):
-        return AmbiguousEmailFailure(str(exc))
+def classify_botocore_error(exc: Exception) -> Exception:
+    # It was sent but the answer was lost (read timeout, connection dropped, truncated
+    # response): SES may have sent it, so the outcome is unknown (F079). Checked first: when
+    # in doubt, never send again.
+    if isinstance(exc, (HTTPClientError, HTTPException, Urllib3HTTPError)):
+        return AmbiguousEmailFailure(str(exc) or type(exc).__name__)
+    # The request never left (no connection, TLS or proxy failure): safe to send later
+    if isinstance(exc, BotoConnectionError):
+        return PlatformEmailFailure(str(exc), code=type(exc).__name__)
     return TransientEmailFailure(str(exc))
+
+
+# One attempt per send (total_max_attempts counts the first request; "max_attempts" would mean
+# retries): botocore's own retries would resend a message SES may already have accepted (F079).
+# Throttling / 5xx surface to the scheduler, which re-queues instead.
+SES_CLIENT_CONFIG = BotoConfig(retries={"total_max_attempts": 1, "mode": "standard"})
 
 
 # -----------------------------
@@ -152,7 +175,7 @@ class EmailSenderService:
             client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
             client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
         
-        self.ses_client = boto3.client("ses", **client_kwargs)
+        self.ses_client = boto3.client("ses", config=SES_CLIENT_CONFIG, **client_kwargs)
         self.rate_limiter = RateLimiter(settings.SES_MAX_SEND_RATE)
         self._last_sent_ts = 0.0
 
@@ -539,255 +562,257 @@ class EmailSenderService:
             TransientEmailFailure: For retryable errors
             PermanentEmailFailure: For non-retryable errors
         """
-        try:
-            # Apply rate limiting
-            await self.rate_limiter.acquire()
-            
-            # Get campaign CTA link / sender title if available
-            campaign_cta_link = None
-            campaign_sender_title = None
-            if email_message.campaign:
-                campaign_cta_link = normalize_cta_link(email_message.campaign.cta_link)
-                campaign_sender_title = email_message.campaign.sender_title
+        # Apply rate limiting
+        await self.rate_limiter.acquire()
+        
+        # Get campaign CTA link / sender title if available
+        campaign_cta_link = None
+        campaign_sender_title = None
+        if email_message.campaign:
+            campaign_cta_link = normalize_cta_link(email_message.campaign.cta_link)
+            campaign_sender_title = email_message.campaign.sender_title
 
-            # Trust pre-computed subject/body if available
-            # _preschedule_all_emails() personalizes and formats the email at launch.
-            # We must use that snapshot so we don't accidentally pull in stale data
-            # or overwrite creative formatting by re-substituting the raw template.
-            if email_message.subject and email_message.subject.strip():
-                subject = email_message.subject
-            else:
-                subject = self._substitute_placeholders(
-                    email_template.subject,
-                    prospect,
-                    sender_name,
-                    campaign_cta_link,
-                    campaign_sender_title
-                )
-                # Keep DB snapshot aligned with what we actually send.
-                subject = re.sub(r'<[^>]+>', '', subject or '')
-                subject = subject.replace('\r', ' ').replace('\n', ' ')
-                subject = re.sub(r'\s{2,}', ' ', subject).strip()
-                email_message.subject = subject
+        # Trust pre-computed subject/body if available
+        # _preschedule_all_emails() personalizes and formats the email at launch.
+        # We must use that snapshot so we don't accidentally pull in stale data
+        # or overwrite creative formatting by re-substituting the raw template.
+        if email_message.subject and email_message.subject.strip():
+            subject = email_message.subject
+        else:
+            subject = self._substitute_placeholders(
+                email_template.subject,
+                prospect,
+                sender_name,
+                campaign_cta_link,
+                campaign_sender_title
+            )
+            # Keep DB snapshot aligned with what we actually send.
+            subject = re.sub(r'<[^>]+>', '', subject or '')
+            subject = subject.replace('\r', ' ').replace('\n', ' ')
+            subject = re.sub(r'\s{2,}', ' ', subject).strip()
+            email_message.subject = subject
 
-            if email_message.body_text and email_message.body_text.strip():
-                body_content = email_message.body_text
-            else:
-                body_content = self._substitute_placeholders(
-                    email_template.body,
-                    prospect,
-                    sender_name,
-                    campaign_cta_link,
-                    campaign_sender_title
-                )
-                if not has_effective_cta_link(campaign_cta_link):
-                    body_content = strip_cta_content_no_link(body_content)
+        if email_message.body_text and email_message.body_text.strip():
+            body_content = email_message.body_text
+        else:
+            body_content = self._substitute_placeholders(
+                email_template.body,
+                prospect,
+                sender_name,
+                campaign_cta_link,
+                campaign_sender_title
+            )
+            if not has_effective_cta_link(campaign_cta_link):
+                body_content = strip_cta_content_no_link(body_content)
 
-                # Normalize unsubscribe content across creative/normal modes.
-                body_content = self._normalize_unsubscribe_text(
-                    body_content=body_content,
-                    message_id=str(email_message.message_id),
+            # Normalize unsubscribe content across creative/normal modes.
+            body_content = self._normalize_unsubscribe_text(
+                body_content=body_content,
+                message_id=str(email_message.message_id),
+            )
+            email_message.body_text = body_content
+        
+        # --- Personal Email Guard ---
+        # Block sending cold outreach to personal email providers (gmail, yahoo, etc.)
+        # These providers aggressively flag B2B outreach as spam, hurting sender reputation.
+        from app.services.compliance_service import lint_email_content, is_business_email
+        if not is_business_email(prospect.email):
+            logger.warning(
+                f"[SES] Email BLOCKED — personal email domain. "
+                f"Recipient={prospect.email}, MessageId={email_message.message_id}"
+            )
+            return {
+                "success": False,
+                "message_id": email_message.message_id,
+                "status": "BLOCKED_PERSONAL_EMAIL",
+                "error": f"Recipient {prospect.email} is a personal email domain. Cold outreach to personal emails damages sender reputation."
+            }
+
+        # --- Pre-Send Lint Gate ---
+        # Comprehensive pre-send analysis: keyword spam triggers, subject line
+        # validation, Microsoft EOP ASF triggers, AI linguistic detection,
+        # and link domain validation.
+        if settings.SPAM_SCORE_BLOCK_THRESHOLD > 0:
+            _sender_domain = (from_email_address or settings.SENDER_EMAIL).split("@")[-1] if "@" in (from_email_address or settings.SENDER_EMAIL) else ""
+            _lint_result = lint_email_content(subject, body_content, _sender_domain)
+
+            # Log all warnings for diagnosis even if score is below threshold
+            if _lint_result.warnings:
+                logger.info(
+                    f"[SES] Lint warnings for MessageId={email_message.message_id}: "
+                    f"Score={_lint_result.composite_score}, "
+                    f"Warnings={[w.message for w in _lint_result.warnings[:5]]}"
                 )
-                email_message.body_text = body_content
-            
-            # --- Personal Email Guard ---
-            # Block sending cold outreach to personal email providers (gmail, yahoo, etc.)
-            # These providers aggressively flag B2B outreach as spam, hurting sender reputation.
-            from app.services.compliance_service import lint_email_content, is_business_email
-            if not is_business_email(prospect.email):
+
+            if _lint_result.composite_score >= settings.SPAM_SCORE_BLOCK_THRESHOLD:
                 logger.warning(
-                    f"[SES] Email BLOCKED — personal email domain. "
-                    f"Recipient={prospect.email}, MessageId={email_message.message_id}"
+                    f"[SES] Email BLOCKED by pre-send lint gate. "
+                    f"Score={_lint_result.composite_score} (threshold={settings.SPAM_SCORE_BLOCK_THRESHOLD}), "
+                    f"Triggers={_lint_result.trigger_names[:5]}, "
+                    f"MessageId={email_message.message_id}, "
+                    f"Recipient={prospect.email}"
                 )
                 return {
                     "success": False,
                     "message_id": email_message.message_id,
-                    "status": "BLOCKED_PERSONAL_EMAIL",
-                    "error": f"Recipient {prospect.email} is a personal email domain. Cold outreach to personal emails damages sender reputation."
+                    "status": "BLOCKED_SPAM",
+                    "error": f"Lint score {_lint_result.composite_score} exceeds threshold {settings.SPAM_SCORE_BLOCK_THRESHOLD}. Triggers: {_lint_result.trigger_names[:5]}"
                 }
 
-            # --- Pre-Send Lint Gate ---
-            # Comprehensive pre-send analysis: keyword spam triggers, subject line
-            # validation, Microsoft EOP ASF triggers, AI linguistic detection,
-            # and link domain validation.
-            if settings.SPAM_SCORE_BLOCK_THRESHOLD > 0:
-                _sender_domain = (from_email_address or settings.SENDER_EMAIL).split("@")[-1] if "@" in (from_email_address or settings.SENDER_EMAIL) else ""
-                _lint_result = lint_email_content(subject, body_content, _sender_domain)
+        # Build sender address early so we can do internal domain check
+        final_sender_name = sender_name or settings.SENDER_NAME
+        sender_email = from_email_address or settings.SENDER_EMAIL
+        from_email = f"{final_sender_name} <{sender_email}>"
 
-                # Log all warnings for diagnosis even if score is below threshold
-                if _lint_result.warnings:
-                    logger.info(
-                        f"[SES] Lint warnings for MessageId={email_message.message_id}: "
-                        f"Score={_lint_result.composite_score}, "
-                        f"Warnings={[w.message for w in _lint_result.warnings[:5]]}"
+        # --- INTERNAL DOMAIN CHECK ---
+        # If sender domain == recipient domain, it's an internal test or collaboration email.
+        # Do NOT append Unsubscribe links or Physical Addresses, as they trigger impersonation/spam filters.
+        sender_domain = sender_email.split('@')[1].lower() if '@' in sender_email else ''
+        recipient_domain = prospect.email.split('@')[1].lower() if '@' in prospect.email else ''
+        is_internal = (sender_domain == recipient_domain and sender_domain != '')
+
+        unsubscribe_url = f"{settings.BASE_URL}/api/tracking/unsubscribe/{email_message.message_id}"
+
+        from sqlalchemy.orm import object_session
+        from app.services.sender_identity import get_sender_identity
+        identity = get_sender_identity(prospect.tenant_id, object_session(email_message))
+
+        if not is_internal:
+            # CAN-SPAM §5(a)(5): the SENDER's physical postal address must appear
+            # in every email: the tenant's own, never a platform default.
+            footer_line = identity.footer_line
+            if footer_line:
+                if identity.postal_address not in body_content and footer_line not in body_content:
+                    body_content += f"\n\n{footer_line}"
+            else:
+                # New launches are blocked without an address; mail already in
+                # flight goes out without the line rather than with another company's.
+                logger.warning(
+                    f"[SES] Tenant {prospect.tenant_id} has no postal address set; footer address "
+                    f"omitted for MessageId={email_message.message_id}. Set it in Settings."
+                )
+
+            # Append unsubscribe footer (only if not already present).
+            if "/api/tracking/unsubscribe/" not in body_content:
+                unsub_mode = getattr(email_message.campaign, 'unsubscribe_mode', 'plain') or 'plain'
+                if unsub_mode == 'html':
+                    body_content += (
+                        f'\nPlease click on <a href="{unsubscribe_url}">unsubscribe</a> '
+                        f'in case you do not wish to receive such business communication emails in the future.'
                     )
-
-                if _lint_result.composite_score >= settings.SPAM_SCORE_BLOCK_THRESHOLD:
-                    logger.warning(
-                        f"[SES] Email BLOCKED by pre-send lint gate. "
-                        f"Score={_lint_result.composite_score} (threshold={settings.SPAM_SCORE_BLOCK_THRESHOLD}), "
-                        f"Triggers={_lint_result.trigger_names[:5]}, "
-                        f"MessageId={email_message.message_id}, "
-                        f"Recipient={prospect.email}"
-                    )
-                    return {
-                        "success": False,
-                        "message_id": email_message.message_id,
-                        "status": "BLOCKED_SPAM",
-                        "error": f"Lint score {_lint_result.composite_score} exceeds threshold {settings.SPAM_SCORE_BLOCK_THRESHOLD}. Triggers: {_lint_result.trigger_names[:5]}"
-                    }
-
-            # Build sender address early so we can do internal domain check
-            final_sender_name = sender_name or settings.SENDER_NAME
-            sender_email = from_email_address or settings.SENDER_EMAIL
-            from_email = f"{final_sender_name} <{sender_email}>"
-
-            # --- INTERNAL DOMAIN CHECK ---
-            # If sender domain == recipient domain, it's an internal test or collaboration email.
-            # Do NOT append Unsubscribe links or Physical Addresses, as they trigger impersonation/spam filters.
-            sender_domain = sender_email.split('@')[1].lower() if '@' in sender_email else ''
-            recipient_domain = prospect.email.split('@')[1].lower() if '@' in prospect.email else ''
-            is_internal = (sender_domain == recipient_domain and sender_domain != '')
-
-            unsubscribe_url = f"{settings.BASE_URL}/api/tracking/unsubscribe/{email_message.message_id}"
-
-            from sqlalchemy.orm import object_session
-            from app.services.sender_identity import get_sender_identity
-            identity = get_sender_identity(prospect.tenant_id, object_session(email_message))
-
-            if not is_internal:
-                # CAN-SPAM §5(a)(5): the SENDER's physical postal address must appear
-                # in every email: the tenant's own, never a platform default.
-                footer_line = identity.footer_line
-                if footer_line:
-                    if identity.postal_address not in body_content and footer_line not in body_content:
-                        body_content += f"\n\n{footer_line}"
                 else:
-                    # New launches are blocked without an address; mail already in
-                    # flight goes out without the line rather than with another company's.
-                    logger.warning(
-                        f"[SES] Tenant {prospect.tenant_id} has no postal address set; footer address "
-                        f"omitted for MessageId={email_message.message_id}. Set it in Settings."
+                    body_content += (
+                        f"\nPlease reply 'unsubscribe' in case you do not wish to "
+                        f"receive such business communication emails in the future."
                     )
 
-                # Append unsubscribe footer (only if not already present).
-                if "/api/tracking/unsubscribe/" not in body_content:
-                    unsub_mode = getattr(email_message.campaign, 'unsubscribe_mode', 'plain') or 'plain'
-                    if unsub_mode == 'html':
-                        body_content += (
-                            f'\nPlease click on <a href="{unsubscribe_url}">unsubscribe</a> '
-                            f'in case you do not wish to receive such business communication emails in the future.'
-                        )
-                    else:
-                        body_content += (
-                            f"\nPlease reply 'unsubscribe' in case you do not wish to "
-                            f"receive such business communication emails in the future."
-                        )
+        # Replace explicit unsubscribe placeholder if template uses it
+        body_content = body_content.replace("{{unsubscribe_link}}", unsubscribe_url)
 
-            # Replace explicit unsubscribe placeholder if template uses it
-            body_content = body_content.replace("{{unsubscribe_link}}", unsubscribe_url)
+        # Ensure single signature.
+        if not self.has_sign_off(body_content):
+            body_content = body_content.rstrip() + f"\n\nRegards,\n{build_signature_block(sender_name, campaign_sender_title, identity.company_name)}"
 
-            # Ensure single signature.
-            if not self.has_sign_off(body_content):
-                body_content = body_content.rstrip() + f"\n\nRegards,\n{build_signature_block(sender_name, campaign_sender_title, identity.company_name)}"
+        # body_content = normalize_paragraph_spacing(body_content)
+        # SES automatically inserts tracking pixels and wraps links when:
+        # 1. ConfigurationSetName is specified in the send call
+        # 2. Open/Click events are enabled in the Configuration Set
+        # 3. SNS destination is configured to send events to our webhook
+        # The webhook at /webhooks/ses/notifications handles these events.
+        # 
+        # Custom tracking is disabled (no BASE_URL dependency needed):
+        # if enable_tracking:
+        #     html_body = self._add_tracking_pixel(html_body, str(email_message.message_id))
+        #     html_body = self._wrap_links_for_tracking(html_body, str(email_message.message_id))
+        
+        # Build MIME message with deliverability headers
+        mime_msg = self._build_mime_message(
+            from_email=from_email,
+            to_email=prospect.email,
+            subject=subject,
+            body_content=body_content,
+            message_id=str(email_message.message_id),
+            campaign_id=str(email_message.campaign_id),
+            sender_email=sender_email,
+            # Same-domain (internal) mail carries no unsubscribe footer, so no list headers either
+            unsubscribe_url=None if is_internal else unsubscribe_url,
+            attachments=self._load_template_attachments(email_template),
+            unsubscribe_mailto=sender_email if "@" in (sender_email or "") else None,
+        )
 
-            # body_content = normalize_paragraph_spacing(body_content)
-            # SES automatically inserts tracking pixels and wraps links when:
-            # 1. ConfigurationSetName is specified in the send call
-            # 2. Open/Click events are enabled in the Configuration Set
-            # 3. SNS destination is configured to send events to our webhook
-            # The webhook at /webhooks/ses/notifications handles these events.
-            # 
-            # Custom tracking is disabled (no BASE_URL dependency needed):
-            # if enable_tracking:
-            #     html_body = self._add_tracking_pixel(html_body, str(email_message.message_id))
-            #     html_body = self._wrap_links_for_tracking(html_body, str(email_message.message_id))
-            
-            # Build MIME message with deliverability headers
-            mime_msg = self._build_mime_message(
-                from_email=from_email,
-                to_email=prospect.email,
-                subject=subject,
-                body_content=body_content,
-                message_id=str(email_message.message_id),
-                campaign_id=str(email_message.campaign_id),
-                sender_email=sender_email,
-                # Same-domain (internal) mail carries no unsubscribe footer, so no list headers either
-                unsubscribe_url=None if is_internal else unsubscribe_url,
-                attachments=self._load_template_attachments(email_template),
-                unsubscribe_mailto=sender_email if "@" in (sender_email or "") else None,
-            )
+        # Prepare SES raw email request
+        send_kwargs = {
+            "Source": from_email,
+            "Destinations": [prospect.email],
+            "RawMessage": {
+                "Data": mime_msg.as_string()
+            },
+        }
 
-            # Prepare SES raw email request
-            send_kwargs = {
-                "Source": from_email,
-                "Destinations": [prospect.email],
-                "RawMessage": {
-                    "Data": mime_msg.as_string()
-                },
-            }
+        # REQUIRED for bounce/complaint/delivery/open/click notifications to
+        # fire at all: SES only emits these events for sends associated
+        # with a Configuration Set that has an SNS destination attached.
+        # Without this, /webhooks/ses/notifications never receives anything,
+        # no matter how the SNS topic/subscription itself is configured.
+        if settings.AWS_SES_CONFIGURATION_SET:
+            send_kwargs["ConfigurationSetName"] = settings.AWS_SES_CONFIGURATION_SET
 
-            # REQUIRED for bounce/complaint/delivery/open/click notifications to
-            # fire at all: SES only emits these events for sends associated
-            # with a Configuration Set that has an SNS destination attached.
-            # Without this, /webhooks/ses/notifications never receives anything,
-            # no matter how the SNS topic/subscription itself is configured.
-            if settings.AWS_SES_CONFIGURATION_SET:
-                send_kwargs["ConfigurationSetName"] = settings.AWS_SES_CONFIGURATION_SET
+        # REQUIRED for the webhook to know WHICH EmailMessage a notification
+        # is about: ses_webhook_router.py's _extract_tags() reads this tag
+        # back out of the SNS payload as `internal_message_id` to look up
+        # the row. Without it, bounce/open/click notifications arrive but
+        # can never be matched to a specific message (SES tag values only
+        # allow [A-Za-z0-9_-]; message_id is a UUID, which fits).
+        send_kwargs["Tags"] = [
+            {"Name": "message_id", "Value": str(email_message.message_id)}
+        ]
 
-            # REQUIRED for the webhook to know WHICH EmailMessage a notification
-            # is about: ses_webhook_router.py's _extract_tags() reads this tag
-            # back out of the SNS payload as `internal_message_id` to look up
-            # the row. Without it, bounce/open/click notifications arrive but
-            # can never be matched to a specific message (SES tag values only
-            # allow [A-Za-z0-9_-]; message_id is a UUID, which fits).
-            send_kwargs["Tags"] = [
-                {"Name": "message_id", "Value": str(email_message.message_id)}
-            ]
+        # Send email (run in thread to avoid blocking)
+        response = await self._send_raw(send_kwargs, email_message, prospect.email)
+        
+        ses_message_id = response["MessageId"]
+        # The MIME Message-ID (internet_message_id) is the standard RFC 5322
+        # identifier that email clients put in In-Reply-To / References when
+        # replying. We must store it so IMAP sync can match replies back to
+        # this conversation thread.
+        internet_message_id = mime_msg["Message-ID"]
 
-            # Send email (run in thread to avoid blocking)
-            response = await asyncio.to_thread(
-                self.ses_client.send_raw_email,
-                **send_kwargs
-            )
-            
-            ses_message_id = response["MessageId"]
-            # The MIME Message-ID (internet_message_id) is the standard RFC 5322
-            # identifier that email clients put in In-Reply-To / References when
-            # replying. We must store it so IMAP sync can match replies back to
-            # this conversation thread.
-            internet_message_id = mime_msg["Message-ID"]
+        logger.info(
+            f"[SES] Email sent successfully. "
+            f"SES MessageId: {ses_message_id}, "
+            f"Recipient: {prospect.email}, "
+            f"Campaign: {email_message.campaign_id}"
+        )
 
-            logger.info(
-                f"[SES] Email sent successfully. "
-                f"SES MessageId: {ses_message_id}, "
-                f"Recipient: {prospect.email}, "
-                f"Campaign: {email_message.campaign_id}"
-            )
+        return {
+            "success": True,
+            "ses_message_id": ses_message_id,
+            "internet_message_id": internet_message_id,
+            "message_id": email_message.message_id,
+            "status": "SENT"
+        }
+        
 
-            return {
-                "success": True,
-                "ses_message_id": ses_message_id,
-                "internet_message_id": internet_message_id,
-                "message_id": email_message.message_id,
-                "status": "SENT"
-            }
-            
+    async def _send_raw(self, send_kwargs: Dict[str, Any], email_message: EmailMessage,
+                        recipient: str) -> Dict[str, Any]:
+        """
+        One SES send_raw_email call (the client never retries it, F079), with every failure mapped
+        to the failure classes the scheduler acts on: deferred (platform / sender), permanent,
+        transient, or ambiguous when the request may already have been accepted.
+        """
+        try:
+            return await asyncio.to_thread(self.ses_client.send_raw_email, **send_kwargs)
         except ClientError as exc:
             error_code = exc.response["Error"]["Code"]
             error_message = exc.response["Error"]["Message"]
-            
             logger.error(
                 f"[SES] ClientError: {error_code} - {error_message}. "
                 f"MessageId: {email_message.message_id}, "
-                f"Recipient: {prospect.email}"
+                f"Recipient: {recipient}"
             )
-            
-            # Permanent failures are not retried; everything else is (B06)
             raise classify_client_error(error_code, error_message)
-
-        except BotoCoreError as exc:
-            logger.error(f"[SES] BotoCoreError: {str(exc)}")
+        except (BotoCoreError, HTTPException, Urllib3HTTPError) as exc:
+            logger.error(f"[SES] {type(exc).__name__}: {exc}")
             raise classify_botocore_error(exc)
 
     async def send_plain_email(
@@ -876,6 +901,7 @@ class EmailSenderService:
 
         Raises:
             PermanentEmailFailure: SES refused the message for good; not retried.
+            DeferredEmailFailure: platform / sender-identity problem; not retried here.
             AmbiguousEmailFailure: SES may have accepted it; never retried.
             TransientEmailFailure: still failing temporarily after max_retries
                 quick attempts; the caller decides whether to try again later.
@@ -891,6 +917,9 @@ class EmailSenderService:
                     sender_name,
                     from_email_address
                 )
+            except DeferredEmailFailure:
+                # Platform / sender problem: retrying in place cannot help; the caller re-queues
+                raise
             except TransientEmailFailure as exc:
                 if attempt + 1 >= attempts:
                     logger.warning(

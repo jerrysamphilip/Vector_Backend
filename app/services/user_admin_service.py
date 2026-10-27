@@ -8,6 +8,7 @@ Role defaults come from app/core/auth.py (ROLE_DEFAULT_PERMISSIONS), which enfor
 import logging
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.clock import utcnow
@@ -23,6 +24,7 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.prospect_list import ProspectList
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
+from app.services.user_lookup import LIVE_ACCOUNT_CONFLICT, live_account_conflict
 
 logger = logging.getLogger(__name__)
 
@@ -170,8 +172,15 @@ def reactivate(db: Session, actor: User, user_id: str) -> None:
         raise PermissionDenied("Only a Super Admin can reactivate a Super Admin")
     if actor.role == "ADMIN" and target.role == "ADMIN":
         raise PermissionDenied("Admins cannot reactivate other admins")
+    # One live account per email across workspaces (F017)
+    if live_account_conflict(db, target.email, target.user_id):
+        raise ConflictError(LIVE_ACCOUNT_CONFLICT)
     target.status = "ACTIVE"
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:  # a concurrent invite / reactivation won the unique users.active_email
+        db.rollback()
+        raise ConflictError(LIVE_ACCOUNT_CONFLICT) from exc
     logger.info("User reactivated: %s by %s", target.email, actor.email)
 
 

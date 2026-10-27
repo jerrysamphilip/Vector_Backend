@@ -1,5 +1,5 @@
 
-from typing import Any, NamedTuple, Optional
+from typing import Any, NamedTuple, Optional, Tuple
 import hashlib
 import re
 import imaplib
@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 import uuid
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, or_
 
 from app.core.clock import utcnow
 from app.core.observability import record_imap_sync
@@ -21,8 +21,10 @@ from app.models.email_message import EmailMessage, EmailEvent
 from app.models.prospect import Prospect
 from app.models.conversation import Conversation
 from app.models.campaign import CampaignProspect
+from app.models.email_sequence import EmailSequence
 from app.models.prospect import GlobalUnsubscribe
-from app.utils.email_utils import extract_latest_message_text
+from app.utils.email_utils import (extract_latest_message_text, normalize_subject, ses_id_from_message_id,
+                                   thread_message_ids)
 from app.utils.reply_classifier import is_out_of_office, classify_reply_intent
 from app.utils.campaign_prospect_status import set_prospect_status
 from app.utils.conversation_lock import conversation_creation_lock
@@ -52,6 +54,12 @@ class _InboxRef(NamedTuple):
 class _SyncPosition(NamedTuple):
     uidvalidity: Optional[int]
     last_uid: Optional[int]
+
+
+# Pending statuses a reply cancels (stop on reply, BR-DF-05)
+_STOPPABLE_STATUSES = ("QUEUED", "SCHEDULED", "PAUSED_BY_CAMPAIGN")
+# How many recent sent emails of the contact the subject fallback compares
+_SUBJECT_MATCH_WINDOW = 50
 
 
 class IMAPSyncService:
@@ -268,6 +276,95 @@ class IMAPSyncService:
         ).hexdigest()[:40]
         return f"<no-message-id-{digest}@imap-sync.invalid>"
 
+    def _outbound_for_header(self, prospect: Prospect, header_val: str) -> Optional[EmailMessage]:
+        """
+        The sent email a reply's In-Reply-To / References entry names (17). The scheduler stores our
+        MIME Message-ID, send-now the bare SES id, and SES rewrites Message-ID to
+        <ses-id@email.amazonses.com> (or a regional variant), so an SES-form header also matches
+        the bare id in provider_message_id or ses_message_id. Limited to this contact (and so to
+        its workspace).
+        """
+        conditions = [EmailMessage.provider_message_id == header_val]
+        ses_id = ses_id_from_message_id(header_val)
+        if ses_id:
+            conditions += [EmailMessage.ses_message_id == ses_id, EmailMessage.provider_message_id == ses_id]
+        return self.db.query(EmailMessage).filter(
+            or_(*conditions),
+            EmailMessage.direction == "OUTBOUND",
+            EmailMessage.prospect_id == prospect.prospect_id,
+        ).order_by(desc(EmailMessage.sent_at)).first()
+
+    def _outbound_for_subject(self, prospect: Prospect, inbox_model: _InboxRef,
+                              subject: str) -> Optional[EmailMessage]:
+        """
+        Fallback when no header matches: the newest email sent to this contact from this inbox
+        whose subject equals the reply's without its Re:/Fwd:/AW: prefixes.
+        """
+        key = normalize_subject(subject)
+        if not key:
+            return None
+        recent = self.db.query(EmailMessage).filter(
+            EmailMessage.prospect_id == prospect.prospect_id,
+            EmailMessage.inbox_id == inbox_model.inbox_id,
+            EmailMessage.direction == "OUTBOUND",
+        ).order_by(desc(EmailMessage.sent_at)).limit(_SUBJECT_MATCH_WINDOW).all()
+        return next((m for m in recent if normalize_subject(m.subject) == key), None)
+
+    def _conversation_of(self, outbound: EmailMessage, prospect: Prospect) -> Optional[Conversation]:
+        if not outbound.conversation_id:
+            return None
+        return self.db.query(Conversation).filter(
+            Conversation.id == outbound.conversation_id,
+            Conversation.tenant_id == prospect.tenant_id,
+        ).first()
+
+    def _match_reply(self, prospect: Prospect, inbox_model: _InboxRef, msg: Any,
+                     subject: str) -> Tuple[Optional[EmailMessage], Optional[Conversation]]:
+        """
+        Strategy A (INBOUND only): the sent email this reply answers and its conversation, from
+        RFC 5322 In-Reply-To / References, else from the subject within this contact + inbox.
+        The email is returned even without a conversation (campaign attribution).
+        """
+        first_match: Optional[EmailMessage] = None
+        for header_val in thread_message_ids(msg.get("In-Reply-To"), msg.get("References")):
+            found = self._outbound_for_header(prospect, header_val)
+            if not found:
+                continue
+            first_match = first_match or found
+            conv = self._conversation_of(found, prospect)
+            if conv:
+                logger.info(f"[IMAP] Matched reply to conv {conv.id} via In-Reply-To/References ({header_val[:60]})")
+                return found, conv
+        if first_match is not None:
+            logger.info(f"[IMAP] Matched outbound msg {first_match.message_id[:8]} via In-Reply-To "
+                        f"— no conversation yet, will create")
+            return first_match, None
+        by_subject = self._outbound_for_subject(prospect, inbox_model, subject)
+        if by_subject is None:
+            return None, None
+        logger.info(f"[IMAP] Matched outbound msg {by_subject.message_id[:8]} via subject")
+        return by_subject, self._conversation_of(by_subject, prospect)
+
+    def _stop_sequence_on_reply(self, campaign_id: str, prospect_id: str) -> int:
+        """
+        Stop on reply (BR-DF-05, 20b): follow-ups are scheduled at launch, so cancel this contact's
+        pending emails in the campaign, except those of steps whose stop_on_reply is off (NULL
+        counts as on). Emails of no step (automation mail) are cancelled as before.
+        """
+        keep = [sid for (sid,) in self.db.query(EmailSequence.sequence_id).filter(
+            EmailSequence.campaign_id == campaign_id, EmailSequence.stop_on_reply.is_(False))]
+        query = self.db.query(EmailMessage).filter(
+            EmailMessage.campaign_id == campaign_id,
+            EmailMessage.prospect_id == prospect_id,
+            EmailMessage.direction == "OUTBOUND",
+            EmailMessage.status.in_(_STOPPABLE_STATUSES),
+        )
+        if keep:
+            query = query.filter(or_(EmailMessage.sequence_id.is_(None), EmailMessage.sequence_id.notin_(keep)))
+        return query.update({EmailMessage.status: "CANCELLED",
+                             EmailMessage.failure_reason: "Stopped: the contact replied"},
+                            synchronize_session=False)
+
     def _sync_folder(self, mail, inbox_model, folder_name, days_back, direction) -> bool:
         """
         Sync one folder. Returns False if the folder does not exist on the server.
@@ -441,55 +538,10 @@ class IMAPSyncService:
                 # ── 1. Find/Create Conversation ──────────────────────────────
                 # We attempt four strategies in order of reliability.
 
-                # Extract standard email-threading headers from the reply.
-                in_reply_to = (msg.get("In-Reply-To") or "").strip()
-                references_header = (msg.get("References") or "").strip()
-
                 conv = None
                 original_outbound_msg = None  # the specific sent email being replied to
-
-                # Strategy A (INBOUND only): RFC 5322 In-Reply-To / References.
-                # When a prospect hits Reply, their mail client sets In-Reply-To to
-                # the Message-ID of the email we sent. We now store that Message-ID
-                # in provider_message_id, so we can do an exact match here.
                 if direction == "INBOUND":
-                    # Collect candidate header values: In-Reply-To first, then References chain.
-                    candidates = []
-                    if in_reply_to:
-                        candidates.append(in_reply_to)
-                    if references_header:
-                        # References is a space-separated list; newest entry last.
-                        candidates.extend(references_header.split())
-
-                    for header_val in candidates:
-                        header_val = header_val.strip()
-                        if not header_val:
-                            continue
-                        orig = self.db.query(EmailMessage).filter(
-                            EmailMessage.provider_message_id == header_val,
-                            EmailMessage.direction == "OUTBOUND",
-                            EmailMessage.prospect_id == prospect.prospect_id
-                        ).first()
-                        if orig:
-                            # Always capture for campaign attribution even if conversation_id
-                            # is missing (messages sent before conversation threading was added).
-                            original_outbound_msg = orig
-                            if orig.conversation_id:
-                                conv = self.db.query(Conversation).filter(
-                                    Conversation.id == orig.conversation_id,
-                                    Conversation.tenant_id == prospect.tenant_id
-                                ).first()
-                                if conv:
-                                    logger.info(
-                                        f"[IMAP] Matched reply to conv {conv.id} "
-                                        f"via In-Reply-To/References ({header_val[:60]})"
-                                    )
-                                    break
-                            else:
-                                logger.info(
-                                    f"[IMAP] Matched outbound msg {orig.message_id[:8]} via "
-                                    f"In-Reply-To ({header_val[:60]}) — no conversation yet, will create"
-                                )
+                    original_outbound_msg, conv = self._match_reply(prospect, inbox_model, msg, subject)
 
                 # Strategies B-D all do a check-then-insert keyed on (prospect, inbox),
                 # racing against the email scheduler's own find-or-create for the same
@@ -596,16 +648,7 @@ class IMAPSyncService:
                     if campaign_enrollment and not is_ooo:
                         try:
                             set_prospect_status(campaign_enrollment, "REPLIED")
-                            # Stop on reply (BR-DF-05): follow-ups are scheduled at launch,
-                            # so cancel this contact's remaining steps in the campaign now.
-                            self.db.query(EmailMessage).filter(
-                                EmailMessage.campaign_id == attributed_campaign_id,
-                                EmailMessage.prospect_id == prospect.prospect_id,
-                                EmailMessage.direction == "OUTBOUND",
-                                EmailMessage.status.in_(["QUEUED", "SCHEDULED", "PAUSED_BY_CAMPAIGN"]),
-                            ).update({EmailMessage.status: "CANCELLED",
-                                      EmailMessage.failure_reason: "Stopped: the contact replied"},
-                                     synchronize_session=False)
+                            self._stop_sequence_on_reply(attributed_campaign_id, prospect.prospect_id)
                         except Exception as exc:
                             logger.warning(f"[IMAP] Could not stop sequence after reply: {exc}")
 

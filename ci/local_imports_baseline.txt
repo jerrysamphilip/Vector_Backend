@@ -1,6 +1,6 @@
 # C-5 register of function-local imports in app/ (checked by scripts/ci/check_local_imports.py).
 # Format: path:function:module  (function is the dotted qualified name; module is what is imported).
-# Baseline taken 2026-10-18. Status of every entry: PENDING unless marked otherwise in a trailing
+# Baseline taken 2026-10-27. Status of every entry: PENDING unless marked otherwise in a trailing
 # "  # intentional: <reason>" comment. Typical reasons a local import is kept on purpose: optional
 # dependency (import only when the feature is used), start-up cost, or breaking a known cycle that
 # .importlinter lists in its baseline. New local imports are rejected: import at module level, or add
@@ -66,8 +66,6 @@ app/routers/import_router.py:run_import.apply_contact:app.utils.business_calenda
 app/routers/import_router.py:run_import.contact_values:app.core.errors
 app/routers/import_router.py:run_import.contact_values:app.services.contact_field_service
 app/routers/import_router.py:run_import:app.services.contact_field_service
-app/routers/inbox_router.py:_check_mail_host:ipaddress
-app/routers/inbox_router.py:_check_mail_host:socket
 app/routers/inbox_router.py:ms365_callback:app.services
 app/routers/inbox_router.py:ms365_callback:fastapi.responses
 app/routers/inbox_router.py:ms365_callback:urllib.parse
@@ -96,8 +94,6 @@ app/routers/prospect_list_router.py:get_list_prospects:app.services
 app/routers/prospect_list_router.py:get_list_prospects:sqlalchemy
 app/routers/prospect_list_router.py:list_prospect_lists:app.services
 app/routers/prospect_list_router.py:revalidate_list:app.utils.business_calendar
-app/routers/prospect_list_router.py:update_prospect:app.utils.business_calendar
-app/routers/prospect_list_router.py:update_prospect:app.utils.email_utils
 app/routers/quotes_router.py:proposal_pdf:app.models.tenant
 app/routers/quotes_router.py:proposal_pdf:app.utils.pdf
 app/routers/reports_router.py:_can_see_owner:app.services.contact_service
@@ -220,7 +216,6 @@ app/services/email_scheduler_service.py:EmailSchedulerService._process_single_em
 app/services/email_scheduler_service.py:EmailSchedulerService._process_single_email:app.models.user
 app/services/email_scheduler_service.py:EmailSchedulerService._process_single_email:app.schemas.campaign_schema
 app/services/email_scheduler_service.py:EmailSchedulerService._process_single_email:app.services
-app/services/email_scheduler_service.py:EmailSchedulerService._process_single_email:app.services.metrics_service
 app/services/email_scheduler_service.py:EmailSchedulerService._process_single_email:app.services.suppression
 app/services/email_scheduler_service.py:EmailSchedulerService._process_single_email:app.utils.business_calendar
 app/services/email_scheduler_service.py:EmailSchedulerService._select_due:app.models.campaign

@@ -20,6 +20,7 @@ from app.core.errors import BadRequestError, ConflictError, DomainError, NotFoun
 from app.models.account import Account
 from app.models.campaign import Campaign
 from app.models.crm import ContactCompany, PropertyChange
+from app.models.email_message import EmailMessage
 from app.models.prospect import GlobalUnsubscribe, Prospect
 from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.user import User
@@ -37,6 +38,7 @@ from app.services.contact_service import (
     normalize_tags,
     scope,
 )
+from app.services.suppression import active_suppression
 
 # Properties tracked in history and editable through the API
 TRACKED_FIELDS = (
@@ -50,6 +52,8 @@ TEXT_FIELDS = ("first_name", "last_name", "phone", "mobile_phone", "designation"
 # Properties the bulk "set_property" action may change (plus custom.<key>)
 BULK_EDITABLE = frozenset(TEXT_FIELDS) | {"poc_state", "lifecycle_stage", "lead_status", "legal_basis", "consent_status"}
 CONSENT_STATUSES = ("OPT_IN", "UNSUBSCRIBED")
+# Outbound emails not handed to the provider yet; an email change retargets them
+UNSENT_STATUSES = ("QUEUED", "SCHEDULED", "PAUSED", "PAUSED_BY_CAMPAIGN")
 
 NO_MANAGE_PERMISSION = "Your account does not have the 'manage_prospects' permission."
 
@@ -265,6 +269,32 @@ def create_contact(db: Session, user: User, payload: ContactCreate) -> Prospect:
     return prospect
 
 
+def change_email(db: Session, user: User, prospect: Prospect, new_email: str) -> int:
+    """Give the contact a new address (caller records history and commits).
+
+    Refused when another contact has it (409) or it is suppressed (unsubscribed, bounced,
+    complained: 409), since changing the address must not route around the suppression list.
+    The new address has not bounced, so the contact counts as valid again, and emails that are
+    queued but not sent yet go to the new address. Returns the number of emails retargeted."""
+    if db.query(Prospect.prospect_id).filter(
+            Prospect.tenant_id == user.tenant_id, Prospect.email == new_email,
+            Prospect.prospect_id != prospect.prospect_id).first():
+        raise ConflictError("A contact with this email already exists.")
+    entry = active_suppression(db, user.tenant_id, new_email)
+    if entry:
+        raise ConflictError(f"{new_email} is on the suppression list ({entry.reason or 'unsubscribed'}) "
+                            "and cannot be used for this contact.")
+    prospect.email = new_email
+    prospect.email_type, prospect.email_provider = email_meta(new_email)
+    prospect.is_valid_email = True
+    return db.query(EmailMessage).filter(
+        EmailMessage.prospect_id == prospect.prospect_id,
+        EmailMessage.direction == "OUTBOUND",
+        EmailMessage.status.in_(UNSENT_STATUSES),
+        EmailMessage.sent_at.is_(None),
+    ).update({EmailMessage.to_email: new_email}, synchronize_session=False)
+
+
 def update_contact(db: Session, user: User, prospect_id: str, payload: ContactUpdate,
                    if_match: Optional[int] = None) -> Prospect:
     prospect = get_contact(db, user, prospect_id)
@@ -275,13 +305,7 @@ def update_contact(db: Session, user: User, prospect_id: str, payload: ContactUp
 
     new_email = data.pop("email", None)
     if new_email and new_email.strip().lower() != (prospect.email or "").lower():
-        new_email = new_email.strip()
-        if db.query(Prospect.prospect_id).filter(
-                Prospect.tenant_id == user.tenant_id, Prospect.email == new_email,
-                Prospect.prospect_id != prospect_id).first():
-            raise ConflictError("A contact with this email already exists.")
-        prospect.email = new_email
-        prospect.email_type, prospect.email_provider = email_meta(new_email)
+        change_email(db, user, prospect, new_email.strip())
 
     apply_fields(db, user, prospect, data)
     crm.record_changes(db, user.tenant_id, "CONTACT", prospect.prospect_id, before,

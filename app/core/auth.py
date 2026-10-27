@@ -3,6 +3,10 @@
 FastAPI authentication dependencies.
 Provides get_current_user, require_role, and require_permission for route-level protection.
 
+The dependencies are plain ``def`` on purpose: they query the database (blocking calls), so FastAPI
+runs them in its threadpool instead of on the event loop, where they would stall every other request
+(F004). Do not make them ``async def`` without moving the queries off the loop.
+
 Role hierarchy (highest → lowest):
   PLATFORM_ADMIN — Neutrino Tech staff. tenant_id is NULL. Platform routes only.
   SUPER_ADMIN    — Tenant creator. Full control inside their tenant.
@@ -68,7 +72,7 @@ def _route_allowed_during_mfa_setup(request: Request) -> bool:
     return any(path == p and (m is None or m == method) for m, p in MFA_SETUP_ALLOWED_ROUTES)
 
 
-async def get_current_user(
+def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
@@ -158,7 +162,7 @@ def require_role(*allowed_roles: str) -> Callable[..., Any]:
     Note: PLATFORM_ADMIN is intentionally excluded from all tenant business routes.
     """
 
-    async def _role_checker(
+    def _role_checker(
         current_user: User = Depends(get_current_user),
     ) -> User:
         # PLATFORM_ADMIN must never access tenant business routes
@@ -202,7 +206,7 @@ def require_permission(permission: str) -> Callable[..., Any]:
     - Others are checked against custom_permissions (if set) or role defaults.
     """
 
-    async def _checker(current_user: User = Depends(get_current_user)) -> None:
+    def _checker(current_user: User = Depends(get_current_user)) -> None:
         # PLATFORM_ADMIN cannot hold any tenant permission
         if current_user.role == "PLATFORM_ADMIN":
             raise HTTPException(

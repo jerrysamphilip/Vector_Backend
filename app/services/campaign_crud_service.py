@@ -11,7 +11,6 @@ from datetime import timedelta, time
 import uuid
 
 from app.core.clock import utcnow
-from app.core.config import settings
 
 from app.models.campaign import Campaign, CampaignStateEvent, CampaignProspect
 from app.models.user import User
@@ -37,6 +36,7 @@ from app.schemas.campaign_schema import (
 from app.schemas.sequence_schema import SequenceStepCreate, SequenceStepResponse
 from app.services.audit_service import AuditService
 from app.services.metrics_service import MetricsService
+from app.services.send_guards import require_active_inbox
 from app.services.campaign_analytics_service import CampaignAnalyticsService
 from app.utils.email_utils import normalize_cta_link
 from app.utils.sql_like import ilike
@@ -387,6 +387,9 @@ class CampaignCRUDService:
         if campaign.status != CampaignStatus.PAUSED.value:
             raise ValueError(f"Cannot resume campaign with status: {campaign.status}")
 
+        # Campaign mail only goes from the campaign's own mailboxes, never the platform address
+        require_active_inbox(campaign, "resume")
+
         old_status = campaign.status
         campaign.status = CampaignStatus.ACTIVE.value
         if campaign.auto_paused:
@@ -700,9 +703,10 @@ class CampaignCRUDService:
         )
 
         if not active_inboxes:
+            # No sender until the campaign has an active inbox again (never the platform address)
             for message in pending_messages:
                 message.inbox_id = None
-                message.from_email = settings.SENDER_EMAIL
+                message.from_email = None
             self.db.flush()
             return
 

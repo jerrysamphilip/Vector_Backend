@@ -8,7 +8,9 @@ are still readable, and app/db/security_schema.py encrypts them on start-up.
 """
 
 from typing import Any
+import hashlib
 import logging
+import threading
 from functools import lru_cache
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -17,6 +19,13 @@ from sqlalchemy.types import String, Text, TypeDecorator
 logger = logging.getLogger(__name__)
 
 PREFIX = "enc:v1:"
+
+# Fingerprints of stored values already reported as undecryptable: each one is logged once, not on
+# every read (a mailbox polled every minute would otherwise fill the log). Bounded: when full the
+# set starts over, so memory stays small and a value is at worst reported again much later.
+_MAX_REPORTED = 1024
+_reported: set[str] = set()
+_reported_lock = threading.Lock()
 
 
 @lru_cache()
@@ -43,8 +52,21 @@ def decrypt_value(value: Any) -> Any:
     try:
         return _fernet().decrypt(value[len(PREFIX):].encode()).decode()
     except InvalidToken:
-        logger.error("Stored credential could not be decrypted: CREDENTIALS_ENCRYPTION_KEY has changed.")
+        _report_undecryptable(str(value))
         return None
+
+
+def _report_undecryptable(stored: str) -> None:
+    """Log an undecryptable stored value once per value (identified by a hash, never the value)."""
+    fingerprint = hashlib.sha256(stored.encode()).hexdigest()[:16]
+    with _reported_lock:
+        if fingerprint in _reported:
+            return
+        if len(_reported) >= _MAX_REPORTED:
+            _reported.clear()
+        _reported.add(fingerprint)
+    logger.error("Stored credential %s could not be decrypted: CREDENTIALS_ENCRYPTION_KEY has changed "
+                 "(reported once per value; re-enter the credential to fix it).", fingerprint)
 
 
 class EncryptedString(TypeDecorator):

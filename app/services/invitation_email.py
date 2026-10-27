@@ -8,24 +8,17 @@ fallback (app/services/invitation_service.py).
 import os
 import re
 from typing import Any, Dict
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote_plus
 
 from fastapi import Request
 
 from app.core.config import settings
 from app.services.ses_client import get_ses_client
+from app.utils import safe_origin
+from app.utils.safe_origin import is_local_url, resolve_base_url
 
-_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0"})
-# Front-end origins a sign-in link may point back to (taken from the inviting request)
-_KNOWN_ORIGINS = {
-    "sales.neutrino-ai.com": "https://sales.neutrino-ai.com",
-    "outreach360.neutrinoaistudio.com": "https://outreach360.neutrinoaistudio.com",
-}
-# Deployed front ends per APP_PROFILE, used when the configured URLs are all local
-_PROFILE_BASES = {
-    "dev": "https://sales.neutrino-ai.com",
-    "stage": "https://outreach360.neutrinoaistudio.com",
-}
+__all__ = ["build_magic_login_link", "is_local_url", "normalized_origin", "resolve_base_url",
+           "send_invitation_email"]
 
 
 def _get_ses_client() -> Any:
@@ -34,58 +27,14 @@ def _get_ses_client() -> Any:
 
 
 def normalized_origin(raw_url: str | None) -> str:
-    """A known front-end origin (or a local one) for a header URL; "" for anything else."""
-    if not raw_url:
-        return ""
-    try:
-        parsed = urlparse(raw_url)
-        host = (parsed.hostname or "").lower()
-    except ValueError:  # malformed URL (e.g. a bad IPv6 netloc)
-        return ""
-    if not parsed.scheme or not parsed.netloc:
-        return ""
-    if host in _KNOWN_ORIGINS:
-        return _KNOWN_ORIGINS[host]
-    if host in _LOCAL_HOSTS:
-        return f"{parsed.scheme}://{parsed.netloc}"
-    return ""
-
-
-def is_local_url(url: str) -> bool:
-    """True for an empty URL or one on a local host."""
-    if not url:
-        return True
-    try:
-        host = (urlparse(url).hostname or "").lower()
-    except ValueError:
-        return False
-    return host in _LOCAL_HOSTS
-
-
-def resolve_base_url(backend_base: str, frontend_base: str, profile: str) -> str:
-    """Where /magic-login lives when the request gives no usable origin: the profile's deployed
-    front end (when every configured URL is local), else the first non-local configured URL."""
-    profile_base = ""
-    if is_local_url(backend_base) and is_local_url(frontend_base):
-        profile_base = _PROFILE_BASES.get(profile, "")
-    frontend_non_local = bool(frontend_base) and not is_local_url(frontend_base)
-    backend_non_local = bool(backend_base) and not is_local_url(backend_base)
-    return (
-        profile_base
-        or (frontend_base if frontend_non_local else "")
-        or (backend_base if backend_non_local else "")
-        or frontend_base
-        or backend_base
-    )
+    """A known front-end origin (or, on a local setup only, a rebuilt local one) for a header URL;
+    "" for anything else. See app/utils/safe_origin.py (F024)."""
+    return safe_origin.safe_origin(raw_url)
 
 
 def build_magic_login_link(token: str, request: Request | None = None) -> str:
     """The one-click sign-in link for ``token``, on the front end the invite came from if known."""
-    request_origin = ""
-    if request is not None:
-        request_origin = normalized_origin(request.headers.get("origin"))
-        if not request_origin:
-            request_origin = normalized_origin(request.headers.get("referer"))
+    request_origin = safe_origin.request_origin(request.headers) if request is not None else ""
 
     magic_login_url = (settings.MAGIC_LOGIN_URL or "").strip()
     backend_base = settings.BASE_URL.rstrip("/")

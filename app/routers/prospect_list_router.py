@@ -7,17 +7,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import func, distinct
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from datetime import datetime, timedelta
 
 from app.core.clock import utcnow
-from app.core.concurrency import claim_version, if_match_version, resolve_expected
+from app.core.concurrency import if_match_version
 from app.core.database import get_db
 from app.core.errors import DomainError
 from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.prospect import Prospect, GlobalUnsubscribe
 from app.models.campaign import CampaignProspect, Campaign
 from app.models.user import User
+from app.schemas.contact_schema import ContactUpdate
+from app.services.contact_write_service import update_contact
 
 
 # No router prefix: every route spells out its full path
@@ -384,15 +386,24 @@ class ProspectNoteUpdate(BaseModel):
 
 
 class ProspectUpdateRequest(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: Optional[str] = None
-    company_name: Optional[str] = None
-    designation: Optional[str] = None
-    poc_city: Optional[str] = None
-    poc_state: Optional[str] = None
-    poc_country: Optional[str] = None
+    # Same column limits as the contact (prospects table), so an over-long value is a 422
+    first_name: Optional[str] = Field(None, max_length=100)
+    last_name: Optional[str] = Field(None, max_length=100)
+    email: Optional[EmailStr] = Field(None, max_length=255)
+    company_name: Optional[str] = Field(None, max_length=255)
+    designation: Optional[str] = Field(None, max_length=150)
+    poc_city: Optional[str] = Field(None, max_length=100)
+    poc_state: Optional[str] = Field(None, max_length=100)
+    poc_country: Optional[str] = Field(None, max_length=100)
     expected_version: Optional[int] = Field(None, ge=1)  # the contact's row_version the client loaded (T-3)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _blank_email_unchanged(cls, value):
+        # Edit forms send the whole row; a blank email means "leave it", never "clear it"
+        if isinstance(value, str):
+            value = value.strip().lower()
+        return value or None
 
 
 @router.patch("/prospect-lists/{list_id}/prospects/{prospect_id}/notes", dependencies=[Depends(require_permission("manage_prospects"))])
@@ -437,45 +448,16 @@ async def update_prospect(
     if_match: Optional[int] = Depends(if_match_version),
 ):
     """
-    Update individual prospect fields.
+    Update individual prospect fields: the same rules as PATCH /contacts/{id} (owner/team
+    visibility, unique and unsuppressed email, property history, timezone from state).
 
     Send the contact's row_version as expected_version or If-Match (T-3); stale -> 409.
     """
+    data = updates.model_dump(exclude_unset=True)
+    if data.get("email") is None:
+        data.pop("email", None)
     try:
-        prospect = db.query(Prospect).filter(
-            Prospect.prospect_id == prospect_id,
-            Prospect.tenant_id == current_user.tenant_id,
-        ).first()
-        if not prospect:
-            raise HTTPException(status_code=404, detail="Prospect not found")
-        update_data = updates.dict(exclude_unset=True)
-        claim_version(db, prospect, resolve_expected(update_data.pop("expected_version", None), if_match),
-                      record="contact")
-        for field, value in update_data.items():
-            setattr(prospect, field, value)
-        if "email" in update_data and update_data["email"]:
-            new_email = update_data["email"]
-            # Check for duplicate email
-            existing_email = db.query(Prospect).filter(
-                Prospect.tenant_id == prospect.tenant_id,
-                Prospect.email == new_email,
-                Prospect.prospect_id != prospect_id
-            ).first()
-            if existing_email:
-                raise HTTPException(status_code=400, detail="A prospect with this email already exists.")
-                
-            from app.utils.email_utils import parse_email
-            email_info = parse_email(new_email)
-            if email_info:
-                prospect.email_type = email_info.get("email_type")
-                prospect.email_provider = email_info.get("email_provider")
-            else:
-                prospect.email_type = "PERSONAL"
-                prospect.email_provider = new_email.split("@")[-1] if "@" in new_email else None
-        if "poc_state" in update_data and update_data["poc_state"]:
-            from app.utils.business_calendar import get_timezone_for_state
-            prospect.timezone = get_timezone_for_state(update_data["poc_state"])
-        db.commit()
+        prospect = update_contact(db, current_user, prospect_id, ContactUpdate(**data), if_match=if_match)
         return {"status": "updated", "prospect_id": prospect_id, "row_version": prospect.row_version}
     except Exception as e:
         db.rollback()
@@ -708,10 +690,9 @@ class UploadRevalidateRequest(BaseModel):
     records: list[dict]
 
 class UploadConfirmRequest(BaseModel):
-    upload_id: str
-    # upload_id: Optional[str] = None
-    # validation_id: Optional[str] = None
-    title: str
+    # The id from the validation step; it becomes the list id, so confirming twice is idempotent
+    upload_id: str = Field(..., min_length=1, max_length=36)
+    title: str = Field(..., max_length=255)
     records: list[dict]
 
 
@@ -785,6 +766,10 @@ def upload_confirm(
 ):
     """
     Step 2: Confirm upload and persist prospects.
+
+    Every row is validated again on the server; rows that fail (or that the database refuses)
+    are returned in `not_added` with a reason and the rest are saved. Confirming the same
+    upload_id again returns the stored result (`already_confirmed`).
     """
     if not payload.title.strip():
         raise HTTPException(status_code=400, detail="Upload title is required")

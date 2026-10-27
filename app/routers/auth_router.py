@@ -14,7 +14,7 @@ import logging
 import os
 import secrets
 from datetime import timedelta
-from urllib.parse import quote_plus, urlencode, urlparse
+from urllib.parse import quote_plus, urlencode
 
 from botocore.exceptions import BotoCoreError, ClientError
 
@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 from jose import JWTError
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.clock import utcnow
@@ -57,6 +58,8 @@ from app.models.user import User
 from app.services import session_limits, token_revocation
 from app.services.audit_service import AuditService
 from app.services.ses_client import get_ses_client
+from app.services.user_lookup import find_user_for_login
+from app.utils import safe_origin
 
 logger = logging.getLogger(__name__)
 
@@ -262,60 +265,14 @@ def _build_reset_link(token: str) -> str:
 
 
 def _build_reset_link_for_origin(token: str, request: Request | None) -> str:
-    def _normalized_origin(raw_url: str | None) -> str:
-        if not raw_url:
-            return ""
-        try:
-            parsed = urlparse(raw_url)
-            if not parsed.scheme or not parsed.netloc:
-                return ""
-            host = (parsed.hostname or "").lower()
-            if host == "sales.neutrino-ai.com":
-                return "https://sales.neutrino-ai.com"
-            if host == "outreach360.neutrinoaistudio.com":
-                return "https://outreach360.neutrinoaistudio.com"
-            if host in {"localhost", "127.0.0.1", "0.0.0.0"}:
-                return f"{parsed.scheme}://{parsed.netloc}"
-            return ""
-        except ValueError:  # malformed Origin/Referer
-            return ""
-
-    request_origin = ""
-    if request is not None:
-        request_origin = _normalized_origin(request.headers.get("origin"))
-        if not request_origin:
-            request_origin = _normalized_origin(request.headers.get("referer"))
-
+    """The reset link, on the front end the request came from when that is a known (or, locally, a
+    localhost) origin rebuilt from validated parts (F024), else on the configured front end."""
+    request_origin = safe_origin.request_origin(request.headers) if request is not None else ""
     reset_url = (settings.RESET_PASSWORD_URL or "").strip()
     backend_base = settings.BASE_URL.rstrip("/")
     frontend_base = (settings.FRONTEND_URL or "").split(",")[0].strip().rstrip("/")
     profile = (os.getenv("APP_PROFILE", "") or "").strip().lower()
-
-    def _is_local(url: str) -> bool:
-        if not url:
-            return True
-        try:
-            host = (urlparse(url).hostname or "").lower()
-        except ValueError:
-            return False
-        return host in {"localhost", "127.0.0.1", "0.0.0.0"}
-
-    profile_base = ""
-    if _is_local(backend_base) and _is_local(frontend_base):
-        if profile == "dev":
-            profile_base = "https://sales.neutrino-ai.com"
-        elif profile == "stage":
-            profile_base = "https://outreach360.neutrinoaistudio.com"
-
-    frontend_non_local = bool(frontend_base) and not _is_local(frontend_base)
-    backend_non_local = bool(backend_base) and not _is_local(backend_base)
-    resolved_base = (
-        profile_base
-        or (frontend_base if frontend_non_local else "")
-        or (backend_base if backend_non_local else "")
-        or frontend_base
-        or backend_base
-    )
+    resolved_base = safe_origin.resolve_base_url(backend_base, frontend_base, profile)
     base = request_origin and f"{request_origin}/reset-password" or reset_url or f"{resolved_base}/reset-password"
     separator = "&" if "?" in base else "?"
     return f"{base}{separator}token={quote_plus(token)}"
@@ -357,6 +314,16 @@ def _send_password_reset_email(to_email: str, reset_link: str):
     )
 
 
+def _flush_new_account(db: Session) -> None:
+    """Write a new sign-up account; another live account with the address (one per email across
+    workspaces, F017; a concurrent sign-up) is a 409, not a 500."""
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+
 # ── Endpoints ─────────────────────────────────────────────
 
 @router.post("/register", response_model=TokenResponse, response_model_exclude_none=True,
@@ -394,7 +361,7 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
         email_verified=True,
     )
     db.add(user)
-    db.flush()
+    _flush_new_account(db)
 
     logger.info(f"Registered new SUPER_ADMIN: {user.email} in tenant {tenant.tenant_id}")
     return _complete_sign_in(user, db, request, response)
@@ -404,7 +371,7 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
 def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """Authenticate with email + password and receive JWT tokens."""
     rate_limit.check_login_allowed(request, body.email)
-    user = db.query(User).filter(User.email == body.email).first()
+    user = find_user_for_login(db, body.email)
 
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
         rate_limit.record_login_failure(request, body.email)
@@ -526,7 +493,7 @@ def forgot_password(body: ForgotPasswordRequest, request: Request, db: Session =
         "message": "If an account exists for that email, a password reset link has been sent."
     }
 
-    user = db.query(User).filter(User.email == body.email).first()
+    user = find_user_for_login(db, body.email)
     if not user or user.status != "ACTIVE":
         return generic_response
 
@@ -702,7 +669,7 @@ def google_callback(body: GoogleCallbackRequest, request: Request, response: Res
     # Check if user exists by google_id or email
     user = db.query(User).filter(User.google_id == google_id).first()
     if not user:
-        user = db.query(User).filter(User.email == email).first()
+        user = find_user_for_login(db, email)
 
     if user:
         if user.status not in ("ACTIVE", "INVITED"):
@@ -733,7 +700,7 @@ def google_callback(body: GoogleCallbackRequest, request: Request, response: Res
             role="SUPER_ADMIN",
         )
         db.add(user)
-        db.flush()
+        _flush_new_account(db)
         logger.info(f"Google OAuth: created SUPER_ADMIN {email} in new tenant")
 
     return _complete_sign_in(user, db, request, response)

@@ -3,12 +3,22 @@
 Email Message and Event models for the SMTP sequencing engine.
 """
 
-from sqlalchemy import Column, String, SmallInteger, Integer, Text, ForeignKey, JSON, Index
+from sqlalchemy import Column, Computed, String, SmallInteger, Integer, Text, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
 import uuid
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+
+# One email per campaign step per contact (item 19): non-NULL only for campaign OUTBOUND step mail
+# that is not CANCELLED, so inbound rows, manual replies, automation sends (no step) and cancelled
+# duplicates are never constrained (a UNIQUE index ignores NULLs). Literal copy in
+# alembic/versions/0020_send_integrity_keys.py: keep the two identical.
+STEP_KEY_SQL = (
+    "CASE WHEN COALESCE(direction, 'OUTBOUND') = 'OUTBOUND' AND campaign_id IS NOT NULL "
+    "AND sequence_id IS NOT NULL AND COALESCE(status, '') <> 'CANCELLED' "
+    "THEN CONCAT(campaign_id, ':', prospect_id, ':', sequence_id) END"
+)
 
 
 class EmailMessage(Base):
@@ -54,6 +64,9 @@ class EmailMessage(Base):
     retry_count = Column(Integer, default=0)
     max_retries = Column(Integer, default=3)
     next_retry_at = Column(UtcDateTime, nullable=True)
+    # Re-queues for a platform / sender-identity failure (item 14): not the message's fault, so
+    # they do not spend retry_count; capped by send_breaker.MAX_DEFERRED_ATTEMPTS.
+    deferred_count = Column(Integer, nullable=False, default=0, server_default="0")
     failure_reason = Column(Text, nullable=True)
     last_error_code = Column(String(50), nullable=True)
 
@@ -62,6 +75,8 @@ class EmailMessage(Base):
     # step can never be claimed twice for the same address, even concurrently.
     send_key = Column(String(330), nullable=True, unique=True)
     claimed_at = Column(UtcDateTime, nullable=True)
+    # Generated (VIRTUAL) key behind ux_email_messages_step_key; never written by the application
+    step_key = Column(String(110), Computed(STEP_KEY_SQL, persisted=False))
 
     # Delivery outcome (BR-DF-04). SES's own id, for matching events that arrive
     # without our message_id tag, and the final status every sent email gets
@@ -82,6 +97,9 @@ class EmailMessage(Base):
     __table_args__ = (
         Index("ix_email_messages_status_scheduled", "status", "scheduled_at"),
         Index("ix_email_messages_reconcile", "final_status", "status", "sent_at"),
+        # Per-inbox send history / daily counts (item 19)
+        Index("ix_email_messages_inbox_sent", "inbox_id", "sent_at"),
+        Index("ux_email_messages_step_key", "step_key", unique=True),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

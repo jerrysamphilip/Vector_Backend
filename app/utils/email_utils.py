@@ -1,4 +1,5 @@
-from typing import Optional
+from email.utils import parseaddr
+from typing import Iterable, List, Optional
 import html
 import re
 
@@ -23,6 +24,73 @@ _EMAIL_RE = re.compile(
     r"^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
     r"@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
 )
+
+
+_ANGLE_ADDRESS = re.compile(r"<([^<>\s]+@[^<>\s]+)>")
+_DOMAIN_RE = re.compile(r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,63}$")
+
+
+def extract_sender_address(source: object) -> Optional[str]:
+    """
+    Lower-case bare address of a sender such as SES's ``mail.source``: "a@dom.com",
+    "Name <a@dom.com>" or '"Last, First" <a@dom.com>'. None when there is no valid address.
+    """
+    if not source or not isinstance(source, str):
+        return None
+    _, address = parseaddr(source)
+    if "@" not in address:
+        # parseaddr gives up on an unquoted comma in the display name: take the <...> part
+        match = _ANGLE_ADDRESS.search(source)
+        address = match.group(1) if match else ""
+    address = address.strip().lower()
+    local, _, domain = address.rpartition("@")
+    domain = domain.strip(".")
+    if not local or not _DOMAIN_RE.match(domain):
+        return None
+    return f"{local}@{domain}"
+
+
+def extract_sender_domain(source: object) -> Optional[str]:
+    """
+    Lower-case domain of a sender (see extract_sender_address), None when there is no valid address.
+    Splitting on "@" alone keeps the trailing ">" of the angle form ("dom.com>").
+    """
+    address = extract_sender_address(source)
+    return address.rsplit("@", 1)[1] if address else None
+
+
+# SES rewrites the Message-ID of every mail it sends to <ses-message-id@email.amazonses.com>
+# (region variants: @eu-west-1.amazonses.com, ...), so a reply's In-Reply-To / References name that.
+_SES_MESSAGE_ID_RE = re.compile(r"^<?\s*([^<>@\s]+)@(?:[a-z0-9-]+\.)*amazonses\.com\s*>?$", re.IGNORECASE)
+
+
+def ses_id_from_message_id(header_value: Optional[str]) -> Optional[str]:
+    """The bare SES message id inside an SES Message-ID (``<id@email.amazonses.com>``), else None."""
+    match = _SES_MESSAGE_ID_RE.match((header_value or "").strip())
+    return match.group(1) if match else None
+
+
+def thread_message_ids(in_reply_to: Optional[str], references: Optional[str]) -> List[str]:
+    """In-Reply-To first, then the References chain newest first; unique, in that order."""
+    out: List[str] = []
+    candidates: Iterable[str] = [in_reply_to or ""] + list(reversed((references or "").split()))
+    for value in candidates:
+        value = value.strip()
+        if value and value not in out:
+            out.append(value)
+    return out
+
+
+# Reply / forward prefixes of the common mail clients and languages, repeated ("Re: Fwd: AW: ...")
+_SUBJECT_PREFIX_RE = re.compile(
+    r"^\s*(?:(?:re|fw|fwd|aw|wg|sv|vs|rv|tr|antw|odp|r|ref|res|enc)\s*(?:\[\d+\]|\(\d+\))?\s*[:：]\s*)+",
+    re.IGNORECASE)
+
+
+def normalize_subject(subject: Optional[str]) -> str:
+    """Subject without reply/forward prefixes, whitespace collapsed, lower-case ("" when empty)."""
+    text = _SUBJECT_PREFIX_RE.sub("", subject or "")
+    return re.sub(r"\s+", " ", text).strip().lower()
 
 
 def parse_email(raw_email) -> Optional[dict]:

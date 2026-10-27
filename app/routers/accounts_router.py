@@ -31,6 +31,7 @@ from app.services.contact_query_service import user_name as _user_name
 from app.services import contact_companies, crm
 from app.services.contact_service import can_manage_contacts, can_see_owner, clean_str, scope, sees_everything, visible_user_ids
 from app.services.sales_settings import can_see_amounts, masked_for
+from app.utils.company_domain import is_valid_domain
 from app.utils.sql_like import ilike
 
 router = APIRouter(prefix="/accounts", tags=["Companies"])
@@ -111,6 +112,28 @@ def _account_dict(a: Account, owner: Optional[User] = None, contact_count: int =
     }
 
 
+def _checked_domain(db: Session, user: User, account: Account, raw: Optional[str]) -> Optional[str]:
+    """A company domain as stored: valid syntax, not a free-mail provider, unique in the workspace."""
+    domain = crm.clean_domain(raw)
+    if not domain:
+        return None
+    if not is_valid_domain(domain):
+        raise HTTPException(status_code=400, detail=f"'{raw}' is not a valid domain (for example acme.com).")
+    if crm.is_personal_domain(domain):
+        raise HTTPException(status_code=400, detail=f"{domain} is a personal email provider, not a company domain.")
+    if db.query(Account.account_id).filter(
+            Account.tenant_id == user.tenant_id, Account.domain == domain,
+            Account.account_id != account.account_id).first():
+        raise HTTPException(status_code=409, detail=f"Another company already has the domain {domain}.")
+    return domain
+
+
+def _website_domain(website: Optional[str]) -> Optional[str]:
+    """The company domain a website implies; None when it is not a usable company domain."""
+    domain = crm.clean_domain(website)
+    return domain if domain and is_valid_domain(domain) and not crm.is_personal_domain(domain) else None
+
+
 def _apply(db: Session, user: User, account: Account, data: dict):
     if "owner_id" in data and data["owner_id"]:
         if not db.query(User.user_id).filter(User.user_id == data["owner_id"],
@@ -122,12 +145,7 @@ def _apply(db: Session, user: User, account: Account, data: dict):
         if data.pop("annual_revenue") not in (None, ""):  # a blank from a masked form leaves it as is
             raise HTTPException(status_code=403, detail="Your role cannot see or change amounts")
     if "domain" in data:
-        domain = crm.clean_domain(data["domain"])
-        if domain and db.query(Account.account_id).filter(
-                Account.tenant_id == user.tenant_id, Account.domain == domain,
-                Account.account_id != account.account_id).first():
-            raise HTTPException(status_code=409, detail=f"Another company already has the domain {domain}.")
-        data["domain"] = domain
+        data["domain"] = _checked_domain(db, user, account, data["domain"])
     if "annual_revenue" in data and data["annual_revenue"] not in (None, ""):
         try:
             data["annual_revenue"] = Decimal(str(data["annual_revenue"]).replace(",", "").strip())
@@ -207,7 +225,9 @@ def list_accounts(
 def create_account(payload: AccountWrite, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
     data = payload.model_dump(exclude_unset=True)
     name = clean_str(data.get("name"))
-    domain = crm.clean_domain(data.get("domain") or data.get("website"))
+    # An explicit domain is checked in _apply (400 when invalid or free mail); one taken from the
+    # website is used only when it is a usable company domain
+    domain = crm.clean_domain(data["domain"]) if data.get("domain") else _website_domain(data.get("website"))
     if not name and domain:
         name = crm._name_from_domain(domain)
     if not name:

@@ -354,6 +354,34 @@ def generate_email_for_prospect(
 # LAYER 3: LLM-Powered Email Generation (OpenAI GPT-4o-mini)
 # ============================================================
 
+def _step(step_number: Optional[int]) -> int:
+    return step_number if isinstance(step_number, int) and step_number >= 1 else 1
+
+
+def step_email_type(step_number: Optional[int]) -> str:
+    """Few-shot example type of a sequence step: "intro" for step 1, "followup_<n-1>" after it."""
+    step = _step(step_number)
+    return "intro" if step == 1 else f"followup_{step - 1}"
+
+
+def step_tone_block(step_number: Optional[int], previous_subjects: Optional[List[str]] = None) -> str:
+    """
+    The tone rules of this step (21): a regenerated follow-up gets the follow-up tone, not the
+    first email's, plus the earlier steps' subjects so it neither repeats nor re-introduces.
+    """
+    step = _step(step_number)
+    block = get_step_tone_block(step)
+    subjects = [s.strip() for s in (previous_subjects or []) if isinstance(s, str) and s.strip()]
+    if step == 1:
+        return block
+    lines = [block, "", f"This is follow-up email {step} of the sequence, not a first touch: "
+                        "do not re-introduce the company from scratch."]
+    if subjects:
+        lines.append("Earlier subjects in this sequence (do NOT reuse their wording): "
+                     + "; ".join(f'"{s[:150]}"' for s in subjects[:10]))
+    return "\n".join(lines)
+
+
 def generate_email_with_llm(
     prospect_data: Dict,
     blueprint: PersonaBlueprint,
@@ -363,6 +391,8 @@ def generate_email_with_llm(
     creative_email: bool = False,
     custom_instruction: str = "",
     email_context: str = "COLD_OUTREACH",
+    step_number: int = 1,
+    previous_subjects: Optional[List[str]] = None,
 ) -> Optional[Dict[str, str]]:
     """
     Generate a personalized email using OpenAI GPT-4o-mini.
@@ -373,6 +403,8 @@ def generate_email_with_llm(
         blueprint: PersonaBlueprint with tone_rules and example content
         product_name: Name of the product being sold
         product_description: Brief description of the product
+        step_number: 1-based sequence step; 2+ uses that follow-up's tone (regenerating a follow-up)
+        previous_subjects: subjects of the earlier steps, so a follow-up does not repeat them
     
     Returns:
         Dict with subject, body, etc. or None if LLM unavailable
@@ -722,14 +754,14 @@ RULE: Describe the MECHANISM and RESULT in your own words. Never mention the pro
 RULE: Describe the MECHANISM and RESULT in your own words. Never mention the product name."""
 
     capability_pool_block = get_capability_pool_block()
-    intro_tone_block = get_step_tone_block(1)  # Single email always uses intro tone
+    intro_tone_block = step_tone_block(step_number, previous_subjects)
     # Few-shot examples for the non-healthcare prompts below (previously referenced but never
     # defined, so those paths raised NameError)
     try:
         few_shot_block = get_few_shot_examples_block(
             persona_type=getattr(blueprint, "persona_type", None) or "",
             industry=prospect_data.get("industry", ""),
-            email_type="intro",
+            email_type=step_email_type(step_number),
             limit=2,
         )
     except Exception as exc:  # few-shot examples are optional prompt garnish

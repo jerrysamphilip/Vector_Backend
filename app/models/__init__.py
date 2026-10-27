@@ -38,6 +38,7 @@ from app.models.conversation import Conversation
 from app.models.compliance_check import ComplianceCheck
 from app.models.company_profile import CompanyProfile
 from app.models.automation_rule import AutomationRule
+from app.models.automation_rule_run import AutomationRuleRun  # noqa: F401  (once per rule and contact)
 from app.models.campaign_draft import CampaignDraft
 from app.models.invitation import Invitation
 from app.models.refresh_token import RefreshToken
