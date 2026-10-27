@@ -1,29 +1,42 @@
 # app/services/contact_service.py
 """
-Shared contact-management logic: access rules, account linking, cascade delete
-and duplicate merging. Used by contacts_router, accounts_router and the upload flow.
+Shared contact-management rules: who may see and manage which contacts (BR-SH-02), value
+normalisation, account linking, cascade delete (erasure) and duplicate merging. Used by the contact
+services, accounts, lists, sales and the upload flow.
+
+SQL lives in app/repositories/contacts.py; the helpers that take ``db`` keep their signatures for the
+modules that still pass a session (they build the repository on it). The caller commits.
 """
 
 import json
-import re
-import uuid
-from collections import defaultdict
-from typing import Iterable, Optional, Set
-
-from sqlalchemy import ColumnElement, or_, text
-from sqlalchemy.orm import Query, Session, object_session
+from typing import Any, Dict, Iterable, List, Optional, Set
 
 from app.core.auth import _DEFAULT_PERMS
+from app.core.errors import PermissionDenied
+from app.domain.contacts import VisibilityScope, phone_digits, team_ids
 from app.models.account import Account
-from app.models.campaign import CampaignProspect
 from app.models.contact_activity import ContactActivity
-from app.models.crm import CrmTask, PropertyChange
-from app.models.conversation import Conversation
-from app.models.email_message import EmailEvent, EmailMessage
 from app.models.prospect import Prospect
-from app.models.prospect_list import ProspectListMember
-from app.models.prospect_persona import ProspectPersona
 from app.models.user import User
+from app.repositories.contacts import (
+    ContactRepository,
+    Session,
+    SqlAlchemyContactRepository,
+    apply_scope,
+    owner_condition,
+    session_of,
+)
+from app.services.contact_companies import move_links
+
+__all__ = [
+    "MERGE_CHOOSABLE", "NO_MANAGE_PERMISSION", "SALES_LEVELS", "backfill_accounts", "can_access_contact",
+    "can_see_account",
+    "can_manage_contacts", "can_see_owner", "clean_str", "delete_contacts", "get_or_create_account",
+    "merge_contacts", "normalize_tags", "owner_clause", "phone_digits", "require_manager", "scope",
+    "sees_everything", "team_user_ids", "visibility_scope", "visible_user_ids",
+]
+
+NO_MANAGE_PERMISSION = "Your account does not have the 'manage_prospects' permission."
 
 
 # ── Access ─────────────────────────────────────────────────────────
@@ -40,6 +53,11 @@ def can_manage_contacts(user: User) -> bool:
         else _DEFAULT_PERMS.get(user.role, frozenset())
     )
     return "manage_prospects" in perms
+
+
+def require_manager(user: User) -> None:
+    if not can_manage_contacts(user):
+        raise PermissionDenied(NO_MANAGE_PERMISSION)
 
 
 # ── Sales hierarchy visibility (BR-SH-02) ──────────────────────────
@@ -63,17 +81,7 @@ def sees_everything(user: User) -> bool:
 
 def team_user_ids(db: Session, user: User) -> Set[str]:
     """The user and everyone below them in the hierarchy (direct and indirect reports)."""
-    children = defaultdict(list)
-    for uid, manager_id in db.query(User.user_id, User.manager_id).filter(User.tenant_id == user.tenant_id):
-        if manager_id:
-            children[manager_id].append(uid)
-    seen, stack = {user.user_id}, [user.user_id]
-    while stack:
-        for child in children.get(stack.pop(), ()):
-            if child not in seen:
-                seen.add(child)
-                stack.append(child)
-    return seen
+    return team_ids(SqlAlchemyContactRepository(db).manager_pairs(user.tenant_id), user.user_id)
 
 
 def visible_user_ids(db: Session, user: User) -> Optional[Set[str]]:
@@ -87,36 +95,37 @@ def visible_user_ids(db: Session, user: User) -> Optional[Set[str]]:
     return cached
 
 
-def owner_clause(db: Session, user: User, column) -> Optional[ColumnElement[bool]]:
-    """SQL condition limiting `column` (an owner id) to what the user may see; None = no limit."""
+def visibility_scope(db: Session, user: User) -> VisibilityScope:
+    """The user's ``VisibilityScope``: whose records they see, and whether unassigned ones too."""
     ids = visible_user_ids(db, user)
     if ids is None:
-        return None
-    clause = column.in_(ids)
-    if can_manage_contacts(user):
-        clause = or_(clause, column.is_(None))  # unassigned records can be picked up
-    return clause
+        return VisibilityScope()
+    return VisibilityScope(frozenset(ids), include_unassigned=can_manage_contacts(user))
 
 
-def scope(query, db: Session, user: User, column) -> Query:
-    clause = owner_clause(db, user, column)
-    return query if clause is None else query.filter(clause)
+def owner_clause(db: Session, user: User, column: Any) -> Any:
+    """SQL condition limiting `column` (an owner id) to what the user may see; None = no limit."""
+    return owner_condition(column, visibility_scope(db, user))
+
+
+def scope(query: Any, db: Session, user: User, column: Any) -> Any:
+    """``query`` narrowed to the owners the user may see (BR-SH-02)."""
+    return apply_scope(query, column, visibility_scope(db, user))
 
 
 def can_see_owner(db: Session, user: User, owner_id: Optional[str]) -> bool:
-    ids = visible_user_ids(db, user)
-    if ids is None:
-        return True
-    return owner_id in ids or (owner_id is None and can_manage_contacts(user))
+    return visibility_scope(db, user).allows(owner_id)
 
 
 def can_access_contact(user: User, prospect: Prospect) -> bool:
-    return can_see_owner(object_session(prospect), user, prospect.owner_id)  # type: ignore[arg-type]  # a loaded contact always has a session
+    if sees_everything(user):
+        return True  # no session needed: everyone's records are visible
+    return can_see_owner(session_of(prospect), user, prospect.owner_id)
 
 
 # ── Normalisation ──────────────────────────────────────────────────
 
-def clean_str(value) -> Optional[str]:
+def clean_str(value: Any) -> Optional[str]:
     if value is None:
         return None
     value = str(value).strip()
@@ -137,50 +146,27 @@ def normalize_tags(tags: Optional[Iterable[str]]) -> list:
     return result
 
 
-def phone_digits(phone: Optional[str]) -> str:
-    return re.sub(r"\D", "", phone or "")
-
-
 # ── Accounts ───────────────────────────────────────────────────────
 
-def get_or_create_account(db: Session, tenant_id: str, name: Optional[str], **defaults) -> Optional[Account]:
+def get_or_create_account(db: Session, tenant_id: str, name: Optional[str], **defaults: Any) -> Optional[Account]:
     """Find the tenant's account by (case-insensitive) name, creating it if needed."""
     name = clean_str(name)
     if not name:
         return None
     name = name[:255]
-    account = db.query(Account).filter(Account.tenant_id == tenant_id, Account.name == name).first()
+    repo = SqlAlchemyContactRepository(db)
+    account = repo.account_by_name(tenant_id, name)
     if account:
         return account
-    account = Account(
-        account_id=str(uuid.uuid4()),
-        tenant_id=tenant_id,
-        name=name,
-        **{k: v for k, v in defaults.items() if v},
-    )
-    db.add(account)
-    db.flush()
+    account = Account(tenant_id=tenant_id, name=name, **{k: v for k, v in defaults.items() if v})
+    repo.add(tenant_id, account)
+    repo.flush()
     return account
 
 
 def backfill_accounts(db: Session, tenant_id: str) -> int:
     """Create accounts from company names and link contacts that have no account. Returns contacts linked."""
-    db.execute(text("""
-        INSERT IGNORE INTO accounts (account_id, tenant_id, name, industry, emp_band, created_at, updated_at)
-        SELECT UUID(), p.tenant_id, LEFT(TRIM(p.company_name), 255), MAX(p.industry), MAX(p.emp_band), NOW(), NOW()
-        FROM prospects p
-        WHERE p.tenant_id = :tenant_id AND p.account_id IS NULL
-          AND p.company_name IS NOT NULL AND TRIM(p.company_name) <> ''
-        GROUP BY p.tenant_id, LEFT(TRIM(p.company_name), 255)
-    """), {"tenant_id": tenant_id})
-    result = db.execute(text("""
-        UPDATE prospects p
-        JOIN accounts a ON a.tenant_id = p.tenant_id AND a.name = LEFT(TRIM(p.company_name), 255)
-        SET p.account_id = a.account_id
-        WHERE p.tenant_id = :tenant_id AND p.account_id IS NULL
-          AND p.company_name IS NOT NULL AND TRIM(p.company_name) <> ''
-    """), {"tenant_id": tenant_id})
-    return result.rowcount or 0  # type: ignore[attr-defined]  # UPDATE returns a CursorResult
+    return SqlAlchemyContactRepository(db).backfill_accounts(tenant_id)
 
 
 # ── Delete ─────────────────────────────────────────────────────────
@@ -195,35 +181,13 @@ def delete_contacts(db: Session, prospect_ids: list, actor_id: Optional[str] = N
     """
     if not prospect_ids:
         return
-    from app.models.audit import AuditLog
-    for pid, tenant_id in db.query(Prospect.prospect_id, Prospect.tenant_id).filter(
-            Prospect.prospect_id.in_(prospect_ids)).all():
-        db.add(AuditLog(tenant_id=tenant_id, user_id=actor_id, action=reason, entity_type="contact", entity_id=pid))
-    from app.models.sales import Lead, Opportunity
     from app.services.sales import delete_leads
-    _scrub_personal_copies(db, prospect_ids)
-    message_ids = [m[0] for m in db.query(EmailMessage.message_id).filter(
-        EmailMessage.prospect_id.in_(prospect_ids)
-    ).all()]
-    if message_ids:
-        db.query(EmailEvent).filter(EmailEvent.message_id.in_(message_ids)).delete(synchronize_session=False)
-    conversation_ids = [c[0] for c in db.query(Conversation.id).filter(
-        Conversation.prospect_id.in_(prospect_ids))]
-    if conversation_ids:  # any message threaded into these conversations must let go first (FK)
-        db.query(EmailMessage).filter(EmailMessage.conversation_id.in_(conversation_ids)).update(
-            {EmailMessage.conversation_id: None}, synchronize_session=False)
-    delete_leads(db, [l[0] for l in db.query(Lead.lead_id).filter(Lead.prospect_id.in_(prospect_ids))])
-    db.query(Opportunity).filter(Opportunity.prospect_id.in_(prospect_ids)).update(
-        {Opportunity.prospect_id: None}, synchronize_session=False)
-    for model in (EmailMessage, Conversation, ProspectPersona, CampaignProspect,
-                  ProspectListMember, ContactActivity, CrmTask):
-        db.query(model).filter(model.prospect_id.in_(prospect_ids)).delete(synchronize_session=False)
-    # Contacts merged into these ones keep no pointer to an erased record
-    db.query(Prospect).filter(Prospect.merged_into_id.in_(prospect_ids)).update(
-        {Prospect.merged_into_id: None}, synchronize_session=False)
-    db.query(PropertyChange).filter(PropertyChange.object_type == "CONTACT",
-                                    PropertyChange.object_id.in_(prospect_ids)).delete(synchronize_session=False)
-    db.query(Prospect).filter(Prospect.prospect_id.in_(prospect_ids)).delete(synchronize_session=False)
+    repo = SqlAlchemyContactRepository(db)
+    repo.add_erasure_audit(prospect_ids, actor_id, reason)
+    _scrub_personal_copies(repo, prospect_ids)
+    repo.detach_messages(prospect_ids)
+    delete_leads(db, repo.lead_ids(prospect_ids))
+    repo.erase_rows(prospect_ids)
 
 
 def _import_error_mentions(entry: dict, emails: Set[str]) -> bool:
@@ -255,7 +219,16 @@ def _redacted_webhook_payload(payload: str, event_id: str, event_type: str) -> s
     return json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
 
 
-def _scrub_personal_copies(db: Session, prospect_ids: list) -> None:
+def _scrub_import_errors(repo: ContactRepository, tenant_id: str, emails: Set[str]) -> None:
+    for job in repo.import_jobs_with_errors(tenant_id):
+        errors = job.errors if isinstance(job.errors, list) else []
+        kept = [e for e in errors if not _import_error_mentions(e, emails)]
+        if len(kept) != len(errors):
+            job.errors = kept
+            job.error_count = max(0, (job.error_count or 0) - (len(errors) - len(kept)))
+
+
+def _scrub_personal_copies(repo: ContactRepository, prospect_ids: list) -> None:
     """
     Erasure (D-12): personal data of these contacts copied into rows that do not reference
     them by foreign key. Caller commits.
@@ -267,40 +240,19 @@ def _scrub_personal_copies(db: Session, prospect_ids: list) -> None:
     The suppression list (global_unsubscribes) keeps the address on purpose: it is what stops
     the contact from being emailed again after erasure.
     """
-    from app.models.crm import ImportJob
-    from app.models.sales import Lead
-    from app.models.sales_extra import Notification
-    from app.models.webhook import WebhookDelivery
-
-    people: dict = defaultdict(list)
-    for pid, tenant_id, email in db.query(Prospect.prospect_id, Prospect.tenant_id, Prospect.email).filter(
-            Prospect.prospect_id.in_(prospect_ids)).all():
-        people[tenant_id].append((pid, (email or "").strip().lower()))
+    people: Dict[str, list] = {}
+    for pid, tenant_id, email in repo.identities(prospect_ids):
+        people.setdefault(tenant_id, []).append((pid, (email or "").strip().lower()))
     for tenant_id, rows in people.items():
         ids = [pid for pid, _ in rows]
         emails = {e for _, e in rows if e}
-        lead_ids = [lid for (lid,) in db.query(Lead.lead_id).filter(Lead.prospect_id.in_(ids)).all()]
-
+        lead_ids = repo.lead_ids(ids)
         if emails:
-            for job in db.query(ImportJob).filter(ImportJob.tenant_id == tenant_id, ImportJob.errors.isnot(None)):
-                errors = job.errors if isinstance(job.errors, list) else []
-                kept = [e for e in errors if not _import_error_mentions(e, emails)]
-                if len(kept) != len(errors):
-                    job.errors = kept
-                    job.error_count = max(0, (job.error_count or 0) - (len(errors) - len(kept)))
-
-        needles = ids + sorted(emails)
-        for delivery in db.query(WebhookDelivery).filter(
-                WebhookDelivery.tenant_id == tenant_id,
-                or_(*[WebhookDelivery.payload.contains(n, autoescape=True) for n in needles])):
+            _scrub_import_errors(repo, tenant_id, emails)
+        for delivery in repo.deliveries_naming(tenant_id, ids + sorted(emails)):
             delivery.payload = _redacted_webhook_payload(delivery.payload, delivery.event_id, delivery.event_type)
-
         links = [f"/app/contacts/{pid}" for pid in ids] + [f"/app/leads/{lid}" for lid in lead_ids]
-        named = [Notification.link.in_(links)]
-        for e in emails:
-            named += [Notification.title.contains(e, autoescape=True), Notification.body.contains(e, autoescape=True)]
-        db.query(Notification).filter(Notification.tenant_id == tenant_id, or_(*named)).delete(
-            synchronize_session=False)
+        repo.delete_notifications(tenant_id, links, emails)
 
 
 # ── Merge ──────────────────────────────────────────────────────────
@@ -316,6 +268,64 @@ _FILL_FIELDS = (
 MERGE_CHOOSABLE = _FILL_FIELDS + ("email",)
 
 
+class _MergeState:
+    """What the primary already has while duplicates are folded into it."""
+
+    def __init__(self, repo: ContactRepository, primary: Prospect) -> None:
+        self.repo, self.primary = repo, primary
+        self.lists = {m.list_id: m for m in repo.memberships(primary.prospect_id)}
+        self.campaigns = {e.campaign_id for e in repo.enrollment_rows(primary.prospect_id)}
+        self.has_persona = repo.persona(primary.prospect_id) is not None
+        self.tags = list(primary.tags or [])
+        self.custom = dict(primary.custom_fields or {})
+        self.labels: List[str] = []
+        self.moved = {"lists": 0, "campaigns": 0, "emails": 0, "activities": 0}
+
+    def take_lists(self, dup: Prospect) -> None:
+        for membership in self.repo.memberships(dup.prospect_id):
+            existing = self.lists.get(membership.list_id)
+            if existing:
+                if membership.notes:
+                    existing.notes = "\n\n".join(n for n in (existing.notes, membership.notes) if n)
+                self.repo.remove(membership)
+            else:
+                membership.prospect_id = self.primary.prospect_id
+                self.lists[membership.list_id] = membership
+                self.moved["lists"] += 1
+
+    def take_campaigns(self, dup: Prospect) -> None:
+        for enrollment in self.repo.enrollment_rows(dup.prospect_id):
+            if enrollment.campaign_id in self.campaigns:
+                self.repo.remove(enrollment)
+            else:
+                enrollment.prospect_id = self.primary.prospect_id
+                self.campaigns.add(enrollment.campaign_id)
+                self.moved["campaigns"] += 1
+
+    def take_persona(self, dup: Prospect) -> None:
+        persona = self.repo.persona(dup.prospect_id)
+        if persona:
+            if self.has_persona:
+                self.repo.remove(persona)
+            else:
+                persona.prospect_id = self.primary.prospect_id
+                self.has_persona = True
+
+    def take_values(self, dup: Prospect) -> None:
+        primary = self.primary
+        for field in _FILL_FIELDS:
+            if not getattr(primary, field) and getattr(dup, field):
+                setattr(primary, field, getattr(dup, field))
+        self.tags.extend(dup.tags or [])
+        for key, value in (dup.custom_fields or {}).items():
+            if self.custom.get(key) in (None, "") and value not in (None, ""):
+                self.custom[key] = value
+        # Never lose an opt-out
+        if dup.consent_status == "UNSUBSCRIBED":
+            primary.consent_status = "UNSUBSCRIBED"
+        self.labels.append(f"{dup.full_name} <{dup.email}>")
+
+
 def merge_contacts(db: Session, primary: Prospect, duplicates: list, merged_by: Optional[str],
                    choices: Optional[dict] = None) -> dict:
     """
@@ -324,102 +334,54 @@ def merge_contacts(db: Session, primary: Prospect, duplicates: list, merged_by: 
     ({field: prospect_id}) and otherwise fill the primary's blanks; union tags; then delete
     the duplicates. Caller commits.
     """
+    return merge_into(SqlAlchemyContactRepository(db), primary, duplicates, merged_by, choices)
+
+
+def merge_into(repo: ContactRepository, primary: Prospect, duplicates: list, merged_by: Optional[str],
+               choices: Optional[dict] = None) -> dict:
+    """``merge_contacts`` on a repository (the service's unit of work commits)."""
     choices = {f: pid for f, pid in (choices or {}).items() if f in MERGE_CHOOSABLE}
     by_id = {d.prospect_id: d for d in duplicates}
     chosen_values = {f: getattr(by_id[pid], f) for f, pid in choices.items() if pid in by_id}
-    moved = {"lists": 0, "campaigns": 0, "emails": 0, "activities": 0}
-    primary_lists = {m.list_id: m for m in db.query(ProspectListMember).filter(
-        ProspectListMember.prospect_id == primary.prospect_id)}
-    primary_campaigns = {c.campaign_id for c in db.query(CampaignProspect.campaign_id).filter(
-        CampaignProspect.prospect_id == primary.prospect_id)}
-    primary_has_persona = db.query(ProspectPersona).filter(
-        ProspectPersona.prospect_id == primary.prospect_id).first() is not None
-
-    tags = list(primary.tags or [])
-    custom = dict(primary.custom_fields or {})
-    merged_labels = []
+    state = _MergeState(repo, primary)
 
     for dup in duplicates:
-        for membership in db.query(ProspectListMember).filter(ProspectListMember.prospect_id == dup.prospect_id).all():
-            existing = primary_lists.get(membership.list_id)
-            if existing:
-                if membership.notes:
-                    existing.notes = "\n\n".join(n for n in (existing.notes, membership.notes) if n)
-                db.delete(membership)
-            else:
-                membership.prospect_id = primary.prospect_id
-                primary_lists[membership.list_id] = membership
-                moved["lists"] += 1
+        state.take_lists(dup)
+        state.take_campaigns(dup)
+        emails, activities = repo.reassign_children(dup.prospect_id, primary.prospect_id)
+        state.moved["emails"] += emails
+        state.moved["activities"] += activities
+        move_links(repo, dup, primary)
+        repo.repoint_merged(dup.prospect_id, primary.prospect_id)
+        state.take_persona(dup)
+        state.take_values(dup)
 
-        for enrollment in db.query(CampaignProspect).filter(CampaignProspect.prospect_id == dup.prospect_id).all():
-            if enrollment.campaign_id in primary_campaigns:
-                db.delete(enrollment)
-            else:
-                enrollment.prospect_id = primary.prospect_id
-                primary_campaigns.add(enrollment.campaign_id)
-                moved["campaigns"] += 1
-
-        moved["emails"] += db.query(EmailMessage).filter(EmailMessage.prospect_id == dup.prospect_id).update(
-            {EmailMessage.prospect_id: primary.prospect_id}, synchronize_session=False)
-        db.query(Conversation).filter(Conversation.prospect_id == dup.prospect_id).update(
-            {Conversation.prospect_id: primary.prospect_id}, synchronize_session=False)
-        moved["activities"] += db.query(ContactActivity).filter(ContactActivity.prospect_id == dup.prospect_id).update(
-            {ContactActivity.prospect_id: primary.prospect_id}, synchronize_session=False)
-        db.query(CrmTask).filter(CrmTask.prospect_id == dup.prospect_id).update(
-            {CrmTask.prospect_id: primary.prospect_id}, synchronize_session=False)
-        # Sales records follow the person (FKs would otherwise block deleting the duplicate)
-        from app.models.sales import Lead, Opportunity
-        for model in (Lead, Opportunity):
-            db.query(model).filter(model.prospect_id == dup.prospect_id).update(
-                {model.prospect_id: primary.prospect_id}, synchronize_session=False)
-        from app.services.contact_companies import move_links
-        move_links(db, dup, primary)
-        db.query(Prospect).filter(Prospect.merged_into_id == dup.prospect_id).update(
-            {Prospect.merged_into_id: primary.prospect_id}, synchronize_session=False)
-        db.query(PropertyChange).filter(PropertyChange.object_type == "CONTACT",
-                                        PropertyChange.object_id == dup.prospect_id).update(
-            {PropertyChange.object_id: primary.prospect_id}, synchronize_session=False)
-
-        persona = db.query(ProspectPersona).filter(ProspectPersona.prospect_id == dup.prospect_id).first()
-        if persona:
-            if primary_has_persona:
-                db.delete(persona)
-            else:
-                persona.prospect_id = primary.prospect_id
-                primary_has_persona = True
-
-        for field in _FILL_FIELDS:
-            if not getattr(primary, field) and getattr(dup, field):
-                setattr(primary, field, getattr(dup, field))
-        tags.extend(dup.tags or [])
-        for key, value in (dup.custom_fields or {}).items():
-            if custom.get(key) in (None, "") and value not in (None, ""):
-                custom[key] = value
-        # Never lose an opt-out
-        if dup.consent_status == "UNSUBSCRIBED":
-            primary.consent_status = "UNSUBSCRIBED"
-        merged_labels.append(f"{dup.full_name} <{dup.email}>")
-
-    primary.tags = normalize_tags(tags) or None
-    primary.custom_fields = custom or None
-
+    primary.tags = normalize_tags(state.tags) or None
+    primary.custom_fields = state.custom or None
     for field, value in chosen_values.items():
         if field != "email":
             setattr(primary, field, value)
 
-    db.flush()
-    db.query(Prospect).filter(Prospect.prospect_id.in_([d.prospect_id for d in duplicates])).delete(
-        synchronize_session=False)
+    repo.flush()
+    repo.delete_rows([d.prospect_id for d in duplicates])
     if "email" in chosen_values and chosen_values["email"]:
-        db.flush()  # the duplicate holding this address is gone, so the unique key is free
+        repo.flush()  # the duplicate holding this address is gone, so the unique key is free
         primary.email = chosen_values["email"]
 
-    db.add(ContactActivity(
+    repo.stage(ContactActivity(
         tenant_id=primary.tenant_id,
         prospect_id=primary.prospect_id,
         activity_type="NOTE",
         subject="Merged duplicate contacts",
-        body="Merged into this contact: " + "; ".join(merged_labels),
+        body="Merged into this contact: " + "; ".join(state.labels),
         created_by=merged_by,
     ))
-    return moved
+    return state.moved
+
+
+def can_see_account(db: Session, user: User, account: Account) -> bool:
+    """Companies owned by the user's team, or holding at least one contact they can see (BR-SH-02)."""
+    if sees_everything(user) or (account.owner_id and can_see_owner(db, user, account.owner_id)):
+        return True
+    return SqlAlchemyContactRepository(db).has_visible_contact_at(
+        account.account_id, visible_user_ids(db, user) or {"-"})

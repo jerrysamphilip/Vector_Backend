@@ -1,0 +1,549 @@
+CREATE TABLE prospects (
+	prospect_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	first_name VARCHAR(100), 
+	last_name VARCHAR(100), 
+	email VARCHAR(255) NOT NULL, 
+	email_type VARCHAR(50), 
+	email_provider VARCHAR(100), 
+	phone VARCHAR(50), 
+	mobile_phone VARCHAR(50), 
+	owner_id VARCHAR(36), 
+	account_id VARCHAR(36), 
+	lifecycle_stage VARCHAR(30), 
+	lead_status VARCHAR(30), 
+	lead_source VARCHAR(100), 
+	legal_basis VARCHAR(40), 
+	deleted_at DATETIME(6), 
+	deleted_by VARCHAR(36), 
+	merged_into_id VARCHAR(36), 
+	search_text VARCHAR(1100) GENERATED ALWAYS AS (LOWER(CONCAT_WS(' ', first_name, last_name, email, company_name, designation, REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', ''), REGEXP_REPLACE(COALESCE(mobile_phone, ''), '[^0-9]', '')))) STORED, 
+	tags JSON, 
+	custom_fields JSON, 
+	company_name VARCHAR(255), 
+	designation VARCHAR(150), 
+	industry VARCHAR(100), 
+	emp_band VARCHAR(50), 
+	linkedin_url VARCHAR(500), 
+	linkedin_data JSON, 
+	poc_city VARCHAR(100), 
+	poc_state VARCHAR(100), 
+	poc_country VARCHAR(100), 
+	timezone VARCHAR(50), 
+	consent_status VARCHAR(50), 
+	consent_source VARCHAR(100), 
+	consent_timestamp DATETIME(6), 
+	score SMALLINT, 
+	fit_score SMALLINT, 
+	engagement_score SMALLINT, 
+	score_grade VARCHAR(1), 
+	scored_at DATETIME(6), 
+	is_valid_email BOOL, 
+	is_anonymized BOOL, 
+	anonymized_at DATETIME(6), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	row_version INTEGER NOT NULL DEFAULT '1', 
+	PRIMARY KEY (prospect_id), 
+	CONSTRAINT uq_tenant_email UNIQUE (tenant_id, email), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(owner_id) REFERENCES users (user_id), 
+	FOREIGN KEY(account_id) REFERENCES accounts (account_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE INDEX ix_prospects_account_id ON prospects (account_id)
+
+CREATE INDEX ix_prospects_deleted_at ON prospects (deleted_at)
+
+CREATE INDEX ix_prospects_lifecycle_stage ON prospects (lifecycle_stage)
+
+CREATE INDEX ix_prospects_owner_id ON prospects (owner_id)
+
+CREATE INDEX ix_prospects_scored_at ON prospects (scored_at)
+
+CREATE INDEX ix_prospects_tenant_live_created ON prospects (tenant_id, deleted_at, created_at)
+
+CREATE INDEX ix_prospects_tenant_live_grade ON prospects (tenant_id, deleted_at, score_grade)
+
+CREATE INDEX ix_prospects_tenant_live_score ON prospects (tenant_id, deleted_at, score)
+
+CREATE INDEX ix_prospects_tenant_live_updated ON prospects (tenant_id, deleted_at, updated_at)
+
+prospects.prospect_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.tenant_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.first_name: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.last_name: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.email: type=String(length=255) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.email_type: type=String(length=50) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.email_provider: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.phone: type=String(length=50) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.mobile_phone: type=String(length=50) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.owner_id: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.account_id: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.lifecycle_stage: type=String(length=30) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.lead_status: type=String(length=30) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.lead_source: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.legal_basis: type=String(length=40) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.deleted_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.deleted_by: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.merged_into_id: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.search_text: type=String(length=1100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=Computed(LOWER(CONCAT_WS(' ', first_name, last_name, email, company_name, designation, REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', ''), REGEXP_REPLACE(COALESCE(mobile_phone, ''), '[^0-9]', ''))), persisted=True) server_onupdate=Computed(LOWER(CONCAT_WS(' ', first_name, last_name, email, company_name, designation, REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', ''), REGEXP_REPLACE(COALESCE(mobile_phone, ''), '[^0-9]', ''))), persisted=True) computed=True
+
+prospects.tags: type=JSON() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.custom_fields: type=JSON() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.company_name: type=String(length=255) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.designation: type=String(length=150) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.industry: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.emp_band: type=String(length=50) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.linkedin_url: type=String(length=500) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.linkedin_data: type=JSON() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.poc_city: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.poc_state: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.poc_country: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.timezone: type=String(length=50) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.consent_status: type=String(length=50) nullable=True pk=False index=None unique=None autoincrement='auto' default='OPT_IN' onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.consent_source: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.consent_timestamp: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.score: type=SmallInteger() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.fit_score: type=SmallInteger() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.engagement_score: type=SmallInteger() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.score_grade: type=String(length=1) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.scored_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.is_valid_email: type=Boolean() nullable=True pk=False index=None unique=None autoincrement='auto' default=True onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.is_anonymized: type=Boolean() nullable=True pk=False index=None unique=None autoincrement='auto' default=False onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.anonymized_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospects.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+prospects.updated_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=CURRENT_TIMESTAMP(6) server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+prospects.row_version: type=Integer() nullable=False pk=False index=None unique=None autoincrement='auto' default=1 onupdate=None server_default=1 server_onupdate=None computed=False
+
+CREATE TABLE global_unsubscribes (
+	tenant_id VARCHAR(36) NOT NULL, 
+	email VARCHAR(255) NOT NULL, 
+	unsubscribed_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	reason VARCHAR(255), 
+	suppression_expires_at DATETIME(6), 
+	PRIMARY KEY (tenant_id, email), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+global_unsubscribes.tenant_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+global_unsubscribes.email: type=String(length=255) nullable=False pk=True index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+global_unsubscribes.unsubscribed_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+global_unsubscribes.reason: type=String(length=255) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+global_unsubscribes.suppression_expires_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+CREATE TABLE property_changes (
+	change_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	object_type VARCHAR(10) NOT NULL, 
+	object_id VARCHAR(36) NOT NULL, 
+	field VARCHAR(100) NOT NULL, 
+	old_value TEXT, 
+	new_value TEXT, 
+	source VARCHAR(20) NOT NULL, 
+	changed_by VARCHAR(36), 
+	changed_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (change_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(changed_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE INDEX ix_property_changes_object ON property_changes (object_type, object_id, changed_at)
+
+property_changes.change_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+property_changes.tenant_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+property_changes.object_type: type=String(length=10) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+property_changes.object_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+property_changes.field: type=String(length=100) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+property_changes.old_value: type=Text() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+property_changes.new_value: type=Text() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+property_changes.source: type=String(length=20) nullable=False pk=False index=None unique=None autoincrement='auto' default='UI' onupdate=None server_default=None server_onupdate=None computed=False
+
+property_changes.changed_by: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+property_changes.changed_at: type=DateTime() nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+CREATE TABLE crm_tasks (
+	task_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	prospect_id VARCHAR(36), 
+	account_id VARCHAR(36), 
+	opportunity_id VARCHAR(36), 
+	title VARCHAR(255) NOT NULL, 
+	notes TEXT, 
+	task_type VARCHAR(20) NOT NULL, 
+	priority VARCHAR(10) NOT NULL, 
+	status VARCHAR(10) NOT NULL, 
+	due_at DATETIME(6), 
+	reminder_at DATETIME(6), 
+	owner_id VARCHAR(36), 
+	created_by VARCHAR(36), 
+	completed_at DATETIME(6), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (task_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(prospect_id) REFERENCES prospects (prospect_id), 
+	FOREIGN KEY(account_id) REFERENCES accounts (account_id), 
+	FOREIGN KEY(opportunity_id) REFERENCES opportunities (opportunity_id), 
+	FOREIGN KEY(owner_id) REFERENCES users (user_id), 
+	FOREIGN KEY(created_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE INDEX ix_crm_tasks_account_id ON crm_tasks (account_id)
+
+CREATE INDEX ix_crm_tasks_opportunity_id ON crm_tasks (opportunity_id)
+
+CREATE INDEX ix_crm_tasks_owner_id ON crm_tasks (owner_id)
+
+CREATE INDEX ix_crm_tasks_prospect_id ON crm_tasks (prospect_id)
+
+crm_tasks.task_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.tenant_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.prospect_id: type=String(length=36) nullable=True pk=False index=True unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.account_id: type=String(length=36) nullable=True pk=False index=True unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.opportunity_id: type=String(length=36) nullable=True pk=False index=True unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.title: type=String(length=255) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.notes: type=Text() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.task_type: type=String(length=20) nullable=False pk=False index=None unique=None autoincrement='auto' default='TODO' onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.priority: type=String(length=10) nullable=False pk=False index=None unique=None autoincrement='auto' default='MEDIUM' onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.status: type=String(length=10) nullable=False pk=False index=None unique=None autoincrement='auto' default='OPEN' onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.due_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.reminder_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.owner_id: type=String(length=36) nullable=True pk=False index=True unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.created_by: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.completed_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+crm_tasks.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+crm_tasks.updated_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=CURRENT_TIMESTAMP(6) server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+CREATE TABLE saved_views (
+	view_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	object_type VARCHAR(10) NOT NULL, 
+	name VARCHAR(100) NOT NULL, 
+	owner_id VARCHAR(36) NOT NULL, 
+	shared BOOL NOT NULL, 
+	filters JSON, 
+	columns JSON, 
+	sort JSON, 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (view_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(owner_id) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+saved_views.view_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+saved_views.tenant_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+saved_views.object_type: type=String(length=10) nullable=False pk=False index=None unique=None autoincrement='auto' default='CONTACT' onupdate=None server_default=None server_onupdate=None computed=False
+
+saved_views.name: type=String(length=100) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+saved_views.owner_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+saved_views.shared: type=Boolean() nullable=False pk=False index=None unique=None autoincrement='auto' default=False onupdate=None server_default=None server_onupdate=None computed=False
+
+saved_views.filters: type=JSON() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+saved_views.columns: type=JSON() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+saved_views.sort: type=JSON() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+saved_views.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+saved_views.updated_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=CURRENT_TIMESTAMP(6) server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+CREATE TABLE import_jobs (
+	import_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	created_by VARCHAR(36) NOT NULL, 
+	file_name VARCHAR(255) NOT NULL, 
+	status VARCHAR(15) NOT NULL, 
+	mapping JSON, 
+	options JSON, 
+	total_rows INTEGER, 
+	contacts_created INTEGER, 
+	contacts_updated INTEGER, 
+	companies_created INTEGER, 
+	companies_updated INTEGER, 
+	error_count INTEGER, 
+	errors JSON, 
+	message TEXT, 
+	started_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	finished_at DATETIME(6), 
+	PRIMARY KEY (import_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(created_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+import_jobs.import_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.tenant_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.created_by: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.file_name: type=String(length=255) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.status: type=String(length=15) nullable=False pk=False index=None unique=None autoincrement='auto' default='RUNNING' onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.mapping: type=JSON() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.options: type=JSON() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.total_rows: type=Integer() nullable=True pk=False index=None unique=None autoincrement='auto' default=0 onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.contacts_created: type=Integer() nullable=True pk=False index=None unique=None autoincrement='auto' default=0 onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.contacts_updated: type=Integer() nullable=True pk=False index=None unique=None autoincrement='auto' default=0 onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.companies_created: type=Integer() nullable=True pk=False index=None unique=None autoincrement='auto' default=0 onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.companies_updated: type=Integer() nullable=True pk=False index=None unique=None autoincrement='auto' default=0 onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.error_count: type=Integer() nullable=True pk=False index=None unique=None autoincrement='auto' default=0 onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.errors: type=JSON() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.message: type=Text() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.started_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+import_jobs.finished_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+CREATE TABLE contact_companies (
+	link_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	prospect_id VARCHAR(36) NOT NULL, 
+	account_id VARCHAR(36) NOT NULL, 
+	label VARCHAR(100), 
+	is_primary BOOL NOT NULL, 
+	created_by VARCHAR(36), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (link_id), 
+	CONSTRAINT uq_contact_companies_contact_account UNIQUE (prospect_id, account_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(prospect_id) REFERENCES prospects (prospect_id) ON DELETE CASCADE, 
+	FOREIGN KEY(account_id) REFERENCES accounts (account_id) ON DELETE CASCADE, 
+	FOREIGN KEY(created_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE INDEX ix_contact_companies_account ON contact_companies (account_id)
+
+CREATE INDEX ix_contact_companies_tenant ON contact_companies (tenant_id)
+
+contact_companies.link_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_companies.tenant_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_companies.prospect_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_companies.account_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_companies.label: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_companies.is_primary: type=Boolean() nullable=False pk=False index=None unique=None autoincrement='auto' default=False onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_companies.created_by: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_companies.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+contact_companies.updated_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=CURRENT_TIMESTAMP(6) server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+CREATE TABLE note_mentions (
+	mention_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	activity_id VARCHAR(36) NOT NULL, 
+	user_id VARCHAR(36) NOT NULL, 
+	created_by VARCHAR(36), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (mention_id), 
+	CONSTRAINT uq_note_mentions_activity_user UNIQUE (activity_id, user_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(activity_id) REFERENCES contact_activities (activity_id) ON DELETE CASCADE, 
+	FOREIGN KEY(user_id) REFERENCES users (user_id) ON DELETE CASCADE, 
+	FOREIGN KEY(created_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE INDEX ix_note_mentions_tenant ON note_mentions (tenant_id)
+
+CREATE INDEX ix_note_mentions_user ON note_mentions (user_id)
+
+note_mentions.mention_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+note_mentions.tenant_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+note_mentions.activity_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+note_mentions.user_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+note_mentions.created_by: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+note_mentions.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+CREATE TABLE contact_activities (
+	activity_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	prospect_id VARCHAR(36), 
+	opportunity_id VARCHAR(36), 
+	source VARCHAR(20), 
+	external_id VARCHAR(255), 
+	activity_type VARCHAR(20) NOT NULL, 
+	subject VARCHAR(255), 
+	body TEXT, 
+	outcome VARCHAR(100), 
+	duration_minutes INTEGER, 
+	occurred_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), 
+	created_by VARCHAR(36), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (activity_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(prospect_id) REFERENCES prospects (prospect_id), 
+	FOREIGN KEY(opportunity_id) REFERENCES opportunities (opportunity_id), 
+	FOREIGN KEY(created_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE INDEX ix_contact_activities_external_id ON contact_activities (external_id)
+
+CREATE INDEX ix_contact_activities_opportunity_id ON contact_activities (opportunity_id)
+
+CREATE INDEX ix_contact_activities_prospect_id ON contact_activities (prospect_id)
+
+contact_activities.activity_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_activities.tenant_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_activities.prospect_id: type=String(length=36) nullable=True pk=False index=True unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_activities.opportunity_id: type=String(length=36) nullable=True pk=False index=True unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_activities.source: type=String(length=20) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_activities.external_id: type=String(length=255) nullable=True pk=False index=True unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_activities.activity_type: type=String(length=20) nullable=False pk=False index=None unique=None autoincrement='auto' default='NOTE' onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_activities.subject: type=String(length=255) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_activities.body: type=Text() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_activities.outcome: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_activities.duration_minutes: type=Integer() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_activities.occurred_at: type=DateTime() nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+contact_activities.created_by: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_activities.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+contact_activities.updated_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=CURRENT_TIMESTAMP(6) server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+CREATE TABLE contact_field_definitions (
+	field_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	field_key VARCHAR(64) NOT NULL, 
+	label VARCHAR(100) NOT NULL, 
+	field_type VARCHAR(20) NOT NULL, 
+	options JSON, 
+	group_name VARCHAR(100), 
+	required BOOL NOT NULL DEFAULT '0', 
+	sort_order INTEGER, 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (field_id), 
+	CONSTRAINT uq_contact_field_key UNIQUE (tenant_id, field_key), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+contact_field_definitions.field_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_field_definitions.tenant_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_field_definitions.field_key: type=String(length=64) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_field_definitions.label: type=String(length=100) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_field_definitions.field_type: type=String(length=20) nullable=False pk=False index=None unique=None autoincrement='auto' default='TEXT' onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_field_definitions.options: type=JSON() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_field_definitions.group_name: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_field_definitions.required: type=Boolean() nullable=False pk=False index=None unique=None autoincrement='auto' default=False onupdate=None server_default=0 server_onupdate=None computed=False
+
+contact_field_definitions.sort_order: type=Integer() nullable=True pk=False index=None unique=None autoincrement='auto' default=0 onupdate=None server_default=None server_onupdate=None computed=False
+
+contact_field_definitions.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False

@@ -6,34 +6,42 @@ label such as "Decision maker" or "Billing".
 Code that sets prospects.account_id directly (imports, merge, bulk edit) never has to touch
 the link table: queries only read secondary rows from it, and sync_primary() brings the rows
 back in line with account_id whenever a contact's companies are read or edited.
+
+The rules live here; the SQL in app/repositories/contacts.py. Functions taking ``db`` keep their
+signatures for callers outside the contacts aggregate.
 """
-from typing import List, Optional
+from typing import Any, Iterable, List, Optional, Union
 
-from sqlalchemy import ColumnElement, or_
-from sqlalchemy.orm import Query, Session
-
-from app.models.account import Account
 from app.models.crm import ContactCompany
 from app.models.prospect import Prospect
+from app.repositories.contacts import ContactRepository, Session, SqlAlchemyContactRepository
+from app.repositories.contacts import company_condition as _company_condition
+from app.repositories.contacts import secondary_contact_ids as _secondary_contact_ids
+
+RepoOrSession = Union[ContactRepository, Session]
 
 
-def secondary_contact_ids(db: Session, account_id: str) -> Query:
+def _repo(source: RepoOrSession) -> ContactRepository:
+    """Callers outside the aggregate still pass a session; services pass their repository."""
+    return SqlAlchemyContactRepository(source) if isinstance(source, Session) else source
+
+
+def secondary_contact_ids(db: Session, account_id: str) -> Any:
     """Subquery: contacts associated with the company other than as their primary company."""
-    return db.query(ContactCompany.prospect_id).filter(
-        ContactCompany.account_id == account_id, ContactCompany.is_primary.is_(False))
+    return _secondary_contact_ids(db, account_id)
 
 
-def company_condition(db: Session, account_id: str) -> ColumnElement[bool]:
+def company_condition(db: Session, account_id: str) -> Any:
     """Contacts whose primary company is account_id, or that are associated with it."""
-    return or_(Prospect.account_id == account_id, Prospect.prospect_id.in_(secondary_contact_ids(db, account_id)))
+    return _company_condition(db, account_id)
 
 
-def sync_primary(db: Session, prospect: Prospect, user_id: Optional[str] = None) -> None:
+def sync_primary(db: RepoOrSession, prospect: Prospect, user_id: Optional[str] = None) -> None:
     """Make the link rows agree with prospects.account_id. A primary row whose company was
     replaced is kept as a secondary association when it has a label, otherwise removed."""
-    rows = db.query(ContactCompany).filter(ContactCompany.prospect_id == prospect.prospect_id).all()
+    repo = _repo(db)
     current = None
-    for row in rows:
+    for row in repo.links_of(prospect.prospect_id):
         if row.account_id == prospect.account_id:
             current = row
             if not row.is_primary:
@@ -42,55 +50,54 @@ def sync_primary(db: Session, prospect: Prospect, user_id: Optional[str] = None)
             if row.label:
                 row.is_primary = False
             else:
-                db.delete(row)
+                repo.remove(row)
     if prospect.account_id and current is None:
-        db.add(ContactCompany(tenant_id=prospect.tenant_id, prospect_id=prospect.prospect_id,
-                              account_id=prospect.account_id, is_primary=True, created_by=user_id))
-    db.flush()
+        repo.stage(ContactCompany(tenant_id=prospect.tenant_id, prospect_id=prospect.prospect_id,
+                                  account_id=prospect.account_id, is_primary=True, created_by=user_id))
+    repo.flush()
 
 
-def links(db: Session, prospect: Prospect) -> List[dict]:
+def _link_dict(link: Any, a: Any, primary: bool) -> dict:
+    return {"link_id": link.link_id if link else None, "account_id": a.account_id, "name": a.name,
+            "domain": a.domain, "industry": a.industry, "label": link.label if link else None,
+            "is_primary": primary, "created_at": link.created_at if link else None}
+
+
+def links(db: RepoOrSession, prospect: Prospect) -> List[dict]:
     """The contact's live (not deleted) companies, primary first. Read-only: the primary is
     whatever prospects.account_id says, even before sync_primary() has run."""
-    rows = {link.account_id: (link, a) for link, a in db.query(ContactCompany, Account).join(
-        Account, Account.account_id == ContactCompany.account_id).filter(
-        ContactCompany.prospect_id == prospect.prospect_id, Account.tenant_id == prospect.tenant_id,
-        Account.deleted_at.is_(None))}
+    repo = _repo(db)
+    rows = {link.account_id: (link, a) for link, a in repo.links_with_accounts(prospect)}
     out = []
     for account_id, (link, a) in rows.items():
         primary = account_id == prospect.account_id
         if link.is_primary and not primary and not link.label:
             continue  # the mirror of a replaced primary company; sync_primary() removes it
-        out.append({"link_id": link.link_id, "account_id": a.account_id, "name": a.name, "domain": a.domain,
-                    "industry": a.industry, "label": link.label, "is_primary": primary,
-                    "created_at": link.created_at})
+        out.append(_link_dict(link, a, primary))
     if prospect.account_id and prospect.account_id not in rows:
-        a = db.query(Account).filter(Account.account_id == prospect.account_id, Account.tenant_id == prospect.tenant_id,
-                                     Account.deleted_at.is_(None)).first()
+        a = repo.live_account(prospect.tenant_id, prospect.account_id)
         if a:
-            out.append({"link_id": None, "account_id": a.account_id, "name": a.name, "domain": a.domain,
-                        "industry": a.industry, "label": None, "is_primary": True, "created_at": None})
+            out.append(_link_dict(None, a, True))
     out.sort(key=lambda r: (not r["is_primary"], (r["name"] or "").lower()))
     return out
 
 
-def labels_for_company(db: Session, account_id: str, prospect_ids) -> dict:
+def labels_for_company(db: RepoOrSession, account_id: str, prospect_ids: Iterable[str]) -> dict:
     """{prospect_id: association label} for the company's contacts (no entry = no label)."""
     ids = list(prospect_ids)
     if not ids:
         return {}
-    return {pid: label for pid, label in db.query(ContactCompany.prospect_id, ContactCompany.label).filter(
-        ContactCompany.account_id == account_id, ContactCompany.prospect_id.in_(ids), ContactCompany.label.isnot(None))}
+    return _repo(db).labels_for_company(account_id, ids)
 
 
-def move_links(db: Session, source: Prospect, target: Prospect) -> None:
+def move_links(db: RepoOrSession, source: Prospect, target: Prospect) -> None:
     """Merge: the duplicate's associations move to the surviving contact as secondary ones."""
-    have = {r.account_id for r in db.query(ContactCompany.account_id).filter(
-        ContactCompany.prospect_id == target.prospect_id)}
-    for row in db.query(ContactCompany).filter(ContactCompany.prospect_id == source.prospect_id).all():
+    repo = _repo(db)
+    have = set(repo.linked_account_ids(target.prospect_id))
+    for row in repo.links_of(source.prospect_id):
         if row.account_id in have or row.account_id == target.account_id:
-            db.delete(row)
+            repo.remove(row)
         else:
             row.prospect_id, row.is_primary = target.prospect_id, False
             have.add(row.account_id)
-    db.flush()
+    repo.flush()
