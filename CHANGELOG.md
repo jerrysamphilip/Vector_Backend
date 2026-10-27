@@ -44,6 +44,10 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - `domain_error_handler` guards its input with an explicit type check instead of `assert` (kept under `python -O`).
 
 ### Security
+- Session tokens on PyJWT 2.15.1 behind `app/core/tokens.py` (S1): python-jose and ecdsa removed, so the
+  dependency audit has no accepted exceptions left. Only the configured HS algorithm is accepted (`none`, other HS
+  sizes and asymmetric headers refused); `exp` (and `jti` on access tokens) required. Tokens issued before the
+  switch stay valid; session policies (idle, absolute cap, refresh reuse detection, CSRF, MFA) unchanged.
 - Reset, invite and magic links are built from a validated origin only (`app/utils/safe_origin.py`): a crafted
   `Origin: http://evil.example\\@localhost` no longer yields a link to another host (F024); localhost origins only
   in a local environment.

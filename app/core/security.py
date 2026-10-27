@@ -9,9 +9,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import bcrypt
-from jose import JWTError, jwt
-
+from app.core import tokens
 from app.core.config import settings
+from app.core.tokens import TokenError
+
+ACCESS_REQUIRED_CLAIMS = ("exp", "sub", "type", "jti")
+MFA_REQUIRED_CLAIMS = ("exp", "sub", "type", "jti")
 
 
 # ── Password Hashing ──────────────────────────────────────
@@ -50,19 +53,17 @@ def create_access_token(
         # Unique id: sign-out puts it on the revoked_access_tokens list (app/services/token_revocation.py)
         "jti": secrets.token_urlsafe(16),
     }
-    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return tokens.encode(payload)
 
 
 def decode_access_token(token: str) -> dict:
     """
     Decode and validate a JWT access token.
-    Raises JWTError on invalid/expired tokens.
+    Raises TokenError on invalid/expired tokens (app/core/tokens.py holds the algorithm policy).
     """
-    payload = jwt.decode(
-        token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
-    )
+    payload = tokens.decode(token, require=ACCESS_REQUIRED_CLAIMS)
     if payload.get("type") != "access":
-        raise JWTError("Invalid token type")
+        raise TokenError("Invalid token type")
     return payload
 
 
@@ -81,13 +82,13 @@ def create_mfa_token(user_id: str, first_login: bool = False) -> str:
         "fl": bool(first_login),
         "exp": datetime.now(timezone.utc) + timedelta(minutes=MFA_TOKEN_MINUTES),
     }
-    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return tokens.encode(payload)
 
 
 def decode_mfa_token(token: str) -> dict:
-    payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+    payload = tokens.decode(token, require=MFA_REQUIRED_CLAIMS)
     if payload.get("type") != "mfa" or not payload.get("sub") or not payload.get("jti"):
-        raise JWTError("Invalid token type")
+        raise TokenError("Invalid token type")
     return payload
 
 

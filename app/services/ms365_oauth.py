@@ -24,12 +24,13 @@ from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
-from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.clock import utcnow
+from app.core import tokens
 from app.core.config import settings
+from app.core.tokens import TokenError
 from app.core.database import SessionLocal
 from app.models.sending_inbox import SendingInbox
 
@@ -63,13 +64,13 @@ def make_state(inbox_id: str, tenant_id: str, user_id: str, nonce: str | None = 
     payload = {"inbox_id": inbox_id, "tenant_id": tenant_id, "user_id": user_id, "purpose": "ms365_oauth",
                "nonce": nonce,
                "exp": utcnow() + timedelta(minutes=STATE_TTL_MINUTES)}
-    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return tokens.encode(payload)
 
 
 def read_state(state: str) -> dict:
     try:
-        data = jwt.decode(state, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-    except JWTError as exc:
+        data = tokens.decode(state, require=("purpose",))
+    except TokenError as exc:
         raise OAuthError("The sign-in link has expired. Start the connection again.") from exc
     if data.get("purpose") != "ms365_oauth":
         raise OAuthError("Invalid sign-in state")

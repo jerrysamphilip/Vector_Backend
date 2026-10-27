@@ -20,7 +20,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
-from jose import JWTError
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
@@ -39,6 +38,7 @@ from app.core.auth_cookies import (
 )
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.tokens import TokenError
 from app.core.security import (
     create_access_token,
     create_mfa_token,
@@ -447,7 +447,7 @@ def _revoke_presented_access_token(request: Request, db: Session) -> None:
         return
     try:
         payload = decode_access_token(token)
-    except JWTError:
+    except TokenError:
         return
     token_revocation.revoke(db, payload)
 
@@ -883,7 +883,7 @@ def mfa_verify(body: MfaVerifyRequest, request: Request, response: Response, db:
     rate_limit.check(request, "mfa", rate_limit.MFA_ATTEMPTS_PER_IP)
     try:
         payload = decode_mfa_token(body.mfa_token)
-    except JWTError:
+    except TokenError:
         raise HTTPException(status_code=401, detail="Your sign-in expired. Please sign in again.")
     jti = payload["jti"]
     if rate_limit.limiter.blocked(f"mfa-token-used:{jti}", 1, 600):

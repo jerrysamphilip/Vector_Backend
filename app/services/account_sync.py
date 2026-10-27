@@ -23,12 +23,13 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlencode
 
 import httpx
-from jose import JWTError, jwt
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.clock import utcnow
+from app.core import tokens
 from app.core.config import settings
+from app.core.tokens import TokenError
 from app.models.contact_activity import ContactActivity
 from app.models.prospect import Prospect
 from app.models.sales_extra import UserConnection
@@ -71,15 +72,14 @@ def _ms_endpoint(path: str) -> str:
 
 
 def make_state(user: User, provider: str, nonce: str | None = None) -> str:
-    return jwt.encode({"user_id": user.user_id, "provider": provider, "purpose": "account_sync", "nonce": nonce,
-                       "exp": utcnow() + timedelta(minutes=15)},
-                      settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return tokens.encode({"user_id": user.user_id, "provider": provider, "purpose": "account_sync", "nonce": nonce,
+                          "exp": utcnow() + timedelta(minutes=15)})
 
 
 def read_state(state: str) -> dict:
     try:
-        data = jwt.decode(state, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-    except JWTError as exc:
+        data = tokens.decode(state, require=("purpose",))
+    except TokenError as exc:
         raise SyncError("The sign-in link has expired. Try connecting again.") from exc
     if data.get("purpose") != "account_sync" or data.get("provider") not in PROVIDERS:
         raise SyncError("Invalid sign-in state")

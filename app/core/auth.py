@@ -19,12 +19,12 @@ from typing import Any, Callable, Optional, Tuple
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError
 from sqlalchemy.orm import Session
 
 from app.core.auth_cookies import ACCESS_COOKIE, require_csrf
 from app.core.database import get_db
 from app.core.security import decode_access_token
+from app.core.tokens import TokenError
 from app.models.user import User
 
 # auto_error=False: the access token may come from the httpOnly cookie instead (app/core/auth_cookies.py)
@@ -101,7 +101,7 @@ def get_current_user(
         )
     try:
         payload = decode_access_token(token)
-    except JWTError:
+    except TokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",

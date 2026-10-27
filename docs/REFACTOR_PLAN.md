@@ -94,7 +94,7 @@ shrink complexity / local-import / import-linter baselines (C-1, C-4, C-5).
 
 | ID | Chunk | Size |
 |---|---|---|
-| S1 | Session framework: replace hand-rolled JWT on python-jose with PyJWT + Authlib (or fastapi-users), keep CSRF / idle / absolute / reuse policies on top; drop the python-jose audit accept | M |
+| S1 ✅ | Session framework (done: PyJWT behind `app/core/tokens.py`; Authlib not needed): replace hand-rolled JWT on python-jose with PyJWT + Authlib (or fastapi-users), keep CSRF / idle / absolute / reuse policies on top; drop the python-jose audit accept | M |
 | S2 | Adapters behind Protocols (SES, IMAP/SMTP, OpenAI, storage, M365) + DI providers; tests use `dependency_overrides`, not module patching (C-9) | M |
 | F1 | Frontend read hook (react-query + AbortController, drops late answers); move the 13 `useEffect` fetchers (W-9) | M |
 | F2 | Errors shown with the request reference everywhere; remove console-only catches (W-10) | S |
