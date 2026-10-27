@@ -9,6 +9,7 @@ scripts/*
 !scripts/test.py
 # CI gate scripts (docs/CI_GATES.md)
 !scripts/ci/
+!scripts/load/
 !scripts/pin_images.py
 # C extensions
 *.so
@@ -132,6 +133,7 @@ docs/*
 !docs/DECISIONS.md
 !docs/REVIEW_RESPONSES.md
 !docs/REFACTOR_PLAN.md
+!docs/LAYER_PATTERN.md
 !docs/EVIDENCE_*.md
 # Stray local artefacts (never commit; may contain logs/credentials)
 kill_locks.py
