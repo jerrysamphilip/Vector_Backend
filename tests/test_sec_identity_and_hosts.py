@@ -93,10 +93,10 @@ def test_sec_accept_invite_refused_when_email_went_live_elsewhere(client, ws_b, 
     sql("DELETE FROM users WHERE user_id = :u", u=invited_id)
     # Meanwhile the address became the owner of its own workspace
     other = client.post("/api/auth/register", json={"first_name": "O", "last_name": "W", "email": email,
-                                                    "password": "other-pass-123", "tenant_name": f"Own {RUN}"})
+                                                    "password": f"Other-{RUN}-pw", "tenant_name": f"Own {RUN}"})
     assert other.status_code == 201, other.text
     r = client.post("/api/users/accept-invite", json={"token": token, "first_name": "A", "last_name": "B",
-                                                      "password": "accept-pass-123"})
+                                                      "password": f"Accept-{RUN}-pw"})
     assert r.status_code == 409, r.text
     assert sql("SELECT COUNT(*) FROM users WHERE email = :e", e=email) == 1
 
