@@ -230,6 +230,13 @@ def test_occ_campaign_pause_resume(client, ws, campaign):
     h = ws["headers"]
     cid = campaign["campaign_id"]
     sql("UPDATE campaigns SET status = 'ACTIVE' WHERE campaign_id = :c", c=cid)
+    # Resume needs an active sending inbox (item 12); linked in SQL so the version is unchanged
+    r = client.post("/inboxes", headers=h, json={
+        "email_address": f"sender@occ{RUN}.example.com", "smtp_host": "127.0.0.1", "smtp_port": 1,
+        "smtp_username": "sender", "smtp_password": "fixture-smtp-pass", "imap_host": "127.0.0.1",
+        "imap_port": 1, "imap_username": "sender", "imap_password": "fixture-imap-pass", "warmup_enabled": False})
+    assert r.status_code == 201, r.text
+    sql("INSERT INTO campaign_inboxes (campaign_id, inbox_id) VALUES (:c, :i)", c=cid, i=r.json()["inbox_id"])
     v = client.get(f"/campaigns/{cid}", headers=h).json()["row_version"]
     _stale(client.post(f"/campaigns/{cid}/pause", headers=h, json={"expected_version": v - 1}), v)
     assert client.get(f"/campaigns/{cid}", headers=h).json()["status"] == "ACTIVE"

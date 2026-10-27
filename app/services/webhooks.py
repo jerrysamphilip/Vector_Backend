@@ -37,6 +37,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.models.webhook import WebhookDelivery, WebhookEndpoint
 from app.utils import webhooks as wh
@@ -99,7 +100,7 @@ def emit_event(db: Session, tenant_id: Optional[str], event_type: str, data: dic
         return 0
     try:
         event_id = str(uuid.uuid4())
-        now = datetime.utcnow()
+        now = utcnow()
         body = wh.build_body(event_id, event_type, now, tenant_id, data).decode()  # type: ignore[arg-type]  # platform events carry no workspace
         queued = 0
         for endpoint_id, types in _subscribers(db, tenant_id):
@@ -107,8 +108,7 @@ def emit_event(db: Session, tenant_id: Optional[str], event_type: str, data: dic
                 db.add(WebhookDelivery(tenant_id=tenant_id, endpoint_id=endpoint_id, event_id=event_id,
                                        event_type=event_type, payload=body, status="PENDING",
                                        attempts=0,
-                                       # whole seconds: MySQL rounds fractions UP, which would make a
-                                       # just-queued row look not yet due to the job running this second
+                                       # whole seconds: never later than the job's own now
                                        next_attempt_at=now.replace(microsecond=0)))
                 queued += 1
         return queued
@@ -220,7 +220,7 @@ def contacts_deleted(db: Session, prospects: Iterable, user_id: Optional[str]) -
     for p in prospects:
         emit_event(db, p.tenant_id, "contact.deleted",
                    {"contact_id": p.prospect_id, "email": p.email, "deleted_by": user_id,
-                    "deleted_at": datetime.utcnow()})
+                    "deleted_at": utcnow()})
 
 
 def suppressed(db: Session, tenant_id: str, email: str, kind: str, reason: str, source: Optional[str],
@@ -332,7 +332,7 @@ def cancel_pending(db: Session, endpoint_id: str, reason: str) -> int:
 
 def disable_endpoint(db: Session, ep: WebhookEndpoint, reason: str, notify_admins: bool) -> None:
     ep.active = False
-    ep.disabled_at = datetime.utcnow()
+    ep.disabled_at = utcnow()
     ep.disabled_reason = reason[:255]
     cancel_pending(db, ep.endpoint_id, "Endpoint disabled")
     forget_subscribers(db, ep.tenant_id)
@@ -349,7 +349,7 @@ def disable_endpoint(db: Session, ep: WebhookEndpoint, reason: str, notify_admin
 
 def record_result(db: Session, d: WebhookDelivery, ep: WebhookEndpoint, result: dict) -> None:
     """Apply one attempt's outcome to the delivery and its endpoint. Caller commits."""
-    now = datetime.utcnow()
+    now = utcnow()
     d.attempts = (d.attempts or 0) + 1
     d.last_attempt_at = now
     d.response_code = result.get("code")
@@ -386,7 +386,7 @@ def deliver_now(db: Session, d: WebhookDelivery, ep: WebhookEndpoint) -> Webhook
 
 def deliver_due(session_factory, now: Optional[datetime] = None, limit: int = BATCH_SIZE) -> int:
     """Send due PENDING deliveries of active endpoints (runs under the job's named lock). Returns attempts."""
-    now = now or datetime.utcnow()
+    now = now or utcnow()
     with session_factory() as db:
         rows = db.query(WebhookDelivery, WebhookEndpoint).join(
             WebhookEndpoint, WebhookEndpoint.endpoint_id == WebhookDelivery.endpoint_id
@@ -419,7 +419,7 @@ def deliver_due(session_factory, now: Optional[datetime] = None, limit: int = BA
 
 def purge_old(db: Session, days: int = RETENTION_DAYS) -> int:
     """Delivery log retention: rows older than `days` that are no longer pending. Commits."""
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = utcnow() - timedelta(days=days)
     n = db.query(WebhookDelivery).filter(WebhookDelivery.created_at < cutoff,
                                          WebhookDelivery.status != "PENDING").delete(synchronize_session=False)
     db.commit()

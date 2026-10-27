@@ -84,8 +84,16 @@ jobs:
       - name: Release identity (VERSION == CHANGELOG.md == manifests == docs)
         run: python scripts/ci/check_version.py
 
-      - name: Unit layer
-        run: python scripts/test.py run unit --where host --report-dir reports/ci-unit
+      # Coverage of app/ by the unit layer alone (branch coverage on, .coveragerc): how much logic is tested
+      # without a database. --extra is appended to the suite's pytest command by scripts/test.py.
+      - name: Unit layer (with coverage)
+        run: >-
+          python scripts/test.py run unit --where host --report-dir reports/ci-unit
+          --extra="--cov=app --cov-report=json:reports/coverage-unit/coverage.json
+          --cov-report=xml:reports/coverage-unit/coverage.xml --cov-report=html:reports/coverage-unit/html"
+
+      - name: Coverage floor, unit layer (ci/coverage_floor.json)
+        run: python scripts/ci/check_coverage.py --layer unit --report reports/coverage-unit/coverage.json
 
       - name: Upload unit report
         if: always()
@@ -93,6 +101,14 @@ jobs:
         with:
           name: unit-report
           path: reports/ci-unit
+          if-no-files-found: ignore
+
+      - name: Upload unit coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit
+          path: reports/coverage-unit
           if-no-files-found: ignore
 
   contract:
@@ -222,8 +238,15 @@ jobs:
 
       # Functional layer (tests/*.py); the unit layer runs in its own job. The MySQL service is the
       # throwaway database, so the runner's own database reset is not used here.
-      - name: Functional tests
-        run: python -m pytest tests --ignore=tests/unit -q --junitxml=reports/ci-functional/junit-functional.xml
+      # Coverage of app/ by the functional layer (branch coverage on, .coveragerc): the total the API tests reach.
+      - name: Functional tests (with coverage)
+        run: >-
+          python -m pytest tests --ignore=tests/unit -q --junitxml=reports/ci-functional/junit-functional.xml
+          --cov=app --cov-report=json:reports/coverage-functional/coverage.json
+          --cov-report=xml:reports/coverage-functional/coverage.xml --cov-report=html:reports/coverage-functional/html
+
+      - name: Coverage floor, functional layer (ci/coverage_floor.json)
+        run: python scripts/ci/check_coverage.py --layer functional --report reports/coverage-functional/coverage.json
 
       - name: Upload functional report
         if: always()
@@ -231,6 +254,14 @@ jobs:
         with:
           name: functional-report
           path: reports/ci-functional
+          if-no-files-found: ignore
+
+      - name: Upload functional coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-functional
+          path: reports/coverage-functional
           if-no-files-found: ignore
 
   live-stack:

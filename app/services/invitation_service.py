@@ -12,14 +12,16 @@ deactivates the invited account. Errors are domain errors.
 import logging
 import re
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import Request
 from sqlalchemy import func, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.errors import BadRequestError, ConflictError, GoneError, NotFoundError, TooManyRequests
 from app.core.secrets_guard import is_deployed
@@ -30,6 +32,7 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.schemas.user_admin_schema import AcceptInviteRequest
 from app.services import invitation_email
+from app.services.user_lookup import LIVE_ACCOUNT_CONFLICT, live_account_conflict
 from app.services.user_admin_service import (
     require_can_grant_role,
     revoke_pending_invitations,
@@ -80,6 +83,22 @@ def show_once_link(email: str, magic_login_link: str, email_sent: bool) -> Optio
 
 
 # ── Database helpers ───────────────────────────────────────────────
+
+def _flush_live_account(db: Session) -> None:
+    """Write an account that becomes ACTIVE / INVITED. The unique users.active_email index (one live
+    account per email across workspaces, F017) or a concurrent invite turns into a 409, not a 500."""
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ConflictError(LIVE_ACCOUNT_CONFLICT) from exc
+
+
+def require_no_other_live_account(db: Session, email: str, exclude_user_id: Optional[str] = None) -> None:
+    """409 when the address already has an ACTIVE / INVITED account elsewhere (F017)."""
+    if live_account_conflict(db, email, exclude_user_id):
+        raise ConflictError(LIVE_ACCOUNT_CONFLICT)
+
 
 def reinvitable(db: Session, user: User) -> bool:
     """
@@ -157,14 +176,14 @@ def issue_invite(db: Session, request: Request | None, current_user: User, email
             invited_by=current_user.user_id,
         )
         db.add(user)
-    db.flush()
+    _flush_live_account(db)
 
     raw_magic_token = secrets.token_urlsafe(48)
     magic_login_link = invitation_email.build_magic_login_link(raw_magic_token, request)
     db.add(MagicLoginToken(
         user_id=user.user_id,
         token_hash=hash_token(raw_magic_token),
-        expires_at=datetime.utcnow() + timedelta(hours=settings.MAGIC_LOGIN_EXPIRE_HOURS),
+        expires_at=utcnow() + timedelta(hours=settings.MAGIC_LOGIN_EXPIRE_HOURS),
     ))
 
     # The invitation stays PENDING until the invitee first signs in (or uses
@@ -177,7 +196,7 @@ def issue_invite(db: Session, request: Request | None, current_user: User, email
         role=role,
         token=hash_token(raw_magic_token),
         status="PENDING",
-        expires_at=datetime.utcnow() + timedelta(days=INVITATION_VALID_DAYS),
+        expires_at=utcnow() + timedelta(days=INVITATION_VALID_DAYS),
     )
     db.add(invitation)
     db.commit()
@@ -208,6 +227,7 @@ def invite_user(db: Session, request: Request, current_user: User, email: str, r
     existing = db.query(User).filter(User.tenant_id == current_user.tenant_id, User.email == email).first()
     if existing and not reinvitable(db, existing):
         raise ConflictError("User with this email already exists in your workspace")
+    require_no_other_live_account(db, email, existing.user_id if existing else None)
     if existing:
         # Invitation revoked / invited account deactivated before it was ever used:
         # reissue it on the same account instead of refusing (old links stop working)
@@ -261,7 +281,7 @@ def accept_invite(db: Session, body: AcceptInviteRequest) -> Dict[str, Any]:
     if not invitation:
         raise NotFoundError("Invalid or expired invitation")
 
-    if invitation.expires_at < datetime.utcnow():
+    if invitation.expires_at < utcnow():
         invitation.status = "EXPIRED"
         db.commit()
         raise GoneError("Invitation has expired")
@@ -272,6 +292,8 @@ def accept_invite(db: Session, body: AcceptInviteRequest) -> Dict[str, Any]:
     existing = db.query(User).filter(
         User.tenant_id == invitation.tenant_id, User.email == invitation.email).first()
     if existing and existing.status == "INVITED":
+        # Older data may already hold a live account elsewhere: never make it a second ACTIVE one
+        require_no_other_live_account(db, existing.email, existing.user_id)
         # The account was created with the invitation: set the chosen name and password
         existing.first_name = body.first_name
         existing.last_name = body.last_name
@@ -286,6 +308,7 @@ def accept_invite(db: Session, body: AcceptInviteRequest) -> Dict[str, Any]:
         invitation.status = "ACCEPTED"
         db.commit()
         raise ConflictError("User already exists in this workspace")
+    require_no_other_live_account(db, invitation.email)
 
     user = User(
         tenant_id=invitation.tenant_id,
@@ -300,6 +323,7 @@ def accept_invite(db: Session, body: AcceptInviteRequest) -> Dict[str, Any]:
     )
     db.add(user)
     invitation.status = "ACCEPTED"
+    _flush_live_account(db)
     db.commit()
     logger.info("Invitation accepted: %s joined as %s", invitation.email, invitation.role)
     return _joined(user)
@@ -309,7 +333,7 @@ def list_invitations(db: Session, current_user: User) -> List[Dict[str, Any]]:
     """All invitations of the tenant, newest first; overdue PENDING ones are marked EXPIRED."""
     invitations = db.query(Invitation).filter(
         Invitation.tenant_id == current_user.tenant_id).order_by(Invitation.created_at.desc()).all()
-    now = datetime.utcnow()
+    now = utcnow()
     for inv in invitations:
         if inv.status == "PENDING" and inv.expires_at < now:
             inv.status = "EXPIRED"

@@ -4,12 +4,12 @@ Account (company) records. Contacts link to an account instead of only
 carrying company_name as free text.
 """
 
-from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, UniqueConstraint, Numeric
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, UniqueConstraint, Numeric
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class Account(Base):
@@ -34,13 +34,13 @@ class Account(Base):
     lifecycle_stage = Column(String(30), nullable=True)
 
     # Soft delete with 90-day restore (BR-CM-35)
-    deleted_at = Column(TIMESTAMP, nullable=True)
+    deleted_at = Column(UtcDateTime, nullable=True)
     deleted_by = Column(String(36), nullable=True)
 
     owner_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
 
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
     row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
 
     owner = relationship("User", foreign_keys=[owner_id])

@@ -19,6 +19,12 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - Checked-in requirements register `docs/REQUIREMENTS.md` (BRD v2.0, 92 requirements, status per requirement);
   `scripts/test.py trace` reads it by default and `trace --check` is the CI gate.
 - `VERSION` file as the single release identity.
+- DATETIME(6) for every time column (chunk D2, migration 0018): no 2038 limit, microsecond precision; every
+  connection runs in UTC (`time_zone = '+00:00'`). `app/core/clock.py` `utcnow()` replaces `datetime.utcnow()`
+  (deprecated); ruff DTZ003 rejects new uses. API timestamps now carry microseconds.
+- One collation (chunk D1, migration 0017): every table, column and connection on utf8mb4 / `utf8mb4_0900_ai_ci`
+  (`app/core/db_charset.py`), set on the table instead of taken from the schema default. A schema created as
+  `utf8mb4_unicode_ci` (an RDS default) used to fail the build with MySQL 3780; 0017 converts existing mixed tables.
 - Session limits (ADR 0007): 30-minute idle timeout, 12-hour absolute cap, refresh-token reuse detection that
   revokes the whole session (migration 0015).
 - BRD section 8 KPIs: duplicate rate, reply-to-lead, CRM adoption, forecast accuracy (actual / committed);
@@ -38,6 +44,17 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - `domain_error_handler` guards its input with an explicit type check instead of `assert` (kept under `python -O`).
 
 ### Security
+- Reset, invite and magic links are built from a validated origin only (`app/utils/safe_origin.py`): a crafted
+  `Origin: http://evil.example\\@localhost` no longer yields a link to another host (F024); localhost origins only
+  in a local environment.
+- One live account per e-mail across workspaces (F017, migration 0019 `users.active_email` unique); login, reset and
+  Google sign-in pick the active account; invite / accept / reactivate refuse a second one with 409.
+- Mail-server hosts (SMTP/IMAP) must not resolve to loopback, private, link-local or metadata addresses when
+  deployed (400; was 422 for the old checks). Auth dependencies no longer block the event loop (F004).
+- Automation rules only use templates of the caller's workspace and need `manage_campaigns` to change (F058, F038).
+- SES webhook: 1 MiB body cap (413), no exception text in responses. Upload confirm re-validates every row on the
+  server; PATCH /prospects/{id} applies the contact visibility scope (404 outside it) and records history.
+- Secrets in app-properties.ini are ignored with a warning; precedence is environment > .env > ini.
 - Fail closed (I-11): in Kubernetes the app refuses to start without an explicit `ENVIRONMENT`; manifests make
   the `ENVIRONMENT` secret key required. Production also refuses a wildcard CORS origin and requires
   `METRICS_TOKEN` while `/metrics` is enabled (or `METRICS_ENABLED=false`). Guards proven by
@@ -48,6 +65,20 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - API sweep results are redacted before they are recorded; cached test tokens and raw captures are untracked.
 
 ### Fixed
+- Sending (team review): campaign mail is never sent from the platform address (no mailbox: stays queued; launch,
+  resume and send-now refuse with NO_ACTIVE_INBOX); pacing no longer sleeps, so one workspace's delay cannot stall
+  others (delay capped at 3600 s); SES outages re-queue mail (up to 50 times) behind a 5-minute circuit breaker
+  instead of failing the queue, and a mailbox is paused after 5 sender rejections in 30 minutes; a bounce recorded
+  mid-send survives; the SDK never resends a message (F079); one e-mail per step is a database key (migration 0020);
+  per-step stop-on-reply / stop-on-bounce flags are honoured.
+- Replies thread by the SES message id; bounce/complaint sender domains are parsed from `Name <a@dom>`;
+  Delivery events that arrive while a message is still sending are recorded; AI follow-up regeneration uses the
+  follow-up tone; an automation rule runs once per contact (migration 0021).
+- Contacts: one bad row no longer fails an upload or a CRM import (per-row errors naming the field); CSVs in
+  Windows-1252 import correctly; XLSX size and column guards; free-mail and company-domain rules use the full
+  domain (subdomains collapse to the registrable domain; free-mail domains cannot be company domains); changing an
+  e-mail refuses a suppressed address and moves unsent mail to the new one. Duplicate e-mail on
+  PATCH /prospects/{id} is now 409 (was 400), like /contacts.
 - 422 handler crash on custom validators; nullable blueprint lists; whole-second webhook queue times.
 - Unique-prospect click counts on every screen; global timeseries replied/bounced always 0; inbox tie-break.
 - E2E-found defects: reply-only unsubscribe, paused contacts kept receiving, inbound counted as sent.

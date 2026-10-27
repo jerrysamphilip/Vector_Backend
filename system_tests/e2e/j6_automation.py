@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from .flows import (add_missing_step_templates, captured_for, detach_imap, mk_inbox, msgs, quick_campaign, travel_due,
                     wait_status, upload_list, CSV_HEAD)
 from .helpers import (add_user, ev_click, ev_delivery, ev_open, new_workspace, q, req, rows, run_job, scalar, ses_captured,
-                      ses_post, ses_verify, sql, wait_until)
+                      ses_post, ses_verify, sql, utcnow, wait_until)
 
 
 def _notes(token):
@@ -72,7 +72,7 @@ def run(R):
     tasks = req("GET", "/tasks?page_size=100", token=ag[0]["token"])[1]
     titems = tasks.get("items", []) if isinstance(tasks, dict) else tasks
     t = [x for x in titems if "handover" in (x.get("title") or "")]
-    due_ok = t and t[0].get("due_at") and abs((datetime.fromisoformat(t[0]["due_at"][:19]) - (datetime.utcnow() + timedelta(days=2))).total_seconds()) < 3600
+    due_ok = t and t[0].get("due_at") and abs((datetime.fromisoformat(t[0]["due_at"][:19]) - (utcnow() + timedelta(days=2))).total_seconds()) < 3600
     R.check("E2E-J6-06", "Lead -> SQL runs the rule: owner gets a task 'Prepare handover for Wf0 Lead' due in 2 days",
             s == 200 and t and t[0]["title"] == "Prepare handover for Wf0 Lead" and due_ok, f"{s} {t[:1]}")
     mn = [n for n in _notes(mgr["token"]) if "reached SQL" in (n.get("title") or "")]

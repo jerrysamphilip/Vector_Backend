@@ -6,10 +6,12 @@ placeholder substitution, and pre-scheduling of email messages.
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Tuple
 from datetime import datetime, timedelta
 import uuid
 
+from app.core.clock import utcnow
 from app.core.config import settings
 
 from app.models.campaign import Campaign, CampaignProspect, CampaignStateEvent
@@ -20,6 +22,7 @@ from app.models.email_message import EmailMessage
 from app.models.email_template import EmailTemplate
 from app.schemas.campaign_schema import CampaignStatus, CampaignEnrollmentRequest
 from app.services.audit_service import AuditService
+from app.services.send_guards import require_active_inbox
 from app.utils.email_utils import (
     normalize_unsubscribe_footer,
     strip_cta_content_no_link,
@@ -215,7 +218,7 @@ class CampaignEmailService:
             EmailSequence.step_number == 1
         ).first()
         start_delay_days = step1.wait_days if step1 else 0
-        scheduled_time = datetime.utcnow() + timedelta(days=start_delay_days)
+        scheduled_time = utcnow() + timedelta(days=start_delay_days)
 
         new_enrollments = []
         enrolled_count = 0
@@ -227,7 +230,7 @@ class CampaignEmailService:
                 prospect_id=prospect.prospect_id,
                 current_step=1,
                 status="ACTIVE",
-                enrolled_at=datetime.utcnow(),
+                enrolled_at=utcnow(),
                 next_scheduled_at=scheduled_time
             ))
             enrolled_count += 1
@@ -386,6 +389,9 @@ class CampaignEmailService:
         if campaign.status != CampaignStatus.DRAFT.value:
             raise ValueError(f"Cannot launch campaign with status: {campaign.status}")
 
+        # Campaign mail only goes from the campaign's own mailboxes, never the platform address
+        require_active_inbox(campaign, "launch")
+
         # CAN-SPAM: every email must carry the sender's own postal address, so a
         # tenant without one cannot start new sending (400 with the reason)
         from app.services.sender_identity import require_postal_address
@@ -412,7 +418,7 @@ class CampaignEmailService:
 
         for t in unapproved_templates:
             t.approved_by = user_id
-            t.approved_at = datetime.utcnow()
+            t.approved_at = utcnow()
 
         self.db.flush()
 
@@ -510,7 +516,7 @@ class CampaignEmailService:
             if t.designation is None or t.designation == "":
                 template_map[(t.sequence_id, None)] = t
 
-        base_time = datetime.utcnow()
+        base_time = utcnow()
         if campaign.start_date:
             try:
                 import zoneinfo
@@ -526,6 +532,7 @@ class CampaignEmailService:
         sender_name = campaign_sender_name(self.db, campaign)
 
         messages_created = 0
+        new_messages: List[EmailMessage] = []
         # Keep ordering stable so spread/batch scheduling is deterministic.
         prospects = sorted(prospects, key=lambda cp: (cp.prospect_id or ""))
         total_prospects = len(prospects)
@@ -676,7 +683,9 @@ class CampaignEmailService:
                     prospect_id=cp.prospect_id,
                     sequence_id=seq.sequence_id,
                     inbox_id=assigned_inbox.inbox_id if assigned_inbox else None,
-                    from_email=assigned_inbox.email_address if assigned_inbox else settings.SENDER_EMAIL,
+                    # No active inbox: no sender yet (never the platform address); the
+                    # scheduler binds one when the campaign has an active inbox again
+                    from_email=assigned_inbox.email_address if assigned_inbox else None,
                     to_email=prospect.email,
                     subject=final_subject,
                     body_text=final_body,
@@ -686,9 +695,37 @@ class CampaignEmailService:
                     template_id=template.template_id,
                     subject_variant=variant.label if variant else None,
                 )
-                self.db.add(email_msg)
+                new_messages.append(email_msg)
                 messages_created += 1
 
-        self.db.flush()
+        messages_created = self._insert_new_messages(new_messages)
         logger.info("[PRESCHEDULE] Created %s messages", messages_created)
         return messages_created
+
+    def _insert_new_messages(self, messages: List[EmailMessage]) -> int:
+        """
+        Insert pre-scheduled step emails, tolerating the one-email-per-step key (item 19): a
+        concurrent pre-schedule (double launch, enrolment during launch) may already have
+        written some of them. All rows go in one savepoint; if the key refuses one, each row is
+        retried in its own savepoint and the duplicates are skipped. Returns how many were added.
+        """
+        if not messages:
+            self.db.flush()
+            return 0
+        try:
+            with self.db.begin_nested():
+                self.db.add_all(messages)
+        except IntegrityError:
+            logger.warning("[PRESCHEDULE] Some steps already have their email; inserting one by one")
+        else:
+            return len(messages)
+        created = 0
+        for msg in messages:
+            try:
+                with self.db.begin_nested():
+                    self.db.add(msg)
+                created += 1
+            except IntegrityError:
+                logger.info("[PRESCHEDULE] Skipped duplicate step email for prospect %s, step %s",
+                            msg.prospect_id, msg.sequence_id)
+        return created

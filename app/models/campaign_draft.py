@@ -4,11 +4,11 @@ Campaign Draft Model.
 Stores incomplete campaign creation state for resume functionality.
 """
 
-from sqlalchemy import Column, String, Integer, DateTime, Text, JSON
-from sqlalchemy.sql import func
+from sqlalchemy import Column, String, Integer, JSON
 import uuid
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class CampaignDraft(Base):
@@ -31,8 +31,8 @@ class CampaignDraft(Base):
     # Stores: formData, selectedLists, sequenceSteps, processingResult, selectedPersona, etc.
     
     # Timestamps
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
     
     def __repr__(self) -> str:
         return f"<CampaignDraft {self.draft_id} - Step {self.current_step}>"

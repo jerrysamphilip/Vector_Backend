@@ -6,11 +6,12 @@ Role defaults come from app/core/auth.py (ROLE_DEFAULT_PERMISSIONS), which enfor
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import ROLE_DEFAULT_PERMISSIONS
 from app.core.errors import BadRequestError, ConflictError, NotFoundError, PermissionDenied
 from app.models.audit import AuditLog
@@ -23,6 +24,7 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.prospect_list import ProspectList
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
+from app.services.user_lookup import LIVE_ACCOUNT_CONFLICT, live_account_conflict
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +108,7 @@ def spend_magic_links(db: Session, user_id: str) -> None:
     """Mark the user's unused one-click sign-in links as used."""
     db.query(MagicLoginToken).filter(
         MagicLoginToken.user_id == user_id, MagicLoginToken.used_at.is_(None)
-    ).update({MagicLoginToken.used_at: datetime.utcnow()}, synchronize_session=False)
+    ).update({MagicLoginToken.used_at: utcnow()}, synchronize_session=False)
 
 
 def revoke_pending_invitations(db: Session, user: User) -> None:
@@ -170,8 +172,15 @@ def reactivate(db: Session, actor: User, user_id: str) -> None:
         raise PermissionDenied("Only a Super Admin can reactivate a Super Admin")
     if actor.role == "ADMIN" and target.role == "ADMIN":
         raise PermissionDenied("Admins cannot reactivate other admins")
+    # One live account per email across workspaces (F017)
+    if live_account_conflict(db, target.email, target.user_id):
+        raise ConflictError(LIVE_ACCOUNT_CONFLICT)
     target.status = "ACTIVE"
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:  # a concurrent invite / reactivation won the unique users.active_email
+        db.rollback()
+        raise ConflictError(LIVE_ACCOUNT_CONFLICT) from exc
     logger.info("User reactivated: %s by %s", target.email, actor.email)
 
 

@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import func
 from sqlalchemy.orm import Query, Session
 
+from app.core.clock import utcnow
 from app.core.errors import BadRequestError, NotFoundError, PermissionDenied
 from app.core.config import settings
 from app.models.account import Account
@@ -167,11 +168,11 @@ def set_lead_stage(db: Session, lead: Lead, stage: str, user: User) -> None:
         missing = criteria_met(lead.qualification)
         if missing:
             raise BadRequestError("To mark as SQL, confirm: " + ", ".join(missing))
-        lead.qualified_at = lead.qualified_at or datetime.utcnow()
+        lead.qualified_at = lead.qualified_at or utcnow()
     if stage == "DISQUALIFIED" and not clean_str(lead.disqualified_reason):
         raise BadRequestError("Give a reason for disqualifying the lead")
     lead.stage = stage
-    lead.stage_changed_at = datetime.utcnow()
+    lead.stage_changed_at = utcnow()
     prospect = db.query(Prospect).filter(Prospect.prospect_id == lead.prospect_id).first()
     sync_contact_lifecycle(db, prospect, LEAD_STAGES[stage][1], user.user_id)
 
@@ -184,7 +185,7 @@ def lead_dicts(db: Session, leads: List[Lead]) -> List[dict]:
         Prospect.prospect_id.in_({l.prospect_id for l in leads}))}
     accounts = {a.account_id: a.name for a in db.query(Account.account_id, Account.name).filter(
         Account.account_id.in_({l.account_id for l in leads if l.account_id}))}
-    now = datetime.utcnow()
+    now = utcnow()
     out = []
     for l in leads:
         p = contacts.get(l.prospect_id)
@@ -240,7 +241,7 @@ def apply_stage(db: Session, opp: Opportunity, stage_id: str) -> SalesStage:
     status = stage_status(stage)
     # A brand-new deal has no status yet (the column default applies on insert): treat it as open
     if status != "OPEN" and opp.status in (None, "OPEN"):
-        opp.closed_at = datetime.utcnow()
+        opp.closed_at = utcnow()
         if not opp.close_date:
             opp.close_date = date.today()
     elif status == "OPEN":
@@ -397,8 +398,8 @@ def last_activity(db: Session, opp_ids: List[str]) -> Dict[str, datetime]:
 
 
 def idle_days(opp: Opportunity, last_touch: Optional[datetime]) -> int:
-    latest = max([d for d in (opp.updated_at or opp.created_at, last_touch) if d] or [datetime.utcnow()])
-    return max((datetime.utcnow() - latest).days, 0)
+    latest = max([d for d in (opp.updated_at or opp.created_at, last_touch) if d] or [utcnow()])
+    return max((utcnow() - latest).days, 0)
 
 
 def convert_lead(db: Session, user: User, lead: Lead, data: dict) -> Opportunity:
@@ -434,7 +435,7 @@ def convert_lead(db: Session, user: User, lead: Lead, data: dict) -> Opportunity
     db.add(opp)
     db.flush()
     lead.stage, lead.opportunity_id = "CONVERTED", opp.opportunity_id
-    lead.stage_changed_at = lead.converted_at = datetime.utcnow()
+    lead.stage_changed_at = lead.converted_at = utcnow()
     lead.account_id = account_id
     sync_contact_lifecycle(db, prospect, "OPPORTUNITY", user.user_id)
     crm.record_changes(db, user.tenant_id, "LEAD", lead.lead_id, {"stage": "SQL"}, {"stage": "CONVERTED"},

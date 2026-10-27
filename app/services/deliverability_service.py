@@ -9,6 +9,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
+from app.core.clock import utcnow
 from app.models.domain_reputation import SendingDomain, DomainHealthSnapshot, ReputationAlert
 from app.models.email_message import EmailEvent
 from app.models.campaign import Campaign
@@ -88,7 +89,7 @@ class DeliverabilityService:
         from app.models.email_message import EmailMessage, EmailEvent
 
         # 1. Initialize time range (Last 14 days to match SES)
-        end_date = datetime.utcnow()
+        end_date = utcnow()
         start_date = end_date - timedelta(days=14)
         
         # Helper to format key
@@ -223,7 +224,7 @@ class DeliverabilityService:
                 domain.ses_reputation_status = account_status
                 domain.account_reputation_score = account_score
                 domain.sesv2_enabled = sesv2_enabled
-                domain.updated_at = datetime.utcnow()
+                domain.updated_at = utcnow()
             
             db.commit()
             return True
@@ -476,7 +477,7 @@ class DeliverabilityService:
             domain.spf_status = spf_status
             domain.dmarc_status = dmarc_status
             domain.dkim_status = dkim_status
-            domain.updated_at = datetime.utcnow()
+            domain.updated_at = utcnow()
         db.commit()
             
         # Build actionable warnings for the UI

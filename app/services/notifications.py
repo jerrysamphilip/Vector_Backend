@@ -6,11 +6,12 @@ notify() records the in-app notification straight away; a background loop
 slow or failing mail send never blocks the action that raised it.
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Iterable, Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.models.sales_extra import Notification
 from app.models.user import User
@@ -23,7 +24,7 @@ def notify(db: Session, tenant_id: str, user_ids: Iterable[Optional[str]], kind:
            dedupe_days: int = 7) -> int:
     """Notify each user once. With dedupe_key, skip users already told the same thing recently. Caller commits."""
     sent = 0
-    since = datetime.utcnow() - timedelta(days=dedupe_days)
+    since = utcnow() - timedelta(days=dedupe_days)
     for uid in dict.fromkeys(u for u in user_ids if u):
         if dedupe_key and db.query(Notification.notification_id).filter(
                 Notification.user_id == uid, Notification.dedupe_key == dedupe_key,
@@ -50,12 +51,12 @@ async def email_pending(db: Session, limit: int = 100) -> int:
     """Email unsent notifications to users who want email. Marks them done either way."""
     from app.services.email_sender_service import email_sender
     rows = db.query(Notification, User).join(User, User.user_id == Notification.user_id).filter(
-        Notification.emailed_at.is_(None), Notification.created_at >= datetime.utcnow() - timedelta(days=1)
+        Notification.emailed_at.is_(None), Notification.created_at >= utcnow() - timedelta(days=1)
     ).order_by(Notification.created_at).limit(limit).all()
     sent = 0
     base = (settings.BASE_URL or "").rstrip("/")
     for n, user in rows:
-        n.emailed_at = datetime.utcnow()
+        n.emailed_at = utcnow()
         if not user.notify_email or user.status != "ACTIVE" or not settings.SENDER_EMAIL:
             continue
         body = (n.body or "") + (f"\n\nOpen: {base}{n.link}" if n.link else "") + \

@@ -9,11 +9,11 @@
   written twice, and out-of-office replies do not count as replies.
 """
 import uuid
-from datetime import datetime
 
 import pytest
 
 from tests.conftest import RUN, SessionLocal, auth, login, register_tenant, sql
+from app.core.clock import utcnow
 
 
 def _member(client, tenant_id: str, label: str, role: str = "AGENT", status: str = "ACTIVE", **cols) -> dict:
@@ -355,7 +355,7 @@ def test_auc_f42_out_of_office_replies_do_not_count(client, sws):
     h = sws["headers"]
     assert client.put("/contacts/scoring-model", headers=h, json=REPLY_MODEL).status_code == 200
     pid = _contact(client, h, "ooo")
-    now = datetime.utcnow()
+    now = utcnow()
     with SessionLocal() as db:
         db.add(EmailMessage(prospect_id=pid, direction="INBOUND", status="RECEIVED", to_email="me@example.com",
                             subject="Automatic reply: Hello", body_text="I am out of the office until Monday.", sent_at=now))

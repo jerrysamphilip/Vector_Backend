@@ -6,13 +6,15 @@ Service for evaluating and executing automation rules.
 
 import logging
 from typing import Optional, Dict, Any
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
 
+from app.core.clock import utcnow
 from app.core.database import SessionLocal
 from app.models.automation_rule import AutomationRule, TriggerType, ActionType
+from app.models.automation_rule_run import AutomationRuleRun
 from app.models import (
-    EmailEvent,
+    Campaign,
     Prospect,
     CampaignProspect,
     EmailMessage,
@@ -21,6 +23,30 @@ from app.models import (
 from app.utils.campaign_prospect_status import set_prospect_status
 
 logger = logging.getLogger(__name__)
+
+
+def template_in_tenant(db: Session, template_id: str, tenant_id: Optional[str]) -> bool:
+    """True when the template belongs to a campaign of this workspace (F058)."""
+    if not template_id or not tenant_id:
+        return False
+    return db.query(EmailTemplate.template_id).join(
+        Campaign, Campaign.campaign_id == EmailTemplate.campaign_id
+    ).filter(EmailTemplate.template_id == template_id, Campaign.tenant_id == tenant_id).first() is not None
+
+
+def claim_rule_run(db: Session, rule_id: str, prospect_id: str, tenant_id: Optional[str]) -> bool:
+    """
+    Record that this rule has acted on this contact; False when it already had (19b). The unique key
+    (rule_id, prospect_id) decides, also between two events processed at the same time. The insert
+    runs in a savepoint, so a duplicate only undoes the run row, not the caller's transaction.
+    """
+    try:
+        with db.begin_nested():
+            db.add(AutomationRuleRun(rule_id=rule_id, prospect_id=prospect_id, tenant_id=tenant_id))
+    except IntegrityError:
+        return False
+    return True
+
 
 class AutomationRuleService:
     """
@@ -89,8 +115,17 @@ class AutomationRuleService:
             logger.error(f"[Automation] Rule {rule.name} missing template_id")
             return
 
+        # The rule, its template and the contact must all be in the rule's workspace: a rule saved
+        # before the API checked templates (F058) must not mail another workspace's content.
+        tenant_id = db.query(Campaign.tenant_id).filter(Campaign.campaign_id == rule.campaign_id).scalar()
+        if not template_in_tenant(db, template_id, tenant_id):
+            logger.warning(f"[Automation] Rule {rule.rule_id}: template {template_id} is not in the rule's "
+                           f"workspace; not sending")
+            return
+
         # Fetch prospect for email address (Required by EmailMessage)
-        prospect = db.query(Prospect).filter(Prospect.prospect_id == prospect_id).first()
+        prospect = db.query(Prospect).filter(
+            Prospect.prospect_id == prospect_id, Prospect.tenant_id == tenant_id).first()
         if not prospect:
             logger.error(f"[Automation] Prospect {prospect_id} not found")
             return
@@ -110,6 +145,10 @@ class AutomationRuleService:
             logger.info(f"[Automation] Rule {rule.name}: template {template_id} already queued/sent "
                         f"to prospect {prospect_id}; not sending again")
             return
+        # Once per rule and contact, guaranteed by the database (concurrent events included)
+        if not claim_rule_run(db, rule.rule_id, prospect_id, tenant_id):
+            logger.info(f"[Automation] Rule {rule.name} already ran for prospect {prospect_id}; not sending again")
+            return
 
         # Create message scheduled for NOW
         msg = EmailMessage(
@@ -117,7 +156,7 @@ class AutomationRuleService:
             prospect_id=prospect_id,
             template_id=template_id,
             status="QUEUED",
-            scheduled_at=datetime.utcnow(),
+            scheduled_at=utcnow(),
             retry_count=0,
             to_email=prospect.email  # Required field
         )

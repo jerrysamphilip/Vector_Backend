@@ -4,18 +4,24 @@ Application configuration settings.
 Loads environment variables for database and app settings.
 """
 
-import os
-from pathlib import Path
-from urllib.parse import quote_plus
-from pydantic_settings import BaseSettings
-from functools import lru_cache
-from typing import Optional, Union
+import configparser
 import logging
+import os
+import re
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
+from urllib.parse import quote_plus
+
+from dotenv import dotenv_values
+from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
 
 
 _BASE_DIR = Path(__file__).resolve().parents[2]
+_ENV_FILE = str(_BASE_DIR / ".env")
+LOCAL_ENVIRONMENTS = ("development", "dev", "local", "test")
 
 
 def _release_version() -> str:
@@ -248,6 +254,15 @@ class Settings(BaseSettings):
         return (self.ENVIRONMENT or "").strip().lower() in ("production", "prod")
 
     @property
+    def is_local_environment(self) -> bool:
+        """A developer machine or a test run: ENVIRONMENT is development / dev / local / test and the
+        process is not in Kubernetes. Anything else counts as deployed, where local-only conveniences
+        (localhost links, private mail hosts) are refused."""
+        if os.getenv("KUBERNETES_SERVICE_HOST"):
+            return False
+        return (self.ENVIRONMENT or "").strip().lower() in LOCAL_ENVIRONMENTS
+
+    @property
     def self_signup_enabled(self) -> bool:
         return bool(self.ALLOW_SELF_SIGNUP)
 
@@ -297,13 +312,34 @@ class Settings(BaseSettings):
             raise ValueError(f"Could not construct DATABASE_URL: {e}")
     
     class Config:
-        env_file = str(_BASE_DIR / ".env")
+        env_file = _ENV_FILE
         case_sensitive = True
 
 
-import configparser
+# Secrets are never taken from app-properties.ini (a shared, often committed file): they come from the
+# environment or .env only. A secret key found in the ini is ignored with a warning (its value is not logged).
+INI_SECRET_KEYS = frozenset({
+    "JWT_SECRET_KEY", "CREDENTIALS_ENCRYPTION_KEY", "MYSQL_PASSWORD", "OPENAI_API_KEY",
+    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "MS365_CLIENT_SECRET",
+    "GOOGLE_CLIENT_SECRET", "SES_WEBHOOK_TOKEN", "METRICS_TOKEN", "SENTRY_DSN", "DATABASE_URL",
+})
+_SECRET_KEY_PATTERN = re.compile(r"(SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|ENCRYPTION_KEY|_TOKEN$|_DSN$)")
 
-# ... existing imports ...
+
+def is_secret_key(key: str) -> bool:
+    """True for a setting that holds a credential (never read from app-properties.ini)."""
+    upper = key.upper()
+    return upper in INI_SECRET_KEYS or bool(_SECRET_KEY_PATTERN.search(upper))
+
+
+def _ini_value(parser: configparser.ConfigParser, profile: str, key: str, value: str) -> Union[bool, int, str]:
+    """Type conversions for known bools / ints (ports, sizes, ...); everything else stays a string."""
+    if value.lower() in ("true", "false"):
+        return parser.getboolean(profile, key)
+    if value.isdigit() and any(word in key for word in ("port", "size", "recycle", "rate", "overflow")):
+        return int(value)
+    return value
+
 
 def load_settings_from_ini() -> dict:
     """
@@ -312,77 +348,68 @@ def load_settings_from_ini() -> dict:
     """
     profile = os.getenv("APP_PROFILE", "dev")
     ini_path = _BASE_DIR / "app-properties.ini"
-    
-    config_values = {}
-    
-    if ini_path.exists():
-        logger.info("LOADING CONFIG: Profile '%s' from %s", profile, ini_path)
-        parser = configparser.ConfigParser()
-        parser.read(str(ini_path))
-        
-        if profile in parser:
-            section = parser[profile]
-            for key, value in section.items():
-                val: Union[bool, int, str]
-                # specific type conversions for known bools/ints
-                if value.lower() in ['true', 'false']:
-                    val = parser.getboolean(profile, key)
-                elif value.isdigit():
-                    # check if it should be an int (heuristic)
-                    # ports and limits are ints, but some numeric strings might be strings
-                    # For safety in Pydantic, passing string usually keeps it safe if model expects int (auto-cast)
-                    # But explicit int is better for connection args.
-                    if "port" in key or "size" in key or "recycle" in key or "rate" in key or "overflow" in key:
-                         val = int(value)
-                    else:
-                         val = value
-                else:
-                    val = value
-                
-                config_values[key.upper()] = val
-        else:
-             logger.warning("Profile '%s' not found in app-properties.ini", profile)
-    else:
+    config_values: Dict[str, Union[bool, int, str]] = {}
+    if not ini_path.exists():
         logger.warning("app-properties.ini not found at %s", ini_path)
-
+        return config_values
+    logger.info("LOADING CONFIG: Profile '%s' from %s", profile, ini_path)
+    parser = configparser.ConfigParser()
+    parser.read(str(ini_path))
+    if profile not in parser:
+        logger.warning("Profile '%s' not found in app-properties.ini", profile)
+        return config_values
+    for key, value in parser[profile].items():
+        config_values[key.upper()] = _ini_value(parser, profile, key, value)
     return config_values
+
+
+def _dotenv_keys() -> Set[str]:
+    """Names (never values) set in the .env file, which outranks app-properties.ini."""
+    try:
+        return {k for k in dotenv_values(_ENV_FILE) if k}
+    except OSError:
+        return set()
+
+
+def select_ini_overrides(ini_settings: Dict[str, Any], known_fields: Iterable[str], environ_keys: Iterable[str],
+                         dotenv_keys: Iterable[str]) -> Tuple[Dict[str, Any], List[str], List[str]]:
+    """The app-properties.ini values that apply: precedence is environment > .env > ini > code default.
+
+    Returns (overrides, unknown keys, secret keys). Unknown keys belong to other services sharing the
+    file; secret keys are refused (they must come from the environment or .env)."""
+    known = set(known_fields)
+    outranked = set(environ_keys) | set(dotenv_keys)
+    overrides: Dict[str, Any] = {}
+    unknown: List[str] = []
+    secrets_found: List[str] = []
+    for key, value in ini_settings.items():
+        if is_secret_key(key):
+            secrets_found.append(key)
+        elif key in outranked:
+            continue
+        elif key not in known:
+            unknown.append(key)
+        else:
+            overrides[key] = value
+    return overrides, unknown, secrets_found
+
 
 @lru_cache()
 def get_settings() -> Settings:
-    """Cached settings instance."""
-    # Load INI settings first
-    ini_settings = load_settings_from_ini()
-    
-    # Pass INI settings as kwargs to override defaults/env files
-    # Note: Constructor args in Pydantic V2 BaseSettings usually OVERRIDE env vars.
-    # If we want Env Vars to win, we might need a different strategy, 
-    # but usually "Profile" implies "Set these values".
-    # Let's assume Profile > Defaults. 
-    # Validating: If I pass kwargs, they override everything. 
-    # If user sets MYSQL_HOST in docker run -e, they expect it to win.
-    # Pydantic priority: Init settings > Env vars > Secrets > Config file val > Field default
-    
-    # To defer to explicit Env Vars, we should ONLY set keys that are NOT in os.environ
-    #
-    # app-properties.ini is shared with other, unrelated services (e.g. its
-    # postgres_* keys belong to a different app entirely) — only forward keys
-    # that Settings actually declares, so an unrelated section added to the
-    # ini file doesn't crash config loading with "Extra inputs are not
-    # permitted" for fields this app was never going to read.
-    known_fields = set(Settings.model_fields.keys())
-    final_settings = {}
-    skipped = []
-    for k, v in ini_settings.items():
-        if k in os.environ:
-            continue
-        if k not in known_fields:
-            skipped.append(k)
-            continue
-        final_settings[k] = v
+    """Cached settings instance.
 
-    if skipped:
-        logger.warning("IGNORING unrecognized app-properties.ini keys (not used by this service): %s", skipped)
-
+    Pydantic's own order is init kwargs > environment > .env > defaults, and the ini values are passed
+    as init kwargs: so only ini keys that neither the environment nor .env sets are passed, which makes
+    the effective order environment > .env > app-properties.ini > code default. app-properties.ini is
+    shared with other services (e.g. its postgres_* keys), so only keys Settings declares are forwarded.
+    """
+    final_settings, unknown, secret_keys = select_ini_overrides(
+        load_settings_from_ini(), Settings.model_fields.keys(), os.environ.keys(), _dotenv_keys())
+    if unknown:
+        logger.warning("IGNORING unrecognized app-properties.ini keys (not used by this service): %s", unknown)
+    if secret_keys:
+        logger.warning("IGNORING secret keys in app-properties.ini (set them in the environment or .env "
+                       "instead; values not read): %s", sorted(secret_keys))
     return Settings(**final_settings)
 
 

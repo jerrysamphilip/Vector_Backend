@@ -694,9 +694,7 @@ def db_action(action, quiet=False):
         say(f"database '{name}' in {CFG['MYSQL_CONTAINER']}: " + (f"exists, {nums[1]} tables" if nums[0] != "0" else "does not exist"))
         return 0
     sqls = {
-        # utf8mb4's own default collation (0900_ai_ci), like the CI mysql service: tables whose model sets
-        # mysql_charset="utf8mb4" get that collation whatever the schema default is, so a unicode_ci schema
-        # makes the other tables' FKs to them fail with MySQL 3780 (e.g. sales_settings -> tenants).
+        # The one collation every table declares (app/core/db_charset.py, D1), like the CI mysql service
         "create": [f"CREATE DATABASE IF NOT EXISTS `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci",
                    f"GRANT ALL PRIVILEGES ON `{name}`.* TO 'vector'@'%'"],
         "drop": [f"DROP DATABASE IF EXISTS `{name}`"],
@@ -973,9 +971,9 @@ def pytest_plan(suite, args, report_dir, where):
     if ca:
         argv += ["-v", f"{Path(ca).resolve()}:/tmp/ca.crt:ro"]
         pip_cert = "--cert /tmp/ca.crt "
-    # The app image has the runtime dependencies; add pytest/httpx unless the image already has them.
+    # The app image has the runtime dependencies; add pytest/httpx/pytest-cov unless the image already has them.
     argv += ["--entrypoint", "sh", CFG["PY_IMAGE"], "-c",
-             "python -c 'import pytest, httpx' 2>/dev/null || "
+             "python -c 'import pytest, httpx, pytest_cov' 2>/dev/null || "
              f"pip install -q --disable-pip-version-check {pip_cert}-r requirements-dev.txt >/tmp/pip.log 2>&1 "
              f"|| {{ cat /tmp/pip.log; exit 3; }}; python -m pytest "
              + " ".join(shlex.quote(a) for a in pyargs) + f" --junitxml=/src/{rel(inside)}"]

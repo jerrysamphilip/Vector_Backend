@@ -7,11 +7,11 @@ Google / Microsoft connections for calendar and email sync.
 """
 import uuid
 
-from sqlalchemy import JSON, TIMESTAMP, Boolean, Column, Date, ForeignKey, Index, Integer, Numeric, String, Text
-from sqlalchemy.sql import func
+from sqlalchemy import JSON, Boolean, Column, Date, ForeignKey, Index, Integer, Numeric, String, Text
 
 from app.core.encrypted_type import EncryptedText
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 def _uuid():
@@ -30,9 +30,9 @@ class Notification(Base):
     body = Column(Text, nullable=True)
     link = Column(String(500), nullable=True)          # app path, e.g. /app/deals/<id>
     dedupe_key = Column(String(120), nullable=True)    # suppress repeats (e.g. one stale alert per deal per week)
-    read_at = Column(TIMESTAMP, nullable=True)
-    emailed_at = Column(TIMESTAMP, nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    read_at = Column(UtcDateTime, nullable=True)
+    emailed_at = Column(UtcDateTime, nullable=True)
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     __table_args__ = (
         Index("ix_notifications_user_read", "user_id", "read_at", "created_at"),
@@ -55,9 +55,9 @@ class WorkflowRule(Base):
     actions = Column(JSON, nullable=False)              # [{"type": "create_task", ...}, {"type": "notify", ...}]
     active = Column(Boolean, nullable=False, default=True)
     run_count = Column(Integer, nullable=False, default=0)
-    last_run_at = Column(TIMESTAMP, nullable=True)
+    last_run_at = Column(UtcDateTime, nullable=True)
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     __table_args__ = (
         Index("ix_workflow_rules_tenant", "tenant_id", "object_type", "active"),
@@ -71,7 +71,7 @@ class SalesSetting(Base):
 
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), primary_key=True)
     settings = Column(JSON, nullable=False)
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
 
 class SalesTarget(Base):
@@ -85,7 +85,7 @@ class SalesTarget(Base):
     quarter = Column(Integer, nullable=False)           # 1-4
     amount = Column(Numeric(15, 2), nullable=False, default=0)
     set_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     __table_args__ = (
         Index("uq_sales_targets", "tenant_id", "user_id", "fy", "quarter", unique=True),
@@ -106,8 +106,8 @@ class MessageTemplate(Base):
     shared = Column(Boolean, nullable=False, default=True)
     owner_id = Column(String(36), ForeignKey("users.user_id"), nullable=False)
     usage_count = Column(Integer, nullable=False, default=0)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     __table_args__ = (
         Index("ix_message_templates_tenant", "tenant_id", "category"),
@@ -126,8 +126,8 @@ class SavedReport(Base):
     description = Column(Text, nullable=True)
     definition = Column(JSON, nullable=False)
     shared = Column(Boolean, nullable=False, default=False)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
 
 class Product(Base):
@@ -142,7 +142,7 @@ class Product(Base):
     unit_price = Column(Numeric(15, 2), nullable=False, default=0)
     unit = Column(String(30), nullable=True)            # e.g. seat / month, project
     active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     __table_args__ = (
         Index("ix_products_tenant", "tenant_id", "active"),
@@ -175,12 +175,12 @@ class UserConnection(Base):
     account_email = Column(String(255), nullable=True)
     access_token = Column(EncryptedText, nullable=True)
     refresh_token = Column(EncryptedText, nullable=True)
-    expires_at = Column(TIMESTAMP, nullable=True)
+    expires_at = Column(UtcDateTime, nullable=True)
     sync_email = Column(Boolean, nullable=False, default=True)
     sync_calendar = Column(Boolean, nullable=False, default=True)
-    last_sync_at = Column(TIMESTAMP, nullable=True)
+    last_sync_at = Column(UtcDateTime, nullable=True)
     last_error = Column(Text, nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     __table_args__ = (
         Index("uq_user_connections", "user_id", "provider", unique=True),
@@ -209,7 +209,7 @@ class ForecastSnapshot(Base):
     committed = Column(Numeric(15, 2), nullable=True)
     source = Column(String(10), nullable=False, default="SCHEDULED")  # SCHEDULED / MANUAL
     taken_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    taken_at = Column(TIMESTAMP, server_default=func.now())
+    taken_at = Column(UtcDateTime, server_default=NOW6)
 
     __table_args__ = (
         Index("uq_forecast_snapshots", "tenant_id", "period_type", "period_start", "owner_id", unique=True),

@@ -13,8 +13,12 @@ import threading
 from typing import Any, Dict, Optional, Tuple
 
 import boto3
+from botocore.config import Config as BotoConfig
 
 from app.core.config import settings
+
+# One attempt per message: the SDK must never resend mail on its own (F079, as in email_sender_service)
+_CLIENT_CONFIG = BotoConfig(retries={"total_max_attempts": 1, "mode": "standard"})
 
 _clients: Dict[Tuple[str, Optional[str], Optional[str]], Any] = {}
 _lock = threading.Lock()
@@ -38,7 +42,7 @@ def get_ses_client() -> Any:
             if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
                 kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
                 kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
-            client = boto3.client("ses", **kwargs)
+            client = boto3.client("ses", config=_CLIENT_CONFIG, **kwargs)
             _clients[key] = client
     return client
 

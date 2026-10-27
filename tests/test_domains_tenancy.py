@@ -2,10 +2,11 @@
 domain records, stats, provider data or auto-pause decisions."""
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
+from app.core.clock import utcnow
 from app.core.database import SessionLocal
 from tests.conftest import RUN, sql
 
@@ -49,13 +50,13 @@ def _send(inbox_id, campaign_id, prospect_id, from_email, n, bounced=0):
                 direction="OUTBOUND", status="BOUNCED" if hard else "SENT",
                 last_error_code="BOUNCE_Permanent" if hard else None,
                 subject="hi", body_text="hi", to_email=f"r{k}@rcpt{RUN}.example.com",
-                from_email=from_email, sent_at=datetime.utcnow() - timedelta(minutes=5),
+                from_email=from_email, sent_at=utcnow() - timedelta(minutes=5),
             )
             db.add(msg)
             db.flush()
             if hard:
                 db.add(EmailEvent(message_id=msg.message_id, event_type=EmailEvent.EVENT_BOUNCE,
-                                  event_time=datetime.utcnow()))
+                                  event_time=utcnow()))
             ids.append(msg.message_id)
         db.commit()
     return ids

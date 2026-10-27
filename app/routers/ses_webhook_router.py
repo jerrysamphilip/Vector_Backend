@@ -7,12 +7,12 @@ AWS SNS Webhook handlers for SES bounces, complaints, and delivery notifications
 import json
 import logging
 import uuid
-from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.database import get_db
 from app.core.config import settings
 from app.models import EmailMessage, EmailEvent, Prospect, GlobalUnsubscribe
@@ -30,10 +30,46 @@ from sqlalchemy import func
 from app.core.secrets_guard import is_deployed
 from app.utils.sns_verify import is_sns_url, token_matches, verify_sns_signature
 from app.core.observability import record_ses_event
+from app.utils.email_utils import extract_sender_address, extract_sender_domain
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks/ses", tags=["SES Webhooks"])
+
+# SES/SNS notifications are a few KiB; anything over this is not one (and is not buffered whole)
+MAX_WEBHOOK_BODY_BYTES = 1024 * 1024
+_TOO_LARGE = "Payload too large"
+
+
+def _declared_length(request: Request) -> Optional[int]:
+    declared = request.headers.get("content-length")
+    if declared is None:
+        return None
+    try:
+        return int(declared)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Content-Length")
+
+
+async def _read_json_body(request: Request, limit: int = MAX_WEBHOOK_BODY_BYTES) -> object:
+    """The request body as JSON, read at most `limit` bytes: 413 when larger, 400 when not JSON."""
+    declared = _declared_length(request)
+    if declared is not None and declared > limit:
+        raise HTTPException(status_code=413, detail=_TOO_LARGE)
+    buf = bytearray()
+    async for chunk in request.stream():
+        buf.extend(chunk)
+        if len(buf) > limit:
+            raise HTTPException(status_code=413, detail=_TOO_LARGE)
+    try:
+        return json.loads(bytes(buf))
+    except (UnicodeDecodeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+
+# Statuses in which a sent email can receive its SES outcome. SENDING: SES accepted the mail and its
+# event raced ahead of the scheduler's commit of SENT; the outcome is recorded either way.
+_OUTCOME_STATUSES = ("SENT", "SENDING")
 
 
 # Helper for Tag Extraction
@@ -135,6 +171,12 @@ _SENDER_FAULT_DIAGNOSTIC_KEYWORDS = (
 )
 
 
+def _count_metric(db: Session, campaign_id: Optional[str], event_type: int) -> None:
+    """Campaign counters; an email of no campaign (a reply sent from the inbox) has none."""
+    if campaign_id:
+        MetricsService(db).process_event(campaign_id, event_type)
+
+
 def _is_sender_attributable_bounce(bounce_type: str, diagnostic_code: str) -> bool:
     """
     True when a bounce points at a problem with OUR sending side rather than a
@@ -170,7 +212,7 @@ async def handle_ses_notification(
             logger.error("[SES-WEBHOOK] Rejected: AWS_SNS_TOPIC_ARN is not configured in production")
             raise HTTPException(status_code=403, detail="Webhook not configured")
 
-        body = await request.json()
+        body = await _read_json_body(request)
 
         # ── Authenticity (BR-DF-09) ──
         # Wrapped SNS messages must carry a valid AWS signature. Raw-delivery messages have
@@ -209,9 +251,9 @@ async def handle_ses_notification(
                     else:
                         logger.error(f"[SES-WEBHOOK] Failed to confirm subscription: {response.status_code}")
                         return {"status": "error", "message": f"Confirmation failed: {response.status_code}"}
-            except Exception as e:
-                logger.error(f"[SES-WEBHOOK] Error confirming subscription: {e}")
-                return {"status": "error", "message": str(e)}
+            except Exception:
+                logger.exception("[SES-WEBHOOK] Error confirming subscription")
+                return {"status": "error", "message": "Subscription confirmation failed"}
         
         # Handle notification.
         #
@@ -297,10 +339,11 @@ async def handle_ses_notification(
 
     except HTTPException:
         raise
-    
-    except Exception as e:
-        logger.error(f"[SES-WEBHOOK] Error processing notification: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
+    except Exception:
+        # Details stay in the server log: the response must not echo internals (SQL, paths, values)
+        logger.exception("[SES-WEBHOOK] Error processing notification")
+        raise HTTPException(status_code=500, detail="Error processing notification")
 
 
 async def _handle_bounce(message: dict, db: Session) -> dict:
@@ -315,8 +358,8 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
     # Get message ID from mail headers
     mail_info = message.get("mail", {})
     ses_message_id = mail_info.get("messageId")
-    source_email = (mail_info.get("source") or "").lower()
-    sender_domain = source_email.split("@", 1)[1] if "@" in source_email else None
+    source_email = extract_sender_address(mail_info.get("source"))
+    sender_domain = extract_sender_domain(mail_info.get("source"))
     
     # Extract tags using helper
     tags = _extract_tags(mail_info)
@@ -345,7 +388,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
             db.add(EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_SENDER_BOUNCE,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "bounce_type": bounce_type,
@@ -354,7 +397,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
                     "ses_message_id": ses_message_id,
                 }
             ))
-            MetricsService(db).process_event(email_message.campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
+            _count_metric(db, email_message.campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
 
         elif email_message:
             # Update message status
@@ -367,7 +410,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_BOUNCE,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "bounce_type": bounce_type,
@@ -386,7 +429,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
                 db.add(EmailEvent(
                     message_id=email_message.message_id,
                     event_type=EmailEvent.EVENT_SENDER_BOUNCE,
-                    event_time=datetime.utcnow(),
+                    event_time=utcnow(),
                     event_metadata={
                         "dedupe_key": message.get("_dedupe_key"),
                         "bounce_type": bounce_type,
@@ -394,8 +437,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
                         "diagnostic_code": recipient.get("diagnosticCode"),
                     }
                 ))
-                metrics_service = MetricsService(db)
-                metrics_service.process_event(email_message.campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
+                _count_metric(db, email_message.campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
 
             # Inject a visible INBOUND notification into the conversation so the
             # bounce appears in the campaign inbox thread (not just analytics).
@@ -417,7 +459,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
                     to_email=email_message.from_email or "",
                     from_email=email or "",
                     status="SENT",
-                    sent_at=datetime.utcnow(),
+                    sent_at=utcnow(),
                 )
                 db.add(bounce_msg)
 
@@ -426,11 +468,10 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
                 ).first()
                 if conv:
                     conv.is_unread = True
-                    conv.last_message_at = datetime.utcnow()
+                    conv.last_message_at = utcnow()
 
             # Update metrics
-            metrics_service = MetricsService(db)
-            metrics_service.process_event(email_message.campaign_id, EmailEvent.EVENT_BOUNCE)
+            _count_metric(db, email_message.campaign_id, EmailEvent.EVENT_BOUNCE)
         
         # For PERMANENT bounces, add to global unsubscribe and mark the
         # prospect's status in THIS campaign as BOUNCED — a hard bounce means
@@ -481,8 +522,8 @@ async def _handle_complaint(message: dict, db: Session) -> dict:
     complained_recipients = complaint_info.get("complainedRecipients", [])
     
     mail_info = message.get("mail", {})
-    source_email = (mail_info.get("source") or "").lower()
-    sender_domain = source_email.split("@", 1)[1] if "@" in source_email else None
+    source_email = extract_sender_address(mail_info.get("source"))
+    sender_domain = extract_sender_domain(mail_info.get("source"))
     tags = _extract_tags(mail_info)
     internal_message_id = _resolve_message_id(db, mail_info, tags)
     
@@ -506,7 +547,7 @@ async def _handle_complaint(message: dict, db: Session) -> dict:
                 event = EmailEvent(
                     message_id=email_message.message_id,
                     event_type=EmailEvent.EVENT_UNSUBSCRIBE,
-                    event_time=datetime.utcnow(),
+                    event_time=utcnow(),
                     event_metadata={
                         "dedupe_key": message.get("_dedupe_key"),
                         "complaint_type": complaint_type,
@@ -547,15 +588,17 @@ async def _handle_delivery(message: dict, db: Session) -> dict:
         # Record confirmed delivery without touching `status` — many existing
         # reports/metrics filter on status == "SENT" as "successfully sent",
         # so delivery confirmation is tracked via delivered_at + an event
-        # instead of transitioning status away from SENT.
-        if email_message and email_message.status == "SENT" and not email_message.delivered_at:
-            email_message.delivered_at = datetime.utcnow()
+        # instead of transitioning status away from SENT. A Delivery that races
+        # ahead of the scheduler's commit (status still SENDING) is recorded too;
+        # the scheduler then moves SENDING to SENT itself.
+        if email_message and email_message.status in _OUTCOME_STATUSES and not email_message.delivered_at:
+            email_message.delivered_at = utcnow()
             set_final_status(email_message, "DELIVERED", email_message.delivered_at)
 
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_DELIVERED,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "smtp_response": delivery_info.get("smtpResponse"),
@@ -592,7 +635,7 @@ async def _handle_open(message: dict, db: Session) -> dict:
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_OPEN,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "ip_address": open_info.get("ipAddress"),
@@ -648,7 +691,7 @@ async def _handle_click(message: dict, db: Session) -> dict:
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_CLICK,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "ip_address": click_info.get("ipAddress"),
@@ -707,7 +750,7 @@ async def _handle_reject(message: dict, db: Session) -> dict:
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_BOUNCE,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "reason": reject_info.get("reason"),
@@ -744,7 +787,7 @@ async def _handle_delivery_delay(message: dict, db: Session) -> dict:
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_SENT,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "delay_type": delay_type,
@@ -820,7 +863,7 @@ async def _handle_subscription(message: dict, db: Session) -> dict:
             event = EmailEvent(
                 message_id=email_message.message_id,
                 event_type=EmailEvent.EVENT_UNSUBSCRIBE,
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
                 event_metadata={
                     "dedupe_key": message.get("_dedupe_key"),
                     "contact_list": contact_list,

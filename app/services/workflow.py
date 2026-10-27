@@ -8,10 +8,12 @@ changes alike. Field updates made by a rule can trigger further rules, up to
 MAX_DEPTH levels, so two rules can never loop forever.
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Dict, Optional, Tuple
 
 from sqlalchemy.orm import Session
+
+from app.core.clock import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +118,7 @@ def on_changes(db: Session, tenant_id: str, object_type: str, object_id: str,
                 _run(db, tenant_id, rule, object_type, obj, name, link, owner_id, actor_id,
                      prospect_id, opportunity_id, account_id)
                 rule.run_count = (rule.run_count or 0) + 1
-                rule.last_run_at = datetime.utcnow()
+                rule.last_run_at = utcnow()
             except Exception as exc:  # a broken rule must not break the user's edit
                 logger.warning(f"[Workflow] Rule {rule.rule_id} failed: {exc}")
     finally:
@@ -136,7 +138,7 @@ def _run(db, tenant_id, rule, object_type, obj, name, link, owner_id, actor_id, 
             db.add(CrmTask(tenant_id=tenant_id, title=_render(action.get("title") or rule.name, name, rule.name)[:255],
                            notes=f"Created by workflow rule \"{rule.name}\"", task_type=action.get("task_type") or "TODO",
                            priority=action.get("priority") or "MEDIUM", owner_id=assignee, created_by=actor_id,
-                           due_at=datetime.utcnow() + timedelta(days=days) if days else None,
+                           due_at=utcnow() + timedelta(days=days) if days else None,
                            prospect_id=prospect_id, opportunity_id=opportunity_id, account_id=account_id))
             if assignee and assignee != actor_id:
                 notify(db, tenant_id, [assignee], "TASK", f"New task: {_render(action.get('title') or rule.name, name, rule.name)}",

@@ -15,7 +15,7 @@ import os
 import sys
 import time
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from common import Results, Workspace, req, sql  # noqa: E402
@@ -26,6 +26,11 @@ OWNER = W.token
 rid = W.rid
 WEBHOOK_TOKEN = os.environ.get("SES_WEBHOOK_TOKEN", "local-dev-webhook-token")
 FUTURE = (date.today() + timedelta(days=20)).isoformat()
+
+
+def utcnow():
+    """Naive UTC now, like app.core.clock.utcnow (the app package is not importable here)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def q(s):
@@ -139,9 +144,9 @@ def autopause():
             f"WHERE message_id={q(mid)}")
         email = f"cmp{i}.{rid}@bf-{rid}.example"
         event = {"notificationType": "Complaint", "eventType": "Complaint",
-                 "mail": {"timestamp": datetime.utcnow().isoformat() + "Z", "messageId": ses_id,
+                 "mail": {"timestamp": utcnow().isoformat() + "Z", "messageId": ses_id,
                           "source": f"cmp-{rid}@{dom}", "destination": [email], "tags": {"message_id": [mid]}},
-                 "complaint": {"complaintFeedbackType": "abuse", "timestamp": datetime.utcnow().isoformat() + "Z",
+                 "complaint": {"complaintFeedbackType": "abuse", "timestamp": utcnow().isoformat() + "Z",
                                "complainedRecipients": [{"emailAddress": email}]}}
         req("POST", f"/webhooks/ses/notifications?token={WEBHOOK_TOKEN}", event)
     paused = wait_until(lambda: scalar(f"SELECT status FROM campaigns WHERE campaign_id={q(cid)}") == "PAUSED")

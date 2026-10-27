@@ -20,16 +20,16 @@ import random
 import re
 import time
 import uuid
-from datetime import datetime
 from typing import Dict, List, Optional
 
 import pandas as pd
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import DataError, IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import require_role
 from app.core.database import get_db
 from app.models.account import Account
@@ -38,8 +38,9 @@ from app.models.crm import ImportJob, PropertyChange
 from app.models.prospect import GlobalUnsubscribe, Prospect
 from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.user import User
-from app.services import crm
+from app.services import crm, import_limits
 from app.services.contact_service import can_access_contact, can_manage_contacts, can_see_owner, normalize_tags
+from app.utils.company_domain import is_valid_domain
 from app.utils.http_files import content_disposition
 
 router = APIRouter(prefix="/imports", tags=["Imports"])
@@ -94,6 +95,8 @@ _CONTACT_TO_COMPANY = {
     "contact.poc_country": "company.country",
 }
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+CONTACT_LIMITS = import_limits.column_limits(Prospect)
+COMPANY_LIMITS = import_limits.column_limits(Account)
 
 
 class RowError(Exception):
@@ -109,17 +112,27 @@ def _delimiter(text: str) -> str:
         return ","
 
 
+def _parse(raw: bytes, name: str) -> pd.DataFrame:
+    """The file as text cells. XLSX archives are size-checked before pandas unpacks them, and CSV
+    text is UTF-8 or Windows-1252 (import_limits); FileRejected carries a message for the user."""
+    if name.endswith(".xlsx"):
+        import_limits.check_xlsx_archive(raw)
+    if name.endswith((".xlsx", ".xls")):
+        return pd.read_excel(io.BytesIO(raw), dtype=str)
+    text = import_limits.decode_csv(raw)
+    return pd.read_csv(io.StringIO(text), dtype=str, sep=_delimiter(text), engine="python")
+
+
 def _read_file(upload: UploadFile) -> pd.DataFrame:
     raw = upload.file.read()
     if len(raw) > MAX_FILE_MB * 1024 * 1024:
         raise HTTPException(status_code=400, detail=f"File is larger than {MAX_FILE_MB} MB")
     name = (upload.filename or "").lower()
     try:
-        if name.endswith((".xlsx", ".xls")):
-            df = pd.read_excel(io.BytesIO(raw), dtype=str)
-        else:
-            text = raw.decode("utf-8-sig", errors="replace")
-            df = pd.read_csv(io.StringIO(text), dtype=str, sep=_delimiter(text), engine="python")
+        df = _parse(raw, name)
+        import_limits.check_column_count(df.columns)
+    except import_limits.FileRejected as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Could not read the file: {exc}")
     df.columns = [str(c).strip() for c in df.columns]
@@ -127,6 +140,38 @@ def _read_file(upload: UploadFile) -> pd.DataFrame:
     if len(df) > MAX_ROWS:
         raise HTTPException(status_code=400, detail=f"Files can have at most {MAX_ROWS:,} rows; this one has {len(df):,}")
     return df.astype(object).where(pd.notna(df), None)  # blank cells -> None (NaN isn't valid JSON)
+
+
+def _check_lengths(values: Dict, limits: Dict[str, int], labels: Dict[str, str]) -> None:
+    """A value longer than its column is this row's error (with the field), not a failed import."""
+    problems = import_limits.oversized_fields(values, limits, labels)
+    if problems:
+        raise RowError("; ".join(problems))
+
+
+def _data_error_reason(exc: DataError) -> str:
+    """'Job title: value too long or not valid' from MySQL's "Data too long for column 'designation'"."""
+    match = re.search(r"column '([^']+)'", str(getattr(exc, "orig", exc)))
+    if match:
+        column = match.group(1)
+        label = CONTACT_TARGETS.get(column) or COMPANY_TARGETS.get(column) or column
+        return f"{label}: value is too long or not valid for this field"
+    return "A value is too long or not valid for its field"
+
+
+def _company_domain(cvals: Dict, contact_email: Optional[str]) -> Optional[str]:
+    """The company domain for a row: the Domain column (must be valid), else a usable Website,
+    else the contact's work email domain. Free-mail domains never identify a company."""
+    raw = cvals.get("domain")
+    domain = crm.clean_domain(raw)
+    if domain and not is_valid_domain(domain):
+        raise RowError(f"Company domain '{raw}' is not a valid domain")
+    if not domain:
+        website = crm.clean_domain(cvals.get("website"))
+        domain = website if website and is_valid_domain(website) else None
+    if domain and crm.is_personal_domain(domain):
+        domain = None
+    return domain or crm.company_domain_from_email(contact_email)
 
 
 def _suggest(headers: List[str], custom: Dict[str, str]) -> Dict[str, str]:
@@ -315,10 +360,8 @@ def run_import(
 
     def company_for_row(row, contact_email):
         cvals = values_for(row, "company")
-        domain = crm.clean_domain(cvals.get("domain") or cvals.get("website"))
-        if not domain and contact_email:
-            d = crm.email_domain(contact_email)
-            domain = d if d and not crm.is_personal_domain(d) else None
+        _check_lengths(cvals, COMPANY_LIMITS, COMPANY_TARGETS)
+        domain = _company_domain(cvals, contact_email)
         name = cvals.get("name")
         if not domain and not name:
             return None
@@ -409,6 +452,7 @@ def run_import(
         for k in ("phone", "mobile_phone"):
             if vals.get(k):
                 vals[k] = vals[k][:50]
+        _check_lengths({"email": email, **vals}, CONTACT_LIMITS, CONTACT_TARGETS)
         custom = {}
         for column, target in resolved.items():
             if target.startswith("custom."):
@@ -454,16 +498,80 @@ def run_import(
 
     rows = df.to_dict(orient="records")
 
+    def create_contact(email, vals, custom, account):
+        """Insert a new contact; if another import inserted it a moment ago, update that one."""
+        p = Prospect(prospect_id=str(uuid.uuid4()), tenant_id=tenant_id, email=email,
+                     email_type="PERSONAL" if crm.is_personal_domain(crm.email_domain(email)) else "BUSINESS",
+                     email_provider=crm.email_domain(email), consent_source="IMPORT",
+                     consent_timestamp=utcnow(), is_valid_email=True,
+                     consent_status="UNSUBSCRIBED" if email.lower() in unsubscribed else "OPT_IN",
+                     owner_id=vals.get("owner_id") or owner_id or current_user.user_id,
+                     lifecycle_stage="LEAD", lead_status="NEW")
+        apply_contact(p, vals, custom, account, created=True)
+        missing = [d.label for d in required_defs if (p.custom_fields or {}).get(d.field_key) in (None, "", [])]
+        if missing:  # same rule as creating a contact in the app (BR-CM-08)
+            raise RowError(f"Missing required field: {', '.join(missing)}")
+        try:
+            with db.begin_nested():
+                db.add(p)
+                db.flush()
+            stats["contacts_created"] += 1
+            db.add(PropertyChange(tenant_id=tenant_id, object_type="CONTACT", object_id=p.prospect_id,
+                                  field="created", new_value=f"Imported from {job.file_name}",
+                                  source="IMPORT", changed_by=current_user.user_id))
+        except IntegrityError:
+            # Created by another import in the meantime: update it instead (BR-CM-28)
+            # FOR UPDATE reads the latest committed row; a plain read would use
+            # this transaction's snapshot, which predates the other import's commit
+            p = db.query(Prospect).filter(Prospect.tenant_id == tenant_id,
+                                          Prospect.email == email).with_for_update().first()
+            if p is None or p.deleted_at is not None:
+                raise RowError("Could not save contact")
+            if not can_access_contact(current_user, p):
+                raise RowError(NOT_VISIBLE)
+            apply_contact(p, vals, custom, account, created=False)
+            stats["contacts_updated"] += 1
+        return p
+
+    def save_contact_row(row, email, vals, custom, existing):
+        """One contact row in its own savepoint: a RowError or DataError undoes only this row."""
+        with db.begin_nested():
+            p = existing.get(email.lower())
+            if p is not None and p.deleted_at is not None:
+                raise RowError("Matches a deleted contact; restore it first")
+            if p is not None and not can_access_contact(current_user, p):
+                # Never overwrite or reassign a colleague's contact outside your team (BR-SH-02)
+                raise RowError(NOT_VISIBLE)
+            account = company_for_row(row, email)  # from columns, else the email domain (BR-CM-04)
+            if p is None:
+                p = create_contact(email, vals, custom, account)
+            else:
+                if owner_id and update_existing and "owner_id" not in vals:
+                    vals["owner_id"] = owner_id
+                apply_contact(p, vals, custom, account, created=False)
+                if update_existing:
+                    stats["contacts_updated"] += 1
+            list_members.append(p.prospect_id)
+
+    def save_company_row(row):
+        with db.begin_nested():
+            if not company_for_row(row, None):
+                raise RowError("Missing company name or domain")
+
+    def guarded(row_no, row, save, *args):
+        """Run one row's save; a refusal or a value the database rejects becomes that row's error."""
+        try:
+            save(row, *args)
+        except RowError as exc:
+            errors.append({"row": row_no, "reason": str(exc), "values": row})
+        except DataError as exc:
+            errors.append({"row": row_no, "reason": _data_error_reason(exc), "values": row})
+
     def process_chunk(chunk):
         """One all-or-nothing unit; the caller commits, or rolls back and retries on deadlock."""
         if not has_contacts:
             for row_no, row in chunk:
-                try:
-                    with db.begin_nested():
-                        if not company_for_row(row, None):
-                            raise RowError("Missing company name or domain")
-                except RowError as exc:
-                    errors.append({"row": row_no, "reason": str(exc), "values": row})
+                guarded(row_no, row, save_company_row)
             return
 
         parsed = []
@@ -483,56 +591,7 @@ def run_import(
             func.lower(Prospect.email).in_([e.lower() for _, _, e, _, _ in parsed]))} if parsed else {}
 
         for row_no, row, email, vals, custom in parsed:
-            try:
-                with db.begin_nested():
-                    p = existing.get(email.lower())
-                    if p is not None and p.deleted_at is not None:
-                        raise RowError("Matches a deleted contact; restore it first")
-                    if p is not None and not can_access_contact(current_user, p):
-                        # Never overwrite or reassign a colleague's contact outside your team (BR-SH-02)
-                        raise RowError(NOT_VISIBLE)
-                    account = company_for_row(row, email)  # from columns, else the email domain (BR-CM-04)
-                    if p is None:
-                        p = Prospect(prospect_id=str(uuid.uuid4()), tenant_id=tenant_id, email=email,
-                                     email_type="PERSONAL" if crm.is_personal_domain(crm.email_domain(email)) else "BUSINESS",
-                                     email_provider=crm.email_domain(email), consent_source="IMPORT",
-                                     consent_timestamp=datetime.utcnow(), is_valid_email=True,
-                                     consent_status="UNSUBSCRIBED" if email.lower() in unsubscribed else "OPT_IN",
-                                     owner_id=vals.get("owner_id") or owner_id or current_user.user_id,
-                                     lifecycle_stage="LEAD", lead_status="NEW")
-                        apply_contact(p, vals, custom, account, created=True)
-                        missing = [d.label for d in required_defs if (p.custom_fields or {}).get(d.field_key) in (None, "", [])]
-                        if missing:  # same rule as creating a contact in the app (BR-CM-08)
-                            raise RowError(f"Missing required field: {', '.join(missing)}")
-                        try:
-                            with db.begin_nested():
-                                db.add(p)
-                                db.flush()
-                            stats["contacts_created"] += 1
-                            db.add(PropertyChange(tenant_id=tenant_id, object_type="CONTACT", object_id=p.prospect_id,
-                                                  field="created", new_value=f"Imported from {job.file_name}",
-                                                  source="IMPORT", changed_by=current_user.user_id))
-                        except IntegrityError:
-                            # Created by another import in the meantime: update it instead (BR-CM-28)
-                            # FOR UPDATE reads the latest committed row; a plain read would use
-                            # this transaction's snapshot, which predates the other import's commit
-                            p = db.query(Prospect).filter(Prospect.tenant_id == tenant_id,
-                                                          Prospect.email == email).with_for_update().first()
-                            if p is None or p.deleted_at is not None:
-                                raise RowError("Could not save contact")
-                            if not can_access_contact(current_user, p):
-                                raise RowError(NOT_VISIBLE)
-                            apply_contact(p, vals, custom, account, created=False)
-                            stats["contacts_updated"] += 1
-                    else:
-                        if owner_id and update_existing and "owner_id" not in vals:
-                            vals["owner_id"] = owner_id
-                        apply_contact(p, vals, custom, account, created=False)
-                        if update_existing:
-                            stats["contacts_updated"] += 1
-                    list_members.append(p.prospect_id)
-            except RowError as exc:
-                errors.append({"row": row_no, "reason": str(exc), "values": row})
+            guarded(row_no, row, save_contact_row, email, vals, custom, existing)
 
     try:
         for start in range(0, len(rows), CHUNK):
@@ -576,7 +635,7 @@ def run_import(
         job.error_count = len(errors)
         job.errors = [{"row": e["row"], "reason": e["reason"],
                        "values": {k: (None if v is None else str(v)) for k, v in e["values"].items()}} for e in errors[:MAX_ROWS]]
-        job.finished_at = datetime.utcnow()
+        job.finished_at = utcnow()
         if target_list:
             job.options = {**(job.options or {}), "list_id": target_list.list_id, "list_name": target_list.list_name}
         db.commit()

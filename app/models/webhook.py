@@ -4,12 +4,12 @@ delivery outbox the worker sends from (app/services/webhooks.py).
 """
 import uuid
 
-from sqlalchemy import JSON, TIMESTAMP, Boolean, Column, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
-from sqlalchemy.sql import func
 
 from app.core.encrypted_type import EncryptedString
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 def _uuid():
@@ -29,12 +29,12 @@ class WebhookEndpoint(Base):
     active = Column(Boolean, nullable=False, default=True)
     consecutive_failures = Column(Integer, nullable=False, default=0)
     disabled_reason = Column(String(255), nullable=True)    # set when switched off automatically
-    disabled_at = Column(TIMESTAMP, nullable=True)
-    last_success_at = Column(TIMESTAMP, nullable=True)
-    last_failure_at = Column(TIMESTAMP, nullable=True)
+    disabled_at = Column(UtcDateTime, nullable=True)
+    last_success_at = Column(UtcDateTime, nullable=True)
+    last_failure_at = Column(UtcDateTime, nullable=True)
     created_by = Column(String(36), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     __table_args__ = (
         Index("ix_webhook_endpoints_tenant", "tenant_id", "active"),
@@ -60,13 +60,13 @@ class WebhookDelivery(Base):
     attempts = Column(Integer, nullable=False, default=0)
     response_code = Column(Integer, nullable=True)
     last_error = Column(String(500), nullable=True)
-    next_attempt_at = Column(TIMESTAMP, nullable=True)
-    last_attempt_at = Column(TIMESTAMP, nullable=True)
-    delivered_at = Column(TIMESTAMP, nullable=True)
+    next_attempt_at = Column(UtcDateTime, nullable=True)
+    last_attempt_at = Column(UtcDateTime, nullable=True)
+    delivered_at = Column(UtcDateTime, nullable=True)
     duration_ms = Column(Integer, nullable=True)
     is_test = Column(Boolean, nullable=False, default=False)
     redelivery_of = Column(String(36), nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     __table_args__ = (
         Index("ix_webhook_deliveries_due", "status", "next_attempt_at"),

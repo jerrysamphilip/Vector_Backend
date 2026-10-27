@@ -10,11 +10,11 @@ The tests in this module build on each other and run in file order.
 """
 import uuid
 from collections import Counter
-from datetime import datetime
 
 import pytest
 
 from tests.conftest import RUN, SessionLocal, auth, login, register_tenant, sql
+from app.core.clock import utcnow
 
 STATE: dict = {}
 
@@ -80,7 +80,7 @@ def _event(message_id: str, event_type: int) -> None:
     from app.models.email_message import EmailEvent
 
     with SessionLocal() as db:
-        db.add(EmailEvent(message_id=message_id, event_type=event_type, event_time=datetime.utcnow()))
+        db.add(EmailEvent(message_id=message_id, event_type=event_type, event_time=utcnow()))
         db.commit()
 
 

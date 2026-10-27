@@ -9,12 +9,13 @@
 import io
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
 from tests.conftest import RUN, SessionLocal, engine, register_tenant, sql
 from tests.query_budget import queries_for
+from app.core.clock import utcnow
 
 
 @pytest.fixture(scope="module")
@@ -35,6 +36,18 @@ def _campaign(client, h, label):
     return r.json()
 
 
+def _active_inbox(client, h, label):
+    """An ACTIVE sending inbox: campaign mail is never sent from the platform address (item 12)."""
+    domain = f"{label}-{uuid.uuid4().hex[:6]}{RUN}.example.com"
+    r = client.post("/inboxes", headers=h, json={
+        "email_address": f"sender@{domain}", "smtp_host": "127.0.0.1", "smtp_port": 1,
+        "smtp_username": "sender", "smtp_password": "fixture-smtp-pass",
+        "imap_host": "127.0.0.1", "imap_port": 1, "imap_username": "sender",
+        "imap_password": "fixture-imap-pass", "warmup_enabled": False})
+    assert r.status_code == 201, r.text
+    return r.json()["inbox_id"]
+
+
 def assert_no_open_transaction(where: str) -> None:
     """No pooled connection is checked out, i.e. no session holds a transaction (T-1)."""
     assert engine.pool.checkedout() == 0, f"DB connection checked out during {where}"
@@ -47,7 +60,7 @@ def _queued_message(cid, pid, status="QUEUED", claimed_at=None):
     with SessionLocal() as db:
         msg = EmailMessage(campaign_id=cid, prospect_id=pid, direction="OUTBOUND", status=status,
                            subject="Hi", body_text="Hello", to_email=f"{pid}@x.example.com",
-                           scheduled_at=datetime.utcnow(), claimed_at=claimed_at)
+                           scheduled_at=utcnow(), claimed_at=claimed_at)
         db.add(msg)
         db.commit()
         return msg.message_id
@@ -65,6 +78,7 @@ def test_send_now_claim_is_dated_and_sweep_leaves_it_alone(client, tenant_rf, mo
 
     h = tenant_rf["headers"]
     cid = _campaign(client, h, "Send now race")["campaign_id"]
+    sql("INSERT INTO campaign_inboxes (campaign_id, inbox_id) VALUES (:c, :i)", c=cid, i=_active_inbox(client, h, "race"))
     pid = _contact(client, h, "race")
     with SessionLocal() as db:
         t = EmailTemplate(campaign_id=cid, subject="Hi", body="Hello")
@@ -100,8 +114,8 @@ def test_stuck_sweep_reaps_only_stale_claims_and_dates_legacy_rows(client, tenan
     h = tenant_rf["headers"]
     cid = _campaign(client, h, "Sweep")["campaign_id"]
     pid = _contact(client, h, "sweep")
-    stale_at = datetime.utcnow() - timedelta(minutes=email_scheduler.STUCK_SENDING_MINUTES + 5)
-    fresh = _queued_message(cid, pid, "SENDING", datetime.utcnow())
+    stale_at = utcnow() - timedelta(minutes=email_scheduler.STUCK_SENDING_MINUTES + 5)
+    fresh = _queued_message(cid, pid, "SENDING", utcnow())
     stale = _queued_message(cid, pid, "SENDING", stale_at)
     legacy = _queued_message(cid, pid, "SENDING", None)
 
@@ -328,7 +342,7 @@ def test_ms365_token_refresh_outside_transaction_without_committing_caller(clien
     with SessionLocal() as db:
         inbox = db.query(SendingInbox).filter(SendingInbox.inbox_id == inbox_id).one()
         inbox.auth_type, inbox.oauth_refresh_token = ms365_oauth.AUTH_TYPE, "refresh-1"
-        inbox.oauth_access_token, inbox.oauth_expires_at = "old", datetime.utcnow() - timedelta(minutes=1)
+        inbox.oauth_access_token, inbox.oauth_expires_at = "old", utcnow() - timedelta(minutes=1)
         db.commit()
 
     def fake_token_request(data):
@@ -348,7 +362,7 @@ def test_ms365_token_refresh_outside_transaction_without_committing_caller(clien
 
     # A caller with staged work: the token is stored, the caller's change is not committed
     sql("UPDATE sending_inboxes SET oauth_expires_at = :t WHERE inbox_id = :i",
-        t=datetime.utcnow() - timedelta(minutes=1), i=inbox_id)
+        t=utcnow() - timedelta(minutes=1), i=inbox_id)
     monkeypatch.setattr(ms365_oauth, "_token_request", lambda data: {"access_token": "third", "expires_in": 60})
     with SessionLocal() as db:
         inbox = db.query(SendingInbox).filter(SendingInbox.inbox_id == inbox_id).one()

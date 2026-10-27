@@ -3,12 +3,12 @@
 Prospect List models for CSV uploads and list management.
 """
 
-from sqlalchemy import Column, String, Boolean, TIMESTAMP, ForeignKey, Text, JSON
+from sqlalchemy import Column, String, Boolean, ForeignKey, Text, JSON
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class ProspectList(Base):
@@ -29,7 +29,7 @@ class ProspectList(Base):
     description = Column(Text, nullable=True)
     
     uploaded_by = Column(String(36), ForeignKey("users.user_id"), nullable=False)
-    uploaded_at = Column(TIMESTAMP, server_default=func.now())
+    uploaded_at = Column(UtcDateTime, server_default=NOW6)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="prospect_lists")
@@ -56,7 +56,7 @@ class ProspectListMember(Base):
     prospect_id = Column(String(36), ForeignKey("prospects.prospect_id"), nullable=False)
     
     is_new_prospect = Column(Boolean, default=True)
-    added_at = Column(TIMESTAMP, server_default=func.now())
+    added_at = Column(UtcDateTime, server_default=NOW6)
     notes = Column(Text, nullable=True)
 
     # Relationships

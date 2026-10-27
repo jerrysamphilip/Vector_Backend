@@ -17,10 +17,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, Session, aliased
 from sqlalchemy import Exists, and_, exists, func, or_
 
+from app.core.clock import utcnow
 from app.core.database import SessionLocal
 from app.core.config import settings
 from app.core.auth import BLOCKED_TENANT_STATUSES
 from app.core.observability import record_email_sent
+from app.services.metrics_service import MetricsService
+from app.services.notifications import notify
 from app.models.tenant import Tenant
 from app.models import (
     EmailMessage, 
@@ -33,13 +36,19 @@ from app.models import (
     Conversation,
     EmailSequence,
 )
-import random
+from app.models.inbox_warmup_event import InboxWarmupEvent
+from app.models.user import User
 from app.services.email_sender_service import (
     email_sender,
+    DeferredEmailFailure,
     TransientEmailFailure,
     PermanentEmailFailure,
     AmbiguousEmailFailure,
 )
+from app.services import send_breaker
+from app.services.send_guards import NO_INBOX_RETRY_MINUTES, active_inboxes
+from app.services.send_pacing import next_gap, seconds_until_ready
+from app.services.sequence_stop import PENDING as STOPPABLE_STATUSES, stop_reason, stops_sequence
 from app.utils.campaign_prospect_status import set_prospect_status
 from app.utils.conversation_lock import conversation_creation_lock
 
@@ -72,6 +81,9 @@ class EmailSchedulerService:
     LANE_CAP = 120
     # Statuses of a not-yet-sent step that must go out before the next step (B01)
     PENDING_STATUSES = ("QUEUED", "SCHEDULED", "SENDING", "PAUSED_BY_CAMPAIGN")
+    # A pass held back only by pacing is reported as work (so the job loop comes straight back)
+    # when the soonest mailbox is ready within this many seconds; else the normal interval applies
+    PACE_RECHECK_SECONDS = 30
 
     def __init__(self) -> None:
         # Hard ceiling on due rows considered per cycle (all lanes). Rows are
@@ -81,9 +93,9 @@ class EmailSchedulerService:
         # Lanes sending at once; each holds a DB session, so stay inside the pool
         self.max_parallel_lanes = max(2, int(getattr(settings, "DB_POOL_SIZE", 10) or 10) // 2)
         self.is_running = False
-        # Exact time of each inbox's last send in this process; the DB column only
-        # keeps whole seconds, which would let sends drift up to 1s too close.
-        self._last_send: Dict[str, float] = {}
+        # When each inbox may send again (monotonic clock, jittered gap drawn at its last send in
+        # this process); the DB's last_sent_at covers sends from other processes (send_pacing.py).
+        self._ready_at: Dict[str, float] = {}
         from app.services.daily_limit import DailyLimiter
         self._daily = DailyLimiter()
 
@@ -101,16 +113,15 @@ class EmailSchedulerService:
         2. Existing from_email that matches an active campaign inbox
         3. Sticky sender from previously sent messages for this prospect
         4. Deterministic campaign inbox rotation for this prospect
-        5. System default sender as last fallback
+
+        None when the campaign has no ACTIVE inbox: campaign mail is never sent from the
+        platform address (item 12); the caller leaves the message queued.
         """
-        active_inboxes = sorted(
-            [i for i in (campaign.inboxes or []) if (i.status or "").upper() == "ACTIVE"],
-            key=lambda inbox: (inbox.email_address or "").lower(),
-        )
-        active_by_id = {inbox.inbox_id: inbox for inbox in active_inboxes}
+        inboxes = active_inboxes(campaign)
+        active_by_id = {inbox.inbox_id: inbox for inbox in inboxes}
         active_by_email = {
             (inbox.email_address or "").strip().lower(): inbox
-            for inbox in active_inboxes
+            for inbox in inboxes
             if inbox.email_address
         }
 
@@ -153,10 +164,10 @@ class EmailSchedulerService:
                 )
                 return sticky_inbox.email_address
 
-        if active_inboxes:
+        if inboxes:
             rotation_key = f"{email_msg.campaign_id}:{email_msg.prospect_id}"
-            rotation_index = sum(ord(ch) for ch in rotation_key) % len(active_inboxes)
-            selected_inbox = active_inboxes[rotation_index]
+            rotation_index = sum(ord(ch) for ch in rotation_key) % len(inboxes)
+            selected_inbox = inboxes[rotation_index]
             email_msg.inbox_id = selected_inbox.inbox_id
             email_msg.from_email = selected_inbox.email_address
             logger.info(
@@ -166,15 +177,12 @@ class EmailSchedulerService:
             )
             return selected_inbox.email_address
 
-        fallback_sender = settings.SENDER_EMAIL or email_msg.from_email
-        email_msg.inbox_id = None
-        email_msg.from_email = fallback_sender
         logger.warning(
-            "[Scheduler] No active campaign inboxes for %s. Falling back to system sender %s",
+            "[Scheduler] Campaign %s has no active sending inbox: message %s stays queued",
+            email_msg.campaign_id,
             email_msg.message_id,
-            fallback_sender,
         )
-        return fallback_sender
+        return None
     
     async def process_scheduled_emails(self, db: Optional[Session] = None) -> dict:
         """
@@ -188,17 +196,18 @@ class EmailSchedulerService:
             db = SessionLocal()
             close_db = True
         
-        stats = {
+        stats: Dict[str, Any] = {
             "processed": 0,
             "sent": 0,
             "failed": 0,
             "suppressed": 0,
-            "skipped": 0
+            "skipped": 0,
+            "paced": 0,  # due, but the inbox's gap since its last send has not passed yet
         }
         
         try:
             # Query emails due for sending
-            now = datetime.utcnow()
+            now = utcnow()
             
             from sqlalchemy import or_
             from app.models.campaign import Campaign
@@ -208,6 +217,12 @@ class EmailSchedulerService:
             # are never picked up by the scheduler. Without this join the scheduler
             # would happily send queued messages even while the campaign is paused.
             self._recover_stuck_sends(db)
+
+            # SES / the platform keeps failing: send nothing until the cool-down ends (item 14)
+            if send_breaker.platform_breaker.is_open():
+                logger.warning(f"[Scheduler] Sending stopped by the circuit breaker for another "
+                               f"{send_breaker.platform_breaker.retry_in():.0f}s")
+                return stats
 
             due = self._select_due(db, now)
 
@@ -245,6 +260,7 @@ class EmailSchedulerService:
             for queue_stats in results:
                 for key, value in queue_stats.items():
                     stats[key] += value
+            self._note_pacing(stats)
 
             db.expire_all()
             # Mark campaigns as completed if objective met
@@ -352,17 +368,29 @@ class EmailSchedulerService:
         ).first() is not None
 
     async def _run_inbox_queue(self, message_ids: List[str]) -> dict:
-        """Send one inbox's due messages in order, at its pace, in its own session."""
+        """
+        Send one inbox's due messages in order, in its own session, without waiting (F021): once
+        the inbox is not ready (its pacing gap since the last send has not passed) or the circuit
+        breaker is open, the rest of the lane stays due for a later pass, still in order.
+        """
         stats: Dict[str, int] = defaultdict(int)
         db = SessionLocal()
         try:
             for message_id in message_ids:
+                if send_breaker.platform_breaker.is_open():
+                    break
                 email_msg = db.query(EmailMessage).filter(EmailMessage.message_id == message_id).first()
                 if not email_msg or email_msg.status not in ("QUEUED", "SCHEDULED") or email_msg.sent_at:
                     continue
+                if email_msg.inbox_id and self.pace_wait(db, email_msg.inbox_id) > 0:
+                    stats["paced"] += 1
+                    break
                 stats["processed"] += 1
                 try:
                     result = await self._process_single_email(email_msg, db)
+                    if result == "paced":
+                        stats["processed"] -= 1
+                        stats["paced"] += 1
                     if email_msg.status in ("QUEUED", "SCHEDULED", "CANCELLED") and not email_msg.sent_at:
                         email_msg.send_key = None  # not sent: free the step for a later attempt
                     db.commit()
@@ -370,10 +398,42 @@ class EmailSchedulerService:
                     logger.exception(f"[Scheduler] Message {message_id} errored: {exc}")
                     db.rollback()
                     result = "failed"
+                if result == "paced":
+                    break
                 stats[result if result in ("sent", "failed", "suppressed") else "skipped"] += 1
         finally:
             db.close()
         return stats
+
+    def pace_wait(self, db: Session, inbox_id: str) -> float:
+        """Seconds until this inbox may send again (0: ready now). Never sleeps (F021)."""
+        row = db.query(SendingInbox.delay_between_emails, SendingInbox.last_sent_at).filter(
+            SendingInbox.inbox_id == inbox_id).first()
+        if not row:
+            return 0.0
+        return seconds_until_ready(
+            row[0], settings.SENDING_JITTER_MAX_SECONDS, now=utcnow(), last_sent_at=row[1],
+            now_mono=_time.monotonic(), ready_at_mono=self._ready_at.get(inbox_id))
+
+    def _note_sent_for_pacing(self, inbox_id: Optional[str], delay: Optional[int]) -> None:
+        """Draw this inbox's next gap now, once, so its readiness does not flicker between checks."""
+        if inbox_id:
+            self._ready_at[inbox_id] = _time.monotonic() + next_gap(
+                delay, settings.SENDING_JITTER_MIN_SECONDS, settings.SENDING_JITTER_MAX_SECONDS)
+
+    def _note_pacing(self, stats: Dict[str, Any]) -> None:
+        """
+        recheck_in: seconds until the soonest paced inbox is ready. A pass held back only by
+        pacing counts as work when that is within PACE_RECHECK_SECONDS, so the job loop comes
+        straight back instead of waiting its full interval (which would slow every paced inbox).
+        """
+        if not stats.get("paced"):
+            return
+        now_mono = _time.monotonic()
+        pending = [at - now_mono for at in self._ready_at.values() if at > now_mono]
+        stats["recheck_in"] = min(pending) if pending else 0.0
+        if stats["recheck_in"] <= self.PACE_RECHECK_SECONDS:
+            stats["processed"] += stats["paced"]
 
     def _recover_stuck_sends(self, db: Session) -> None:
         """
@@ -393,7 +453,7 @@ class EmailSchedulerService:
         now and is reaped a full threshold later if it is still SENDING then.
         """
         self._date_undated_claims(db)
-        cutoff = datetime.utcnow() - timedelta(minutes=self.STUCK_SENDING_MINUTES)
+        cutoff = utcnow() - timedelta(minutes=self.STUCK_SENDING_MINUTES)
         stuck = db.query(EmailMessage).filter(
             EmailMessage.status == "SENDING", EmailMessage.sent_at.is_(None),
             EmailMessage.claimed_at < cutoff,
@@ -407,10 +467,9 @@ class EmailSchedulerService:
             ).distinct()
         }
         accepted = failed = 0
-        now = datetime.utcnow()
+        now = utcnow()
         for msg in stuck:
-            if msg.ses_message_id or msg.provider_message_id or msg.delivered_at \
-                    or msg.message_id in provider_events:
+            if self._provider_accepted(msg, provider_events):
                 msg.status = "SENT"
                 msg.sent_at = msg.claimed_at or now
                 msg.failure_reason = ("Sending was interrupted after the provider accepted the "
@@ -426,13 +485,23 @@ class EmailSchedulerService:
         logger.warning(f"[Scheduler] Interrupted sends: {accepted} recorded as sent "
                        f"(provider accepted), {failed} marked failed")
 
+    # Outcomes the SES webhook may record on a row that is still SENDING (delivery or bounce
+    # arrived before the sender committed SENT): proof the provider accepted the message
+    PROVIDER_OUTCOMES = ("DELIVERED", "BOUNCED", "COMPLAINED")
+
+    @classmethod
+    def _provider_accepted(cls, msg: EmailMessage, provider_events: set) -> bool:
+        """Evidence SES accepted a stuck SENDING message: a provider id, a delivery, an outcome or an event."""
+        return bool(msg.ses_message_id or msg.provider_message_id or msg.delivered_at
+                    or msg.final_status in cls.PROVIDER_OUTCOMES or msg.message_id in provider_events)
+
     @staticmethod
     def _date_undated_claims(db: Session) -> None:
         """Start the stuck-send clock for legacy SENDING rows that carry no claimed_at."""
         dated = db.query(EmailMessage).filter(
             EmailMessage.status == "SENDING", EmailMessage.sent_at.is_(None),
             EmailMessage.claimed_at.is_(None),
-        ).update({"claimed_at": datetime.utcnow()}, synchronize_session=False)
+        ).update({"claimed_at": utcnow()}, synchronize_session=False)
         # Commit even when nothing matched: under REPEATABLE READ the UPDATE still holds next-key locks on
         # the scanned status='SENDING' index range, and this session stays open for the whole batch, so
         # every lane's claim (QUEUED -> SENDING) would wait on it until the read timeout.
@@ -469,7 +538,7 @@ class EmailSchedulerService:
             rows = db.query(EmailMessage).filter(
                 EmailMessage.message_id == email_msg.message_id,
                 EmailMessage.status.in_(["QUEUED", "SCHEDULED"]),
-            ).update({"status": "SENDING", "send_key": key, "claimed_at": datetime.utcnow()},
+            ).update({"status": "SENDING", "send_key": key, "claimed_at": utcnow()},
                      synchronize_session=False)
             db.commit()
         except IntegrityError:
@@ -564,7 +633,7 @@ class EmailSchedulerService:
                     f"re-queuing for 1 hour."
                 )
                 email_msg.status = "QUEUED"
-                email_msg.scheduled_at = datetime.utcnow() + timedelta(hours=1)
+                email_msg.scheduled_at = utcnow() + timedelta(hours=1)
                 db.commit()
                 return "skipped"
 
@@ -600,16 +669,13 @@ class EmailSchedulerService:
                 return "suppressed"
 
             # Stop on reply / bounce / unsubscribe in this campaign (BR-DF-05): later
-            # steps are queued at launch, so check the contact's state before each send.
-            if email_msg.campaign_id and email_msg.direction != "INBOUND" and email_msg.sequence_id:
-                enrollment = db.query(CampaignProspect.status).filter(
-                    CampaignProspect.campaign_id == email_msg.campaign_id,
-                    CampaignProspect.prospect_id == email_msg.prospect_id,
-                ).first()
-                if enrollment and enrollment[0] in ("REPLIED", "BOUNCED", "UNSUBSCRIBED", "PAUSED"):
-                    email_msg.status = "CANCELLED"
-                    email_msg.failure_reason = f"Stopped: contact {enrollment[0].lower()}"
-                    return "suppressed"
+            # steps are queued at launch, so check the contact's state before each send,
+            # under this step's own stop_on_reply / stop_on_bounce flags (item 20).
+            stopped = self.stopped_by_enrollment(email_msg, db)
+            if stopped:
+                email_msg.status = "CANCELLED"
+                email_msg.failure_reason = stop_reason(stopped)
+                return "suppressed"
             
             # Get template. Manual unified-inbox replies can be queued without template_id,
             # using the message snapshot subject/body directly.
@@ -655,7 +721,7 @@ class EmailSchedulerService:
                     )
                     email_msg.status = "QUEUED"
                     email_msg.send_key = None
-                    email_msg.scheduled_at = datetime.utcnow() + timedelta(hours=1)
+                    email_msg.scheduled_at = utcnow() + timedelta(hours=1)
                     return "skipped"
 
                 sender_name = campaign.sender_name or f"{user.first_name} {user.last_name}"
@@ -678,7 +744,7 @@ class EmailSchedulerService:
                  window_end = campaign.send_window_end or time(17, 0)
 
                  is_valid_time = is_within_send_window(
-                     current_utc=datetime.utcnow(),
+                     current_utc=utcnow(),
                      timezone_str=effective_tz,
                      send_window_start=window_start,
                      send_window_end=window_end
@@ -693,31 +759,32 @@ class EmailSchedulerService:
                      email_msg.status = "QUEUED"
                      email_msg.send_key = None
                      # Add small delay so we don't spam the checks immediately
-                     email_msg.scheduled_at = datetime.utcnow() + timedelta(minutes=30)
+                     email_msg.scheduled_at = utcnow() + timedelta(minutes=30)
                      return "skipped"
 
             # ---------------------------------------------------------
             # INBOX ROTATION & SELECTION LOGIC
             # ---------------------------------------------------------
             from_email_address = self._resolve_sender_for_message(email_msg, campaign, db)
-            paced = False
+            if not from_email_address:
+                return self._hold_without_inbox(email_msg)
 
             # ---------------------------------------------------------
             # PER-INBOX WARMUP & THROTTLE CHECK
             # ---------------------------------------------------------
-            if from_email_address and email_msg.inbox_id:
+            if email_msg.inbox_id:
                 inbox = db.query(SendingInbox).filter(
                     SendingInbox.inbox_id == email_msg.inbox_id
                 ).first()
                 if inbox:
                     # Reset daily counter if new day
-                    today = datetime.utcnow().date()
+                    today = utcnow().date()
                     if not inbox.last_daily_reset or inbox.last_daily_reset.date() < today:
                         inbox.emails_sent_today = 0
-                        inbox.last_daily_reset = datetime.utcnow()
+                        inbox.last_daily_reset = utcnow()
                         # Advance warmup day based on start date
                         if inbox.warmup_enabled and inbox.warmup_start_date:
-                            inbox.warmup_day = (datetime.utcnow() - inbox.warmup_start_date).days
+                            inbox.warmup_day = (utcnow() - inbox.warmup_start_date).days
 
                         # Visibility check (once/day): warn if the configured
                         # per-email pacing can't mathematically reach the
@@ -748,40 +815,19 @@ class EmailSchedulerService:
                         )
                         email_msg.status = "QUEUED"
                         email_msg.send_key = None
-                        email_msg.scheduled_at = datetime.utcnow() + timedelta(
+                        email_msg.scheduled_at = utcnow() + timedelta(
                             hours=inbox.cooling_period_hours
                         )
                         return "skipped"
 
-                    # Per-inbox pace (BR-DF-01): the next send from this inbox waits
-                    # delay_between_emails after the previous one, varied by up to
-                    # +/- the jitter so the rhythm isn't machine-regular. The jitter
-                    # averages out, so the configured pace is what is achieved.
-                    if inbox.delay_between_emails and inbox.delay_between_emails > 0:
-                        spread = min(settings.SENDING_JITTER_MAX_SECONDS, inbox.delay_between_emails * 0.25)
-                        gap = inbox.delay_between_emails + random.uniform(-spread, spread)
-                        since = []
-                        if inbox.last_sent_at:
-                            since.append((datetime.utcnow() - inbox.last_sent_at).total_seconds())
-                        if inbox.inbox_id in self._last_send:
-                            since.append(_time.monotonic() - self._last_send[inbox.inbox_id])
-                        if since:
-                            wait = gap - min(since)
-                            if wait > 0:
-                                await asyncio.sleep(wait)
-                        paced = True
-
-            # ---------------------------------------------------------
-            # HUMAN-PACED SENDING JITTER (inboxes without their own pace)
-            # ---------------------------------------------------------
-            jitter_min = settings.SENDING_JITTER_MIN_SECONDS
-            jitter_max = settings.SENDING_JITTER_MAX_SECONDS
-            if not paced and jitter_max > 0 and jitter_min < jitter_max:
-                jitter_delay = random.uniform(jitter_min, jitter_max)
-                logger.debug(
-                    f"[Scheduler] Applying {jitter_delay:.1f}s jitter for msg {email_msg.message_id}"
-                )
-                await asyncio.sleep(jitter_delay)
+                    # Per-inbox pace (BR-DF-01, F021): the next send from this inbox is due
+                    # delay_between_emails (jittered) after the previous one. Not ready yet:
+                    # give the claim back and leave the email due for a later pass; never
+                    # sleep here, so no inbox holds up another (send_pacing.py).
+                    if self.pace_wait(db, inbox.inbox_id) > 0:
+                        email_msg.status = "QUEUED"
+                        email_msg.send_key = None
+                        return "paced"
 
             # ---------------------------------------------------------
             # DAILY NEW-CONTACT LIMIT (BR-OV-01): first steps only; follow-ups always go
@@ -806,7 +852,7 @@ class EmailSchedulerService:
 
             # Restart the stuck-send clock now: pacing waits above happen after the
             # claim, and the SENDING sweeper must only see time actually spent in SES.
-            email_msg.claimed_at = datetime.utcnow()
+            email_msg.claimed_at = utcnow()
             db.commit()
 
             # Send via SES. Permanent errors (rejected / invalid address) raise
@@ -832,63 +878,13 @@ class EmailSchedulerService:
             if result["success"]:
                 if email_msg.last_error_code == daily_limit.HELD_CODE:
                     email_msg.last_error_code, email_msg.failure_reason = None, None
-                # Update message — commit IMMEDIATELY so no subsequent code in
-                # this batch can overwrite status back to QUEUED via session state.
-                email_msg.status = "SENT"
-                record_email_sent("sent")
-                email_msg.sent_at = datetime.utcnow()
-                email_msg.from_email = from_email_address
-                # Store the MIME Message-ID (not the SES ID) so IMAP sync can
-                # match prospect replies via the In-Reply-To header.
-                email_msg.provider_message_id = (
-                    result.get("internet_message_id") or result.get("ses_message_id")
-                )
-                if email_msg.inbox_id:
-                    self._last_send[email_msg.inbox_id] = _time.monotonic()
-                # SES's id, so delivery events without our tag still match (BR-DF-04)
-                email_msg.ses_message_id = result.get("ses_message_id")
-
-                # Update inbox warmup counters (in SQL, so parallel queues can't lose a count)
-                if email_msg.inbox_id:
-                    db.query(SendingInbox).filter(SendingInbox.inbox_id == email_msg.inbox_id).update({
-                        SendingInbox.emails_sent_today: func.coalesce(SendingInbox.emails_sent_today, 0) + 1,
-                        SendingInbox.last_sent_at: datetime.utcnow(),
-                    }, synchronize_session=False)
-
-                # Create sent event
-                event = EmailEvent(
-                    message_id=email_msg.message_id,
-                    event_type=EmailEvent.EVENT_SENT,
-                    event_time=datetime.utcnow(),
-                    event_metadata={"ses_message_id": result.get("ses_message_id")}
-                )
-                db.add(event)
-
-                # Commit SENT status immediately — prevents race condition where
-                # a later email in the same batch hits a re-queue guard and the
-                # outer db.commit() would overwrite this email's status to QUEUED.
-                db.commit()
-
-                # Update metrics
-                from app.services.metrics_service import MetricsService
-                if email_msg.campaign_id:
-                    ms = MetricsService(db)
-                    ms.process_event(email_msg.campaign_id, EmailEvent.EVENT_SENT)
-
-                # Update campaign prospect step
-                await self._update_prospect_step(email_msg, db)
-
-                logger.info(
-                    f"[Scheduler] Email sent to {prospect.email}, "
-                    f"SES ID: {result.get('ses_message_id')}"
-                )
-                return "sent"
+                return await self._record_sent(email_msg, result, from_email_address, prospect, db)
             else:
                 # Refused before reaching SES (personal address, spam lint): the
                 # same content would be refused again, so fail now with the reason.
                 if str(result.get("status", "")).startswith("BLOCKED"):
                     email_msg.status = "FAILED"
-                    email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+                    email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
                     email_msg.failure_reason = result.get("error", "Blocked before sending")
                     email_msg.last_error_code = str(result.get("status"))[:50]
                     logger.warning(f"[Scheduler] Email blocked for {prospect.email}: {result.get('error')}")
@@ -904,12 +900,12 @@ class EmailSchedulerService:
                     # Schedule retry with exponential backoff
                     email_msg.status = "QUEUED"
                     email_msg.send_key = None
-                    email_msg.next_retry_at = datetime.utcnow() + timedelta(
+                    email_msg.next_retry_at = utcnow() + timedelta(
                         minutes=2 ** email_msg.retry_count
                     )
                     email_msg.last_error_code = result.get("error", "")[:50]
                 if email_msg.status == "FAILED":
-                    email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+                    email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
                 
                 logger.warning(
                     f"[Scheduler] Email failed for {prospect.email}: {result.get('error')}"
@@ -920,10 +916,14 @@ class EmailSchedulerService:
             # SES may have accepted the message before the connection failed:
             # retrying could send it twice (BR-DF-06), so stop here and say why.
             email_msg.status = "FAILED"
-            email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+            email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
             email_msg.failure_reason = f"Send outcome unknown, not retried to avoid a duplicate: {e}"[:1000]
             logger.error(f"[Scheduler] Ambiguous send failure for {email_msg.message_id}: {e}")
             return "failed"
+
+        except DeferredEmailFailure as e:
+            # Platform or sender-identity problem: not this message's fault (item 14)
+            return self._defer(email_msg, e, db)
 
         except TransientEmailFailure as e:
             # Temporary error (throttling, SES 5xx, no connection): send_with_retry
@@ -933,7 +933,7 @@ class EmailSchedulerService:
             email_msg.last_error_code = str(e)[:50]
             if email_msg.retry_count >= (email_msg.max_retries or 3):
                 email_msg.status = "FAILED"
-                email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+                email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
                 email_msg.failure_reason = (f"Temporary sending error persisted after "
                                             f"{email_msg.retry_count} attempts: {e}")[:1000]
                 logger.error(f"[Scheduler] Giving up on {email_msg.message_id} after transient errors: {e}")
@@ -942,7 +942,7 @@ class EmailSchedulerService:
                 record_email_sent("retry")
                 email_msg.status = "QUEUED"
                 email_msg.send_key = None
-                email_msg.next_retry_at = datetime.utcnow() + timedelta(
+                email_msg.next_retry_at = utcnow() + timedelta(
                     minutes=2 ** email_msg.retry_count
                 )
                 logger.warning(f"[Scheduler] Transient failure, will retry: {e}")
@@ -951,7 +951,7 @@ class EmailSchedulerService:
         except PermanentEmailFailure as e:
             # Non-retryable error: fail fast, record why (B06)
             email_msg.status = "FAILED"
-            email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+            email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
             email_msg.failure_reason = str(e)[:1000]
             email_msg.last_error_code = (getattr(e, "code", None) or "PERMANENT")[:50]
             logger.error(f"[Scheduler] Permanent failure: {e}")
@@ -970,9 +970,126 @@ class EmailSchedulerService:
             logger.error(f"[Scheduler] Unexpected error: {e}")
             record_email_sent("error")
             email_msg.status = "FAILED"
-            email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+            email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
             email_msg.failure_reason = f"Unexpected: {str(e)[:200]}"
             return "failed"
+
+    async def _record_sent(self, email_msg: EmailMessage, result: Dict[str, Any],
+                           from_email_address: str, prospect: Prospect, db: Session) -> str:
+        """SES accepted the message: record it (without overwriting a mid-send bounce) and move on."""
+        record_email_sent("sent")
+        send_breaker.platform_breaker.record_success()
+        self.mark_sent(
+            db, email_msg, sent_at=utcnow(), from_email=from_email_address,
+            # The MIME Message-ID (not the SES ID) so IMAP sync can match prospect
+            # replies via the In-Reply-To header.
+            provider_message_id=result.get("internet_message_id") or result.get("ses_message_id"),
+            # SES's id, so delivery events without our tag still match (BR-DF-04)
+            ses_message_id=result.get("ses_message_id"),
+        )
+        if email_msg.inbox_id:
+            delay = db.query(SendingInbox.delay_between_emails).filter(
+                SendingInbox.inbox_id == email_msg.inbox_id).scalar()
+            self._note_sent_for_pacing(email_msg.inbox_id, delay)
+            # Update inbox warmup counters (in SQL, so parallel queues can't lose a count)
+            db.query(SendingInbox).filter(SendingInbox.inbox_id == email_msg.inbox_id).update({
+                SendingInbox.emails_sent_today: func.coalesce(SendingInbox.emails_sent_today, 0) + 1,
+                SendingInbox.last_sent_at: utcnow(),
+            }, synchronize_session=False)
+
+        db.add(EmailEvent(
+            message_id=email_msg.message_id,
+            event_type=EmailEvent.EVENT_SENT,
+            event_time=utcnow(),
+            event_metadata={"ses_message_id": result.get("ses_message_id")},
+        ))
+        # Commit the send immediately, so no later re-queue guard in this batch can
+        # overwrite it through session state.
+        db.commit()
+
+        if email_msg.campaign_id:
+            MetricsService(db).process_event(email_msg.campaign_id, EmailEvent.EVENT_SENT)
+        await self._update_prospect_step(email_msg, db)
+        logger.info(f"[Scheduler] Email sent to {prospect.email}, SES ID: {result.get('ses_message_id')}")
+        return "sent"
+
+    @staticmethod
+    def mark_sent(db: Session, email_msg: EmailMessage, *, sent_at: datetime, from_email: Optional[str],
+                  provider_message_id: Optional[str], ses_message_id: Optional[str]) -> bool:
+        """
+        Record a send accepted by SES with a conditional UPDATE (item 15a): status becomes SENT
+        only while the row is still SENDING. A bounce / complaint the SES webhook recorded while
+        the send was in flight is kept; the send itself (sent_at, provider ids) is still
+        recorded. Returns True when the row became SENT. Does not commit; refreshes email_msg.
+        """
+        values = {"sent_at": sent_at, "from_email": from_email,
+                  "provider_message_id": provider_message_id, "ses_message_id": ses_message_id}
+        rows = db.query(EmailMessage).filter(
+            EmailMessage.message_id == email_msg.message_id, EmailMessage.status == "SENDING",
+        ).update({**values, "status": "SENT"}, synchronize_session=False)
+        if not rows:
+            db.query(EmailMessage).filter(
+                EmailMessage.message_id == email_msg.message_id, EmailMessage.sent_at.is_(None),
+            ).update(values, synchronize_session=False)
+            logger.warning(f"[Scheduler] Message {email_msg.message_id} changed state while it was being "
+                           f"sent (provider event); keeping that status, recording the send only")
+        db.refresh(email_msg)
+        return bool(rows)
+
+    def _defer(self, email_msg: EmailMessage, exc: DeferredEmailFailure, db: Session) -> str:
+        """
+        Platform / sender-identity failure (item 14): re-queue without spending the message's
+        retry budget, feed the circuit breaker / mailbox auto-pause, and fail with the reason
+        only after MAX_DEFERRED_ATTEMPTS (about 4 hours of attempts).
+        """
+        kind = exc.kind.value
+        record_deferred_failure(db, kind, email_msg.inbox_id, str(exc))
+        email_msg.deferred_count = (email_msg.deferred_count or 0) + 1
+        email_msg.last_error_code = (exc.code or kind)[:50]
+        if email_msg.deferred_count >= send_breaker.MAX_DEFERRED_ATTEMPTS:
+            email_msg.status = "FAILED"
+            email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
+            email_msg.failure_reason = (f"Sending kept failing for a {kind.lower()} reason after "
+                                        f"{email_msg.deferred_count} attempts: {exc}")[:1000]
+            record_email_sent("failed")
+            logger.error(f"[Scheduler] Giving up on {email_msg.message_id} after {kind} failures: {exc}")
+            return "failed"
+        email_msg.status = "QUEUED"
+        email_msg.send_key = None
+        email_msg.next_retry_at = utcnow() + timedelta(minutes=send_breaker.DEFER_MINUTES)
+        email_msg.failure_reason = f"Waiting to retry ({kind.lower()} problem): {exc}"[:1000]
+        record_email_sent("retry")
+        logger.warning(f"[Scheduler] {kind} failure for {email_msg.message_id}, re-queued: {exc}")
+        return "deferred"
+
+    @staticmethod
+    def _hold_without_inbox(email_msg: EmailMessage) -> str:
+        """No ACTIVE inbox on the campaign (item 12): keep the email queued and look again later."""
+        email_msg.status = "QUEUED"
+        email_msg.send_key = None
+        email_msg.scheduled_at = utcnow() + timedelta(minutes=NO_INBOX_RETRY_MINUTES)
+        email_msg.last_error_code = "NO_ACTIVE_INBOX"
+        email_msg.failure_reason = ("Waiting: the campaign has no active sending inbox. "
+                                    "Connect or resume one to send this email.")
+        return "skipped"
+
+    @staticmethod
+    def stopped_by_enrollment(email_msg: EmailMessage, db: Session) -> Optional[str]:
+        """
+        The contact's enrollment status when it stops this step (BR-DF-05), under the step's own
+        stop_on_reply / stop_on_bounce flags (sequence_stop.py); None when the step may go.
+        """
+        if not (email_msg.campaign_id and email_msg.sequence_id) or email_msg.direction == "INBOUND":
+            return None
+        enrollment = db.query(CampaignProspect.status).filter(
+            CampaignProspect.campaign_id == email_msg.campaign_id,
+            CampaignProspect.prospect_id == email_msg.prospect_id,
+        ).first()
+        status = enrollment[0] if enrollment else None
+        if not status or status == "ACTIVE":
+            return None
+        step = db.query(EmailSequence).filter(EmailSequence.sequence_id == email_msg.sequence_id).first()
+        return status if stops_sequence(step, status) else None
 
     def _ensure_conversation(self, email_msg: EmailMessage, prospect: Prospect, db: Session) -> None:
         """
@@ -998,7 +1115,7 @@ class EmailSchedulerService:
                     subject=email_msg.subject,
                     status="OPEN",
                     is_unread=False,
-                    last_message_at=datetime.utcnow()
+                    last_message_at=utcnow()
                 )
                 db.add(conv)
                 db.flush()
@@ -1035,7 +1152,7 @@ class EmailSchedulerService:
                     EmailSequence.step_number == sent_step.step_number + 1,
                 ).first()
                 if following:
-                    self.schedule_next_step(db, email_msg, following, email_msg.sent_at or datetime.utcnow())
+                    self.schedule_next_step(db, email_msg, following, email_msg.sent_at or utcnow())
 
             if not campaign_prospect:
                 return
@@ -1066,8 +1183,8 @@ class EmailSchedulerService:
                 # More steps remain — advance to next step and schedule
                 campaign_prospect.current_step = next_step_number
                 campaign_prospect.next_scheduled_at = self.schedule_next_step(
-                    db, email_msg, next_step, email_msg.sent_at or datetime.utcnow()
-                ) or datetime.utcnow() + timedelta(days=next_step.wait_days or 0)
+                    db, email_msg, next_step, email_msg.sent_at or utcnow()
+                ) or utcnow() + timedelta(days=next_step.wait_days or 0)
                 logger.info(
                     f"[Scheduler] Prospect {email_msg.prospect_id} advanced to step {next_step_number}, "
                     f"next send in {next_step.wait_days} day(s)"
@@ -1162,7 +1279,8 @@ class EmailSchedulerService:
                 logger.error(f"[Scheduler] Error in continuous run: {e}")
             
             # Come straight back while there is work, so pace is set by the inboxes (BR-DF-01)
-            await asyncio.sleep(2 if stats.get("processed") else interval_seconds)
+            await asyncio.sleep(2 if stats.get("processed") else min(
+                interval_seconds, max(2.0, stats.get("recheck_in") or interval_seconds)))
     
     def stop(self) -> None:
         """Stop continuous scheduler."""
@@ -1180,7 +1298,7 @@ def rebase_overdue_on_resume(db: Session, campaign) -> int:
     Contacts whose next step is still in the future are left alone.
     Returns the number of messages moved. Does not commit.
     """
-    now = datetime.utcnow()
+    now = utcnow()
     pending = db.query(EmailMessage).filter(
         EmailMessage.campaign_id == campaign.campaign_id,
         EmailMessage.status.in_(["PAUSED_BY_CAMPAIGN", "QUEUED", "SCHEDULED"]),
@@ -1222,6 +1340,82 @@ def rebase_overdue_on_resume(db: Session, campaign) -> int:
     logger.info(f"[Scheduler] Resume of campaign {campaign.campaign_id}: {len(overdue)} overdue "
                 f"contact(s) re-spread from now across {len(slot)} inbox lane(s), {moved} message(s) moved")
     return moved
+
+
+# =============================
+# Send-failure protection (item 14) and per-step stop rules (item 20)
+# =============================
+
+INBOX_PAUSED_KIND = "INBOX_PAUSED"
+
+
+def pause_inbox_for_sender_rejections(db: Session, inbox_id: str, error: str) -> bool:
+    """
+    Set the mailbox PAUSED with the reason (its activity log), and tell the workspace admins.
+    The alert centre shows it as an INBOX_PAUSED alert. Caller commits. Never raises.
+    """
+    try:
+        inbox = db.query(SendingInbox).filter(SendingInbox.inbox_id == inbox_id).first()
+        if not inbox or (inbox.status or "").upper() != "ACTIVE":
+            return False
+        reason = (f"Paused automatically: SES refused {send_breaker.SENDER_REJECTION_THRESHOLD} sends from "
+                  f"{inbox.email_address} within {int(send_breaker.SENDER_REJECTION_WINDOW // 60)} minutes "
+                  f"because the sending identity is not usable ({error[:300]}). Verify the address / "
+                  f"MAIL FROM domain, then resume the mailbox.")
+        inbox.status = "PAUSED"
+        db.add(InboxWarmupEvent(
+            tenant_id=inbox.tenant_id, inbox_id=inbox.inbox_id, event_type="ISSUE", status="FAILED",
+            subject="Mailbox paused: sender identity rejected", detail=reason,
+            event_metadata={"code": "SENDER_IDENTITY_REJECTED"}, event_time=utcnow(),
+        ))
+        admins = [uid for (uid,) in db.query(User.user_id).filter(
+            User.tenant_id == inbox.tenant_id, User.role.in_(("SUPER_ADMIN", "ADMIN")),
+            User.status == "ACTIVE").all()]
+        notify(db, inbox.tenant_id, admins, INBOX_PAUSED_KIND, f"Mailbox paused: {inbox.email_address}",
+               reason, "/app/email-accounts", dedupe_key=f"inbox-paused:{inbox.inbox_id}", dedupe_days=1)
+        logger.warning(f"[SendBreaker] Inbox {inbox.email_address} paused: {error[:200]}")
+        return True
+    except Exception as exc:  # pausing is protective; a failure here must not break the send loop
+        logger.error(f"[SendBreaker] Could not pause inbox {inbox_id}: {exc}")
+        return False
+
+
+def record_deferred_failure(db: Session, kind: str, inbox_id: Optional[str], error: str) -> None:
+    """Feed a PLATFORM failure to the circuit breaker, a SENDER failure to the mailbox's rejection count."""
+    if kind == "PLATFORM":
+        if send_breaker.platform_breaker.record_failure():
+            logger.error(f"[SendBreaker] {send_breaker.PLATFORM_FAILURE_THRESHOLD} consecutive platform "
+                         f"failures: sending stopped for {int(send_breaker.PLATFORM_COOLDOWN_SECONDS)}s. "
+                         f"Last error: {error[:300]}")
+    elif kind == "SENDER" and inbox_id and send_breaker.sender_rejections.record(inbox_id):
+        pause_inbox_for_sender_rejections(db, inbox_id, error)
+
+
+def stop_pending_steps(db: Session, campaign_id: str, prospect_id: str, status: str,
+                       failure_reason: Optional[str] = None) -> int:
+    """
+    Cancel this contact's queued step emails in this campaign that ``status`` (REPLIED, BOUNCED,
+    UNSUBSCRIBED, PAUSED) stops under each step's own stop_on_reply / stop_on_bounce flags
+    (sequence_stop.stops_sequence). Emails with no step (manual replies) are left alone.
+    Returns how many were cancelled. Does not commit.
+    """
+    rows = db.query(EmailMessage.message_id, EmailSequence).join(
+        EmailSequence, EmailSequence.sequence_id == EmailMessage.sequence_id
+    ).filter(
+        EmailMessage.campaign_id == campaign_id,
+        EmailMessage.prospect_id == prospect_id,
+        EmailMessage.direction == "OUTBOUND",
+        EmailMessage.sent_at.is_(None),
+        EmailMessage.status.in_(STOPPABLE_STATUSES),
+    ).all()
+    ids = [message_id for message_id, step in rows if stops_sequence(step, status)]
+    if not ids:
+        return 0
+    return db.query(EmailMessage).filter(
+        EmailMessage.message_id.in_(ids), EmailMessage.status.in_(STOPPABLE_STATUSES),
+    ).update({EmailMessage.status: "CANCELLED",
+              EmailMessage.failure_reason: failure_reason or stop_reason(status)},
+             synchronize_session=False)
 
 
 # Create singleton instance

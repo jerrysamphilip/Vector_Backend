@@ -20,6 +20,7 @@ from typing import Any, Iterable, Optional
 from sqlalchemy import ColumnElement, Numeric, and_, cast, func, not_, or_
 from sqlalchemy.orm import Query, Session
 
+from app.core.clock import utcnow
 from app.models.account import Account
 from app.models.campaign import CampaignProspect
 from app.models.crm import PropertyChange
@@ -27,6 +28,8 @@ from app.models.email_message import EmailMessage
 from app.models.prospect import Prospect
 from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.user import User
+from app.utils.company_domain import bare_domain, is_valid_domain, registrable_domain
+from app.utils.free_mail import is_free_mail_domain
 from app.utils.sql_like import ilike
 
 # ── Definitions (labels can be renamed here before go-live; codes are stored) ──
@@ -64,8 +67,8 @@ LEGAL_BASES = {
 
 RESTORE_WINDOW_DAYS = 90
 
-# Personal email providers, matched on the provider label so regional variants
-# (yahoo.co.in, outlook.fr, ...) count too. No company is created from these domains.
+# Provider labels used by the SQL duplicate count in app/services/crm_kpis.py only. The Python
+# rule (is_personal_domain) checks whole domains: app/utils/free_mail.py.
 _FREEMAIL_LABELS = {
     "gmail", "googlemail", "yahoo", "ymail", "rocketmail", "hotmail", "outlook", "live", "msn",
     "aol", "icloud", "me", "mac", "protonmail", "proton", "pm", "zoho", "zohomail", "yandex",
@@ -145,19 +148,28 @@ def email_domain(email: Optional[str]) -> Optional[str]:
 
 
 def is_personal_domain(domain: Optional[str]) -> bool:
+    """A free / consumer mail domain (gmail.com, orange.fr, yahoo.co.jp), or no domain at all."""
     if not domain:
         return True
-    return domain.split(".")[0] in _FREEMAIL_LABELS
+    return is_free_mail_domain(domain)
 
 
 def clean_domain(value: Optional[str]) -> Optional[str]:
-    """'https://www.Acme.com/about' -> 'acme.com'."""
-    if not value:
+    """'https://www.Acme.com/about' -> 'acme.com'; a subdomain collapses to its registrable
+    domain (us.acme.com -> acme.com, hr.acme.co.uk -> acme.co.uk). Text that is not a valid
+    domain is returned cleaned but uncollapsed: callers that need a valid one check is_valid_domain."""
+    value = bare_domain(value)
+    if value and is_valid_domain(value):
+        return registrable_domain(value)
+    return value
+
+
+def company_domain_from_email(email: Optional[str]) -> Optional[str]:
+    """The company domain an address implies (registrable domain), or None for free mail / invalid."""
+    domain = email_domain(email)
+    if not domain or not is_valid_domain(domain) or is_personal_domain(domain):
         return None
-    value = value.strip().lower()
-    value = re.sub(r"^[a-z]+://", "", value).split("/")[0].split("?")[0]
-    value = value[4:] if value.startswith("www.") else value
-    return value or None
+    return registrable_domain(domain)
 
 
 def _name_from_domain(domain: str) -> str:
@@ -171,11 +183,11 @@ def resolve_company(db: Session, tenant_id: str, email: Optional[str] = None,
     The company a contact belongs to (BR-CM-04): matched by the email's domain, created
     from it when new. Personal email providers fall back to the company name.
     """
-    domain = email_domain(email)
+    domain = company_domain_from_email(email)
     name = (company_name or "").strip()[:255] or None
     live = db.query(Account).filter(Account.tenant_id == tenant_id, Account.deleted_at.is_(None))
 
-    if domain and not is_personal_domain(domain):
+    if domain:
         account = live.filter(Account.domain == domain).first()
         if account:
             return account
@@ -221,7 +233,7 @@ def resolve_company(db: Session, tenant_id: str, email: Optional[str] = None,
 
 def soft_delete_contacts(db: Session, prospects: list, user_id: Optional[str]) -> int:
     """Hide contacts for 90 days and stop anything still queued to them."""
-    now = datetime.utcnow()
+    now = utcnow()
     ids = [p.prospect_id for p in prospects if p.deleted_at is None]
     if not ids:
         return 0
@@ -246,7 +258,7 @@ def soft_delete_contacts(db: Session, prospects: list, user_id: Optional[str]) -
 def restore_contacts(db: Session, tenant_id: str, ids: list, user_id: Optional[str],
                      user: Optional[User] = None) -> int:
     """Restore soft-deleted contacts; with `user`, only those inside their visibility (BR-SH-02)."""
-    cutoff = datetime.utcnow() - timedelta(days=RESTORE_WINDOW_DAYS)
+    cutoff = utcnow() - timedelta(days=RESTORE_WINDOW_DAYS)
     query = db.query(Prospect).filter(
         Prospect.tenant_id == tenant_id, Prospect.prospect_id.in_(ids),
         Prospect.deleted_at.isnot(None), Prospect.deleted_at > cutoff, Prospect.merged_into_id.is_(None),
@@ -265,7 +277,7 @@ def restore_contacts(db: Session, tenant_id: str, ids: list, user_id: Optional[s
 def purge_expired(db: Session) -> int:
     """Permanently delete contacts and companies deleted more than 90 days ago."""
     from app.services.contact_service import delete_contacts
-    cutoff = datetime.utcnow() - timedelta(days=RESTORE_WINDOW_DAYS)
+    cutoff = utcnow() - timedelta(days=RESTORE_WINDOW_DAYS)
     ids = [r[0] for r in db.query(Prospect.prospect_id).filter(
         Prospect.deleted_at.isnot(None), Prospect.deleted_at <= cutoff).limit(5000)]
     delete_contacts(db, ids, reason="PURGE_CONTACT")  # recycle bin expiry, by the system
@@ -364,7 +376,7 @@ def _compare(column, operator, value, is_text=True) -> ColumnElement[bool]:
         low, high = (_as_list(value) + [None, None])[:2]
         return column.between(low, high)
     if operator == "in_last_days":
-        return column >= datetime.utcnow() - timedelta(days=int(value))
+        return column >= utcnow() - timedelta(days=int(value))
     raise FilterError(f"Unknown operator: {operator}")
 
 

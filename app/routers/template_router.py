@@ -7,12 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
 from pathlib import Path
 import uuid
 import hashlib
 import os
 
+from app.core.clock import utcnow
 from app.core.auth import require_role, require_permission
 from app.core.config import settings
 from app.core.database import get_db
@@ -254,7 +254,7 @@ async def approve_template(
     # The approver is always the authenticated user; any approved_by in the
     # request body is ignored so it can't be spoofed.
     template.approved_by = current_user.user_id
-    template.approved_at = datetime.utcnow()
+    template.approved_at = utcnow()
     
     # Audit log
     audit.log_action(

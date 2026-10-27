@@ -24,6 +24,8 @@ from datetime import datetime
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlsplit
 
+from app.utils.host_safety import BLOCKED_HOSTNAMES, ip_block_reason
+
 # ── Event catalogue ────────────────────────────────────────────
 
 # type -> (label, description). Only events the system really emits (see app/services/webhooks.py).
@@ -161,17 +163,8 @@ class WebhookUrlError(ValueError):
     pass
 
 
-# Cloud metadata and host-agent addresses: never a valid target, whatever the environment
-METADATA_IPS = {
-    ipaddress.ip_address("169.254.169.254"),   # AWS / GCP / Azure / OpenStack metadata
-    ipaddress.ip_address("169.254.170.2"),     # AWS ECS task metadata
-    ipaddress.ip_address("100.100.100.200"),   # Alibaba Cloud metadata
-    ipaddress.ip_address("168.63.129.16"),     # Azure wire server
-    ipaddress.ip_address("fd00:ec2::254"),     # AWS metadata over IPv6
-}
-_THIS_NETWORK = ipaddress.ip_network("0.0.0.0/8")
-BLOCKED_HOSTNAMES = {"metadata", "metadata.google.internal", "metadata.goog", "instance-data",
-                     "instance-data.ec2.internal"}
+# Metadata / blocked names and the per-address rule are shared with the mail-server checks
+# (app/utils/host_safety.py): BLOCKED_HOSTNAMES, ip_block_reason (re-exported here for callers).
 
 
 @dataclass(frozen=True)
@@ -192,28 +185,6 @@ def socket_resolver(host: str, port: int) -> List[str]:
     except (socket.gaierror, UnicodeError) as exc:
         raise WebhookUrlError(f"Could not resolve {host}") from exc
     return list(dict.fromkeys(str(info[4][0]) for info in infos))
-
-
-def ip_block_reason(address: str, allow_private: bool = False) -> Optional[str]:
-    """Why this address may not be called, or None. allow_private (development only) lets private
-    and loopback ranges through; link-local, metadata, multicast and unspecified are always blocked."""
-    try:
-        ip = ipaddress.ip_address(address.split("%", 1)[0])
-    except ValueError:
-        return "is not a valid IP address"
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
-    if ip in METADATA_IPS:
-        return "is a cloud metadata address"
-    if ip.is_unspecified or ip.is_multicast or ip.is_link_local or ip in _THIS_NETWORK:
-        return "is not a routable address"
-    if allow_private and (ip.is_private or ip.is_loopback):
-        return None
-    if ip.is_reserved:
-        return "is not a routable address"
-    if not ip.is_global:
-        return "is a private, loopback or internal address"
-    return None
 
 
 def parse_url(url: str, allow_insecure: bool = False) -> Target:

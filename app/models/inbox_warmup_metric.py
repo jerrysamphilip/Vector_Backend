@@ -4,11 +4,11 @@ Daily warmup summary metrics per inbox.
 
 import uuid
 
-from sqlalchemy import Column, String, Integer, Float, TIMESTAMP, ForeignKey
+from sqlalchemy import Column, String, Integer, Float, ForeignKey
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class InboxWarmupMetric(Base):
@@ -31,8 +31,8 @@ class InboxWarmupMetric(Base):
     pool_tier = Column(String(50), default="FOUNDATION")
     issue_code = Column(String(100), nullable=True)
 
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     inbox = relationship("SendingInbox", back_populates="warmup_metrics")
 

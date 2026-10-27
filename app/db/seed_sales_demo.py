@@ -24,6 +24,7 @@ import argparse
 import random
 from datetime import date, datetime, timedelta
 
+from app.core.clock import utcnow
 from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.db.seed_guard import demo_password, require_dev_environment
@@ -136,7 +137,7 @@ def seed(db, admin: User, rng: random.Random):
     open_stages = [s for s in stages if svc.stage_status(s) == "OPEN"]
     won = next(s for s in stages if s.is_won)
     lost = next(s for s in stages if s.is_lost)
-    now = datetime.utcnow()
+    now = utcnow()
     fy_start, fy_end = svc.fiscal_year_bounds(svc.fiscal_year_of(date.today()))
 
     # Contacts to work: the demo reps' own, plus unowned demo-domain contacts shared out

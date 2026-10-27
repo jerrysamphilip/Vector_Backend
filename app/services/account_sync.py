@@ -27,6 +27,7 @@ from jose import JWTError, jwt
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.models.contact_activity import ContactActivity
 from app.models.prospect import Prospect
@@ -71,7 +72,7 @@ def _ms_endpoint(path: str) -> str:
 
 def make_state(user: User, provider: str, nonce: str | None = None) -> str:
     return jwt.encode({"user_id": user.user_id, "provider": provider, "purpose": "account_sync", "nonce": nonce,
-                       "exp": datetime.utcnow() + timedelta(minutes=15)},
+                       "exp": utcnow() + timedelta(minutes=15)},
                       settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
@@ -140,11 +141,11 @@ def _store(conn: UserConnection, tokens: dict) -> None:
     conn.access_token = tokens["access_token"]
     if tokens.get("refresh_token"):
         conn.refresh_token = tokens["refresh_token"]
-    conn.expires_at = datetime.utcnow() + timedelta(seconds=int(tokens.get("expires_in", 3600)))
+    conn.expires_at = utcnow() + timedelta(seconds=int(tokens.get("expires_in", 3600)))
 
 
 def access_token(db: Session, conn: UserConnection) -> str:
-    if conn.access_token and conn.expires_at and conn.expires_at > datetime.utcnow() + timedelta(minutes=3):
+    if conn.access_token and conn.expires_at and conn.expires_at > utcnow() + timedelta(minutes=3):
         return conn.access_token
     if not conn.refresh_token:
         raise SyncError("The connection has expired. Reconnect your account.")
@@ -202,7 +203,7 @@ def _google_mail(db, user, conn, token, since: datetime) -> int:
                            params={"format": "metadata", "metadataHeaders": ["From", "To", "Cc", "Subject", "Date"]}).json()
         headers = {h["name"].lower(): h["value"] for h in msg.get("payload", {}).get("headers", [])}
         people = [a.lower() for _, a in getaddresses([headers.get(k, "") for k in ("from", "to", "cc")]) if a]
-        at = _utc(parsedate_to_datetime(headers["date"])) if headers.get("date") else datetime.utcnow()
+        at = _utc(parsedate_to_datetime(headers["date"])) if headers.get("date") else utcnow()
         outbound = bool(me) and headers.get("from", "").lower().find(me) >= 0
         for p in _contacts_by_email(db, user, [a for a in people if a != me]).values():
             logged += _log(db, user, p, "EMAIL", "GMAIL", f"gmail:{m['id']}", at,
@@ -211,7 +212,7 @@ def _google_mail(db, user, conn, token, since: datetime) -> int:
 
 
 def _google_calendar(db, user, conn, token, since: datetime) -> int:
-    now = datetime.utcnow()
+    now = utcnow()
     resp = http_request("GET", "https://www.googleapis.com/calendar/v3/calendars/primary/events", token, params={
         "updatedMin": since.isoformat() + "Z", "timeMin": (now - timedelta(days=LOOKBACK_DAYS)).isoformat() + "Z",
         "timeMax": (now + timedelta(days=30)).isoformat() + "Z", "singleEvents": "true", "maxResults": 250})
@@ -244,7 +245,7 @@ def _graph_mail(db, user, conn, token, since: datetime) -> int:
         sender = ((m.get("from") or {}).get("emailAddress") or {}).get("address", "").lower()
         people = [sender] + [((r.get("emailAddress") or {}).get("address") or "").lower()
                              for r in (m.get("toRecipients") or []) + (m.get("ccRecipients") or [])]
-        at = _parse_iso(m.get("sentDateTime") or m.get("receivedDateTime")) if (m.get("sentDateTime") or m.get("receivedDateTime")) else datetime.utcnow()
+        at = _parse_iso(m.get("sentDateTime") or m.get("receivedDateTime")) if (m.get("sentDateTime") or m.get("receivedDateTime")) else utcnow()
         outbound = sender == me
         for p in _contacts_by_email(db, user, [a for a in people if a and a != me]).values():
             logged += _log(db, user, p, "EMAIL", "OUTLOOK", f"outlook:{m['id']}", at,
@@ -253,7 +254,7 @@ def _graph_mail(db, user, conn, token, since: datetime) -> int:
 
 
 def _graph_calendar(db, user, conn, token, since: datetime) -> int:
-    now = datetime.utcnow()
+    now = utcnow()
     resp = http_request("GET", f"{GRAPH}/me/calendarView", token, params={
         "startDateTime": (now - timedelta(days=LOOKBACK_DAYS)).isoformat() + "Z",
         "endDateTime": (now + timedelta(days=30)).isoformat() + "Z", "$top": 250,
@@ -280,7 +281,7 @@ def sync_connection(db: Session, conn: UserConnection) -> dict:
     user = db.query(User).filter(User.user_id == conn.user_id).first()
     if not user or user.status != "ACTIVE":
         return {"skipped": True}
-    since = (conn.last_sync_at or datetime.utcnow() - timedelta(days=LOOKBACK_DAYS)) - timedelta(minutes=5)
+    since = (conn.last_sync_at or utcnow() - timedelta(days=LOOKBACK_DAYS)) - timedelta(minutes=5)
     result: Dict[str, Any] = {"emails": 0, "meetings": 0}
     try:
         token = access_token(db, conn)
@@ -294,12 +295,12 @@ def sync_connection(db: Session, conn: UserConnection) -> dict:
                 result["emails"] = _graph_mail(db, user, conn, token, since)
             if conn.sync_calendar:
                 result["meetings"] = _graph_calendar(db, user, conn, token, since)
-        conn.last_sync_at, conn.last_error = datetime.utcnow(), None
+        conn.last_sync_at, conn.last_error = utcnow(), None
     except Exception as exc:  # provider API / token failure: keep it visible on the connection
         logger.warning("Sync of %s connection %s failed: %s", conn.provider, conn.connection_id, exc)
         db.rollback()
         conn = db.query(UserConnection).filter(UserConnection.connection_id == conn.connection_id).first()
-        conn.last_error = f"{datetime.utcnow():%Y-%m-%d %H:%M} UTC: {exc}"[:2000]
+        conn.last_error = f"{utcnow():%Y-%m-%d %H:%M} UTC: {exc}"[:2000]
         result["error"] = str(exc)
     db.commit()
     return result

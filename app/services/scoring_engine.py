@@ -28,6 +28,8 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from app.core.clock import utcnow
+
 # ── Vocabulary ────────────────────────────────────────────────────
 
 # Fit fields: key -> (label, kind). "number" fields compare numerically.
@@ -461,7 +463,7 @@ def grade_for(score: Optional[int], thresholds: Dict[str, int]) -> Optional[str]
 def compute_score(model: Dict[str, Any], contact: Dict[str, Any], activity: Dict[str, Any],
                   now: Optional[datetime] = None) -> Dict[str, Any]:
     """Score one contact. `model` must be valid (validate_model / load_model)."""
-    now = now or datetime.utcnow()
+    now = now or utcnow()
     fit, fit_rows = fit_breakdown(model, contact or {})
     engagement, eng_rows = engagement_breakdown(model, activity or {}, now)
     score = _round(clamp(fit * model["fit_weight"] / 100.0 + engagement * model["engagement_weight"] / 100.0))

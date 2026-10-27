@@ -14,3 +14,4 @@ than rewriting history. Overview: [../ARCHITECTURE.md](../ARCHITECTURE.md).
 | [0006](0006-test-framework-layers.md) | Four test layers behind one runner | Accepted |
 | [0007](0007-session-timeouts.md) | Session idle timeout, absolute cap and refresh-token reuse detection | Accepted |
 | [0008](0008-internal-transport.md) | Internal transport: NetworkPolicies now, MySQL over verified TLS as the target | Proposed |
+| [0009](0009-layered-architecture.md) | Layered architecture: route / service / domain / repository / adapter / UI, service-owned unit of work, import contracts with a shrinking baseline | Accepted |

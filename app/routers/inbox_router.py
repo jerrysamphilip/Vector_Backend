@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
+from app.core.clock import utcnow
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.auth import require_role, require_permission
@@ -32,7 +33,7 @@ from app.services.email_sender_service import email_sender
 from app.models.inbox_warmup_metric import InboxWarmupMetric
 from app.models.inbox_warmup_event import InboxWarmupEvent
 from app.models.join_tables import campaign_inboxes
-from datetime import datetime
+from app.utils import host_safety
 import uuid
 import logging
 
@@ -42,20 +43,18 @@ router = APIRouter(prefix="/inboxes", tags=["Inboxes"])
 
 
 def _check_mail_host(host):
-    """Mail servers must be public: stops the connection tests probing internal services.
-    Skipped in development so local test servers still work."""
-    if not host or (settings.ENVIRONMENT or "").strip().lower() in ("development", "dev", "local", "test"):
+    """Mail servers must be public (SSRF, F007): refuses loopback, private, link-local and cloud
+    metadata addresses, checked on every address the name resolves to, with a 400. On a local setup
+    (settings.is_local_environment: mailpit, test servers) private and loopback hosts are allowed and
+    names are not resolved; metadata / link-local IP literals are refused there too."""
+    if not host:
         return
-    import ipaddress
-    import socket
+    local = settings.is_local_environment
     try:
-        addrs = {info[4][0] for info in socket.getaddrinfo(host, None)}
-    except socket.gaierror:
-        raise HTTPException(status_code=422, detail=f"Could not find the mail server {host}")
-    for addr in addrs:
-        ip = ipaddress.ip_address(addr)
-        if not ip.is_global:
-            raise HTTPException(status_code=422, detail=f"{host} is not a public mail server address")
+        host_safety.check_host(host, allow_private=local,
+                               resolver=None if local else host_safety.resolve)
+    except host_safety.UnsafeHostError as exc:
+        raise HTTPException(status_code=400, detail=f"Mail server not allowed: {exc}")
 
 
 # ── Microsoft 365 OAuth (BR-DF-05) ─────────────────────────────
@@ -172,9 +171,9 @@ def create_inbox(
         imap_password=data.imap_password,
         # Warm-up settings
         warmup_enabled=data.warmup_enabled if data.warmup_enabled is not None else True,
-        warmup_start_date=datetime.utcnow() if (data.warmup_enabled is not False) else None,
+        warmup_start_date=utcnow() if (data.warmup_enabled is not False) else None,
         max_emails_per_day=data.max_emails_per_day,
-        delay_between_emails=data.delay_between_emails or 60,
+        delay_between_emails=60 if data.delay_between_emails is None else data.delay_between_emails,
         warmup_auto_adjust=data.warmup_auto_adjust if data.warmup_auto_adjust is not None else True,
         warmup_randomize=data.warmup_randomize if data.warmup_randomize is not None else True,
         warmup_reply_rate_target=data.warmup_reply_rate_target or 35,
@@ -309,7 +308,7 @@ def update_inbox(
     if "warmup_enabled" in updates:
         enabling = bool(updates["warmup_enabled"])
         if enabling and not inbox.warmup_start_date:
-            inbox.warmup_start_date = datetime.utcnow()
+            inbox.warmup_start_date = utcnow()
             inbox.warmup_day = 0
         inbox.warmup_status = "ACTIVE" if enabling else "DISABLED"
         if enabling:
@@ -361,6 +360,7 @@ def sync_inbox_history(
             )
         )
 
+    _check_mail_host(inbox.imap_host)  # saved before the check existed: re-check before connecting
     service = IMAPSyncService(db)
     success = service.sync_inbox(inbox, days_back=days)
     if not success:
@@ -443,7 +443,7 @@ def test_imap_connection(
             return result
 
         # Search last 7 days
-        past_date = datetime.utcnow() - timedelta(days=7)
+        past_date = utcnow() - timedelta(days=7)
         months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
         date_cutoff = f"{past_date.day}-{months[past_date.month - 1]}-{past_date.year}"
         status, data = mail.search(None, f'(SINCE "{date_cutoff}")')

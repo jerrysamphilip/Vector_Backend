@@ -3,12 +3,11 @@
 Real-time campaign metrics model.
 """
 
-from sqlalchemy import Column, String, Integer, TIMESTAMP, ForeignKey
+from sqlalchemy import Column, String, Integer, ForeignKey
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
-import uuid
 
 from app.models import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class CampaignMetricsRealtime(Base):
@@ -30,7 +29,7 @@ class CampaignMetricsRealtime(Base):
     
     # Optimistic locking for concurrent updates
     row_version = Column(Integer, default=0)
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     # Relationships
     campaign = relationship("Campaign", back_populates="metrics")

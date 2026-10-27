@@ -13,12 +13,13 @@ Checks, in order (first failure wins):
 Emails are compared case-insensitively.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.models.campaign import Campaign, CampaignProspect
 from app.models.email_message import EmailMessage
 from app.models.prospect import GlobalUnsubscribe, Prospect
@@ -56,14 +57,14 @@ def summarize(rejections: Iterable[dict]) -> Dict[str, int]:
 
 def sent_within(db: Session, prospect_ids: List[str], hours: int) -> set:
     """Cool-off used by the campaign page: an email was sent to them in the last N hours."""
-    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    cutoff = utcnow() - timedelta(hours=hours)
     return {r[0] for r in db.query(EmailMessage.prospect_id).filter(
         EmailMessage.prospect_id.in_(prospect_ids), EmailMessage.sent_at > cutoff).distinct()}
 
 
 def enrolled_elsewhere_within(db: Session, prospect_ids: List[str], days: int) -> set:
     """Cool-off used by the wizard: enrolled in an active or completed campaign in the last N days."""
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = utcnow() - timedelta(days=days)
     return {r[0] for r in db.query(CampaignProspect.prospect_id).join(Campaign).filter(
         CampaignProspect.prospect_id.in_(prospect_ids),
         Campaign.status.in_(["ACTIVE", "COMPLETED"]),

@@ -14,12 +14,13 @@ import logging
 import random
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import BLOCKED_TENANT_STATUSES
 from app.core.config import settings
 from app.models.tenant import Tenant
@@ -287,12 +288,12 @@ class WarmupService:
 
         peer_metric.actual_sends += 1
         peer.warmup_today_sent = (peer.warmup_today_sent or 0) + 1
-        peer.warmup_last_activity_at = datetime.utcnow()
+        peer.warmup_last_activity_at = utcnow()
 
         sender_metric.reply_count += 1
         sender_metric.received_count += 1
         sender.warmup_today_replied = (sender.warmup_today_replied or 0) + 1
-        sender.warmup_last_activity_at = datetime.utcnow()
+        sender.warmup_last_activity_at = utcnow()
 
         self._record_event(
             db,
@@ -327,8 +328,8 @@ class WarmupService:
         peer_metric.received_count += 1
 
         inbox.warmup_today_sent = (inbox.warmup_today_sent or 0) + 1
-        inbox.warmup_last_activity_at = datetime.utcnow()
-        peer.warmup_last_activity_at = datetime.utcnow()
+        inbox.warmup_last_activity_at = utcnow()
+        peer.warmup_last_activity_at = utcnow()
 
         self._record_event(
             db,
@@ -400,7 +401,7 @@ class WarmupService:
                 metric = self._get_or_create_metric(db, inbox)
                 metric.open_count += 1
                 inbox.warmup_today_opened = (inbox.warmup_today_opened or 0) + 1
-                inbox.warmup_last_activity_at = datetime.utcnow()
+                inbox.warmup_last_activity_at = utcnow()
                 self._record_event(
                     db,
                     inbox=inbox,
@@ -449,7 +450,7 @@ class WarmupService:
         )
 
     def _sync_daily_rollover(self, inbox: SendingInbox) -> None:
-        now = datetime.utcnow()
+        now = utcnow()
         today = now.date()
         if not inbox.last_daily_reset or inbox.last_daily_reset.date() < today:
             inbox.emails_sent_today = 0
@@ -510,7 +511,7 @@ class WarmupService:
         if not inbox.imap_host or not inbox.imap_username or not inbox.imap_password:
             return "IMAP_NOT_CONFIGURED", "IMAP not configured. Emails are sent but open/spam-rescue tracking is disabled.", False
 
-        if inbox.last_sync_at and inbox.last_sync_at < datetime.utcnow() - timedelta(hours=24):
+        if inbox.last_sync_at and inbox.last_sync_at < utcnow() - timedelta(hours=24):
             return "SYNC_STALE", "IMAP sync is stale. Warmup is still running, but mailbox health is degraded.", False
 
         return None, None, False
@@ -649,7 +650,7 @@ class WarmupService:
                 subject=subject,
                 detail=detail,
                 event_metadata=metadata or {},
-                event_time=datetime.utcnow(),
+                event_time=utcnow(),
             )
         )
 
@@ -752,7 +753,7 @@ class WarmupService:
         return highest
 
     def _today_key(self) -> str:
-        return datetime.utcnow().strftime("%Y-%m-%d")
+        return utcnow().strftime("%Y-%m-%d")
 
 
 warmup_service = WarmupService()

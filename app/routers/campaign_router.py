@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import require_permission, require_role
 from app.core.concurrency import claim_version, if_match_version, resolve_expected
 from app.core.database import get_db
@@ -102,7 +103,7 @@ def _state_change(campaign_id: str, old_status: str, campaign: Campaign,
         previous_status=CampaignStatus(old_status),
         new_status=CampaignStatus(campaign.status),
         reason=reason,
-        changed_at=datetime.utcnow(),
+        changed_at=utcnow(),
         row_version=campaign.row_version,
     )
 

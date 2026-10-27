@@ -14,12 +14,13 @@ the committed figure was stored). The older variance measure, 1 - |actual - fore
 the weighted forecast, is kept as a secondary figure (weighted_accuracy).
 """
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.models.sales import Opportunity, SalesStage
 from app.models.sales_extra import ForecastSnapshot
 from app.models.tenant import Tenant
@@ -111,7 +112,7 @@ def take_snapshot(db: Session, tenant_id: str, period_type: str, day: Optional[d
     by_owner = forecast_by_owner(db, tenant_id, start, end)
     users = {u for (u,) in db.query(User.user_id).filter(User.tenant_id == tenant_id, User.status == "ACTIVE",
                                                           User.role.in_(SALES_ROLES))}
-    now = datetime.utcnow()
+    now = utcnow()
     for owner in sorted(users | set(by_owner)):
         f = by_owner.get(owner, _empty_forecast())
         db.add(ForecastSnapshot(tenant_id=tenant_id, period_type=period_type, period_start=start, period_end=end,

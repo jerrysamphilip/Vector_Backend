@@ -19,12 +19,12 @@ clears a PENDING / REJECTED request.
 The pure helpers at the top have no database access (unit-tested in
 tests/unit/test_discount_approval_rules.py).
 """
-from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.errors import BadRequestError, ConflictError, PermissionDenied
 
 APPROVAL_STATUSES = ("NOT_REQUIRED", "PENDING", "APPROVED", "REJECTED")
@@ -216,7 +216,7 @@ def _request(db: Session, user, p, effective: Decimal, owner_id: Optional[str], 
     p.approval_status = "PENDING"
     p.approval_discount_pct = effective
     p.approval_requested_by = user.user_id
-    p.approval_requested_at = datetime.utcnow()
+    p.approval_requested_at = utcnow()
     p.approval_decided_by = None
     p.approval_decided_at = None
     p.approval_reason = None
@@ -257,7 +257,7 @@ def decide(db: Session, user, p, approve: bool, reason: Optional[str]) -> None:
     if approve:
         p.approval_discount_pct = effective
     p.approval_decided_by = user.user_id
-    p.approval_decided_at = datetime.utcnow()
+    p.approval_decided_at = utcnow()
     p.approval_reason = reason
     verb = "approved" if approve else "rejected"
     _history(db, user, p, "pending approval", f"{verb} ({_pct(effective)}% discount){' - ' + reason if reason else ''}")

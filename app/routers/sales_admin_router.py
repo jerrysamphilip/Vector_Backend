@@ -7,7 +7,7 @@ Phase 2 "Should" features (BRD v2.0 5.12):
   /sales/targets         revenue targets per rep per quarter (BR-SF-08)
   /template-library      email template library with merge fields (BR-SF-10)
 """
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import require_role
 from app.core.database import get_db
 from app.models.prospect import Prospect
@@ -189,7 +190,7 @@ def mark_read(payload: ReadRequest, db: Session = Depends(get_db), current_user:
     q = db.query(Notification).filter(Notification.user_id == current_user.user_id, Notification.read_at.is_(None))
     if payload.ids:
         q = q.filter(Notification.notification_id.in_(payload.ids))
-    n = q.update({Notification.read_at: datetime.utcnow()}, synchronize_session=False)
+    n = q.update({Notification.read_at: utcnow()}, synchronize_session=False)
     db.commit()
     return {"marked": n}
 

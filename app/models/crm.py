@@ -6,11 +6,10 @@ property change history, tasks, saved views and import jobs.
 
 import uuid
 
-from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, JSON, String, Text, TIMESTAMP, UniqueConstraint, text
-from sqlalchemy.dialects import mysql
-from sqlalchemy.sql import func
+from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 MYSQL_OPTS = {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"}
 
@@ -29,8 +28,7 @@ class PropertyChange(Base):
     source = Column(String(20), nullable=False, default="UI")  # UI / BULK / IMPORT / MERGE / API / SYSTEM
     changed_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
     # Microsecond precision keeps changes made in the same second in order
-    changed_at = Column(TIMESTAMP().with_variant(mysql.TIMESTAMP(fsp=6), "mysql"),
-                        server_default=text("CURRENT_TIMESTAMP(6)"), nullable=False)
+    changed_at = Column(UtcDateTime, server_default=NOW6, nullable=False)
 
     __table_args__ = (Index("ix_property_changes_object", "object_type", "object_id", "changed_at"), MYSQL_OPTS)
 
@@ -49,13 +47,13 @@ class CrmTask(Base):
     task_type = Column(String(20), nullable=False, default="TODO")  # TODO / CALL / EMAIL / MEETING
     priority = Column(String(10), nullable=False, default="MEDIUM")  # LOW / MEDIUM / HIGH
     status = Column(String(10), nullable=False, default="OPEN")  # OPEN / DONE
-    due_at = Column(TIMESTAMP, nullable=True)
-    reminder_at = Column(TIMESTAMP, nullable=True)
+    due_at = Column(UtcDateTime, nullable=True)
+    reminder_at = Column(UtcDateTime, nullable=True)
     owner_id = Column(String(36), ForeignKey("users.user_id"), nullable=True, index=True)
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    completed_at = Column(TIMESTAMP, nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    completed_at = Column(UtcDateTime, nullable=True)
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     __table_args__ = (MYSQL_OPTS,)
 
@@ -73,8 +71,8 @@ class SavedView(Base):
     filters = Column(JSON, nullable=True)
     columns = Column(JSON, nullable=True)
     sort = Column(JSON, nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     __table_args__ = (MYSQL_OPTS,)
 
@@ -98,8 +96,8 @@ class ImportJob(Base):
     error_count = Column(Integer, default=0)
     errors = Column(JSON, nullable=True)  # [{row, reason, values}]
     message = Column(Text, nullable=True)
-    started_at = Column(TIMESTAMP, server_default=func.now())
-    finished_at = Column(TIMESTAMP, nullable=True)
+    started_at = Column(UtcDateTime, server_default=NOW6)
+    finished_at = Column(UtcDateTime, nullable=True)
 
     __table_args__ = (MYSQL_OPTS,)
 
@@ -119,8 +117,8 @@ class ContactCompany(Base):
     label = Column(String(100), nullable=True)
     is_primary = Column(Boolean, nullable=False, default=False)
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     __table_args__ = (
         UniqueConstraint("prospect_id", "account_id", name="uq_contact_companies_contact_account"),
@@ -139,7 +137,7 @@ class NoteMention(Base):
     activity_id = Column(String(36), ForeignKey("contact_activities.activity_id", ondelete="CASCADE"), nullable=False)
     user_id = Column(String(36), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     __table_args__ = (
         UniqueConstraint("activity_id", "user_id", name="uq_note_mentions_activity_user"),

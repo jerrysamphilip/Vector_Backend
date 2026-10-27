@@ -10,6 +10,7 @@ from typing import List, Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.errors import BadRequestError, NotFoundError, PermissionDenied
 from app.models.contact_activity import ACTIVITY_TYPES, ContactActivity
 from app.models.user import User
@@ -67,7 +68,7 @@ def log_activity(db: Session, user: User, prospect_id: str, payload: ActivityWri
         body=clean_str(payload.body),
         outcome=clean_str(payload.outcome),
         duration_minutes=payload.duration_minutes,
-        occurred_at=utc_naive(payload.occurred_at) or datetime.utcnow(),
+        occurred_at=utc_naive(payload.occurred_at) or utcnow(),
         created_by=user.user_id,
     )
     db.add(activity)

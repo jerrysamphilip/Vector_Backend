@@ -1,9 +1,10 @@
 """Session limits at POST /api/auth/refresh (ADR 0007): idle timeout, absolute cap, reuse detection."""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
+from app.core.clock import utcnow
 from app.core.security import hash_token
 from app.main import app
 from tests.conftest import register_tenant, sql
@@ -37,7 +38,7 @@ def row(token: str, column: str):
 def shift(token: str, column: str, minutes: float) -> None:
     """Move a timestamp of the token's row `minutes` into the past (relative to now)."""
     sql(f"UPDATE refresh_tokens SET {column} = :v WHERE token_hash = :h",
-        v=datetime.utcnow() - timedelta(minutes=minutes), h=hash_token(token))
+        v=utcnow() - timedelta(minutes=minutes), h=hash_token(token))
 
 
 def cleared(response) -> set:
@@ -104,7 +105,7 @@ def test_absolute_cap_refuses_even_an_active_session(client):
     r = refresh(client, token, {ACTIVITY: "0"})
     assert r.status_code == 200, r.text
     expires = row(r.json()["refresh_token"], "expires_at")
-    assert expires <= datetime.utcnow() + timedelta(hours=1, minutes=1)
+    assert expires <= utcnow() + timedelta(hours=1, minutes=1)
 
 
 def test_only_the_activity_header_advances_last_activity(client):
@@ -131,7 +132,7 @@ def test_only_the_activity_header_advances_last_activity(client):
     token = r.json()["refresh_token"]
     after = row(token, "last_activity_at")
     assert after > before + timedelta(minutes=19)
-    assert abs((datetime.utcnow() - timedelta(seconds=5) - after).total_seconds()) < 60
+    assert abs((utcnow() - timedelta(seconds=5) - after).total_seconds()) < 60
 
     # 25 minutes later polling still works (inside the window); 31 minutes later it does not
     shift(token, "last_activity_at", 25)

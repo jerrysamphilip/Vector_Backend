@@ -7,11 +7,11 @@ status and, for prospect-level marks, updates the campaign's metrics.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.errors import NotFoundError
 from app.models.campaign import CampaignProspect
 from app.models.email_message import EmailEvent, EmailMessage
@@ -50,7 +50,7 @@ class CampaignTrackingService:
         event = EmailEvent(
             message_id=message_id,
             event_type=event_type,
-            event_time=datetime.utcnow(),
+            event_time=utcnow(),
             event_metadata={"source": "manual", "marked_by": marked_by}
         )
         self.db.add(event)

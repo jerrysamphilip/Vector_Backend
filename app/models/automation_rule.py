@@ -4,13 +4,13 @@
 Automation Rules model for defining triggers and actions.
 """
 
-from sqlalchemy import Column, String, Boolean, JSON, TIMESTAMP, ForeignKey, Enum
+from sqlalchemy import Column, String, Boolean, JSON, ForeignKey
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 import enum
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 class TriggerType(str, enum.Enum):
     EMAIL_OPENED = "EMAIL_OPENED"
@@ -43,8 +43,8 @@ class AutomationRule(Base):
     action_config = Column(JSON, nullable=True) # e.g. {"template_id": "...", "step_id": 2}
     
     is_active = Column(Boolean, default=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     # Relationships
     campaign = relationship("Campaign", back_populates="automation_rules")

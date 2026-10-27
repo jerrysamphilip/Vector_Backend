@@ -84,6 +84,8 @@ services:
   # with scripts/pin_images.py. The official entrypoint starts as root and drops to mysql.
   mysql:
     image: mysql:8.4@sha256:24989179f58856db763f418010c1169fecc944e3ec1ea7e921572d83eb070f70
+    # The one collation every table declares (app/core/db_charset.py); MySQL 8.4's default, made explicit
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
     environment:
       MYSQL_ROOT_PASSWORD: ${LOCAL_MYSQL_ROOT_PASSWORD:-root}
       MYSQL_DATABASE: ${LOCAL_MYSQL_DATABASE:-outreach_ai}

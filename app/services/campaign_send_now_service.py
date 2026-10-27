@@ -17,7 +17,8 @@ from sqlalchemy import and_, exists, func, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, aliased
 
-from app.core.errors import BadRequestError
+from app.core.clock import utcnow
+from app.core.errors import BadRequestError, ExternalServiceUnavailable
 from app.models.campaign import Campaign, CampaignProspect
 from app.models.email_message import EmailEvent, EmailMessage
 from app.models.email_sequence import EmailSequence
@@ -25,16 +26,19 @@ from app.models.email_template import EmailTemplate
 from app.models.prospect import Prospect
 from app.models.sending_inbox import SendingInbox
 from app.models.user import User
-from app.services import daily_limit
-from app.services.email_scheduler_service import email_scheduler
-from app.services.email_sender_service import PermanentEmailFailure, TransientEmailFailure, email_sender
+from app.services import daily_limit, send_breaker
+from app.services.email_scheduler_service import email_scheduler, record_deferred_failure
+from app.services.email_sender_service import (
+    DeferredEmailFailure, PermanentEmailFailure, TransientEmailFailure, email_sender,
+)
+from app.services.send_guards import require_active_inbox
+from app.services.sequence_stop import stop_reason, stops_sequence
 from app.services.suppression import blocked_reason
 
 logger = logging.getLogger(__name__)
 
 SEND_NOW_BATCH = 25
 PENDING_STATUSES = ["QUEUED", "SCHEDULED"]
-STOPPED_ENROLLMENT_STATUSES = ("REPLIED", "BOUNCED", "UNSUBSCRIBED")
 MAX_CURSOR_MESSAGE_ID = 64
 MAX_SKIPPED_DETAILS = 50
 MAX_ERRORS_RETURNED = 5
@@ -61,10 +65,10 @@ def format_cursor(step_number: int, message_id: str) -> str:
 
 
 def normalize_run_start(since: Optional[datetime], now: Optional[datetime] = None) -> datetime:
-    """The run's start as naive UTC in whole seconds (sent_at has no fractions, so a send in this
-    run is never "before" it). An aware ``since`` is converted to UTC; no ``since`` means now."""
+    """The run's start as naive UTC, microsecond precision like sent_at (DATETIME(6)), so a send in
+    this run is never "before" it. An aware ``since`` is converted to UTC; no ``since`` means now."""
     started_at = since.astimezone(timezone.utc).replace(tzinfo=None) if since and since.tzinfo else since
-    return (started_at or now or datetime.utcnow()).replace(microsecond=0)
+    return started_at or now or utcnow()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -114,6 +118,12 @@ class CampaignSendNowService:
         campaign_id = campaign.campaign_id
         if campaign.status != "ACTIVE":
             raise BadRequestError("Campaign must be ACTIVE to send emails")
+        require_active_inbox(campaign, "send emails for")
+        if send_breaker.platform_breaker.is_open():
+            raise ExternalServiceUnavailable(
+                f"Sending is paused because the email provider keeps failing; try again in "
+                f"{max(1, round(send_breaker.platform_breaker.retry_in() / 60))} minute(s).",
+                code="SENDING_CIRCUIT_OPEN")
 
         after = parse_cursor(cursor)
         started_at = normalize_run_start(since)
@@ -200,15 +210,11 @@ class CampaignSendNowService:
 
     def _guard_reason(self, email_msg: EmailMessage, prospect: Prospect) -> Optional[str]:
         """Why this email must not go: suppression/unsubscribe (BR-DF-08) or the contact already
-        replied/bounced/unsubscribed in this campaign (BR-DF-05)."""
+        replied/bounced/unsubscribed in this campaign and this step's stop flags say stop (BR-DF-05)."""
         reason = blocked_reason(self.db, prospect)
-        if not reason and email_msg.sequence_id:
-            enrollment = self.db.query(CampaignProspect.status).filter(
-                CampaignProspect.campaign_id == email_msg.campaign_id,
-                CampaignProspect.prospect_id == email_msg.prospect_id,
-            ).first()
-            if enrollment and enrollment[0] in STOPPED_ENROLLMENT_STATUSES:
-                reason = f"Stopped: contact {enrollment[0].lower()}"
+        if not reason:
+            stopped = email_scheduler.stopped_by_enrollment(email_msg, self.db)
+            reason = stop_reason(stopped) if stopped else None
         return reason
 
     def _inbox_at_cap(self, email_msg: EmailMessage) -> Optional[SendingInbox]:
@@ -219,7 +225,7 @@ class CampaignSendNowService:
         if not inbox:
             return None
         sent_today = inbox.emails_sent_today or 0
-        if not inbox.last_daily_reset or inbox.last_daily_reset.date() < datetime.utcnow().date():
+        if not inbox.last_daily_reset or inbox.last_daily_reset.date() < utcnow().date():
             sent_today = 0
         return inbox if sent_today >= email_sender.get_inbox_daily_limit(inbox) else None
 
@@ -231,7 +237,7 @@ class CampaignSendNowService:
             EmailMessage.message_id == email_msg.message_id,
             EmailMessage.status.in_(PENDING_STATUSES)
         # claimed_at dates the claim, so the stuck-SENDING sweep only reaps it once it is stale
-        ).update({"status": "SENDING", "claimed_at": datetime.utcnow()}, synchronize_session=False)
+        ).update({"status": "SENDING", "claimed_at": utcnow()}, synchronize_session=False)
         db.commit()  # commit the lock acquisition immediately
         if rows_updated == 0:
             logger.info(f"[SendNow] Skipping email {email_msg.message_id}, not in QUEUED state "
@@ -254,6 +260,10 @@ class CampaignSendNowService:
             return
 
         from_email_address = email_scheduler._resolve_sender_for_message(email_msg=email_msg, campaign=campaign, db=db)
+        if not from_email_address:
+            self._skip(email_msg, "QUEUED", tally, prospect.email,
+                       "The campaign has no active sending inbox; left queued")
+            return
 
         cap_inbox = self._inbox_at_cap(email_msg)
         if cap_inbox:
@@ -282,6 +292,9 @@ class CampaignSendNowService:
         except (TransientEmailFailure, PermanentEmailFailure) as send_exc:
             if limit_user:
                 email_scheduler._daily.release(limit_user)
+            if isinstance(send_exc, DeferredEmailFailure):
+                # Platform / sender-identity problem (item 14): breaker + mailbox auto-pause
+                record_deferred_failure(db, send_exc.kind.value, email_msg.inbox_id, str(send_exc))
             if isinstance(send_exc, TransientEmailFailure):
                 email_msg.status = "QUEUED"
                 email_msg.last_error_code = str(send_exc)[:50]
@@ -289,7 +302,7 @@ class CampaignSendNowService:
                                       "reason": f"Temporary sending error, left queued: {send_exc}"})
             else:
                 email_msg.status = "FAILED"
-                email_msg.final_status, email_msg.final_status_at = "FAILED", datetime.utcnow()
+                email_msg.final_status, email_msg.final_status_at = "FAILED", utcnow()
                 email_msg.failure_reason = str(send_exc)[:1000]
                 tally.failed += 1
                 tally.errors.append(f"{prospect.email}: {send_exc}")
@@ -310,19 +323,20 @@ class CampaignSendNowService:
 
     def _record_sent(self, email_msg: EmailMessage, result: Dict[str, Any], from_email_address: Optional[str]) -> None:
         db = self.db
-        email_msg.status = "SENT"
-        email_msg.sent_at = datetime.utcnow()
-        email_msg.provider_message_id = result.get("ses_message_id")
-        email_msg.from_email = from_email_address
+        send_breaker.platform_breaker.record_success()
+        # Conditional SENT (item 15a): a bounce the webhook recorded mid-send is kept
+        email_scheduler.mark_sent(db, email_msg, sent_at=utcnow(), from_email=from_email_address,
+                                  provider_message_id=result.get("ses_message_id"),
+                                  ses_message_id=result.get("ses_message_id"))
 
         if email_msg.inbox_id:
             sent_inbox = db.query(SendingInbox).filter(SendingInbox.inbox_id == email_msg.inbox_id).first()
             if sent_inbox:
                 sent_inbox.emails_sent_today = (sent_inbox.emails_sent_today or 0) + 1
-                sent_inbox.last_sent_at = datetime.utcnow()
+                sent_inbox.last_sent_at = utcnow()
 
         db.add(EmailEvent(message_id=email_msg.message_id, event_type=EmailEvent.EVENT_SENT,
-                          event_time=datetime.utcnow()))
+                          event_time=utcnow()))
         self._advance_prospect(email_msg)
 
     def _advance_prospect(self, email_msg: EmailMessage) -> None:
@@ -347,7 +361,7 @@ class CampaignSendNowService:
             cp.current_step = next_step_number
             cp.next_scheduled_at = email_scheduler.schedule_next_step(
                 db, email_msg, next_step, email_msg.sent_at
-            ) or datetime.utcnow() + timedelta(days=next_step.wait_days)
+            ) or utcnow() + timedelta(days=next_step.wait_days)
         else:
             cp.status = "COMPLETED"
             cp.next_scheduled_at = None

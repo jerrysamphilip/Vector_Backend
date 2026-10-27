@@ -26,6 +26,7 @@ from typing import List, Optional
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.models.campaign import Campaign, CampaignStateEvent
 from app.models.domain_reputation import ReputationAlert, SendingDomain
@@ -49,11 +50,11 @@ def set_final_status(msg: EmailMessage, status: str, when: Optional[datetime] = 
     if msg.final_status in ("BOUNCED", "COMPLAINED") and status in ("DELIVERED", "UNCONFIRMED"):
         return
     msg.final_status = status
-    msg.final_status_at = when or datetime.utcnow()
+    msg.final_status_at = when or utcnow()
 
 
 def reconcile_delivery_status(db: Session) -> int:
-    cutoff = datetime.utcnow() - timedelta(minutes=settings.DELIVERY_CONFIRM_MINUTES)
+    cutoff = utcnow() - timedelta(minutes=settings.DELIVERY_CONFIRM_MINUTES)
     base = db.query(EmailMessage).filter(
         EmailMessage.final_status.is_(None), EmailMessage.direction == "OUTBOUND",
         EmailMessage.sent_at.isnot(None),
@@ -111,7 +112,7 @@ def auto_pause(db: Session, campaign: Campaign, reason: str) -> bool:
     """Pause an active campaign and freeze its queue, exactly like a manual pause."""
     if campaign.status != "ACTIVE":
         return False
-    now = datetime.utcnow()
+    now = utcnow()
     campaign.status = "PAUSED"
     campaign.auto_paused = True
     campaign.paused_at = now
@@ -195,7 +196,7 @@ def check_domain_health(db: Session, domain: str, trigger: str = "", tenant_id: 
     if not domain or not tenant_id:
         return 0
     domain = domain.lower()
-    now = datetime.utcnow()
+    now = utcnow()
     r = _domain_rates(db, domain, tenant_id, now - timedelta(hours=24))
     row = get_or_create_tenant_domain(db, tenant_id, domain)
     row.sends_24h, row.bounce_rate_24h, row.complaint_rate_24h = r["sends"], r["bounce_rate"], r["complaint_rate"]
@@ -247,7 +248,7 @@ def run_health_cycle(db: Session) -> dict:
     """Hourly: refresh every (tenant, sending domain) 24h health and re-check active campaigns."""
     pairs = {(t, d.lower()) for (t, d) in db.query(SendingDomain.tenant_id, SendingDomain.domain_name)
              .filter(SendingDomain.tenant_id.isnot(None))}
-    since = datetime.utcnow() - timedelta(hours=24)
+    since = utcnow() - timedelta(hours=24)
     recent = (db.query(EmailMessage.from_email, func.coalesce(SendingInbox.tenant_id, Campaign.tenant_id))
               .outerjoin(SendingInbox, SendingInbox.inbox_id == EmailMessage.inbox_id)
               .outerjoin(Campaign, Campaign.campaign_id == EmailMessage.campaign_id)

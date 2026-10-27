@@ -3,13 +3,13 @@
 Tenant model for multi-tenant architecture.
 """
 
-from sqlalchemy import Boolean, Column, String, TIMESTAMP
+from sqlalchemy import Boolean, Column, String
 from sqlalchemy.sql import expression
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 
 from app.models import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class Tenant(Base):
@@ -22,8 +22,8 @@ class Tenant(Base):
     tenant_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_name = Column(String(255), nullable=False)
     status = Column(String(50), default="ACTIVE")  # ACTIVE / SUSPENDED / DELETED
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
     # Every user must sign in with two-factor (set by a SUPER_ADMIN, PUT /api/auth/mfa/tenant-policy)
     require_mfa = Column(Boolean, nullable=False, default=False, server_default=expression.false())
 

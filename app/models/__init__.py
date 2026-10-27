@@ -4,7 +4,7 @@ SQLAlchemy models for Outreach AI.
 All models use CHAR(36) for UUID primary keys.
 """
 
-from app.models.base import Base
+from app.models.base import Base, apply_table_defaults
 
 # Import all models to register them with Base and resolve relationships
 # These imports must be after Base is defined
@@ -38,6 +38,7 @@ from app.models.conversation import Conversation
 from app.models.compliance_check import ComplianceCheck
 from app.models.company_profile import CompanyProfile
 from app.models.automation_rule import AutomationRule
+from app.models.automation_rule_run import AutomationRuleRun  # noqa: F401  (once per rule and contact)
 from app.models.campaign_draft import CampaignDraft
 from app.models.invitation import Invitation
 from app.models.refresh_token import RefreshToken
@@ -112,3 +113,6 @@ __all__ = [
     "MagicLoginToken",
     "EmailSubjectVariant",
 ]
+
+# Every table on one engine / charset / collation, whatever the schema default (D1)
+apply_table_defaults(Base.metadata)

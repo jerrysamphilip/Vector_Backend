@@ -1,0 +1,79 @@
+{
+  "_comment": "Coverage floors per test layer (line/branch %, branch coverage on). Ratchet: raised by scripts/ci/check_coverage.py --update, lowered only with --allow-lower REASON (logged under 'lowered'). docs/CI_GATES.md",
+  "tolerance_pp": 0.1,
+  "tolerance_pp_by_layer": {
+    "unit": 0.1,
+    "functional": 0.5
+  },
+  "packages": [
+    "app.routers",
+    "app.services",
+    "app.core",
+    "app.utils",
+    "app.domain",
+    "app.repositories"
+  ],
+  "layers": {
+    "unit": {
+      "app": {
+        "line": 40.33,
+        "branch": 13.78
+      },
+      "app.core": {
+        "line": 69.69,
+        "branch": 43.9
+      },
+      "app.routers": {
+        "line": 32.85,
+        "branch": 1.9
+      },
+      "app.services": {
+        "line": 26.99,
+        "branch": 11.47
+      },
+      "app.utils": {
+        "line": 76.0,
+        "branch": 73.29
+      },
+      "app.domain": {
+        "line": 100.0,
+        "branch": 100.0
+      },
+      "app.repositories": {
+        "line": 98.57,
+        "branch": 93.75
+      }
+    },
+    "functional": {
+      "app": {
+        "line": 61.93,
+        "branch": 39.37
+      },
+      "app.core": {
+        "line": 83.67,
+        "branch": 61.38
+      },
+      "app.routers": {
+        "line": 60.87,
+        "branch": 35.89
+      },
+      "app.services": {
+        "line": 55.07,
+        "branch": 40.2
+      },
+      "app.utils": {
+        "line": 63.56,
+        "branch": 48.69
+      },
+      "app.domain": {
+        "line": 0.0,
+        "branch": 0.0
+      },
+      "app.repositories": {
+        "line": 0.0,
+        "branch": 0.0
+      }
+    }
+  },
+  "lowered": []
+}

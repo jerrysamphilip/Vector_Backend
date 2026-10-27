@@ -8,11 +8,11 @@ follows the owner through the sales hierarchy (app/services/contact_service.py).
 """
 import uuid
 
-from sqlalchemy import (JSON, TIMESTAMP, Boolean, Column, Date, ForeignKey, Index, Integer, Numeric, String,
+from sqlalchemy import (JSON, Boolean, Column, Date, ForeignKey, Index, Integer, Numeric, String,
                         Text)
-from sqlalchemy.sql import func
 
 from app.models.base import Base
+from app.models.types import NOW6, UtcDateTime
 
 # Lead stages, in order, with the contact lifecycle stage each one implies (BR-LD-02)
 LEAD_STAGES = {
@@ -66,17 +66,17 @@ class Lead(Base):
     stage = Column(String(20), nullable=False, default="NEW")
     qualification = Column(JSON, nullable=True)        # {"budget": true, ..., "notes": "..."}
     next_step = Column(String(255), nullable=True)
-    next_step_at = Column(TIMESTAMP, nullable=True)
+    next_step_at = Column(UtcDateTime, nullable=True)
     disqualified_reason = Column(String(255), nullable=True)
-    recycle_at = Column(TIMESTAMP, nullable=True)       # a disqualified lead reopens on this date (BR-SF-02)
+    recycle_at = Column(UtcDateTime, nullable=True)       # a disqualified lead reopens on this date (BR-SF-02)
     opportunity_id = Column(String(36), nullable=True)
     campaign_id = Column(String(36), ForeignKey("campaigns.campaign_id"), nullable=True)
-    stage_changed_at = Column(TIMESTAMP, server_default=func.now())
-    qualified_at = Column(TIMESTAMP, nullable=True)    # reached SQL
-    converted_at = Column(TIMESTAMP, nullable=True)
+    stage_changed_at = Column(UtcDateTime, server_default=NOW6)
+    qualified_at = Column(UtcDateTime, nullable=True)    # reached SQL
+    converted_at = Column(UtcDateTime, nullable=True)
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
     row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
 
     __table_args__ = (
@@ -129,10 +129,10 @@ class Opportunity(Base):
     forecast_category_manual = Column(Boolean, nullable=False, default=False)
     # The campaign that sourced the deal, for campaign ROI (BR-SF-11)
     campaign_id = Column(String(36), ForeignKey("campaigns.campaign_id"), nullable=True)
-    closed_at = Column(TIMESTAMP, nullable=True)
+    closed_at = Column(UtcDateTime, nullable=True)
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
     row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
 
     __table_args__ = (
@@ -154,19 +154,19 @@ class Proposal(Base):
     status = Column(String(20), nullable=False, default="DRAFT")
     valid_until = Column(Date, nullable=True)
     notes = Column(Text, nullable=True)
-    sent_at = Column(TIMESTAMP, nullable=True)
-    decided_at = Column(TIMESTAMP, nullable=True)
+    sent_at = Column(UtcDateTime, nullable=True)
+    decided_at = Column(UtcDateTime, nullable=True)
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
     row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
     # Discount approval (BR-SF-17): NOT_REQUIRED / PENDING / APPROVED / REJECTED (app/services/quote_approval.py)
     approval_status = Column(String(20), nullable=False, default="NOT_REQUIRED", server_default="NOT_REQUIRED")
     approval_discount_pct = Column(Numeric(5, 2), nullable=True)   # discount submitted / approved
     approval_requested_by = Column(String(36), nullable=True)
-    approval_requested_at = Column(TIMESTAMP, nullable=True)
+    approval_requested_at = Column(UtcDateTime, nullable=True)
     approval_decided_by = Column(String(36), nullable=True)
-    approval_decided_at = Column(TIMESTAMP, nullable=True)
+    approval_decided_at = Column(UtcDateTime, nullable=True)
     approval_reason = Column(String(1000), nullable=True)          # approver's reason / submit note
 
     __table_args__ = (

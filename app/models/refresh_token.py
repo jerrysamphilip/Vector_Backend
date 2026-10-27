@@ -3,11 +3,11 @@
 Refresh token model for JWT session management.
 """
 
-from sqlalchemy import Column, String, DateTime, ForeignKey
-from sqlalchemy.sql import func
+from sqlalchemy import Column, String, ForeignKey
 import uuid
 
 from app.models import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class RefreshToken(Base):
@@ -27,12 +27,12 @@ class RefreshToken(Base):
     user_id = Column(String(36), ForeignKey("users.user_id"), nullable=False, index=True)
     token_hash = Column(String(255), unique=True, nullable=False)
     device_info = Column(String(255), nullable=True)
-    expires_at = Column(DateTime, nullable=False)
-    revoked_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, server_default=func.now())
+    expires_at = Column(UtcDateTime, nullable=False)
+    revoked_at = Column(UtcDateTime, nullable=True)
+    created_at = Column(UtcDateTime, server_default=NOW6)
     session_id = Column(String(36), nullable=True, index=True)
-    session_started_at = Column(DateTime, nullable=True)
-    last_activity_at = Column(DateTime, nullable=True)
+    session_started_at = Column(UtcDateTime, nullable=True)
+    last_activity_at = Column(UtcDateTime, nullable=True)
     revoked_reason = Column(String(16), nullable=True)
 
     __table_args__ = (

@@ -6,11 +6,12 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.models.alert_center import AlertEmailDispatch, AlertPreference
 from app.models.campaign import Campaign
@@ -142,7 +143,7 @@ class AlertCenterService:
                 )
 
         inboxes = db.query(SendingInbox).filter(SendingInbox.tenant_id == tenant_id).all()
-        now_utc = datetime.utcnow()
+        now_utc = utcnow()
         for inbox in inboxes:
             inbox_status = (inbox.status or "").upper()
             if inbox_status != "ACTIVE":
@@ -369,7 +370,7 @@ class AlertCenterService:
             return {"sent": 0, "skipped": 0, "failed": 0}
 
         frontend_base = self._frontend_base_url()
-        now = datetime.utcnow()
+        now = utcnow()
         sent_count = 0
         skipped_count = 0
         failed_count = 0

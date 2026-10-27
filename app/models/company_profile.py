@@ -4,11 +4,11 @@ Company Profile model for reusable sender/company details.
 Scoped to a tenant (tenant_id). Legacy rows with NULL tenant_id are hidden.
 """
 
-from sqlalchemy import Column, String, Boolean, Text, TIMESTAMP, ForeignKey
-from sqlalchemy.sql import func
+from sqlalchemy import Column, String, Boolean, Text, ForeignKey
 import uuid
 
 from app.models import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class CompanyProfile(Base):
@@ -39,8 +39,8 @@ class CompanyProfile(Base):
     default_cta_link = Column(String(500), nullable=True)  # {{calendar_link}}
     
     # Timestamps
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(UtcDateTime, server_default=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
 
     __table_args__ = (
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},

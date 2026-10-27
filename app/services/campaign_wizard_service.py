@@ -23,6 +23,7 @@ from sqlalchemy import and_, func, or_, not_
 import uuid
 import random
 
+from app.core.clock import utcnow
 from app.models import (
     Campaign,
     CampaignProspect,
@@ -107,7 +108,7 @@ def check_cool_off_period(
     days: int = 7
 ) -> List[str]:
     """Get prospect IDs that were contacted too recently."""
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = utcnow() - timedelta(days=days)
     
     # Find prospects already in active campaigns
     recently_contacted = db.query(CampaignProspect.prospect_id).join(
@@ -332,7 +333,7 @@ def step_5_bulk_enroll(
             campaign_id=campaign_id,
             prospect_id=prospect.prospect_id,
             status="ACTIVE",
-            enrolled_at=datetime.utcnow(),
+            enrolled_at=utcnow(),
             next_scheduled_at=scheduled_at,
         )
         db.add(enrollment)
@@ -388,7 +389,7 @@ def step_7_activate_campaign(
     campaign = CampaignEmailService(db).launch(campaign_id, user_id)
     
     if campaign:
-        campaign.launched_at = datetime.utcnow()
+        campaign.launched_at = utcnow()
         
         # Log campaign specific wizard event
         _log_campaign_event(db, campaign_id, user_id, "ACTIVE", "DRAFT", "Campaign activated via wizard")
@@ -583,7 +584,7 @@ def build_schedule_preview(
     and US federal holidays, wait days accumulating across steps (including step 1). No jitter, so
     the preview is stable.
     """
-    base_time = base_time or datetime.utcnow()
+    base_time = base_time or utcnow()
     schedule = []
     cumulative_wait_days = 0
     for step_number, wait_days in steps:

@@ -27,6 +27,11 @@ HOST_FROM_CONTAINERS = os.environ.get("HOST_FROM_CONTAINERS", "172.18.0.1")
 
 # ───────────────────────── generic ─────────────────────────
 
+def utcnow():
+    """Naive UTC now, like app.core.clock.utcnow (the app package is not importable here)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def wait_until(fn, timeout=90, interval=3):
     """Poll fn() until it returns a truthy value or the timeout passes. Returns the last value."""
     deadline = time.time() + timeout
@@ -181,7 +186,7 @@ def ses_post(event, token=WEBHOOK_TOKEN, headers=None, raw_body=None):
 
 
 def _mail(message_id=None, ses_id=None, source="sender@example.com", dest="x@example.com", tags=True):
-    m = {"timestamp": datetime.utcnow().isoformat() + "Z", "messageId": ses_id or f"ses-{uuid.uuid4().hex}",
+    m = {"timestamp": utcnow().isoformat() + "Z", "messageId": ses_id or f"ses-{uuid.uuid4().hex}",
          "source": source, "destination": [dest]}
     if tags and message_id:
         m["tags"] = {"message_id": [message_id]}
@@ -192,21 +197,21 @@ def ses_bounce(message_id, email, ses_id=None, source="s@example.com", btype="Pe
                diag="smtp; 550 5.1.1 user unknown"):
     return {"notificationType": "Bounce", "eventType": "Bounce",
             "mail": _mail(message_id, ses_id, source, email, tags),
-            "bounce": {"bounceType": btype, "bounceSubType": sub, "timestamp": datetime.utcnow().isoformat() + "Z",
+            "bounce": {"bounceType": btype, "bounceSubType": sub, "timestamp": utcnow().isoformat() + "Z",
                        "bouncedRecipients": [{"emailAddress": email, "diagnosticCode": diag}]}}
 
 
 def ses_complaint(message_id, email, ses_id=None, source="s@example.com", tags=True):
     return {"notificationType": "Complaint", "eventType": "Complaint",
             "mail": _mail(message_id, ses_id, source, email, tags),
-            "complaint": {"complaintFeedbackType": "abuse", "timestamp": datetime.utcnow().isoformat() + "Z",
+            "complaint": {"complaintFeedbackType": "abuse", "timestamp": utcnow().isoformat() + "Z",
                           "complainedRecipients": [{"emailAddress": email}]}}
 
 
 def ses_delivery(message_id, email, ses_id=None, source="s@example.com", tags=True, stamp=None):
     return {"notificationType": "Delivery", "eventType": "Delivery",
             "mail": _mail(message_id, ses_id, source, email, tags),
-            "delivery": {"timestamp": stamp or (datetime.utcnow().isoformat() + "Z"), "recipients": [email],
+            "delivery": {"timestamp": stamp or (utcnow().isoformat() + "Z"), "recipients": [email],
                          "smtpResponse": "250 2.0.0 OK", "processingTimeMillis": 420}}
 
 

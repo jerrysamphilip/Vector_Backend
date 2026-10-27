@@ -6,7 +6,7 @@ Provides cross-tenant management: tenant listing, user overview, platform stats.
 
 import logging
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -14,8 +14,10 @@ from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, case
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import require_role
 from app.core.config import settings
 from app.core.database import get_db
@@ -365,7 +367,11 @@ def create_tenant(
         status="INVITED",
     )
     db.add(admin_user)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:  # one live account per email across workspaces (F017), or a concurrent create
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A user with this email already exists")
 
     # Generate magic login token
     raw_token = secrets.token_urlsafe(48)
@@ -374,7 +380,7 @@ def create_tenant(
     magic_token = MagicLoginToken(
         user_id=admin_user.user_id,
         token_hash=hash_token(raw_token),
-        expires_at=datetime.utcnow() + timedelta(hours=expire_hours),
+        expires_at=utcnow() + timedelta(hours=expire_hours),
     )
     db.add(magic_token)
     db.commit()

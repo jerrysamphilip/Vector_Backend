@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.auth import require_permission, require_role
 from app.core.concurrency import claim_version, if_match_version, resolve_expected
 from app.core.database import get_db
@@ -331,7 +332,7 @@ def lead_from_message(payload: FromMessage, db: Session = Depends(get_db), curre
                                                      "lead_id": existing.lead_id})
     snippet = (msg.body_text or "").strip().replace("\r", "")[:300]
     lead = _make_lead(db, current_user, prospect, payload.owner_id, "Campaign reply", "ENGAGED",
-                      "Follow up on their reply", datetime.utcnow() + timedelta(days=1), msg.campaign_id)
+                      "Follow up on their reply", utcnow() + timedelta(days=1), msg.campaign_id)
     lead.qualification = {"need": True, "notes": f"Replied: {snippet}" if snippet else None}
     db.commit()
     return svc.lead_dicts(db, [lead])[0]
@@ -341,7 +342,7 @@ def lead_from_message(payload: FromMessage, db: Session = Depends(get_db), curre
 def reply_suggestions(db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
     """Recent positive replies from contacts you can see who have no open lead yet (BR-SF-01)."""
     from app.models.email_message import EmailEvent, EmailMessage
-    since = datetime.utcnow() - timedelta(days=30)
+    since = utcnow() - timedelta(days=30)
     outbound = db.query(EmailEvent.message_id).filter(EmailEvent.event_type == EmailEvent.EVENT_POSITIVE_REPLY,
                                                       EmailEvent.event_time >= since)
     replied = {pid for (pid,) in db.query(EmailMessage.prospect_id).filter(EmailMessage.message_id.in_(outbound))}
@@ -403,7 +404,7 @@ def update_lead(lead_id: str, payload: LeadUpdate, db: Session = Depends(get_db)
         svc.set_lead_stage(db, lead, data["stage"], current_user)
     if lead.stage == "DISQUALIFIED" and "recycle_in_days" in data:
         days = data["recycle_in_days"]
-        lead.recycle_at = datetime.utcnow() + timedelta(days=days) if days else None
+        lead.recycle_at = utcnow() + timedelta(days=days) if days else None
     elif lead.stage != "DISQUALIFIED":
         lead.recycle_at = None
     _record(db, current_user, "LEAD", lead.lead_id, before, crm.snapshot(lead, svc.LEAD_FIELDS))
@@ -588,7 +589,7 @@ def list_opps(owner: Optional[str] = None, status: Optional[str] = None, stage_i
                        prospect_id)
     if stale:
         from app.services.sales_settings import get_settings as _gs
-        cutoff = datetime.utcnow() - timedelta(days=int(_gs(db, current_user.tenant_id).get("stale_deal_days") or 14))
+        cutoff = utcnow() - timedelta(days=int(_gs(db, current_user.tenant_id).get("stale_deal_days") or 14))
         query = query.filter(Opportunity.status == "OPEN", or_(Opportunity.updated_at < cutoff,
                                                                 Opportunity.close_date < date.today()))
     agg = query.with_entities(func.count(Opportunity.opportunity_id),
@@ -700,7 +701,7 @@ def get_opp(opportunity_id: str, db: Session = Depends(get_db), current_user: Us
 def _stage_history(opp: Opportunity, history: List[dict]) -> List[dict]:
     """Each stage the deal has been in, with how long it stayed (BR-SF-04)."""
     changes = sorted((h for h in history if h["field"] == "stage_id"), key=lambda h: h["changed_at"])
-    now = datetime.utcnow()
+    now = utcnow()
     out = []
     first = changes[0]["old_value"] if changes else None
     start = opp.created_at or now
@@ -811,13 +812,13 @@ def log_deal_activity(opportunity_id: str, payload: DealActivity, db: Session = 
     a = ContactActivity(tenant_id=current_user.tenant_id, prospect_id=opp.prospect_id, opportunity_id=opp.opportunity_id,
                         activity_type=payload.activity_type, subject=clean_str(payload.subject), body=payload.body,
                         outcome=clean_str(payload.outcome), duration_minutes=payload.duration_minutes,
-                        occurred_at=_naive(payload.occurred_at) or datetime.utcnow(), created_by=current_user.user_id,
+                        occurred_at=_naive(payload.occurred_at) or utcnow(), created_by=current_user.user_id,
                         source="MANUAL")
     db.add(a)
     if mentioned_users:
         db.flush()
         mentions.save(db, current_user, a, mentioned_users, opp.name, f"/app/deals/{opp.opportunity_id}")
-    opp.updated_at = datetime.utcnow()
+    opp.updated_at = utcnow()
     db.commit()
     if payload.add_to_calendar and payload.activity_type == "MEETING":
         from app.services import account_sync
@@ -837,7 +838,7 @@ def deal_timeline(opportunity_id: str, db: Session = Depends(get_db), current_us
     names = {}
     acts = db.query(ContactActivity).filter(or_(ContactActivity.opportunity_id == opp.opportunity_id,
                                                 (ContactActivity.prospect_id == opp.prospect_id) if opp.prospect_id else False))
-    acts = acts.filter(ContactActivity.occurred_at >= (opp.created_at or datetime.utcnow()) - timedelta(days=30)) \
+    acts = acts.filter(ContactActivity.occurred_at >= (opp.created_at or utcnow()) - timedelta(days=30)) \
         .order_by(ContactActivity.occurred_at.desc()).limit(200).all()
     names.update(svc.user_names(db, [a.created_by for a in acts]))
     from app.services import mentions
@@ -852,7 +853,7 @@ def deal_timeline(opportunity_id: str, db: Session = Depends(get_db), current_us
         items.append({"kind": "TASK", "at": t.completed_at or t.created_at, "task": task_dict(db, t, names)})
     if opp.prospect_id:
         for m in db.query(EmailMessage).filter(EmailMessage.prospect_id == opp.prospect_id,
-                                               EmailMessage.sent_at >= (opp.created_at or datetime.utcnow()) - timedelta(days=30)
+                                               EmailMessage.sent_at >= (opp.created_at or utcnow()) - timedelta(days=30)
                                                ).order_by(EmailMessage.sent_at.desc()).limit(100):
             items.append({"kind": "EMAIL_RECEIVED" if m.direction == "INBOUND" else "EMAIL_SENT", "at": m.sent_at,
                           "email": {"message_id": m.message_id, "subject": m.subject, "snippet": (m.body_text or "")[:300],
@@ -896,8 +897,8 @@ def _set_proposal_status(p: Proposal, status: str):
     if status not in PROPOSAL_STATUSES:
         raise HTTPException(status_code=400, detail=f"status must be one of {list(PROPOSAL_STATUSES)}")
     if status != "DRAFT" and not p.sent_at:
-        p.sent_at = datetime.utcnow()
-    p.decided_at = datetime.utcnow() if status in ("ACCEPTED", "REJECTED") else None
+        p.sent_at = utcnow()
+    p.decided_at = utcnow() if status in ("ACCEPTED", "REJECTED") else None
     p.status = status
 
 

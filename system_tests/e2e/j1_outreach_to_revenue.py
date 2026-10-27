@@ -7,14 +7,14 @@ import json
 import re
 import time
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from .flows import (CSV_HEAD, add_missing_step_templates, captured_for, contact_by_email, create_campaign, detach_imap,
                     dt, enroll, generate_content, launch, mk_inbox, msgs, sequences, travel_due, upload_list, utc_now,
                     wait_status)
 from .helpers import (timed, ev_bounce, ev_click, ev_delivery, ev_open, iso, FakeImap, HOST_FROM_CONTAINERS, SCRATCH, add_user, follow, new_workspace, q, reply_mime, req,
                       rows, run_job, scalar, ses_bounce, ses_captured, ses_count, ses_delivery, ses_post, sql, user_token,
-                      wait_until)
+                      utcnow, wait_until)
 
 NAMES = ["Ann Adler", "Bo Brandt", "Cy Cole", "Di Dunn", "Ed Egan", "Flo Fry", "Gus Gray", "Hal Hart", "Ida Ives",
          "Jo Jain", "Kit Kerr", "Lea Lund", "Max Moss", "Ned Nash", "Oli Orr", "Pam Pike"]
@@ -457,7 +457,7 @@ def phase_events(R, C):
     R.check("E2E-J1-45", "Global analytics KPIs equal the dashboard summary", ga["kpis"] == k, f"{ga['kpis']} vs {k}")
     R.check("E2E-J1-46", "Campaign comparison row agrees (sent 16, opened 10, bounced 1)",
             ci["sent_count"] == 16 and ci["opened_count"] == 10 and ci["bounced_count"] == 1, f"{ci}")
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = utcnow().strftime("%Y-%m-%d")
     bar = [b for b in an["bar_data"] if b["date"] == today]
     R.check("E2E-J1-47", "Analytics time-series for today: sent 16 / opened 10 / bounced 1",
             bar and bar[0]["sent"] == 16 and bar[0]["opened"] == 10 and bar[0]["bounced"] == 1, f"{bar}")

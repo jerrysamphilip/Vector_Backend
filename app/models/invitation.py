@@ -3,11 +3,11 @@
 Team invitation model for user onboarding.
 """
 
-from sqlalchemy import Column, String, DateTime, ForeignKey
-from sqlalchemy.sql import func
+from sqlalchemy import Column, String, ForeignKey
 import uuid
 
 from app.models import Base
+from app.models.types import NOW6, UtcDateTime
 
 
 class Invitation(Base):
@@ -24,8 +24,8 @@ class Invitation(Base):
     role = Column(String(50), nullable=False, default="AGENT")
     token = Column(String(255), unique=True, nullable=False)
     status = Column(String(50), default="PENDING")  # PENDING / ACCEPTED / EXPIRED / REVOKED
-    expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, server_default=func.now())
+    expires_at = Column(UtcDateTime, nullable=False)
+    created_at = Column(UtcDateTime, server_default=NOW6)
 
     __table_args__ = (
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
