@@ -16,6 +16,8 @@ import sys
 import uuid
 
 # ── Environment, before anything imports app.core.config ──
+# Never read the git-ignored .env (a developer's real OpenAI / AWS keys): see app.core.config.dotenv_disabled.
+os.environ["OUTREACH_IGNORE_DOTENV"] = "1"
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("ALLOW_SELF_SIGNUP", "true")
 os.environ.setdefault("RUN_BACKGROUND_JOBS", "false")

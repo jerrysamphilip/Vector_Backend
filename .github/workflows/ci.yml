@@ -46,6 +46,7 @@ jobs:
     timeout-minutes: 10
     env:
       ENVIRONMENT: test
+      OUTREACH_IGNORE_DOTENV: "1"
       AWS_EC2_METADATA_DISABLED: "true"
       OPENAI_API_KEY: ""
     steps:
@@ -131,6 +132,7 @@ jobs:
     timeout-minutes: 10
     env:
       ENVIRONMENT: test
+      OUTREACH_IGNORE_DOTENV: "1"
       RUN_BACKGROUND_JOBS: "false"
       AWS_EC2_METADATA_DISABLED: "true"
       OPENAI_API_KEY: ""
@@ -210,6 +212,7 @@ jobs:
       MYSQL_PASSWORD: vector
       MYSQL_DATABASE: vtest
       ENVIRONMENT: test
+      OUTREACH_IGNORE_DOTENV: "1"
       ALLOW_SELF_SIGNUP: "true"
       RUN_BACKGROUND_JOBS: "false"
       JWT_SECRET_KEY: ci-only-jwt-secret-0123456789abcdef0123456789

@@ -96,6 +96,10 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - `domain_error_handler` guards its input with an explicit type check instead of `assert` (kept under `python -O`).
 
 ### Security
+- Test runs no longer read the git-ignored `.env` (a developer's real OpenAI / AWS keys; one in-process test had
+  made a real SES call). `app/core/config.py` skips `.env` when `OUTREACH_IGNORE_DOTENV=1` (set by both test
+  conftests, `scripts/test.py` and CI) or, with the flag unset, whenever pytest is loaded; `OUTREACH_IGNORE_DOTENV=0`
+  opts back in. Production and dev processes still read `.env`.
 - SNS webhook hardening (C-04/C-09): signed timestamp window (24 h back, 15 min ahead), RSA certificates within
   their validity only, certificate cache with TTL and size limit, no redirects, no userinfo or non-443 ports in
   certificate and subscribe URLs, optional `SNS_ALLOWED_TOPIC_ARNS`, 503 when the certificate cannot be fetched

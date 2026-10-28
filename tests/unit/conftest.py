@@ -14,6 +14,8 @@ import socket
 import sys
 
 # ── Environment, before anything imports app.core.config ──
+# Never read the git-ignored .env (a developer's real OpenAI / AWS keys): see app.core.config.dotenv_disabled.
+os.environ["OUTREACH_IGNORE_DOTENV"] = "1"
 # (In a full `python -m pytest` run tests/conftest.py has already configured and imported the app;
 #  then nothing here is changed, so the functional tests keep their real database settings.)
 if "app.core.config" not in sys.modules:

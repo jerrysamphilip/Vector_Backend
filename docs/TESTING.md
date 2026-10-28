@@ -372,7 +372,17 @@ The runner gives every suite these variables:
 
 - `API_URL`, `WEB_URL` and `MYSQL_CONTAINER`.
 - `OPENAI_API_KEY=""`.
+- `OUTREACH_IGNORE_DOTENV=1` (pytest suites, host and docker).
 - `PW_DIR`, `PW_BASE` and `PW_MODULES` set to `reports/.work`. That folder links to `system_tests/node_modules` and is writable, so the suites' Playwright and fake-IMAP scratch files stay out of the source tree. Variables you set yourself win.
+
+### The `.env` file is never read by tests
+
+`.env` is git-ignored and holds a developer's real keys (OpenAI, AWS SES, ...). In-process test runs (unit, functional, anything using `TestClient` or importing `app`) must not load it:
+
+- `app/core/config.py` skips `.env` (both pydantic's `env_file` and the `.env` key scan that ranks it above `app-properties.ini`) when `OUTREACH_IGNORE_DOTENV=1`, and also when the flag is unset but `pytest` is loaded. `OUTREACH_IGNORE_DOTENV=0` forces it back on; production and dev processes, which set neither, read `.env` as before.
+- `tests/conftest.py` and `tests/unit/conftest.py` set the flag before anything imports `app.core.config`; `scripts/test.py` sets it for host and docker pytest runs (docker mounts the repo, `.env` included, at `/src`); CI sets it on the unit, contract and functional jobs. `tests/unit/test_enviso_dotenv.py` proves it with a fake `.env` in `tmp_path`.
+- `ENVIRONMENT=test` alone is not a guard: `.env` itself may set `ENVIRONMENT`.
+- **Live stacks are different.** `docker compose` reads `.env` by design (variable substitution for api and worker), and so does any host `uvicorn` started from the repo root without the flag (e.g. `scripts/load/replicas.sh`, which only blanks `OPENAI_API_KEY`). A stack used for system, e2e or ui tests must be started with empty keys: `OPENAI_API_KEY= AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= docker compose up -d api worker` (the e2e wiring points SES at the stand-in via `AWS_ENDPOINT_URL`). Jobs run with `docker exec vector-api-1 python -c ...` use that container's environment.
 
 ### Bringing the stack up
 
