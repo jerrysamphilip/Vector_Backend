@@ -1,0 +1,823 @@
+{
+ "paths": {
+  "/accounts": {
+   "get": {
+    "operationId": "list_accounts_accounts_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "q",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Q"
+      }
+     },
+     {
+      "description": "'me', 'unassigned' or a user id",
+      "in": "query",
+      "name": "owner",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "'me', 'unassigned' or a user id",
+       "title": "Owner"
+      }
+     },
+     {
+      "in": "query",
+      "name": "lifecycle_stage",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Lifecycle Stage"
+      }
+     },
+     {
+      "in": "query",
+      "name": "industry",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Industry"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sort_by",
+      "required": false,
+      "schema": {
+       "default": "name",
+       "pattern": "^(name|contacts|annual_revenue|created_at|updated_at)$",
+       "title": "Sort By",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sort_order",
+      "required": false,
+      "schema": {
+       "default": "asc",
+       "pattern": "^(asc|desc)$",
+       "title": "Sort Order",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "page",
+      "required": false,
+      "schema": {
+       "default": 1,
+       "minimum": 1,
+       "title": "Page",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "page_size",
+      "required": false,
+      "schema": {
+       "default": 25,
+       "maximum": 200,
+       "minimum": 1,
+       "title": "Page Size",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List Accounts",
+    "tags": [
+     "Companies"
+    ]
+   },
+   "post": {
+    "operationId": "create_account_accounts_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AccountWrite"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Create Account",
+    "tags": [
+     "Companies"
+    ]
+   }
+  },
+  "/accounts/backfill": {
+   "post": {
+    "description": "Associate every contact without a company (BR-CM-04): by email domain, creating the\ncompany if needed, or by company name for personal email addresses.",
+    "operationId": "backfill_accounts_backfill_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Backfill",
+    "tags": [
+     "Companies"
+    ]
+   }
+  },
+  "/accounts/deleted": {
+   "get": {
+    "operationId": "deleted_accounts_accounts_deleted_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Deleted Accounts",
+    "tags": [
+     "Companies"
+    ]
+   }
+  },
+  "/accounts/{account_id}": {
+   "delete": {
+    "description": "Soft delete: hidden and restorable for 90 days; contacts are kept.",
+    "operationId": "delete_account_accounts__account_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "account_id",
+      "required": true,
+      "schema": {
+       "title": "Account Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Delete Account",
+    "tags": [
+     "Companies"
+    ]
+   },
+   "get": {
+    "operationId": "get_account_accounts__account_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "account_id",
+      "required": true,
+      "schema": {
+       "title": "Account Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Account",
+    "tags": [
+     "Companies"
+    ]
+   },
+   "patch": {
+    "operationId": "update_account_accounts__account_id__patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "account_id",
+      "required": true,
+      "schema": {
+       "title": "Account Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "If-Match",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "If-Match"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AccountUpdate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Update Account",
+    "tags": [
+     "Companies"
+    ]
+   }
+  },
+  "/accounts/{account_id}/restore": {
+   "post": {
+    "operationId": "restore_account_accounts__account_id__restore_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "account_id",
+      "required": true,
+      "schema": {
+       "title": "Account Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Restore Account",
+    "tags": [
+     "Companies"
+    ]
+   }
+  }
+ },
+ "schemas": {
+  "AccountUpdate": {
+   "properties": {
+    "annual_revenue": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Annual Revenue"
+    },
+    "city": {
+     "anyOf": [
+      {
+       "maxLength": 100,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "City"
+    },
+    "country": {
+     "anyOf": [
+      {
+       "maxLength": 100,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Country"
+    },
+    "description": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Description"
+    },
+    "domain": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Domain"
+    },
+    "emp_band": {
+     "anyOf": [
+      {
+       "maxLength": 50,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Emp Band"
+    },
+    "expected_version": {
+     "anyOf": [
+      {
+       "minimum": 1.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Expected Version"
+    },
+    "industry": {
+     "anyOf": [
+      {
+       "maxLength": 100,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Industry"
+    },
+    "lifecycle_stage": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Lifecycle Stage"
+    },
+    "name": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Name"
+    },
+    "owner_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Owner Id"
+    },
+    "phone": {
+     "anyOf": [
+      {
+       "maxLength": 50,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Phone"
+    },
+    "postal_code": {
+     "anyOf": [
+      {
+       "maxLength": 20,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Postal Code"
+    },
+    "state": {
+     "anyOf": [
+      {
+       "maxLength": 100,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "State"
+    },
+    "street": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Street"
+    },
+    "website": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Website"
+    }
+   },
+   "title": "AccountUpdate",
+   "type": "object"
+  },
+  "AccountWrite": {
+   "properties": {
+    "annual_revenue": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Annual Revenue"
+    },
+    "city": {
+     "anyOf": [
+      {
+       "maxLength": 100,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "City"
+    },
+    "country": {
+     "anyOf": [
+      {
+       "maxLength": 100,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Country"
+    },
+    "description": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Description"
+    },
+    "domain": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Domain"
+    },
+    "emp_band": {
+     "anyOf": [
+      {
+       "maxLength": 50,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Emp Band"
+    },
+    "industry": {
+     "anyOf": [
+      {
+       "maxLength": 100,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Industry"
+    },
+    "lifecycle_stage": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Lifecycle Stage"
+    },
+    "name": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Name"
+    },
+    "owner_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Owner Id"
+    },
+    "phone": {
+     "anyOf": [
+      {
+       "maxLength": 50,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Phone"
+    },
+    "postal_code": {
+     "anyOf": [
+      {
+       "maxLength": 20,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Postal Code"
+    },
+    "state": {
+     "anyOf": [
+      {
+       "maxLength": 100,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "State"
+    },
+    "street": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Street"
+    },
+    "website": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Website"
+    }
+   },
+   "title": "AccountWrite",
+   "type": "object"
+  }
+ }
+}

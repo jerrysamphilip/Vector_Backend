@@ -22,10 +22,10 @@ from email.utils import getaddresses, parsedate_to_datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlencode
 
-import httpx
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.adapters import providers
 from app.core.clock import utcnow
 from app.core import tokens
 from app.core.config import settings
@@ -49,14 +49,14 @@ class SyncError(Exception):
     pass
 
 
-# HTTP is behind two functions so tests can replace them
-def http_post(url: str, data: dict) -> httpx.Response:
-    return httpx.post(url, data=data, timeout=20)
+# HTTP goes through the OAuthHttp adapter (app/adapters/m365.py); tests swap it with
+# providers.override(oauth_http=...)
+def http_post(url: str, data: dict) -> Any:
+    return providers.oauth_http().post_form(url, data, timeout=20)
 
 
-def http_request(method: str, url: str, token: str, params: dict | None = None, json: dict | None = None) -> httpx.Response:
-    return httpx.request(method, url, params=params, json=json, timeout=30,
-                         headers={"Authorization": f"Bearer {token}"})
+def http_request(method: str, url: str, token: str, params: dict | None = None, json: dict | None = None) -> Any:
+    return providers.oauth_http().bearer_request(method, url, token, params=params, json=json, timeout=30)
 
 
 # ── OAuth ────────────────────────────────────────────────────
