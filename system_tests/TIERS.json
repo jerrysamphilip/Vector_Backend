@@ -64,8 +64,8 @@
         "ui_crm": {"cases": [
             "UIC-CON-01", "UIC-CON-43", "UIC-CD-01", "UIC-ACC-01", "UIC-LST-01",
             "UIC-IMP-01", "UIC-IMP-02", "UIC-IMP-03",
-            "UIC-SAL-01", "UIC-SAL-08", "UIC-SAL-14", "UIC-SAL-16"],
-          "reason": "key CRM screens: contacts list + record, companies, lists, import (render -> preview -> run), leads, deals, pipeline, sales reports; agent sees only own contacts"},
+            "UIC-SAL-01", "UIC-SAL-08", "UIC-SAL-14", "UIC-SAL-16"], "parallel": true, "locks": [],
+          "reason": "key CRM screens: contacts list + record, companies, lists, import (render -> preview -> run), leads, deals, pipeline, sales reports; agent sees only own contacts. No worker lock: the cut leaves out UIC-SAL-26, its only global job pass"},
         "ui_features.session_auth": {"cases": ["UIF-SESS-01", "UIF-SESS-12", "UIF-SESS-16"],
           "reason": "signed-out redirect, API 401 without credentials, CSRF on cookie-authenticated writes"},
         "ui_features.platform_admin": {"cases": ["UIF-PA-01", "UIF-PA-12", "UIF-PA-13"], "parallel": true,
