@@ -27,6 +27,9 @@ arbitrary formatting.
   PARSER ngram` (`ngram_token_size=2`, which also suits names and CJK text) and switch
   `search_condition` to `MATCH(search_text) AGAINST(:q IN BOOLEAN MODE)`, keeping the LIKE path for
   1-character queries and phone digits. This is a migration plus one function change; callers are
-  unaffected.
+  unaffected. *Tried and reverted (2026-10):* 0030 added that index as a pre-filter in front of the LIKE;
+  under concurrent inserts from another workspace some committed contacts never matched it, so 0034 dropped
+  it and the LIKE scan stays. A replacement must be proven against that case
+  (`tests/test_final_contact_search.py`) first.
 - Changing the searchable fields means changing `SEARCH_TEXT_SQL` in a migration (generated column
   rebuild).

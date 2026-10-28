@@ -74,8 +74,8 @@ def run_migrations_online() -> None:
     """Run migrations against the database in settings.DATABASE_URL."""
     from app.core.database import mysql_connect_args
 
-    # Same session settings as the app: charset / collation (D1), time zone UTC (D2), FULLTEXT indexes
-    # built without stopwords (D7; also when a later ALTER rebuilds prospects) and TLS (D8)
+    # Same session settings as the app: charset / collation (D1), time zone UTC (D2) and TLS (D8). The
+    # FULLTEXT revisions (0030 upgrade, 0034 downgrade) turn the InnoDB stopword list off themselves.
     connectable = create_engine(settings.DATABASE_URL, poolclass=pool.NullPool, connect_args=mysql_connect_args())
 
     with connectable.connect() as connection:

@@ -18,11 +18,9 @@ from app.core.db_charset import MYSQL_CHARSET, MYSQL_COLLATION
 # defaults, NOW() and TIMESTAMP conversions use the session time zone, so the server's own must not matter.
 MYSQL_TIME_ZONE = "+00:00"
 MYSQL_INIT_COMMAND = f"SET time_zone = '{MYSQL_TIME_ZONE}'"
-# Plus: FULLTEXT indexes are built without the InnoDB stopword list (D7). With the ngram parser every bigram
-# containing a stopword ("a", "i", "to", "in", ...) would be left out of the index, so a contact search for
-# "ma" or "maria" would find nothing. The setting only matters when a FULLTEXT index is (re)built: by a
-# migration, ``create_all`` or a table rebuild (OPTIMIZE / ALTER ... ALGORITHM=COPY); it never affects queries.
-MYSQL_SESSION_INIT_COMMAND = f"{MYSQL_INIT_COMMAND}, innodb_ft_enable_stopword = OFF"
+# The full session init (app engine and Alembic). It used to also turn the InnoDB FULLTEXT stopword list off
+# for the contact search index (D7); 0034_drop_contact_fulltext dropped that index, so it is the time zone only.
+MYSQL_SESSION_INIT_COMMAND = MYSQL_INIT_COMMAND
 
 # MySQL TLS (D8, off until DEC-01). MYSQL_SSL_MODE mirrors the mysql client's --ssl-mode values.
 MYSQL_SSL_MODES = ("disabled", "required", "verify_ca", "verify_identity")
@@ -53,13 +51,13 @@ def mysql_ssl_connect_args(mode: Optional[str], ca_path: Optional[str] = None) -
 
 
 def mysql_connect_args(**extra: Any) -> dict[str, Any]:
-    """Session settings shared by the app engine and Alembic: charset / collation (D1), UTC (D2),
-    stopword-free FULLTEXT builds (D7) and TLS (D8); ``extra`` adds driver timeouts."""
+    """Session settings shared by the app engine and Alembic: charset / collation (D1), UTC (D2)
+    and TLS (D8); ``extra`` adds driver timeouts."""
     return {
         **extra,
         "charset": MYSQL_CHARSET,  # Session charset / collation match the tables (D1)
         "collation": MYSQL_COLLATION,
-        "init_command": MYSQL_SESSION_INIT_COMMAND,  # Session time zone UTC (D2), FULLTEXT stopwords off (D7)
+        "init_command": MYSQL_SESSION_INIT_COMMAND,  # Session time zone UTC (D2)
         **mysql_ssl_connect_args(settings.MYSQL_SSL_MODE, settings.MYSQL_SSL_CA),
     }
 
