@@ -21,12 +21,36 @@ from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.domain import sending_warmup as scoring
+from app.domain.inbox_mailbox import effective_imap
 from app.models.inbox_warmup_metric import InboxWarmupMetric
 from app.models.sending_inbox import SendingInbox
 from app.repositories.sending_warmup import Session, SqlAlchemyWarmupRepository
 from app.services import ms365_oauth, warmup_imap, warmup_smtp
 
 logger = logging.getLogger(__name__)
+
+
+def _is_oauth(inbox: SendingInbox) -> bool:
+    return (inbox.auth_type or "PASSWORD") == ms365_oauth.AUTH_TYPE
+
+
+def _imap_configured(inbox: SendingInbox) -> bool:
+    """Saved IMAP settings, or ones derived from SMTP (S-26), as the IMAP sync reads them."""
+    return effective_imap(inbox).configured(_is_oauth(inbox))
+
+
+def _engagement_login(db: Session, peer: SendingInbox) -> Optional[Tuple[str, int, str, str]]:
+    """Host, port, username and secret to read the peer's mailbox with, mirroring
+    imap_sync_service._login_details: the effective (S-26) settings, and for Microsoft 365 a refreshed OAuth
+    token instead of the password. None when the mailbox can't be read."""
+    imap = effective_imap(peer)
+    oauth = _is_oauth(peer)
+    if not imap.configured(oauth):
+        return None
+    secret = ms365_oauth.imap_secret(db, peer) if oauth else imap.effective_imap_password
+    if not secret:
+        return None
+    return imap.effective_imap_host or "", imap.effective_imap_port, imap.effective_imap_username or "", secret
 
 
 class WarmupService:
@@ -197,7 +221,7 @@ class WarmupService:
         self._record_send_success(db, inbox, peer, sender_metric, peer_metric, subject)
 
         # Schedule real IMAP engagement on the peer inbox (2-8 min delay)
-        if peer.imap_host and peer.imap_username and peer.imap_password:
+        if _imap_configured(peer):
             delay = random.randint(120, 480)
             asyncio.create_task(
                 self._do_imap_engagement(
@@ -363,20 +387,13 @@ class WarmupService:
             inbox = repo.inbox(inbox_id)
             peer = repo.inbox(peer_inbox_id)
 
-            if not peer or not peer.imap_host or not peer.imap_username:
+            login = _engagement_login(db, peer) if peer is not None else None
+            if peer is None or login is None:
                 return
-            secret = ms365_oauth.imap_secret(db, peer)
-            if not secret:
-                return
+            host, port, username, secret = login
 
             result = await asyncio.to_thread(
-                warmup_imap._engage_blocking,
-                peer.imap_host,
-                peer.imap_port or 993,
-                peer.imap_username,
-                secret,
-                subject,
-                sender_email,
+                warmup_imap._engage_blocking, host, port, username, secret, subject, sender_email,
             )
 
             if result.get("error"):
@@ -492,7 +509,7 @@ class WarmupService:
                 False,
             )
 
-        if not inbox.imap_host or not inbox.imap_username or not inbox.imap_password:
+        if not _imap_configured(inbox):
             return "IMAP_NOT_CONFIGURED", "IMAP not configured. Emails are sent but open/spam-rescue tracking is disabled.", False
 
         if inbox.last_sync_at and inbox.last_sync_at < utcnow() - timedelta(hours=24):
