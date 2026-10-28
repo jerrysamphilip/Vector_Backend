@@ -31,6 +31,7 @@ from app.repositories.contacts import (
     session_of,
 )
 from app.repositories.duplicates import DuplicateRepository
+from app.repositories.sales import SqlAlchemyLeadRepository
 from app.services.contact_companies import move_links
 
 __all__ = [
@@ -186,12 +187,11 @@ def delete_contacts(db: Session, prospect_ids: list, actor_id: Optional[str] = N
     """
     if not prospect_ids:
         return
-    from app.services.sales import delete_leads
     repo = SqlAlchemyContactRepository(db)
     repo.add_erasure_audit(prospect_ids, actor_id, reason)
     _scrub_personal_copies(repo, prospect_ids)
     repo.detach_messages(prospect_ids)
-    delete_leads(db, repo.lead_ids(prospect_ids))
+    SqlAlchemyLeadRepository(db).delete_many(repo.lead_ids(prospect_ids))  # deals keep going without the link
     repo.erase_rows(prospect_ids)
 
 

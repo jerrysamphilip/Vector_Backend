@@ -20,10 +20,11 @@ import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Dict, List, Optional
 
-from sqlalchemy import create_engine, pool, text
+from sqlalchemy import text
 
 import app.models  # noqa: F401  (resolve SQLAlchemy relationships before any query)
 from app.core.config import settings
+from app.core.job_locks import release, try_acquire
 from app.core.observability import record_job_heartbeat
 from app.core.database import SessionLocal
 from app.services import domain_health_jobs, duplicate_scan, import_service, reply_classifier, sending_alerts
@@ -55,48 +56,8 @@ class Job:
 
 
 # ---------------------------------------------------------------------------
-# Named locks (leader election per iteration)
+# Named locks (leader election per iteration): app/core/job_locks.py
 # ---------------------------------------------------------------------------
-_lock_engine = None
-
-
-def _get_lock_engine():
-    # Own connections (not the app pool): a lock lives exactly as long as its connection
-    global _lock_engine
-    if _lock_engine is None:
-        _lock_engine = create_engine(settings.DATABASE_URL, poolclass=pool.NullPool,
-                                     connect_args={"connect_timeout": 10})
-    return _lock_engine
-
-
-def lock_name(job_name: str) -> str:
-    # Scoped to the database so environments sharing a MySQL server do not block each other
-    database = _get_lock_engine().url.database or ""
-    return f"vector:job:{job_name}:{database}"[:64]
-
-
-def try_acquire(job_name: str):
-    """Return an open connection holding the job's lock, or None if another process holds it."""
-    conn = _get_lock_engine().connect()
-    try:
-        got = conn.execute(text("SELECT GET_LOCK(:n, 0)"), {"n": lock_name(job_name)}).scalar()
-    except Exception:
-        conn.close()
-        raise
-    if got == 1:
-        return conn
-    conn.close()
-    return None
-
-
-def release(conn, job_name: str) -> None:
-    try:
-        conn.execute(text("SELECT RELEASE_LOCK(:n)"), {"n": lock_name(job_name)})
-    except Exception as e:
-        # Closing the connection below releases the lock anyway
-        logger.warning("Job %s: RELEASE_LOCK failed (%s)", job_name, type(e).__name__)
-    finally:
-        conn.close()
 
 
 # ---------------------------------------------------------------------------

@@ -11,9 +11,8 @@ import threading
 from datetime import date
 from typing import Dict, Optional
 
-from sqlalchemy import text
-
 from app.core.clock import utcnow
+from app.repositories.platform_flags import record_activity_day
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +54,7 @@ def record(bind, tenant_id: Optional[str], user_id: Optional[str], day: Optional
     if not should_record(user_id, day):
         return
     try:
-        engine = getattr(bind, "engine", bind)
-        with engine.begin() as conn:
-            conn.execute(text("INSERT IGNORE INTO user_activity_days (tenant_id, user_id, day) VALUES (:t, :u, :d)"),
-                         {"t": tenant_id, "u": user_id, "d": day})
+        record_activity_day(bind, tenant_id, user_id, day)
     except Exception as exc:  # table missing before the migration, database hiccup, ...
         logger.debug("[Activity] Could not record activity for %s: %s", user_id, exc)
 

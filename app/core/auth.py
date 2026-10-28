@@ -15,7 +15,7 @@ Role hierarchy (highest → lowest):
   AGENT          — Works assigned campaigns.
 """
 
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Protocol, Tuple
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -26,13 +26,39 @@ from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.core.tokens import TokenError
 from app.domain.identity import BLOCKED_TENANT_STATUSES, ROLE_DEFAULT_PERMISSIONS, tenant_blocked
-from app.models.tenant import Tenant
-from app.models.user import User
-from app.services.token_revocation import is_revoked
-from app.services.user_activity import record_for
 
-__all__ = ["BLOCKED_TENANT_STATUSES", "MFA_SETUP_ALLOWED_ROUTES", "ROLE_DEFAULT_PERMISSIONS", "bearer_scheme",
-           "ensure_tenant_active", "get_current_user", "require_permission", "require_role"]
+__all__ = ["AuthStore", "BLOCKED_TENANT_STATUSES", "MFA_SETUP_ALLOWED_ROUTES", "ROLE_DEFAULT_PERMISSIONS",
+           "bearer_scheme", "configure", "ensure_tenant_active", "get_current_user", "require_permission",
+           "require_role"]
+
+User = Any  # app.models.user.User; app.core sits below the models (C-4)
+
+
+class AuthStore(Protocol):
+    """The database reads authentication needs (app/services/auth_store.py; installed by app.main)."""
+
+    def revoked(self, db: Session, jti: Optional[str]) -> bool: ...
+
+    def user(self, db: Session, user_id: str) -> Any: ...
+
+    def tenant_flags(self, db: Session, user: Any) -> Tuple[Optional[str], bool]: ...
+
+    def record_activity(self, db: Session, user: Any) -> None: ...
+
+
+_store: Optional[AuthStore] = None
+
+
+def configure(store: AuthStore) -> None:
+    """Install the store the dependencies read users, revocations and tenant flags from."""
+    global _store
+    _store = store
+
+
+def _auth_store() -> AuthStore:
+    if _store is None:  # fail closed: no request is authenticated without the store
+        raise RuntimeError("app.core.auth is not configured: call app.core.auth.configure() at start-up")
+    return _store
 
 # auto_error=False: the access token may come from the httpOnly cookie instead (app/core/auth_cookies.py)
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -55,10 +81,7 @@ def _tenant_flags(db: Session, user: User) -> Tuple[Optional[str], bool]:
     """(status, require_mfa) of the user's tenant; (None, False) for PLATFORM_ADMIN / no tenant."""
     if user.role == "PLATFORM_ADMIN" or not user.tenant_id:
         return None, False
-    row = db.query(Tenant.status, Tenant.require_mfa).filter(Tenant.tenant_id == user.tenant_id).first()
-    if not row:
-        return None, False
-    return row[0], bool(row[1])
+    return _auth_store().tenant_flags(db, user)
 
 
 def ensure_tenant_active(db: Session, user: User) -> None:
@@ -125,14 +148,15 @@ def get_current_user(
         require_csrf(request)
 
     # Signed out: the access token was revoked at logout (app/services/token_revocation.py)
-    if is_revoked(db, payload.get("jti")):
+    store = _auth_store()
+    if store.revoked(db, payload.get("jti")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = db.query(User).filter(User.user_id == user_id).first()
+    user = store.user(db, user_id)
     if not user or user.status != "ACTIVE":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -150,7 +174,7 @@ def get_current_user(
                     "message": "Your workspace requires two-factor authentication. Set it up to continue."},
         )
     # CRM adoption KPI: one activity row per user per day (cached, so normally a dict lookup)
-    record_for(db, user)
+    store.record_activity(db, user)
     return user
 
 

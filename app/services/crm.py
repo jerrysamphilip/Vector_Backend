@@ -11,10 +11,8 @@ Shared Contact Management logic for Phase 1 (BRD v2.0, section 5.2):
 - data-quality flags (BR-CM-34)
 """
 
-import json
 import re
-from datetime import date, datetime, timedelta
-from decimal import Decimal
+from datetime import timedelta
 from typing import Any, Iterable, Optional
 
 from app.core.clock import utcnow
@@ -40,6 +38,7 @@ from app.services.contact_service import delete_contacts, visibility_scope
 from app.services.sales_settings import can_see_amounts
 from app.utils.company_domain import bare_domain, is_valid_domain, registrable_domain
 from app.utils.free_mail import is_free_mail_domain
+from app.utils.property_format import fmt_value
 
 # ── Definitions (labels can be renamed here before go-live; codes are stored) ──
 
@@ -99,16 +98,7 @@ def lifecycle_move_allowed(old: Optional[str], new: Optional[str], user: User) -
 
 # ── Property history ────────────────────────────────────────────
 
-def _fmt(value: Any) -> Optional[str]:
-    if value is None or value == "" or value == [] or value == {}:
-        return None
-    if isinstance(value, (list, dict)):
-        return json.dumps(value, ensure_ascii=False, sort_keys=True)
-    if isinstance(value, (datetime, date)):
-        return value.isoformat()
-    if isinstance(value, Decimal):
-        return format(value.normalize(), "f")
-    return str(value)
+_fmt = fmt_value  # history format, shared with workflow rules and webhooks (app/utils/property_format.py)
 
 
 def snapshot(obj: Any, fields: Iterable[str]) -> dict:
@@ -143,7 +133,7 @@ def record_changes(db: Session, tenant_id: str, object_type: str, object_id: str
     # Workflow rules react to the same changes (BR-SF-13); imports and merges are excluded
     if changed and source not in ("IMPORT", "MERGE"):
         from app.services import workflow
-        workflow.on_changes(db, tenant_id, object_type, object_id, changed, user_id)
+        workflow.on_changes(db, tenant_id, object_type, object_id, changed, user_id, record_changes=record_changes)
     if rows:
         # Outbound webhooks (BR-SF-20): contact / lead / deal events, queued in this transaction
         from app.services import webhooks

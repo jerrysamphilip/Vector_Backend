@@ -21,6 +21,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from app.core.clock import utcnow
 from app.core.errors import BadRequestError, NotFoundError
+from app.core.job_locks import release, try_acquire
 from app.models.contact_scoring import ContactScoringModel
 from app.models.crm import PropertyChange
 from app.models.prospect import Prospect
@@ -239,7 +240,6 @@ def rescore(db: Session, tenant_id: str, ids: Iterable[str], changed_by: Optiona
 
 def _try_lock(name: str) -> Any:
     try:
-        from app.jobs import try_acquire
         return try_acquire(name)
     except Exception as e:  # no lock available (e.g. database unreachable): run unlocked
         logger.warning("Scoring lock %s unavailable (%s)", name, type(e).__name__)
@@ -248,7 +248,6 @@ def _try_lock(name: str) -> Any:
 
 def _release(conn, name: str) -> None:
     if conn and conn != "unlocked":
-        from app.jobs import release
         release(conn, name)
 
 

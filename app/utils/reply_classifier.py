@@ -10,7 +10,7 @@ than raising, since a missed classification should never break IMAP sync.
 
 import logging
 import re
-from typing import Optional
+from typing import Any, Optional, Protocol, Tuple
 
 from openai import OpenAI
 
@@ -51,19 +51,29 @@ def is_out_of_office(subject: str, body: str, auto_submitted_header: Optional[st
     return bool(_OOO_TEXT_PATTERN.search(haystack))
 
 
-def classify_reply_intent(subject: str, body: str) -> Optional[str]:
+class LLMBudget(Protocol):
+    """The spend-cap hooks (app.services.llm_budget satisfies it): ``charge`` reserves the call's
+    worst-case cost and raises when the daily cap is reached; ``settle`` books the real cost."""
+
+    def charge(self, kwargs: dict) -> Tuple[dict, int]: ...
+
+    def settle(self, reserved_micro: int, response: Any = None) -> None: ...
+
+
+def classify_reply_intent(subject: str, body: str, budget: Optional[LLMBudget] = None) -> Optional[str]:
     """
     Classify a prospect's reply as 'positive', 'neutral', or 'negative'.
 
     Returns None when classification is unavailable (no API key configured,
-    empty body) or the call fails — callers must treat None as "unknown",
-    not as a negative/neutral result.
+    no LLM budget given, empty body, daily cap reached) or the call fails —
+    callers must treat None as "unknown", not as a negative/neutral result.
+    The caller passes the LLM budget (app.services.llm_budget); without it no
+    call is made, so every LLM call stays under the daily spend cap.
     """
-    if not _openai_client or not (body or "").strip():
+    if not _openai_client or budget is None or not (body or "").strip():
         return None
 
     try:
-        from app.services.llm_budget import charge, settle, LLMBudgetExceeded
         messages = [
             {
                 "role": "system",
@@ -81,16 +91,17 @@ def classify_reply_intent(subject: str, body: str) -> Optional[str]:
             {"role": "user", "content": f"Subject: {subject or ''}\n\nReply:\n{(body or '')[:1500]}"},
         ]
         try:
-            kwargs, reserved = charge({"messages": messages, "max_tokens": 5})
-        except LLMBudgetExceeded:
+            kwargs, reserved = budget.charge({"messages": messages, "max_tokens": 5})
+        except Exception as exc:  # daily cap reached (LLMBudgetExceeded) or the ledger is unavailable
+            logger.info(f"[ReplyClassifier] Intent classification skipped: {exc}")
             return None
         try:
             response = _openai_client.chat.completions.create(
                 model=settings.OPENAI_MODEL, temperature=0, **kwargs)
         except Exception:
-            settle(reserved, None)
+            budget.settle(reserved, None)
             raise
-        settle(reserved, response)
+        budget.settle(reserved, response)
         label = (response.choices[0].message.content or "").strip().lower()
         return label if label in ("positive", "neutral", "negative") else None
     except Exception as e:

@@ -43,20 +43,6 @@ layers =
     app.utils
     app.models
     app.core
-ignore_imports =
-    # --- BASELINE 2026-10-18 (may only shrink) ---
-    # TODO(C-4): auth resolves the current User/Tenant; move the lookup into a service and pass it in.
-    app.core.auth -> app.models.user
-    app.core.auth -> app.models.tenant
-    # TODO(C-4): token revocation / activity checks belong in a service-level dependency, not app.core.auth.
-    app.core.auth -> app.services.token_revocation
-    app.core.auth -> app.services.user_activity
-    # TODO(C-4): MAX_MENTIONS is a shared constant; move it to app.core or app.schemas.
-    app.schemas.contact_schema -> app.services.mentions
-    # TODO(C-4): the classifier should receive the LLM budget hooks from its service caller.
-    app.utils.reply_classifier -> app.services.llm_budget
-    # TODO(C-4): the job lock helpers (try_acquire/release) belong in app.core or a service module.
-    app.services.contact_scoring -> app.jobs
 
 [importlinter:contract:core-no-upper]
 name = C-5 app.core must not import app.services, app.routers, app.jobs or app.db
@@ -68,10 +54,6 @@ forbidden_modules =
     app.routers
     app.jobs
     app.db
-ignore_imports =
-    # --- BASELINE 2026-10-18 (may only shrink); same TODOs as the layers contract ---
-    app.core.auth -> app.services.token_revocation
-    app.core.auth -> app.services.user_activity
 
 [importlinter:contract:services-no-routers]
 name = C-5 app.services must not import app.routers (HTTP stays in the adapters)
@@ -90,20 +72,6 @@ name = C-5 no import cycles between the app sub-packages
 type = acyclic_siblings
 ancestors =
     app
-ignore_imports =
-    # --- BASELINE 2026-10-18 (may only shrink); the layer violations above close these package cycles ---
-    app.core.auth -> app.models.user
-    app.core.auth -> app.models.tenant
-    app.core.auth -> app.services.token_revocation
-    app.core.auth -> app.services.user_activity
-    app.schemas.contact_schema -> app.services.mentions
-    app.utils.reply_classifier -> app.services.llm_budget
-    app.services.contact_scoring -> app.jobs
-    # TODO(C-5): cycles inside app.services, broken today by function-local imports. Fix by moving the
-    # shared helper (crm._fmt -> app.utils) or inverting the call (sales/campaign_email callbacks).
-    app.services.contact_service -> app.services.sales
-    app.services.webhooks -> app.services.crm
-    app.services.workflow -> app.services.crm
 
 # ---------------------------------------------------------------------------------------------------
 # L0 target layers (ADR 0009). Direct imports only (allow_indirect_imports) except for app.domain:
@@ -124,27 +92,6 @@ forbidden_modules =
     app.models
     app.repositories
 allow_indirect_imports = True
-ignore_imports =
-    # --- BASELINE 2026-10 (shrink only; see REFACTOR_PLAN.md) ---
-    app.routers.ai_email_router -> app.models
-    app.routers.ai_email_router -> app.models.user
-    app.routers.ai_email_router -> sqlalchemy
-    app.routers.company_profile_router -> app.models.company_profile
-    app.routers.company_profile_router -> app.models.user
-    app.routers.company_profile_router -> sqlalchemy
-    app.routers.connections_router -> app.models.sales_extra
-    app.routers.connections_router -> app.models.user
-    app.routers.connections_router -> sqlalchemy
-    app.routers.ses_webhook_router -> app.models
-    app.routers.ses_webhook_router -> app.models.campaign
-    app.routers.ses_webhook_router -> app.models.conversation
-    app.routers.ses_webhook_router -> sqlalchemy
-    app.routers.subject_variant_router -> app.models.campaign
-    app.routers.subject_variant_router -> app.models.user
-    app.routers.subject_variant_router -> sqlalchemy
-    app.routers.tracking_router -> app.models
-    app.routers.tracking_router -> app.models.prospect
-    app.routers.tracking_router -> sqlalchemy
 
 # TODO(L1, A1-A8): services call repositories (SQL) through Protocols and own the unit of work;
 # FastAPI types (HTTPException, UploadFile, BackgroundTasks, ...) stay in the routers (ADR 0001).
@@ -157,28 +104,6 @@ forbidden_modules =
     sqlalchemy
     fastapi
 allow_indirect_imports = True
-ignore_imports =
-    # --- BASELINE 2026-10 (shrink only; see REFACTOR_PLAN.md) ---
-    app.services.account_sync -> sqlalchemy
-    app.services.ai_email_service -> sqlalchemy
-    app.services.audit_service -> sqlalchemy
-    app.services.batch_processor_service -> sqlalchemy
-    app.services.compliance_service -> sqlalchemy
-    app.services.daily_limit -> sqlalchemy
-    app.services.enrollment_rules -> sqlalchemy
-    app.services.llm_budget -> sqlalchemy
-    app.services.mentions -> sqlalchemy
-    app.services.metrics_service -> sqlalchemy
-    app.services.ms365_oauth -> sqlalchemy
-    app.services.oauth_binding -> fastapi
-    app.services.platform_flags -> sqlalchemy
-    app.services.prospect_upload_service -> sqlalchemy
-    app.services.provider_ingestion_service -> sqlalchemy
-    app.services.reconnect_service -> sqlalchemy
-    app.services.sender_identity -> sqlalchemy
-    app.services.suppression -> sqlalchemy
-    app.services.user_activity -> sqlalchemy
-    app.services.workflow -> sqlalchemy
 
 [importlinter:contract:domain-pure]
 name = L0 app.domain is pure: no sqlalchemy, fastapi, models, services, repositories or routers (indirect too)

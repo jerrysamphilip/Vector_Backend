@@ -8,11 +8,11 @@ and provides an enhanced pre-send "linter" for anti-spam mitigation.
 import re
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
-from sqlalchemy.orm import Session
 import uuid
 import logging
 
 from app.models import ComplianceCheck, EmailTemplate
+from app.repositories.compliance import Session, SqlAlchemyComplianceRepository
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -603,10 +603,11 @@ def run_compliance_check(
         failure_reasons=failure_reasons if failure_reasons else None,
     )
     
-    db.add(check)
+    repo = SqlAlchemyComplianceRepository(db)
+    repo.add(check)
     db.commit()
-    db.refresh(check)
-    
+    repo.refresh(check)
+
     return check
 
 

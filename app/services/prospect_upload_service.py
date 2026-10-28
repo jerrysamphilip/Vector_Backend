@@ -5,10 +5,8 @@ import re
 import uuid
 import math
 from datetime import timedelta
-from sqlalchemy.orm import Session
-from sqlalchemy import case, func
-from sqlalchemy.exc import DataError, IntegrityError
 from app.repositories.lists import free_list_name
+from app.repositories.uploads import Session, SqlAlchemyUploadRepository, UploadConflict, UploadRowRefused
 from app.core.clock import utcnow
 from app.core.errors import ConflictError
 
@@ -16,7 +14,6 @@ from app.models import (
     Prospect,
     ProspectList,
     ProspectListMember,
-    GlobalUnsubscribe,
 )
 from app.services.contact_service import get_or_create_account
 from app.services.import_limits import column_limits, oversized_fields
@@ -128,12 +125,7 @@ def dry_run_validate(
     # Track seen emails for duplicate detection
     seen_emails = set()
 
-    unsubscribed = {
-        email: reason
-        for email, reason in db.query(GlobalUnsubscribe.email, GlobalUnsubscribe.reason)
-        .filter(GlobalUnsubscribe.tenant_id == tenant_id)
-        .all()
-    }
+    unsubscribed = dict(SqlAlchemyUploadRepository(db).suppression_reasons(tenant_id))
 
     for idx, row in df.iterrows():
         row_num = idx + 1
@@ -261,6 +253,30 @@ def dry_run_validate(
 # STEP 0.5: RE-VALIDATE EDITED RECORDS
 # =====================================================
 
+_REQUIRED_EDIT_FIELDS = (("first_name", "First Name"), ("last_name", "Last Name"), ("company_name", "Company Name"))
+
+
+def _missing_required(record: dict) -> List[str]:
+    """Required fields of an edited row: First Name, Last Name, Company Name (POC fields may be blank)."""
+    return [f"Missing required field: {label}" for key, label in _REQUIRED_EDIT_FIELDS
+            if not _sanitize_value(record.get(key))]
+
+
+def _suppressed_or_repeated(email_lower: Optional[str], unsubscribed_lower: Dict[str, Any],
+                            seen_emails: set) -> List[str]:
+    """Globally unsubscribed / duplicate-in-batch errors; marks the address as seen."""
+    if not email_lower:
+        return []
+    errors = []
+    if email_lower in unsubscribed_lower:
+        reason = unsubscribed_lower.get(email_lower)
+        errors.append(f"Globally unsubscribed ({reason})" if reason else "Globally unsubscribed")
+    if email_lower in seen_emails:
+        errors.append("Duplicate email in batch")
+    seen_emails.add(email_lower)
+    return errors
+
+
 def revalidate_prospect_records(
     records: list,
     db: Session,
@@ -279,14 +295,12 @@ def revalidate_prospect_records(
     validated = []
     accepted_count = 0
     rejected_count = 0
-    seen_emails = set()
+    seen_emails: set[str] = set()
 
     # Get unsubscribed emails (lower-cased) with their suppression reason
     unsubscribed_lower = {
         email.lower(): reason
-        for email, reason in db.query(GlobalUnsubscribe.email, GlobalUnsubscribe.reason)
-        .filter(GlobalUnsubscribe.tenant_id == tenant_id)
-        .all()
+        for email, reason in SqlAlchemyUploadRepository(db).suppression_reasons(tenant_id)
     }
 
     for r in records:
@@ -306,18 +320,7 @@ def revalidate_prospect_records(
 
         # Required fields: First Name, Last Name, Company Name, Email.
         # POC State/City/Country may be blank without rejecting the row.
-        first_name = _sanitize_value(r.get("first_name"))
-        last_name = _sanitize_value(r.get("last_name"))
-        company_name = _sanitize_value(r.get("company_name"))
-
-        if not first_name:
-            errors.append("Missing required field: First Name")
-
-        if not last_name:
-            errors.append("Missing required field: Last Name")
-
-        if not company_name:
-            errors.append("Missing required field: Company Name")
+        errors.extend(_missing_required(r))
 
         # POC State (not required — pass through / normalize if present)
         poc_state = r.get("poc_state")
@@ -338,16 +341,7 @@ def revalidate_prospect_records(
         # Check globally unsubscribed
         email_lower = email.lower() if email else None
 
-        if email_lower and email_lower in unsubscribed_lower:
-            reason = unsubscribed_lower.get(email_lower)
-            errors.append(f"Globally unsubscribed ({reason})" if reason else "Globally unsubscribed")
-
-        # Check duplicate in batch
-        if email_lower and email_lower in seen_emails:
-            errors.append("Duplicate email in batch")
-        
-        if email_lower:
-            seen_emails.add(email_lower)
+        errors.extend(_suppressed_or_repeated(email_lower, unsubscribed_lower, seen_emails))
 
         errors.extend(field_problems({**r, "email": raw_email}))
 
@@ -445,8 +439,8 @@ def recheck_accepted(record: dict) -> Tuple[Optional[dict], Optional[str]]:
     }, None
 
 
-def _failure_reason(exc: Exception) -> str:
-    if isinstance(exc, IntegrityError):
+def _failure_reason(exc: UploadRowRefused) -> str:
+    if exc.duplicate:
         return "Conflicts with an existing contact (duplicate email address)"
     return "A value is too long or not valid for the database"
 
@@ -457,6 +451,7 @@ class _Saver:
 
     def __init__(self, db: Session, tenant_id: str, uploaded_by: str, existing_by_email: Dict[str, Prospect]):
         self.db, self.tenant_id, self.uploaded_by = db, tenant_id, uploaded_by
+        self.repo = SqlAlchemyUploadRepository(db)
         self.existing_by_email = existing_by_email
         self.accounts_by_name: Dict[str, Optional[str]] = {}
         self._pending_accounts: Dict[str, Optional[str]] = {}
@@ -492,7 +487,7 @@ class _Saver:
         prospect_id = str(uuid.uuid4())
         # Auto-derive timezone from poc_state (ensures correct timezone even after user edits)
         poc_state = record.get("poc_state")
-        self.db.add(Prospect(
+        self.repo.add(Prospect(
             prospect_id=prospect_id,
             tenant_id=self.tenant_id,
             first_name=record.get("first_name"),
@@ -521,12 +516,15 @@ class _Saver:
     def save_batch(self, batch: List[dict]) -> List[Tuple[str, bool]]:
         """Upsert the batch in one savepoint; raises (and rolls the savepoint back) on a bad row."""
         self._pending_accounts = {}
-        with self.db.begin_nested():
+
+        def upsert() -> List[Tuple[str, bool]]:
             outcomes = []
             for record in batch:
                 existing = self.existing_by_email.get(record["email"].lower())
                 outcomes.append(self._update(existing, record) if existing else self._insert(record))
-            self.db.flush()
+            return outcomes
+
+        outcomes = self.repo.in_savepoint(upsert)
         self.accounts_by_name.update(self._pending_accounts)
         return outcomes
 
@@ -538,28 +536,21 @@ class _Saver:
             batch = records[start:start + SAVE_BATCH]
             try:
                 saved.extend(zip(batch, self.save_batch(batch)))
-            except (IntegrityError, DataError):
+            except UploadRowRefused:
                 for record in batch:  # find the bad row(s); the others still save
                     try:
                         saved.extend(zip([record], self.save_batch([record])))
-                    except (IntegrityError, DataError) as exc:
+                    except UploadRowRefused as exc:
                         failed.append(_not_added(record, _failure_reason(exc)))
         return saved, failed
 
 
 def stored_upload_result(db: Session, upload_id: str, tenant_id: str) -> Optional[Dict[str, Any]]:
     """Result of an upload that was already confirmed, so confirming it again saves nothing twice."""
-    exists = db.query(ProspectList.list_id).filter(
-        ProspectList.list_id == upload_id,
-        ProspectList.tenant_id == tenant_id,
-    ).first()
-    if not exists:
+    repo = SqlAlchemyUploadRepository(db)
+    if not repo.list_exists(tenant_id, upload_id):
         return None
-    total, new = db.query(
-        func.count(ProspectListMember.id),
-        func.coalesce(func.sum(case((ProspectListMember.is_new_prospect.is_(True), 1), else_=0)), 0),
-    ).filter(ProspectListMember.list_id == upload_id).one()
-    total, new = int(total or 0), int(new or 0)
+    total, new = repo.member_counts(upload_id)
     return {
         "list_id": upload_id,
         "inserted": total,
@@ -586,12 +577,7 @@ def _dedupe_by_email(records: List[dict]) -> List[dict]:
 
 def _split_unsubscribed(db: Session, tenant_id: str, records: List[dict]) -> Tuple[List[dict], List[dict]]:
     """Loophole #3: re-check the unsubscribe list at save time (race with validation)."""
-    unsubscribed = {
-        e[0].lower()
-        for e in db.query(GlobalUnsubscribe.email)
-        .filter(GlobalUnsubscribe.tenant_id == tenant_id)
-        .all()
-    }
+    unsubscribed = {e.lower() for e, _ in SqlAlchemyUploadRepository(db).suppression_reasons(tenant_id)}
     keep = [r for r in records if r["email"].lower() not in unsubscribed]
     skipped = [_not_added(r, "Globally unsubscribed") for r in records if r["email"].lower() in unsubscribed]
     return keep, skipped
@@ -599,11 +585,12 @@ def _split_unsubscribed(db: Session, tenant_id: str, records: List[dict]) -> Tup
 
 def _add_list(db: Session, upload_id: str, title: str, uploaded_by: str, tenant_id: str,
               saved: List[Tuple[dict, Tuple[str, bool]]]) -> None:
-    db.add(ProspectList(list_id=upload_id, tenant_id=tenant_id, list_name=free_list_name(db, tenant_id, title),
+    repo = SqlAlchemyUploadRepository(db)
+    repo.add(ProspectList(list_id=upload_id, tenant_id=tenant_id, list_name=free_list_name(db, tenant_id, title),
                         source_type="UPLOAD", uploaded_by=uploaded_by))
     base_added_at = utcnow()
     for idx, (_, (prospect_id, is_new)) in enumerate(saved):
-        db.add(ProspectListMember(
+        repo.add(ProspectListMember(
             id=str(uuid.uuid4()),
             list_id=upload_id,
             prospect_id=prospect_id,
@@ -617,10 +604,9 @@ def _add_list(db: Session, upload_id: str, title: str, uploaded_by: str, tenant_
 def _commit_list(db: Session, upload_id: str, tenant_id: str) -> Optional[Dict[str, Any]]:
     """Commit; when a concurrent confirmation of the same upload won, return its stored result."""
     try:
-        db.commit()
+        SqlAlchemyUploadRepository(db).commit()
         return None
-    except IntegrityError:
-        db.rollback()
+    except UploadConflict:
         stored = stored_upload_result(db, upload_id, tenant_id)
         if stored:
             return stored
@@ -664,8 +650,7 @@ def confirm_upload(
     not_added.extend(unsubscribed)
 
     emails = [r["email"] for r in to_save]
-    existing = db.query(Prospect).filter(Prospect.tenant_id == tenant_id, Prospect.email.in_(emails)).all() \
-        if emails else []
+    existing = SqlAlchemyUploadRepository(db).contacts_with_emails(tenant_id, emails)
     saver = _Saver(db, tenant_id, uploaded_by, {p.email.lower(): p for p in existing if p.email})
     try:
         saved, failed = saver.save_all(to_save)

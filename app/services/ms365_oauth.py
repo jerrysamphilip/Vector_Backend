@@ -23,9 +23,6 @@ from datetime import timedelta
 from typing import Optional
 from urllib.parse import urlencode
 
-from sqlalchemy.orm import Session
-from sqlalchemy.orm.attributes import set_committed_value
-
 from app.adapters import providers
 from app.core.clock import utcnow
 from app.core import tokens
@@ -33,6 +30,7 @@ from app.core.config import settings
 from app.core.tokens import TokenError
 from app.core.database import SessionLocal
 from app.models.sending_inbox import SendingInbox
+from app.repositories.mailbox_tokens import Session, end_read_transaction, mirror_committed, save_token_fields
 
 logger = logging.getLogger(__name__)
 
@@ -150,33 +148,23 @@ def access_token(db: Session, inbox: SendingInbox) -> OAuthToken:
     except OAuthError as exc:
         error = f"Microsoft 365 sign-in expired: {exc}. Reconnect the mailbox."[:2000]
         _save_token_fields(inbox_id, {"oauth_error": error})
-        set_committed_value(inbox, "oauth_error", error)
+        mirror_committed(inbox, "oauth_error", error)
         raise
     fields = _token_fields(tokens)
     _save_token_fields(inbox_id, fields)
     for name, value in fields.items():  # mirror onto the caller's object without dirtying it
-        set_committed_value(inbox, name, value)
+        mirror_committed(inbox, name, value)
     return OAuthToken(fields["oauth_access_token"])
 
 
 def _end_read_transaction(db: Optional[Session]) -> None:
     """Ends the caller's transaction when it holds only reads, keeping its objects loaded."""
-    if db is None or not db.in_transaction() or db.new or db.dirty or db.deleted:
-        return
-    keep = db.expire_on_commit
-    db.expire_on_commit = False
-    try:
-        db.commit()  # nothing pending: this only releases the snapshot / connection
-    finally:
-        db.expire_on_commit = keep
+    end_read_transaction(db)
 
 
 def _save_token_fields(inbox_id: str, fields: dict) -> None:
     """Writes the token columns in their own short transaction, apart from the caller's session."""
-    with SessionLocal() as token_db:
-        token_db.query(SendingInbox).filter(SendingInbox.inbox_id == inbox_id).update(
-            fields, synchronize_session=False)
-        token_db.commit()
+    save_token_fields(SessionLocal, inbox_id, fields)
 
 
 def xoauth2(username: str, token: str) -> str:

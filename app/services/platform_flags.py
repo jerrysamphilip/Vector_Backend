@@ -1,9 +1,11 @@
-"""Platform-wide switches kept in the database so every process (API replicas, worker) sees them."""
+"""Platform-wide switches kept in the database so every process (API replicas, worker) sees them.
+
+SQL in app/repositories/platform_flags.py; each call uses its own short session.
+"""
 from typing import Optional
 
-from sqlalchemy import text
-
 from app.core.database import SessionLocal
+from app.repositories.platform_flags import PlatformFlagRepository
 
 SCHEDULER_PAUSED = "scheduler_paused"
 
@@ -11,7 +13,7 @@ SCHEDULER_PAUSED = "scheduler_paused"
 def get(name: str) -> Optional[str]:
     db = SessionLocal()
     try:
-        return db.execute(text("SELECT value FROM platform_flags WHERE name = :n"), {"n": name}).scalar()
+        return PlatformFlagRepository(db).get(name)
     finally:
         db.close()
 
@@ -19,12 +21,11 @@ def get(name: str) -> Optional[str]:
 def set_flag(name: str, value: Optional[str]) -> None:
     db = SessionLocal()
     try:
+        flags = PlatformFlagRepository(db)
         if value is None:
-            db.execute(text("DELETE FROM platform_flags WHERE name = :n"), {"n": name})
+            flags.remove(name)
         else:
-            db.execute(text("INSERT INTO platform_flags (name, value) VALUES (:n, :v) "
-                            "ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = CURRENT_TIMESTAMP"),
-                       {"n": name, "v": value})
+            flags.put(name, value)
         db.commit()
     finally:
         db.close()

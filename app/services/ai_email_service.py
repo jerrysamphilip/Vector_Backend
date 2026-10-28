@@ -8,7 +8,6 @@ Implements 3-layer hybrid architecture:
 """
 
 from typing import Any, Optional, Dict, List, Tuple
-from sqlalchemy.orm import Session
 import random
 import json
 import logging
@@ -21,6 +20,7 @@ from app.models import Prospect, ProspectPersona, PersonaBlueprint
 from app.prompts import get_system_prompt, get_email_generation_prompt, get_few_shot_examples_block, is_healthcare_pharma, build_persona_intelligence_block, get_capability_pool_block, get_step_tone_block
 from app.utils.email_context_detector import detect_email_context, EMAIL_CONTEXT_CONFERENCE
 from app.prompts.llm_system_prompts import get_conference_email_system_prompt
+from app.prompts.email_examples import get_conference_few_shot_examples_block
 from app.utils.email_utils import (
     normalize_unsubscribe_footer,
     strip_cta_content_no_link,
@@ -30,7 +30,8 @@ from app.utils.email_utils import (
     normalize_paragraph_spacing,
     finalize_email_body,
 )
-from app.services.sender_identity import branded_openai_client
+from app.repositories.personas import Session, personas_repo
+from app.services.sender_identity import bind_tenant, branded_openai_client
 from app.utils.retry_utils import retry_with_backoff
 
 logger = logging.getLogger(__name__)
@@ -291,9 +292,8 @@ def get_or_create_prospect_persona(
     Get existing persona or create new one for a prospect.
     """
     # Check if persona already exists
-    existing = db.query(ProspectPersona).filter(
-        ProspectPersona.prospect_id == prospect.prospect_id
-    ).first()
+    repo = personas_repo(db)
+    existing = repo.persona_of(prospect.prospect_id)
     
     if existing:
         return existing
@@ -305,10 +305,7 @@ def get_or_create_prospect_persona(
     )
     
     # Find matching blueprint
-    blueprint = db.query(PersonaBlueprint).filter(
-        PersonaBlueprint.persona_type == persona_type,
-        PersonaBlueprint.is_active == True
-    ).first()
+    blueprint = repo.active_blueprint(persona_type)
     
     # Create persona
     persona = ProspectPersona(
@@ -319,9 +316,9 @@ def get_or_create_prospect_persona(
         classification_method="RULE_BASED"
     )
     
-    db.add(persona)
+    repo.add(persona)
     db.commit()
-    db.refresh(persona)
+    repo.refresh(persona)
     
     return persona
 
@@ -336,23 +333,14 @@ def generate_email_for_prospect(
     Full pipeline: classify prospect and generate email.
     """
     # Prompts are written for the prospect's tenant (its own company name)
-    from app.services.sender_identity import bind_tenant
     bind_tenant(prospect.tenant_id, db)
 
     # Get or create persona
     persona = get_or_create_prospect_persona(db, prospect)
-    
-    # Get blueprint
-    if persona.blueprint_id:
-        blueprint = db.query(PersonaBlueprint).filter(
-            PersonaBlueprint.blueprint_id == persona.blueprint_id
-        ).first()
-    else:
-        # Fallback to OTHER blueprint
-        blueprint = db.query(PersonaBlueprint).filter(
-            PersonaBlueprint.persona_type == "OTHER",
-            PersonaBlueprint.is_active == True
-        ).first()
+
+    # Get blueprint (fallback: the OTHER blueprint)
+    repo = personas_repo(db)
+    blueprint = repo.blueprint(persona.blueprint_id) if persona.blueprint_id else repo.active_blueprint("OTHER")
     
     if not blueprint:
         return None
@@ -391,6 +379,84 @@ def step_tone_block(step_number: Optional[int], previous_subjects: Optional[List
         lines.append("Earlier subjects in this sequence (do NOT reuse their wording): "
                      + "; ".join(f'"{s[:150]}"' for s in subjects[:10]))
     return "\n".join(lines)
+
+
+# Insider vocabulary per industry for the prompt ("in-group" terms), first match wins
+_IN_GROUP_PACKS = (
+    (("pharma", "health", "clinical"),
+     "charting load, SOAP notes, EHR sync, audit trail, care-team handoff, clinician minutes"),
+    (("saas", "software", "tech"),
+     "pipeline velocity, demo-to-close, CRM hygiene, onboarding friction, expansion revenue, churn risk"),
+    (("manufactur", "supply"),
+     "cycle time, throughput, line downtime, QA deviation, compliance checks, handoff latency"),
+    (("finance", "bank"),
+     "manual reconciliation, exception queue, risk controls, approval latency, audit readiness, close cycle"),
+)
+_DEFAULT_IN_GROUP_PACK = "workflow bottleneck, handoff delay, error rate, compliance risk, cycle-time drag, margin pressure"
+
+
+def _in_group_pack(industry: Any) -> str:
+    industry_lower = str(industry).lower()
+    return next((pack for keys, pack in _IN_GROUP_PACKS if any(k in industry_lower for k in keys)),
+                _DEFAULT_IN_GROUP_PACK)
+
+
+def _generate_conference_email(openai_client: Any, prospect_data: Dict, blueprint: PersonaBlueprint,
+                               product_description: str, email_context: str) -> Optional[Dict[str, str]]:
+    """Conference / in-person outreach: its own system prompt and generation path."""
+    tone_rules = blueprint.tone_rules or {}
+    tone = tone_rules.get("style", "professional")
+    avoid_list = tone_rules.get("avoid", [])
+    conf_system_prompt = get_conference_email_system_prompt(tone=tone, avoid_list=avoid_list)
+    examples_block = get_conference_few_shot_examples_block(
+        industry=prospect_data.get("industry", ""),
+        email_type="conference_intro",
+        limit=1,
+    )
+    conf_user_prompt = f"""Generate 1 conference/in-person outreach email for <<SENDER_COMPANY>>.
+
+=== CAMPAIGN CONTEXT ===
+{product_description or "Conference/event outreach — generate an appropriate event hook."}
+
+=== PROSPECT ===
+Role: {prospect_data.get('designation', 'professional')}
+Industry: {prospect_data.get('industry', 'healthcare')}
+Company: {prospect_data.get('company_name', 'their company')}
+
+{examples_block}
+
+Rules:
+- Subject: {{{{first_name}}}}, [event name] [verb phrase] — Title Case
+- First line: "Hi {{{{first_name}}}},"
+- Dual CTA: in-person first, virtual fallback
+- Plain text only. No unsubscribe footer.
+
+Return JSON: {{"subject": "...", "body": "..."}}"""
+
+    def _call_openai_conf():
+        return openai_client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": conf_system_prompt},
+                {"role": "user", "content": conf_user_prompt},
+            ],
+            temperature=0.75,
+            max_tokens=1000,
+            response_format={"type": "json_object"},
+        )
+
+    try:
+        resp = retry_with_backoff(_call_openai_conf, max_attempts=3, base_delay=1.0, max_delay=30.0)
+        if resp is None:
+            return None
+        result = json.loads(resp.choices[0].message.content)
+        result["body"] = finalize_email_body(result.get("body", ""))
+        result["generation_method"] = "LLM_CONFERENCE"
+        result["email_context"] = email_context
+        return result
+    except Exception as e:
+        logger.error("[generate_email_with_llm] Conference path error: %s", e)
+        return None
 
 
 def generate_email_with_llm(
@@ -433,60 +499,7 @@ def generate_email_with_llm(
 
     # Route conference/in-person emails to dedicated prompt + generation path
     if email_context == EMAIL_CONTEXT_CONFERENCE:
-        tone_rules = blueprint.tone_rules or {}
-        tone = tone_rules.get("style", "professional")
-        avoid_list = tone_rules.get("avoid", [])
-        conf_system_prompt = get_conference_email_system_prompt(tone=tone, avoid_list=avoid_list)
-        from app.prompts.email_examples import get_conference_few_shot_examples_block
-        examples_block = get_conference_few_shot_examples_block(
-            industry=prospect_data.get("industry", ""),
-            email_type="conference_intro",
-            limit=1,
-        )
-        conf_user_prompt = f"""Generate 1 conference/in-person outreach email for <<SENDER_COMPANY>>.
-
-=== CAMPAIGN CONTEXT ===
-{product_description or "Conference/event outreach — generate an appropriate event hook."}
-
-=== PROSPECT ===
-Role: {prospect_data.get('designation', 'professional')}
-Industry: {prospect_data.get('industry', 'healthcare')}
-Company: {prospect_data.get('company_name', 'their company')}
-
-{examples_block}
-
-Rules:
-- Subject: {{{{first_name}}}}, [event name] [verb phrase] — Title Case
-- First line: "Hi {{{{first_name}}}},"
-- Dual CTA: in-person first, virtual fallback
-- Plain text only. No unsubscribe footer.
-
-Return JSON: {{"subject": "...", "body": "..."}}"""
-
-        def _call_openai_conf():
-            return openai_client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": conf_system_prompt},
-                    {"role": "user", "content": conf_user_prompt},
-                ],
-                temperature=0.75,
-                max_tokens=1000,
-                response_format={"type": "json_object"},
-            )
-
-        try:
-            resp = retry_with_backoff(_call_openai_conf, max_attempts=3, base_delay=1.0, max_delay=30.0)
-            if resp is None:
-                return None
-            result = json.loads(resp.choices[0].message.content)
-            result["body"] = finalize_email_body(result.get("body", ""))
-            result["generation_method"] = "LLM_CONFERENCE"
-            result["email_context"] = email_context
-            return result
-        except Exception as e:
-            logger.error("[generate_email_with_llm] Conference path error: %s", e)
-            return None
+        return _generate_conference_email(openai_client, prospect_data, blueprint, product_description, email_context)
 
     # Build the prompt
     tone_rules = blueprint.tone_rules or {}
@@ -496,17 +509,7 @@ Return JSON: {{"subject": "...", "body": "..."}}"""
     # Persona intelligence extracted from blueprint (shared builder — see app/prompts/email_examples.py)
     persona_intelligence_block = build_persona_intelligence_block(blueprint)
 
-    industry_lower = str(prospect_data.get('industry', '')).lower()
-    if "pharma" in industry_lower or "health" in industry_lower or "clinical" in industry_lower:
-        in_group_pack = "charting load, SOAP notes, EHR sync, audit trail, care-team handoff, clinician minutes"
-    elif "saas" in industry_lower or "software" in industry_lower or "tech" in industry_lower:
-        in_group_pack = "pipeline velocity, demo-to-close, CRM hygiene, onboarding friction, expansion revenue, churn risk"
-    elif "manufactur" in industry_lower or "supply" in industry_lower:
-        in_group_pack = "cycle time, throughput, line downtime, QA deviation, compliance checks, handoff latency"
-    elif "finance" in industry_lower or "bank" in industry_lower:
-        in_group_pack = "manual reconciliation, exception queue, risk controls, approval latency, audit readiness, close cycle"
-    else:
-        in_group_pack = "workflow bottleneck, handoff delay, error rate, compliance risk, cycle-time drag, margin pressure"
+    in_group_pack = _in_group_pack(prospect_data.get('industry', ''))
 
     healthcare_mode = True  # Apply house outreach style to all industries
 
@@ -948,23 +951,14 @@ def generate_email_hybrid(
         Dict with subject, body, and generation metadata
     """
     # Prompts are written for the prospect's tenant (its own company name)
-    from app.services.sender_identity import bind_tenant
     bind_tenant(prospect.tenant_id, db)
 
     # Get or create persona
     persona = get_or_create_prospect_persona(db, prospect)
-    
-    # Get blueprint
-    blueprint = db.query(PersonaBlueprint).filter(
-        PersonaBlueprint.persona_type == persona.persona_type,
-        PersonaBlueprint.is_active == True
-    ).first()
-    
-    if not blueprint:
-        blueprint = db.query(PersonaBlueprint).filter(
-            PersonaBlueprint.persona_type == "OTHER",
-            PersonaBlueprint.is_active == True
-        ).first()
+
+    # Get blueprint (fallback: the OTHER blueprint)
+    repo = personas_repo(db)
+    blueprint = repo.active_blueprint(persona.persona_type) or repo.active_blueprint("OTHER")
     
     if not blueprint:
         return {"error": "No blueprint found"}

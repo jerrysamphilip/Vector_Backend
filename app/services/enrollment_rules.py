@@ -21,14 +21,10 @@ Emails are compared case-insensitively. check() is the dry run of exactly these 
 from datetime import datetime, timedelta
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
-
 from app.core.clock import utcnow
-from app.models.campaign import Campaign, CampaignProspect
-from app.models.email_message import EmailMessage
-from app.models.prospect import GlobalUnsubscribe, Prospect
+from app.models.prospect import Prospect
 from app.repositories.campaigns import CampaignsRepository
+from app.repositories.enrollment import Session, SqlAlchemyEnrollmentRepository
 
 REASONS = {
     "unsubscribed": "On the global unsubscribe list",
@@ -67,19 +63,13 @@ def summarize(rejections: Iterable[dict]) -> Dict[str, int]:
 
 def sent_within(db: Session, prospect_ids: List[str], hours: int) -> set:
     """Cool-off used by the campaign page: an email was sent to them in the last N hours."""
-    cutoff = utcnow() - timedelta(hours=hours)
-    return {r[0] for r in db.query(EmailMessage.prospect_id).filter(
-        EmailMessage.prospect_id.in_(prospect_ids), EmailMessage.sent_at > cutoff).distinct()}
+    return SqlAlchemyEnrollmentRepository(db).sent_since(prospect_ids, utcnow() - timedelta(hours=hours))
 
 
 def enrolled_elsewhere_within(db: Session, prospect_ids: List[str], days: int) -> set:
     """Cool-off used by the wizard: enrolled in an active or completed campaign in the last N days."""
-    cutoff = utcnow() - timedelta(days=days)
-    return {r[0] for r in db.query(CampaignProspect.prospect_id).join(Campaign).filter(
-        CampaignProspect.prospect_id.in_(prospect_ids),
-        Campaign.status.in_(["ACTIVE", "COMPLETED"]),
-        CampaignProspect.enrolled_at >= cutoff,
-    ).distinct()}
+    return SqlAlchemyEnrollmentRepository(db).enrolled_in_live_campaigns_since(
+        prospect_ids, utcnow() - timedelta(days=days))
 
 
 def screen(
@@ -109,8 +99,7 @@ def screen(
     enrolled: Set[str] = set()
     removed: Dict[str, bool] = {}
     if campaign_id:
-        enrolled = {r[0] for r in db.query(CampaignProspect.prospect_id).filter(
-            CampaignProspect.campaign_id == campaign_id, CampaignProspect.prospect_id.in_(ids))}
+        enrolled = SqlAlchemyEnrollmentRepository(db).enrolled(campaign_id, ids)
         removed = repo.removed_enrolments(tenant_id, campaign_id, ids)
         if not allow_reenrol:
             removed = {}
@@ -204,9 +193,8 @@ def check(eligible: List[Prospect], rejections: List[dict]) -> dict:
 def load_tenant_prospects(db: Session, tenant_id: str, prospect_ids: Iterable[str]) -> Tuple[List[Prospect], List[dict]]:
     """Fetch prospects by id, scoped to the workspace; ids from elsewhere become not_found rejections."""
     wanted = list(dict.fromkeys(prospect_ids))
-    found = {p.prospect_id: p for p in db.query(Prospect).filter(
-        Prospect.tenant_id == tenant_id, Prospect.prospect_id.in_(wanted),
-        Prospect.deleted_at.is_(None))} if wanted else {}
+    found = {p.prospect_id: p for p in SqlAlchemyEnrollmentRepository(db).tenant_contacts(tenant_id, wanted)} \
+        if wanted else {}
     missing = [rejection(None, "not_found", pid) for pid in wanted if pid not in found]
     return [found[pid] for pid in wanted if pid in found], missing
 
@@ -216,13 +204,9 @@ def list_member_ids(db: Session, tenant_id: str, list_ids: Iterable[str]) -> Lis
     Contact ids in the given lists, so any list can be a campaign audience (BR-CM-24).
     Active lists are evaluated now from their filters, as their creator would see them.
     """
-    from app.models.prospect_list import ProspectList
-    from app.models.user import User
     from app.services import crm
 
     ids: List[str] = []
-    for plist in db.query(ProspectList).filter(ProspectList.tenant_id == tenant_id,
-                                               ProspectList.list_id.in_(list(list_ids))):
-        owner = db.query(User).filter(User.user_id == plist.uploaded_by).first()
+    for plist, owner in SqlAlchemyEnrollmentRepository(db).lists_with_owners(tenant_id, list(list_ids)):
         ids.extend(r[0] for r in crm.list_member_ids(db, plist, owner))
     return list(dict.fromkeys(ids))

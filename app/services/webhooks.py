@@ -51,6 +51,7 @@ from app.repositories.webhooks import (
 )
 from app.services.notifications import notify
 from app.utils import webhooks as wh
+from app.utils.property_format import fmt_value as _fmt
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +157,6 @@ def deal_data(db: Session, opp) -> dict:
 
 
 def _diff(before: dict, after: dict) -> Dict[str, dict]:
-    from app.services.crm import _fmt
     changes = {}
     for field, old in before.items():
         new = after.get(field)

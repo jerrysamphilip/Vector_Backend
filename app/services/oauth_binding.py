@@ -6,8 +6,8 @@ the cookie, so a sign-in link started by someone else can't be completed here.
 """
 import hmac
 import secrets
-
-from fastapi import Request, Response
+from collections.abc import Mapping
+from typing import Any, Protocol
 
 from app.core.config import settings
 
@@ -15,14 +15,28 @@ COOKIE = "oauth_nonce"
 TTL_SECONDS = 900
 
 
-def issue(response: Response) -> str:
+class CookieWriter(Protocol):
+    """What ``issue`` needs of the HTTP response (fastapi.Response satisfies it)."""
+
+    def set_cookie(self, key: str, value: str = "", max_age: Any = None, *, httponly: bool = False,
+                   samesite: Any = "lax", secure: bool = False, path: Any = "/") -> Any: ...
+
+
+class CookieReader(Protocol):
+    """What ``matches`` needs of the HTTP request (fastapi.Request satisfies it)."""
+
+    @property
+    def cookies(self) -> Mapping[str, str]: ...
+
+
+def issue(response: CookieWriter) -> str:
     nonce = secrets.token_urlsafe(24)
     response.set_cookie(COOKIE, nonce, max_age=TTL_SECONDS, httponly=True, samesite="lax",
                         secure=settings.is_production, path="/")
     return nonce
 
 
-def matches(request: Request, state_nonce) -> bool:
+def matches(request: CookieReader, state_nonce: Any) -> bool:
     cookie = request.cookies.get(COOKIE) or ""
     return bool(cookie and state_nonce) and hmac.compare_digest(cookie, str(state_nonce))
 

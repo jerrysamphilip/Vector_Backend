@@ -13,10 +13,9 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.request import Request, urlopen
 
-from sqlalchemy.orm import Session
-
 from app.core.clock import utcnow
 from app.core.config import settings
+from app.repositories.provider_ingestion import Session, SqlAlchemyProviderIngestionRepository
 from app.models.provider_reputation import (
     ExternalReputationMetric,
     ExternalFeedbackEvent,
@@ -50,7 +49,7 @@ class ProviderIngestionService:
             error_message=error_message,
             completed_at=utcnow(),
         )
-        db.add(run)
+        SqlAlchemyProviderIngestionRepository(db).add(run)
         db.commit()
         return {
             "run_id": run.run_id,
@@ -145,7 +144,7 @@ class ProviderIngestionService:
         for row in rows:
             metric_date = str(row.get("date") or utcnow().date())
             if not dry_run:
-                db.add(ExternalReputationMetric(
+                SqlAlchemyProviderIngestionRepository(db).add(ExternalReputationMetric(
                     tenant_id=tenant_id,
                     provider="GOOGLE_POSTMASTER",
                     domain_name=domain_name,
@@ -177,7 +176,7 @@ class ProviderIngestionService:
         for row in rows:
             metric_date = str(row.get("date") or row.get("Date") or utcnow().date())
             if not dry_run:
-                db.add(ExternalReputationMetric(
+                SqlAlchemyProviderIngestionRepository(db).add(ExternalReputationMetric(
                     tenant_id=tenant_id,
                     provider="SNDS",
                     domain_name=domain_name,
@@ -209,7 +208,7 @@ class ProviderIngestionService:
                 except ValueError:
                     parsed_time = None
             if not dry_run:
-                db.add(ExternalFeedbackEvent(
+                SqlAlchemyProviderIngestionRepository(db).add(ExternalFeedbackEvent(
                     tenant_id=tenant_id,
                     provider="JMRP",
                     domain_name=domain_name,
@@ -236,13 +235,7 @@ class ProviderIngestionService:
         """Provider settings and the tenant's last ingestion run per provider."""
         latest = {}
         for provider in sorted(self.PROVIDERS):
-            row = (
-                db.query(ExternalIngestionRun)
-                .filter(ExternalIngestionRun.provider == provider,
-                        ExternalIngestionRun.tenant_id == tenant_id)
-                .order_by(ExternalIngestionRun.started_at.desc())
-                .first()
-            )
+            row = SqlAlchemyProviderIngestionRepository(db).latest_run(provider, tenant_id)
             latest[provider] = {
                 "enabled": self._enabled(provider),
                 "feed_url_configured": bool(self._feed_url(provider)),

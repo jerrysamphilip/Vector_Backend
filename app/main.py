@@ -27,6 +27,11 @@ from app.core.config import settings
  
 # Import all models FIRST to resolve SQLAlchemy relationships
 import app.models  # noqa: F401
+from app.core import auth as core_auth  # noqa: E402
+from app.services.auth_store import SqlAlchemyAuthStore  # noqa: E402
+
+# Authentication reads users / revocations / tenant flags through this store (app.core is below models)
+core_auth.configure(SqlAlchemyAuthStore())
 # Trigger reload
  
 from app.routers import campaign_router, template_router

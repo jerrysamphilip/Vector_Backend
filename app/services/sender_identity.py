@@ -21,7 +21,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from sqlalchemy.orm import Session
+from app.core.database import SessionLocal
+from app.repositories.company_profiles import Session, company_profiles_repo
 
 logger = logging.getLogger(__name__)
 
@@ -63,25 +64,20 @@ def invalidate(tenant_id: Optional[str]) -> None:
 
 
 def _load(db: Session, tenant_id: str) -> SenderIdentity:
-    from app.models.company_profile import CompanyProfile
-    from app.models.tenant import Tenant
-
+    repo = company_profiles_repo(db)
     name = address = None
     try:
-        # Savepoint: a missing column (schema not migrated yet) must not abort the caller's transaction
-        with db.begin_nested():
-            row = db.query(CompanyProfile.company_name, CompanyProfile.postal_address).filter(
-                CompanyProfile.tenant_id == tenant_id
-            ).order_by(CompanyProfile.is_default.desc(), CompanyProfile.created_at.asc()).first()
+        # Savepoint (in the repository): a missing column (schema not migrated yet) must not abort the
+        # caller's transaction
+        row = repo.identity_fields(tenant_id)
         if row:
-            name, address = row[0], row[1]
+            name, address = row
     except Exception as exc:
         logger.warning(f"[SenderIdentity] Could not read company profile for tenant {tenant_id}: "
                        f"{exc.__class__.__name__}: {str(exc)[:200]}")
     if not (name and name.strip()):
         try:
-            with db.begin_nested():
-                name = db.query(Tenant.tenant_name).filter(Tenant.tenant_id == tenant_id).scalar()
+            name = repo.tenant_name(tenant_id)
         except Exception as exc:  # sender name is optional; never block a send over it
             logger.warning("[SenderIdentity] Could not read tenant name for %s: %s", tenant_id, exc)
             name = None
@@ -105,7 +101,6 @@ def get_sender_identity(tenant_id: Optional[str], db: Optional[Session] = None,
     if db is not None:
         identity = _load(db, tenant_id)
     else:
-        from app.core.database import SessionLocal
         own = SessionLocal()
         try:
             identity = _load(own, tenant_id)
@@ -122,11 +117,9 @@ def campaign_sender_name(db: Session, campaign) -> Optional[str]:
     name = (getattr(campaign, "sender_name", None) or "").strip()
     if name:
         return name
-    from app.models.user import User
-    user = db.query(User.first_name, User.last_name).filter(
-        User.user_id == getattr(campaign, "created_by", None)).first()
-    if user:
-        full = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    parts = company_profiles_repo(db).user_name_parts(getattr(campaign, "created_by", None))
+    if parts:
+        full = f"{parts[0] or ''} {parts[1] or ''}".strip()
         if full:
             return full
     return None
