@@ -13,21 +13,20 @@ and no AI. The contact list sorts by score and filters by grade / score range
 (GET /contacts?sort_by=score&grade=A&score_min=50).
 
 Registered before the contacts router so /contacts/scoring-model is not read as a contact id.
-"""
-from typing import Dict, List, Optional, Union
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+Layered (ADR 0009, chunk A7): each handler makes one call to ContactScoringService
+(app/services/contact_scoring.py); SQL is in app/repositories/contact_scoring.py.
+"""
+from typing import Any, Dict, List, Optional, Union
+
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func
-from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
 from app.core.database import get_db
-from app.models.prospect import Prospect
-from app.models.user import User
 from app.routers.contacts_router import tenant_user
-from app.services.contact_query_service import get_contact as _get_contact
 from app.services import contact_scoring, scoring_engine
+from app.services.contact_scoring import ContactScoringService
 
 router = APIRouter(prefix="/contacts", tags=["Contact scoring"])
 
@@ -85,71 +84,52 @@ class ScoringModelWrite(BaseModel):
         return v
 
 
+def scoring_service(db=Depends(get_db)) -> ContactScoringService:
+    return ContactScoringService.for_session(db)
+
+
+Scoring = Depends(scoring_service)
+
+
 # =============================
 # MODEL (admins)
 # =============================
 
 @router.get("/scoring-model")
-def get_scoring_model(db: Session = Depends(get_db), current_user: User = Depends(admin_user)):
-    row = contact_scoring.get_model_row(db, current_user.tenant_id)
-    return contact_scoring.model_payload(db, row)
+def get_scoring_model(service: ContactScoringService = Scoring, current_user: Any = Depends(admin_user)):
+    return service.model(current_user)
 
 
 @router.put("/scoring-model")
 def put_scoring_model(payload: ScoringModelWrite, background: BackgroundTasks,
-                      db: Session = Depends(get_db), current_user: User = Depends(admin_user)):
-    try:
-        row = contact_scoring.save_model(db, current_user.tenant_id, payload.model_dump(exclude_none=True),
-                                         current_user.user_id)
-    except scoring_engine.ScoringModelError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+                      service: ContactScoringService = Scoring, current_user: Any = Depends(admin_user)):
+    body = service.save_model(current_user, payload.model_dump(exclude_none=True))
     # Every contact is rescored with the new model, after the response
     background.add_task(contact_scoring.recompute_tenant, current_user.tenant_id)
-    return contact_scoring.model_payload(db, row)
+    return body
 
 
 @router.post("/scoring-model/recompute", status_code=202)
-def recompute_scores(background: BackgroundTasks, db: Session = Depends(get_db),
-                     current_user: User = Depends(admin_user)):
+def recompute_scores(background: BackgroundTasks, service: ContactScoringService = Scoring,
+                     current_user: Any = Depends(admin_user)):
     """Rescore every contact in the workspace, in batches, after the response (also picked up by the worker)."""
-    row = contact_scoring.request_recompute(db, current_user.tenant_id)
-    contacts = db.query(func.count(Prospect.prospect_id)).filter(
-        Prospect.tenant_id == current_user.tenant_id, Prospect.deleted_at.is_(None)).scalar() or 0
+    body = service.request_recompute(current_user)
     background.add_task(contact_scoring.recompute_tenant, current_user.tenant_id)
-    return {"status": "queued", "contacts": contacts, "requested_at": row.recompute_requested_at}
+    return body
 
 
 # =============================
 # ONE CONTACT
 # =============================
 
-def _score_response(db: Session, user: User, prospect: Prospect) -> dict:
-    model = contact_scoring.get_model(db, user.tenant_id)
-    live = contact_scoring.evaluate(db, user.tenant_id, [prospect.prospect_id], model=model).get(prospect.prospect_id)
-    if live is None:
-        raise HTTPException(status_code=404, detail="Contact not found")
-    return {
-        "prospect_id": prospect.prospect_id,
-        "stored": {"score": prospect.score, "fit": prospect.fit_score, "engagement": prospect.engagement_score,
-                   "grade": prospect.score_grade, "scored_at": prospect.scored_at},
-        **live,
-        "grade_thresholds": model["grade_thresholds"],
-        "half_life_days": model["half_life_days"],
-        "lookback_days": model["lookback_days"],
-    }
-
-
 @router.get("/{prospect_id}/score")
-def get_contact_score(prospect_id: str, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+def get_contact_score(prospect_id: str, service: ContactScoringService = Scoring,
+                      current_user: Any = Depends(tenant_user)):
     """The stored score and a live breakdown: which fit rules matched and what each activity added."""
-    return _score_response(db, current_user, _get_contact(db, current_user, prospect_id))
+    return service.contact_score(current_user, prospect_id)
 
 
 @router.post("/{prospect_id}/score/recompute")
-def recompute_contact_score(prospect_id: str, db: Session = Depends(get_db),
-                            current_user: User = Depends(tenant_user)):
-    prospect = _get_contact(db, current_user, prospect_id)
-    contact_scoring.score_contacts(db, current_user.tenant_id, [prospect.prospect_id])
-    db.commit()
-    db.refresh(prospect)
-    return _score_response(db, current_user, prospect)
+def recompute_contact_score(prospect_id: str, service: ContactScoringService = Scoring,
+                            current_user: Any = Depends(tenant_user)):
+    return service.recompute_contact(current_user, prospect_id)

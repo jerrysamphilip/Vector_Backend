@@ -101,8 +101,24 @@ class ImportJob(Base):
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    # Background imports (C-03, F-16; migration 0026): the stored file, checkpoint and worker heartbeat.
+    # status also takes UPLOADED / QUEUED / CANCELLED (app/domain/imports.py JobStatus)
+    mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # CREATE / UPDATE_ONLY / CREATE_AND_UPDATE
+    processed_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    skipped_count: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # relative to IMPORT_STORAGE_DIR
+    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    sheet_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    queued_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    heartbeat_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    claimed_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
-    __table_args__ = (MYSQL_OPTS,)
+    __table_args__ = (
+        Index("ix_import_jobs_status_heartbeat", "status", "heartbeat_at"),
+        MYSQL_OPTS,
+    )
 
 
 class ContactCompany(Base):

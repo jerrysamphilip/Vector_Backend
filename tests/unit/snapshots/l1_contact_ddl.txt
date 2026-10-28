@@ -343,10 +343,23 @@ CREATE TABLE import_jobs (
 	message TEXT, 
 	started_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
 	finished_at DATETIME(6), 
+	mode VARCHAR(20), 
+	processed_rows INTEGER NOT NULL DEFAULT '0', 
+	skipped_count INTEGER, 
+	file_path VARCHAR(500), 
+	file_size INTEGER, 
+	sheet_name VARCHAR(255), 
+	queued_at DATETIME(6), 
+	heartbeat_at DATETIME(6), 
+	cancel_requested BOOL NOT NULL DEFAULT '0', 
+	attempts INTEGER NOT NULL DEFAULT '0', 
+	claimed_by VARCHAR(100), 
 	PRIMARY KEY (import_id), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
 	FOREIGN KEY(created_by) REFERENCES users (user_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE INDEX ix_import_jobs_status_heartbeat ON import_jobs (status, heartbeat_at)
 
 import_jobs.import_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
 
@@ -381,6 +394,28 @@ import_jobs.message: type=Text() nullable=True pk=False index=None unique=None a
 import_jobs.started_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
 
 import_jobs.finished_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.mode: type=String(length=20) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.processed_rows: type=Integer() nullable=False pk=False index=None unique=None autoincrement='auto' default=0 onupdate=None server_default=0 server_onupdate=None computed=False
+
+import_jobs.skipped_count: type=Integer() nullable=True pk=False index=None unique=None autoincrement='auto' default=0 onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.file_path: type=String(length=500) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.file_size: type=Integer() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.sheet_name: type=String(length=255) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.queued_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.heartbeat_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+import_jobs.cancel_requested: type=Boolean() nullable=False pk=False index=None unique=None autoincrement='auto' default=False onupdate=None server_default=0 server_onupdate=None computed=False
+
+import_jobs.attempts: type=Integer() nullable=False pk=False index=None unique=None autoincrement='auto' default=0 onupdate=None server_default=0 server_onupdate=None computed=False
+
+import_jobs.claimed_by: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
 
 CREATE TABLE contact_companies (
 	link_id VARCHAR(36) NOT NULL, 
@@ -523,6 +558,7 @@ CREATE TABLE contact_field_definitions (
 	required BOOL NOT NULL DEFAULT '0', 
 	sort_order INTEGER, 
 	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	object_type VARCHAR(20) NOT NULL DEFAULT 'CONTACT', 
 	PRIMARY KEY (field_id), 
 	CONSTRAINT uq_contact_field_key UNIQUE (tenant_id, field_key), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
@@ -547,3 +583,5 @@ contact_field_definitions.required: type=Boolean() nullable=False pk=False index
 contact_field_definitions.sort_order: type=Integer() nullable=True pk=False index=None unique=None autoincrement='auto' default=0 onupdate=None server_default=None server_onupdate=None computed=False
 
 contact_field_definitions.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+contact_field_definitions.object_type: type=String(length=20) nullable=False pk=False index=None unique=None autoincrement='auto' default='CONTACT' onupdate=None server_default=CONTACT server_onupdate=None computed=False

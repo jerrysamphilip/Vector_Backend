@@ -1,4 +1,3 @@
-# app/models/automation_rule_run.py
 """
 Which contacts an automation rule has already acted on (migration 0021).
 
@@ -10,8 +9,11 @@ never block deleting a rule or a contact.
 """
 
 import uuid
+from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import Column, String, UniqueConstraint
+from sqlalchemy import String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db_charset import MYSQL_CHARSET, MYSQL_COLLATION, MYSQL_ENGINE
 from app.models.base import Base
@@ -21,11 +23,11 @@ from app.models.types import NOW6, UtcDateTime
 class AutomationRuleRun(Base):
     __tablename__ = "automation_rule_runs"
 
-    run_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    rule_id = Column(String(36), nullable=False)
-    prospect_id = Column(String(36), nullable=False)
-    tenant_id = Column(String(36), nullable=True, index=True)
-    created_at = Column(UtcDateTime, server_default=NOW6)
+    run_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    rule_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    prospect_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("rule_id", "prospect_id", name="uq_automation_rule_runs_rule_prospect"),

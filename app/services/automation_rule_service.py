@@ -1,195 +1,229 @@
-
 # app/services/automation_rule_service.py
 """
-Service for evaluating and executing automation rules.
+Automation rules (ADR 0009, chunk A7): the CRUD routes (``AutomationRulesService``) and the engine that
+runs rules when a campaign event happens (``AutomationRuleService.process_event``).
+
+Events: EMAIL_OPENED / EMAIL_CLICKED (SES tracking) and EMAIL_BOUNCED (a hard bounce), raised by
+app/routers/ses_webhook_router.py. A rule acts on a contact at most once (``automation_rule_runs``,
+unique per rule and contact): every action claims its run before it changes anything, so repeated or
+simultaneous events never repeat it. SQL lives in app/repositories/automation.py.
 """
 
 import logging
-from typing import Optional, Dict, Any
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from typing import Any, Callable, Dict, List, Optional
 
 from app.core.clock import utcnow
 from app.core.database import SessionLocal
-from app.models.automation_rule import AutomationRule, TriggerType, ActionType
-from app.models.automation_rule_run import AutomationRuleRun
-from app.models import (
-    Campaign,
-    Prospect,
-    CampaignProspect,
-    EmailMessage,
-    EmailTemplate
+from app.core.errors import BadRequestError, NotFoundError
+from app.domain.automation import ActionType, RuleTemplateError, TriggerType, action_template_id, target_step
+from app.models.automation_rule import AutomationRule
+from app.models.email_message import EmailMessage
+from app.models.user import User
+from app.repositories.automation import (
+    AutomationAccess,
+    AutomationRepository,
+    AutomationUnitOfWork,
+    Session,
+    automation_uow,
+    borrow,
 )
+from app.schemas.automation_schema import AutomationRuleCreate, AutomationRuleUpdate
 from app.utils.campaign_prospect_status import set_prospect_status
 
 logger = logging.getLogger(__name__)
 
+# Automation mail that does not count as "already sent" for the once-per-template check
+_DEAD_STATUSES = ("CANCELLED", "FAILED")
+
 
 def template_in_tenant(db: Session, template_id: str, tenant_id: Optional[str]) -> bool:
     """True when the template belongs to a campaign of this workspace (F058)."""
-    if not template_id or not tenant_id:
-        return False
-    return db.query(EmailTemplate.template_id).join(
-        Campaign, Campaign.campaign_id == EmailTemplate.campaign_id
-    ).filter(EmailTemplate.template_id == template_id, Campaign.tenant_id == tenant_id).first() is not None
+    return borrow(db).rules_repo.template_in_tenant(template_id, tenant_id)
 
 
 def claim_rule_run(db: Session, rule_id: str, prospect_id: str, tenant_id: Optional[str]) -> bool:
-    """
-    Record that this rule has acted on this contact; False when it already had (19b). The unique key
-    (rule_id, prospect_id) decides, also between two events processed at the same time. The insert
-    runs in a savepoint, so a duplicate only undoes the run row, not the caller's transaction.
-    """
-    try:
-        with db.begin_nested():
-            db.add(AutomationRuleRun(rule_id=rule_id, prospect_id=prospect_id, tenant_id=tenant_id))
-    except IntegrityError:
-        return False
-    return True
+    """Record that this rule has acted on this contact; False when it already had (19b)."""
+    return borrow(db).rules_repo.claim_run(rule_id, prospect_id, tenant_id)
 
+
+# ── Routes ─────────────────────────────────────────────────────────
+
+def check_action_template(repo: AutomationRepository, action_type: str, action_config: Optional[Dict[str, Any]],
+                          tenant_id: str) -> None:
+    """The template a rule sends must be one of the caller's workspace (F058): another workspace's
+    template is 404, exactly like one that does not exist. SEND_EMAIL without a template is 400."""
+    try:
+        template_id = action_template_id(action_type, action_config)
+    except RuleTemplateError as exc:
+        raise BadRequestError(str(exc)) from exc
+    if template_id is None:
+        return
+    if not isinstance(template_id, str) or not repo.template_in_tenant(template_id, tenant_id):
+        raise NotFoundError("Template not found")
+
+
+class AutomationRulesService:
+    """The /automation-rules routes; each method is one unit of work."""
+
+    def __init__(self, uow: AutomationUnitOfWork) -> None:
+        self.uow = uow
+
+    @classmethod
+    def for_session(cls, db: Session) -> "AutomationRulesService":
+        return cls(automation_uow(db))
+
+    def create(self, user: User, data: AutomationRuleCreate) -> AutomationRule:
+        with self.uow as uow:
+            repo = uow.rules_repo
+            if not repo.campaign(user.tenant_id, data.campaign_id):
+                raise NotFoundError("Campaign not found")
+            check_action_template(repo, data.action_type.value, data.action_config, user.tenant_id)
+            rule = repo.add(AutomationRule(**data.model_dump()))
+            uow.commit()
+            repo.refresh(rule)
+            return rule
+
+    def list(self, user: User, campaign_id: Optional[str]) -> List[AutomationRule]:
+        with self.uow as uow:
+            return uow.rules_repo.rules(user.tenant_id, campaign_id)
+
+    def _rule(self, repo: AutomationRepository, user: User, rule_id: str) -> AutomationRule:
+        rule = repo.rule(user.tenant_id, rule_id)
+        if not rule:
+            raise NotFoundError("Rule not found")
+        return rule
+
+    def update(self, user: User, rule_id: str, data: AutomationRuleUpdate) -> AutomationRule:
+        with self.uow as uow:
+            repo = uow.rules_repo
+            rule = self._rule(repo, user, rule_id)
+            changes = data.model_dump(exclude_unset=True)
+            if "action_config" in changes:
+                check_action_template(repo, rule.action_type, changes["action_config"], user.tenant_id)
+            for name, value in changes.items():
+                setattr(rule, name, value)
+            uow.commit()
+            repo.refresh(rule)
+            return rule
+
+    def delete(self, user: User, rule_id: str) -> None:
+        with self.uow as uow:
+            repo = uow.rules_repo
+            repo.delete(self._rule(repo, user, rule_id))
+            uow.commit()
+
+
+# ── Engine ─────────────────────────────────────────────────────────
 
 class AutomationRuleService:
-    """
-    Evaluates triggers and executes actions for automation rules.
-    """
+    """Evaluates triggers and executes actions for automation rules."""
 
-    def process_event(self, event_type: TriggerType, campaign_id: str, prospect_id: str, metadata: Dict[str, Any] | None = None, db: Session | None = None) -> None:
-        """
-        Evaluate rules for a specific event trigger.
-        Example: EMAIL_OPENED for prospect X in campaign Y.
-        """
-        close_db = False
-        if not db:
-            db = SessionLocal()
-            close_db = True
-            
+    def process_event(self, event_type: TriggerType, campaign_id: str, prospect_id: str,
+                      metadata: Optional[Dict[str, Any]] = None, db: Optional[Session] = None) -> int:
+        """Run the campaign's active rules for this trigger on the contact (e.g. EMAIL_BOUNCED for
+        contact X in campaign Y). Commits; never raises (an automation must not break the event that
+        raised it). Returns the number of rules that acted."""
+        own = db is None
+        session = SessionLocal() if db is None else db
+        acted = 0
         try:
-            # Find active rules for this campaign and trigger
-            rules = db.query(AutomationRule).filter(
-                AutomationRule.campaign_id == campaign_id,
-                AutomationRule.trigger_type == event_type.value,
-                AutomationRule.is_active == True
-            ).all()
-            
-            if not rules:
-                return
-                
-            logger.info(f"[Automation] Found {len(rules)} rules for {event_type} in campaign {campaign_id}")
-            
+            ctx = borrow(session)
+            rules = ctx.rules_repo.active_rules(campaign_id, event_type.value)
+            if rules:
+                logger.info("[Automation] %s rule(s) for %s in campaign %s", len(rules), event_type.value, campaign_id)
             for rule in rules:
-                self._evaluate_and_execute(rule, prospect_id, metadata or {}, db)
-                
-            db.commit()
-            
+                acted += 1 if self._evaluate_and_execute(rule, prospect_id, metadata or {}, ctx) else 0
+            session.commit()
         except Exception as e:
-            logger.exception(f"[Automation] Error processing event {event_type}: {e}")
-            db.rollback()
+            logger.exception("[Automation] Error processing event %s: %s", event_type, e)
+            session.rollback()
         finally:
-            if close_db:
-                db.close()
+            if own:
+                session.close()
+        return acted
 
-    def _evaluate_and_execute(self, rule: AutomationRule, prospect_id: str, metadata: Dict, db: Session) -> None:
-        """Check conditions and execute action."""
-        # 1. Check Conditions (if any in trigger_config)
-        # For now, we assume if the event fired, the trigger is met.
-        # Future: Check metadata (e.g. "clicked specific link")
-        
-        # 2. Execute Action
+    def _actions(self) -> Dict[str, Callable[[AutomationRule, str, AutomationAccess], bool]]:
+        return {
+            ActionType.SEND_EMAIL.value: lambda r, p, c: self._send_email(r, p, c),
+            ActionType.CHANGE_CAMPAIGN_STEP.value: lambda r, p, c: self._change_step(r, p, c),
+            ActionType.PAUSE_PROSPECT.value: lambda r, p, c: self._pause_prospect(r, p, c),
+        }
+
+    def _evaluate_and_execute(self, rule: AutomationRule, prospect_id: str, metadata: Dict[str, Any],
+                              ctx: AutomationAccess) -> bool:
+        """Every rule whose trigger fired acts (trigger_config conditions are not evaluated yet)."""
+        action = self._actions().get(rule.action_type)
+        if action is None:
+            logger.warning("[Automation] Unknown action type: %s", rule.action_type)
+            return False
         try:
-            if rule.action_type == ActionType.SEND_EMAIL.value:
-                self._action_send_email(rule, prospect_id, db)
-            elif rule.action_type == ActionType.CHANGE_CAMPAIGN_STEP.value:
-                self._action_change_step(rule, prospect_id, db)
-            elif rule.action_type == ActionType.PAUSE_PROSPECT.value:
-                self._action_pause_prospect(rule, prospect_id, db)
-            else:
-                logger.warning(f"[Automation] Unknown action type: {rule.action_type}")
-                
+            with ctx.savepoint():  # a failing action undoes only itself
+                return action(rule, prospect_id, ctx)
         except Exception as e:
-            logger.error(f"[Automation] Failed to execute rule {rule.name}: {e}")
+            logger.error("[Automation] Failed to execute rule %s: %s", rule.name, e)
+            return False
 
-    def _action_send_email(self, rule: AutomationRule, prospect_id: str, db: Session) -> None:
-        """Action: Schedule an immediate email."""
-        template_id = rule.action_config.get("template_id")
+    def _claim(self, ctx: AutomationAccess, rule: AutomationRule, prospect_id: str, tenant_id: Optional[str]) -> bool:
+        if ctx.rules_repo.claim_run(rule.rule_id, prospect_id, tenant_id):
+            return True
+        logger.info("[Automation] Rule %s already ran for prospect %s; not again", rule.name, prospect_id)
+        return False
+
+    # Kept for callers of the first version: (rule, prospect_id, db)
+    def _action_send_email(self, rule: AutomationRule, prospect_id: str, db: Session) -> bool:
+        return self._send_email(rule, prospect_id, borrow(db))
+
+    def _send_email(self, rule: AutomationRule, prospect_id: str, ctx: AutomationAccess) -> bool:
+        """Queue the rule's template to the contact now."""
+        repo = ctx.rules_repo
+        template_id = (rule.action_config or {}).get("template_id")
         if not template_id:
-            logger.error(f"[Automation] Rule {rule.name} missing template_id")
-            return
-
+            logger.error("[Automation] Rule %s missing template_id", rule.name)
+            return False
         # The rule, its template and the contact must all be in the rule's workspace: a rule saved
         # before the API checked templates (F058) must not mail another workspace's content.
-        tenant_id = db.query(Campaign.tenant_id).filter(Campaign.campaign_id == rule.campaign_id).scalar()
-        if not template_in_tenant(db, template_id, tenant_id):
-            logger.warning(f"[Automation] Rule {rule.rule_id}: template {template_id} is not in the rule's "
-                           f"workspace; not sending")
-            return
-
-        # Fetch prospect for email address (Required by EmailMessage)
-        prospect = db.query(Prospect).filter(
-            Prospect.prospect_id == prospect_id, Prospect.tenant_id == tenant_id).first()
+        tenant_id = repo.campaign_tenant(rule.campaign_id)
+        if not repo.template_in_tenant(template_id, tenant_id):
+            logger.warning("[Automation] Rule %s: template %s is not in the rule's workspace; not sending",
+                           rule.rule_id, template_id)
+            return False
+        prospect = repo.prospect(tenant_id, prospect_id)
         if not prospect:
-            logger.error(f"[Automation] Prospect {prospect_id} not found")
-            return
+            logger.error("[Automation] Prospect %s not found", prospect_id)
+            return False
+        # The rule's mail is ad-hoc, not a sequence step: no sequence_id, so the scheduler's step
+        # duplicate guard does not cancel it against the contact's real step-1 email. One per contact.
+        if repo.rule_mail_exists(rule.campaign_id, prospect_id, template_id, _DEAD_STATUSES):
+            logger.info("[Automation] Rule %s: template %s already queued/sent to %s", rule.name, template_id,
+                        prospect_id)
+            return False
+        if not self._claim(ctx, rule, prospect_id, tenant_id):
+            return False
+        repo.add(EmailMessage(campaign_id=rule.campaign_id, prospect_id=prospect_id, template_id=template_id,
+                              status="QUEUED", scheduled_at=utcnow(), retry_count=0, to_email=prospect.email))
+        repo.flush()  # visible to the de-duplication check if the rule fires again in this session
+        logger.info("[Automation] Scheduled email (template %s) from rule %s", template_id, rule.name)
+        return True
 
-        # The rule's mail is ad-hoc, not a sequence step: it carries no sequence_id, so the
-        # scheduler's step duplicate guard (send_key: campaign + step + address) does not
-        # cancel it against the contact's real step-1 email, and stop-on-reply does not apply.
-        # De-duplicate per rule template instead: one such mail per contact.
-        already = db.query(EmailMessage.message_id).filter(
-            EmailMessage.campaign_id == rule.campaign_id,
-            EmailMessage.prospect_id == prospect_id,
-            EmailMessage.template_id == template_id,
-            EmailMessage.sequence_id.is_(None),
-            EmailMessage.status.notin_(["CANCELLED", "FAILED"]),
-        ).first()
-        if already:
-            logger.info(f"[Automation] Rule {rule.name}: template {template_id} already queued/sent "
-                        f"to prospect {prospect_id}; not sending again")
-            return
-        # Once per rule and contact, guaranteed by the database (concurrent events included)
-        if not claim_rule_run(db, rule.rule_id, prospect_id, tenant_id):
-            logger.info(f"[Automation] Rule {rule.name} already ran for prospect {prospect_id}; not sending again")
-            return
+    def _change_step(self, rule: AutomationRule, prospect_id: str, ctx: AutomationAccess) -> bool:
+        """Move the contact to another step of the campaign (e.g. skip to step 5)."""
+        step = target_step(rule.action_config)
+        cp = ctx.rules_repo.enrollment(rule.campaign_id, prospect_id) if step else None
+        if cp is None or not self._claim(ctx, rule, prospect_id, ctx.rules_repo.campaign_tenant(rule.campaign_id)):
+            return False
+        old_step, cp.current_step = cp.current_step, step
+        logger.info("[Automation] Moved prospect %s from step %s to %s", prospect_id, old_step, step)
+        return True
 
-        # Create message scheduled for NOW
-        msg = EmailMessage(
-            campaign_id=rule.campaign_id,
-            prospect_id=prospect_id,
-            template_id=template_id,
-            status="QUEUED",
-            scheduled_at=utcnow(),
-            retry_count=0,
-            to_email=prospect.email  # Required field
-        )
-        db.add(msg)
-        db.flush()  # visible to the de-duplication check if the rule fires again in this session
-        logger.info(f"[Automation] Scheduled email (Template {template_id}) from Rule {rule.name}")
+    def _pause_prospect(self, rule: AutomationRule, prospect_id: str, ctx: AutomationAccess) -> bool:
+        """Stop the contact's sequence in this campaign."""
+        cp = ctx.rules_repo.enrollment(rule.campaign_id, prospect_id)
+        if cp is None or not self._claim(ctx, rule, prospect_id, ctx.rules_repo.campaign_tenant(rule.campaign_id)):
+            return False
+        set_prospect_status(cp, "PAUSED", stopped_reason=f"Automation Rule: {rule.name}")
+        logger.info("[Automation] Paused prospect %s", prospect_id)
+        return True
 
-    def _action_change_step(self, rule: AutomationRule, prospect_id: str, db: Session) -> None:
-        """Action: Move prospect to a different campaign step (e.g., skip to step 5)."""
-        target_step = rule.action_config.get("step_id") # e.g. 5
-        if not target_step:
-            return
-
-        cp = db.query(CampaignProspect).filter(
-            CampaignProspect.campaign_id == rule.campaign_id,
-            CampaignProspect.prospect_id == prospect_id
-        ).first()
-        
-        if cp:
-            old_step = cp.current_step
-            cp.current_step = target_step
-            logger.info(f"[Automation] Moved Prospect {prospect_id} from Step {old_step} to {target_step}")
-
-    def _action_pause_prospect(self, rule: AutomationRule, prospect_id: str, db: Session) -> None:
-        """Action: Mark prospect as REPLIED or similar to stop sequence."""
-        cp = db.query(CampaignProspect).filter(
-            CampaignProspect.campaign_id == rule.campaign_id,
-            CampaignProspect.prospect_id == prospect_id
-        ).first()
-        
-        if cp:
-            set_prospect_status(cp, "PAUSED", stopped_reason=f"Automation Rule: {rule.name}")
-            logger.info(f"[Automation] Paused Prospect {prospect_id}")
 
 # Singleton
 automation_service = AutomationRuleService()

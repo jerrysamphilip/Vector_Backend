@@ -9,12 +9,10 @@ import logging
 from datetime import timedelta
 from typing import Iterable, Optional
 
-from sqlalchemy.orm import Session
-
 from app.core.clock import utcnow
 from app.core.config import settings
 from app.models.sales_extra import Notification
-from app.models.user import User
+from app.repositories.notifications import Session, notifications_repo
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +23,12 @@ def notify(db: Session, tenant_id: str, user_ids: Iterable[Optional[str]], kind:
     """Notify each user once. With dedupe_key, skip users already told the same thing recently. Caller commits."""
     sent = 0
     since = utcnow() - timedelta(days=dedupe_days)
+    repo = notifications_repo(db)
     for uid in dict.fromkeys(u for u in user_ids if u):
-        if dedupe_key and db.query(Notification.notification_id).filter(
-                Notification.user_id == uid, Notification.dedupe_key == dedupe_key,
-                Notification.created_at >= since).first():
+        if dedupe_key and repo.told_recently(uid, dedupe_key, since):
             continue
-        db.add(Notification(tenant_id=tenant_id, user_id=uid, kind=kind, title=title[:255], body=body,
-                            link=link, dedupe_key=dedupe_key))
+        repo.add(Notification(tenant_id=tenant_id, user_id=uid, kind=kind, title=title[:255], body=body,
+                              link=link, dedupe_key=dedupe_key))
         sent += 1
     return sent
 
@@ -39,7 +36,7 @@ def notify(db: Session, tenant_id: str, user_ids: Iterable[Optional[str]], kind:
 def manager_of(db: Session, user_id: Optional[str]) -> Optional[str]:
     if not user_id:
         return None
-    return db.query(User.manager_id).filter(User.user_id == user_id).scalar()
+    return notifications_repo(db).manager_of(user_id)
 
 
 def as_dict(n: Notification) -> dict:
@@ -50,9 +47,7 @@ def as_dict(n: Notification) -> dict:
 async def email_pending(db: Session, limit: int = 100) -> int:
     """Email unsent notifications to users who want email. Marks them done either way."""
     from app.services.email_sender_service import email_sender
-    rows = db.query(Notification, User).join(User, User.user_id == Notification.user_id).filter(
-        Notification.emailed_at.is_(None), Notification.created_at >= utcnow() - timedelta(days=1)
-    ).order_by(Notification.created_at).limit(limit).all()
+    rows = notifications_repo(db).unsent(utcnow() - timedelta(days=1), limit)
     sent = 0
     base = (settings.BASE_URL or "").rstrip("/")
     for n, user in rows:

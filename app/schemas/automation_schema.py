@@ -7,7 +7,7 @@ Pydantic schemas for Automation Rules.
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 from datetime import datetime
-from app.models.automation_rule import TriggerType, ActionType
+from app.domain.automation import ActionType, TriggerType
 
 class AutomationRuleBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
