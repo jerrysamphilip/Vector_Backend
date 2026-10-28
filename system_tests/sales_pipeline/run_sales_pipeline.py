@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
-from common import WEB, Results, Workspace, req, run_job, sql  # noqa: E402
+from common import WEB, Results, Workspace, parse_utc, req, run_job, sql  # noqa: E402
 
 R = Results("Sales hierarchy, daily limit, leads & pipeline (BRD 5.4-5.7)", HERE)
 NO_UI = "--no-ui" in sys.argv
@@ -704,7 +704,7 @@ def _():
     L["dq"] = l["lead_id"]
     s, b = req("PATCH", f"/leads/{l['lead_id']}", {"stage": "DISQUALIFIED", "disqualified_reason": "No budget",
                                                    "recycle_in_days": 30}, t)
-    days = (datetime.fromisoformat(b["recycle_at"]) - utcnow()).days if s == 200 and b.get("recycle_at") else None
+    days = (parse_utc(b["recycle_at"]) - utcnow()).days if s == 200 and b.get("recycle_at") else None
     R.check("SP-075", "Disqualify needs a reason (BR-SF-02); reason and recycle date (30 days) stored",
             s == 200 and b["stage"] == "DISQUALIFIED" and b["disqualified_reason"] == "No budget" and days in (29, 30),
             f"{s} days={days}")
@@ -1191,8 +1191,17 @@ def _():
         R.record("SP-140", "Follow-ups keep sending after the limit (worker)", None, "skipped (--no-worker)", "test-issue")
         return
     # Active campaign, dl1 already at 500. One new first email and one follow-up become due now.
-    # No sender mailbox and no system sender exist, so nothing can actually be delivered.
+    # The scheduler binds a sender inbox (_step_sender: no ACTIVE inbox -> NO_ACTIVE_INBOX hold) before it checks the
+    # daily limit (app/services/email_scheduler_service.py _prepare), so the campaign gets a mailbox connected through
+    # POST /inboxes. Its SMTP host is smtp.invalid (RFC 2606, never resolves): nothing can actually be delivered.
+    s, ib = req("POST", "/inboxes", {"email_address": f"dl-sender-{RID}@dl-send-{RID}.example", "smtp_host": "smtp.invalid",
+                                     "smtp_username": f"dl-{RID}", "smtp_password": f"Smtp-{RID}", "warmup_enabled": False,
+                                     "daily_limit": 500, "max_emails_per_day": 500}, A.token)
+    if s != 201 or (ib or {}).get("status") != "ACTIVE":
+        R.record("SP-139", "Scheduler holds the 501st new contact until tomorrow (worker)", False, f"inbox setup: {s} {ib}", "test-issue")
+        return
     cid, s1, s2 = seed_campaign("dl1", status="ACTIVE")
+    sql(f"INSERT INTO campaign_inboxes (campaign_id, inbox_id) VALUES ('{cid}','{ib['inbox_id']}')")
     DL["active"] = cid
     new_p, fu_p = seed_prospects("dl1", 1, "n")[0], seed_prospects("dl1", 1, "f")[0]
     m_new, m_fu = str(uuid.uuid4()), str(uuid.uuid4())
@@ -1218,6 +1227,7 @@ def _():
     finally:
         sql(f"UPDATE campaigns SET status='PAUSED' WHERE campaign_id='{cid}'")
         sql(f"UPDATE email_messages SET status='CANCELLED' WHERE campaign_id='{cid}' AND status IN ('QUEUED','SCHEDULED')")
+        sql(f"UPDATE sending_inboxes SET status='PAUSED' WHERE inbox_id='{ib['inbox_id']}'")
 
 
 # ═══════════════════════ Worker integrations (BR-SF-02/05) ═══════════════════════

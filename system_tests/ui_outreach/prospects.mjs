@@ -8,7 +8,8 @@ const csv = path.join(HERE, 'fixtures/prospects.csv'), bad = path.join(HERE, 'fi
 const LIST = 'Uploaded list ' + ws.rid;
 const { page, w } = await S.open(ws);
 dialogs(page, 'accept');
-const modal = () => page.locator('div.fixed').last();
+// the open modal: a Radix dialog panel (role=dialog/alertdialog) since frontend b3f05f5; div.fixed also matches the toast region
+const modal = () => page.locator('[role="dialog"], [role="alertdialog"]').last();
 
 await S.t(`${A}-01`, 'Prospect lists empty state: zero stats, New List button, no errors', async () => {
   await go(page, '/app/prospects', { wait: 1200 });

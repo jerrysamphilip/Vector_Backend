@@ -1,5 +1,6 @@
 // Shared helpers for the ui_outreach suites (extends ../ui/ui_common.mjs without editing it).
 import { Workspace, launch, session, watch, Recorder, step, api, sql, loginToken, API, WEB } from '../ui/ui_common.mjs';
+import { onConfirm } from '../ui/confirm_dialogs.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -210,12 +211,14 @@ export async function getWs(label, opts = {}) {
 /** Sidebar group header button (accessible name is the DOM text, CSS uppercases it). */
 export const groupBtn = (page, g) => page.getByRole('button', { name: new RegExp('^' + g + '$', 'i') });
 
-/** Auto-handle native alert/confirm dialogs; returns the log array. mode: 'accept' | 'dismiss' */
+/** Auto-handle native alert/confirm dialogs and the app's in-app ConfirmDialog (Radix, since frontend b3f05f5);
+ *  returns the log array ("confirm: <title>\n\n<message>" for the in-app dialog). mode: 'accept' | 'dismiss' */
 export function dialogs(page, mode = 'accept') {
   const log = [];
   const h = async d => { log.push(`${d.type()}: ${d.message()}`); if (mode === 'accept') await d.accept().catch(() => {}); else await d.dismiss().catch(() => {}); };
   page.on('dialog', h);
-  log.stop = () => page.off('dialog', h);
+  const stopConfirm = onConfirm(page, text => { log.push(`confirm: ${text}`); return mode; });
+  log.stop = () => { page.off('dialog', h); stopConfirm(); };
   return log;
 }
 export const rowOf = (page, text) => page.locator('tbody tr', { hasText: text }).first();
@@ -223,6 +226,8 @@ export const rowOf = (page, text) => page.locator('tbody tr', { hasText: text })
 export async function seedActive(ws, name, inboxIds, pids, kw = {}) {
   const cid = await mkCampaign(ws, name, inboxIds, kw);
   let r = await enrollP(ws, cid, pids); if (r.status !== 200) throw new Error('enroll ' + r.status + JSON.stringify(r.data));
+  // a rejected contact (e.g. active_elsewhere: already in another active campaign) is a 200 with a rejected_summary
+  if (r.data && r.data.enrolled_count !== undefined && r.data.enrolled_count !== pids.length) throw new Error('enroll: ' + JSON.stringify(r.data).slice(0, 300));
   r = await stubContent(ws, cid); if (r.status !== 200) throw new Error('stub ' + r.status);
   r = await api('POST', `/campaigns/${cid}/launch`, { token: ws.token }); if (r.status !== 200) throw new Error('launch ' + r.status + JSON.stringify(r.data));
   return cid;

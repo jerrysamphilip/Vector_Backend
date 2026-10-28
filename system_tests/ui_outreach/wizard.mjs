@@ -83,8 +83,11 @@ await S.t(`${A}-06`, 'Edit subject (textarea) persists to DB; Cancel discards; s
   await sleep(800);
   if (!sql(`SELECT GROUP_CONCAT(subject) FROM email_templates WHERE campaign_id=${q(cid)}`).includes('Quick idea for {{first_name}}')) return 'subject not persisted';
   await edit.first().click(); await page.locator('textarea').first().fill('Bad {first_name}');
-  const before = dlg.length; await page.getByRole('button', { name: /^Save$/ }).click(); await sleep(500);
-  if (dlg.length === before) return 'no warning for single-brace variable';
+  // the warning is a toast since frontend b3f05f5 (wizard/useTemplateEditor.js: "Invalid custom variable format")
+  await page.getByRole('button', { name: /^Save$/ }).click();
+  const warned = await page.getByText(/Invalid custom variable format|use double braces/i).first().waitFor({ timeout: 5000 }).then(() => true, () => false);
+  if (!warned) return 'no warning for single-brace variable';
+  if (sql(`SELECT GROUP_CONCAT(subject) FROM email_templates WHERE campaign_id=${q(cid)}`).includes('Bad {first_name}')) return 'single-brace subject was saved';
   await page.getByRole('button', { name: /^Cancel$/ }).click();
   if (!(await body(page)).includes('Quick idea for')) return 'cancel lost the saved subject';
   return await clean(page, w);
@@ -100,7 +103,11 @@ await S.t(`${A}-08`, 'Live Preview substitutes real prospect data (name/company)
   await page.getByRole('button', { name: /live preview/i }).click();
   await waitText(page, /Static Code|ACTIVE PREVIEW DATA/i);
   const t = await body(page);
-  if (/\{\{first_name\}\}|\{\{company_name\}\}/.test(t.split('EMAIL BLUEPRINT')[0] + t.split('EMAIL BLUEPRINT')[1])) return 'placeholders not substituted in preview';
+  // the preview ends at the sample-contact switcher; text after it is the toast region (WIZ-06's single-brace warning
+  // quotes "{{first_name}}" while it is still shown)
+  const pv = (t.split('EMAIL BLUEPRINT')[0] + t.split('EMAIL BLUEPRINT')[1]).split('ACTIVE PREVIEW DATA')[0];
+  const hit = pv.search(/\{\{first_name\}\}|\{\{company_name\}\}/);
+  if (hit >= 0) return 'placeholders not substituted in preview: ...' + pv.slice(Math.max(0, hit - 160), hit + 60).replace(/\s+/g, ' ');
   if (!/Wiz\d/.test(t)) return 'prospect name not in preview';
 }, page);
 await S.t(`${A}-09`, 'Regenerate subject with LLM absent: sensible result or error, no crash / [object Object]', async () => {

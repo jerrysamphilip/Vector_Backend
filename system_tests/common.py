@@ -33,6 +33,19 @@ def run_id() -> str:
     return uuid.uuid4().hex[:6]
 
 
+def parse_utc(value):
+    """A timestamp from the API or MySQL as a naive UTC datetime (None for empty). Accepts '2026-10-26T17:54:09.654321Z'
+    (API responses end in "Z"), '+00:00' offsets, zone-less ISO and the mysql CLI form '2026-10-26 17:54:09[.000000]'."""
+    from datetime import timezone as _tz, datetime as _dt
+    if not value:
+        return None
+    text = str(value).strip()
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    parsed = _dt.fromisoformat(text)
+    return parsed.astimezone(_tz.utc).replace(tzinfo=None) if parsed.tzinfo else parsed
+
+
 def req(method, path, body=None, token=None, raw=False, files=None, form=None, headers=None, follow=True):
     """HTTP call to the API. Returns (status, parsed JSON | text | bytes)."""
     h = {"Authorization": f"Bearer {token}"} if token else {}

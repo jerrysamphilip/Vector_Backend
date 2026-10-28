@@ -37,6 +37,15 @@ def email(t, tag, dom=None):
     return f"{tag}-{t.rid}@{dom or 'iso' + t.label + t.rid + '.example'}"
 
 
+def _campaign_edits(h, ids):
+    """Campaign edits need the row_version the caller loaded (428 VERSION_REQUIRED without it, checked before the
+    campaign is looked up: app/services/campaign_edit_service.py). The dry run and an empty edit change nothing."""
+    rv = sql(f"SELECT row_version FROM campaigns WHERE campaign_id={q(ids['campaign_id'])}")
+    if rv and rv.isdigit():
+        h("POST /campaigns/{campaign_id}/edits/checks", body={"expected_version": int(rv)})
+        h("POST /campaigns/{campaign_id}/edits", body={"expected_version": int(rv)})
+
+
 def create_phase(E, t):
     """All resource creation + every read/update endpoint happy path."""
     h = lambda ep, **kw: E.happy(ep, t, **kw)  # noqa: E731
@@ -292,6 +301,7 @@ def create_phase(E, t):
     h("POST /campaigns/{campaign_id}/enrollments", body={"campaign_id": ids["campaign_id"], "list_id": ids["list_id"]}, env=(400, 409, 422))
     h("POST /campaigns/{campaign_id}/enrollments/bulk", body={"campaign_id": ids["campaign_id"], "list_ids": [ids["list_id"]]}, env=(400, 409, 422))
     h("GET /campaigns/{campaign_id}/prospects")
+    _campaign_edits(h, ids)
     h("POST /campaigns/{campaign_id}/launch")
     ids["message_id"] = sql(f"SELECT message_id FROM email_messages WHERE campaign_id={q(ids['campaign_id'])} LIMIT 1") or None
     h("GET /campaigns/{campaign_id}/schedule")
@@ -443,9 +453,9 @@ def tail_phase(E, t):
     h = lambda ep, **kw: E.happy(ep, t, **kw)  # noqa: E731
     tok = t.tok["SUPER_ADMIN"]
 
-    def twice(ep, pp, tag, ok=OK2):
+    def twice(ep, pp, tag, ok=OK2, again=(404, 410)):
         s, b = h(ep, pp=pp, kind=tag)
-        E.idem_second(ep, t, pp, tag, s)
+        E.idem_second(ep, t, pp, tag, s, expect=again)
 
     # accounts: delete -> restore
     s, b = http("POST", "/accounts", {"name": f"Victim {mk}", "domain": f"v{mk}.example.com"}, tok)
@@ -466,7 +476,8 @@ def tail_phase(E, t):
     if act:
         twice("DELETE /contacts/activities/{activity_id}", {"activity_id": act}, "activity")
     s, b = http("POST", "/contacts/fields", {"label": f"CFV {mk}", "field_type": "TEXT"}, tok)
-    twice("DELETE /contacts/fields/{field_id}", {"field_id": b["field_id"]}, "field")
+    # DELETE only deactivates a property (C-17, app/services/contact_field_service.py delete): a repeat is an idempotent 200
+    twice("DELETE /contacts/fields/{field_id}", {"field_id": b["field_id"]}, "field", again=(200,))
     # lists
     s, b = http("POST", "/lists", {"list_name": f"LV {mk}", "list_type": "STATIC"}, tok)
     twice("DELETE /lists/{list_id}", {"list_id": b["list_id"]}, "list")

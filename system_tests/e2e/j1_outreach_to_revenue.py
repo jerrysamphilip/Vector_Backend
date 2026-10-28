@@ -611,17 +611,24 @@ def phase_replies(R, C):
     R.check("E2E-J1-66", "Step-1 analytics and dashboard summary show the same reply numbers",
             an["sequences"][0]["replied_count"] == cm["replied_count"] and ds["kpis"]["total_replied"] == cm["replied_count"],
             f"seq1={an['sequences'][0]['replied_count']} dash={ds['kpis']['total_replied']} camp={cm['replied_count']}")
-    # positive-reply classification path without an LLM
+    _check_positive_reply(R, C, cid, rin, pid[emails[ROLE["replier"]]])
+    C["replier_inbound"] = rin[0]["message_id"]
+
+
+def _check_positive_reply(R, C, cid, rin, replier_pid):
+    """J1-67/68: positive-reply classification without an LLM. Since S-09 (app/services/reply_classifier.py) the
+    rule-based classifier labels every reply when there is no key, so the genuine reply is POSITIVE (source RULES)."""
+    label = scalar(f"SELECT CONCAT_WS('|', IFNULL(reply_label,'-'), IFNULL(reply_label_source,'-')) FROM email_messages "
+                   f"WHERE message_id={q(rin[0]['message_id'])}") if rin else "-"
     pos = scalar(f"SELECT COUNT(*) FROM email_events e JOIN email_messages m ON m.message_id=e.message_id "
                  f"WHERE m.campaign_id={q(cid)} AND e.event_type=8")
     s, sug = req("GET", "/leads/reply-suggestions", token=C["users"]["mgr"]["token"])
-    R.record("E2E-J1-67", "Positive-reply classification for 'looks interesting... pricing for 40 seats'", None,
-             f"OPENAI_API_KEY is not set: classify_reply_intent() returns None, so no POSITIVE_REPLY event ({pos}) and "
-             f"/leads/reply-suggestions is {len(sug.get('items', []))} item(s). The app has no keyword fallback; the reply is ingested normally.",
-             "environment")
-    R.check("E2E-J1-68", "Without an LLM the reply is still ingested and the rest of the chain is unaffected (no POSITIVE event is invented)",
-            pos == "0" and s == 200, f"{pos} {s}")
-    C["replier_inbound"] = rin[0]["message_id"]
+    sug_pids = [i.get("prospect_id") for i in (sug.get("items", []) if isinstance(sug, dict) else [])]
+    R.check("E2E-J1-67", "Positive-reply classification for 'looks interesting... pricing for 40 seats' (no LLM: rules)",
+            label == "POSITIVE|RULES" and replier_pid in sug_pids,
+            f"label={label} positive_events={pos} suggestions={len(sug_pids)} replier_suggested={replier_pid in sug_pids}")
+    R.check("E2E-J1-68", "Without an LLM the reply is still ingested and exactly one POSITIVE_REPLY event exists (none invented for "
+            "the out-of-office or unsubscribe replies)", pos == "1" and s == 200, f"positive_events={pos} suggestions_http={s}")
 
 
 def phase_bg_reply(R, C):

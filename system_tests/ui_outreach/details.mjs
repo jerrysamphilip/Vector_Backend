@@ -88,7 +88,7 @@ await S.t(`${A}-08`, 'Send Now: cancel at the confirm sends nothing; accept -> P
   const reqs = []; const onReq = r => { if (/\/send-now$/.test(r.url())) reqs.push(r.url()); }; page.on('request', onReq);
   await page.getByRole('button', { name: /Send Now/ }).click(); await sleep(800);
   d1.stop();
-  if (!d1.some(m => /Force Send Now/.test(m))) return 'no confirm shown';
+  if (!d1.some(m => /Force send now/i.test(m))) return 'no confirm shown: ' + d1.join('|');
   if (reqs.length) return 'cancel at the confirm still called /send-now';
   if (sql(`SELECT COUNT(*) FROM email_messages WHERE campaign_id=${q(cid)} AND status NOT IN ('QUEUED','SCHEDULED')`) !== sentBefore) return 'cancel changed message states';
   page.off('request', onReq);
@@ -99,16 +99,19 @@ await S.t(`${A}-08`, 'Send Now: cancel at the confirm sends nothing; accept -> P
   const resp = await respP.catch(() => null);
   const took = Date.now() - tClick;
   if (!resp) { d2.stop(); return 'POST /send-now not answered within 90 s; dialogs: ' + d2.join('|'); }
-  const t0 = Date.now(); while (d2.length < 2 && Date.now() - t0 < 5000) await sleep(200);
+  // the outcome is an in-page banner since frontend b3f05f5 (was window.alert): "Send now finished: N sent, N failed[, N skipped]."
+  // or "Error sending emails: ..."; the send loop may call /send-now several times (batches), the banner shows the totals
+  const banner = page.getByText(/^(Send now finished:|Error sending emails)/);
+  await banner.waitFor({ timeout: 90000 }).catch(() => {});
+  const result = (await banner.count()) ? await banner.first().innerText() : null;
   d2.stop(); dialogs(page, 'accept');
   const status = resp.status(); let data = null; try { data = await resp.json(); } catch {}
   console.log(`  DET-08 send-now -> HTTP ${status} in ${took} ms ${JSON.stringify(data).slice(0, 300)}`);
-  const result = d2.find(m => /Success!|Error sending/.test(m));
   const visibleErr = /error|failed/i.test(await body(page));
-  if (!result && !visibleErr) return `HTTP ${status} but no result dialog or visible error; dialogs: ${d2.join('|')}`;
-  if (status === 200 && !/Success!/.test(result || '')) return `HTTP 200 but dialog is: ${result}`;
-  if (status === 200 && result && data && !result.includes(`Sent: ${data.sent}`)) return `dialog counts differ from API: ${result} vs ${JSON.stringify(data)}`;
-  if (status >= 400 && !/Error sending/.test(result || '')) return `HTTP ${status} not surfaced as error dialog`;
+  if (!result && !visibleErr) return `HTTP ${status} but no result banner or visible error`;
+  if (status === 200 && !/^Send now finished:/.test(result || '')) return `HTTP 200 but the banner is: ${result}`;
+  if (status === 200 && result && data && !data.has_more && !result.includes(`${data.sent} sent`)) return `banner counts differ from API: ${result} vs ${JSON.stringify(data)}`;
+  if (status >= 400 && !/Error sending/.test(result || '')) return `HTTP ${status} not surfaced as an error banner`;
   w.drain([/.*/]);
 }, page);
 await S.t(`${A}-09`, 'Role AGENT (manage_campaigns by default) can open a campaign by URL', async () => {

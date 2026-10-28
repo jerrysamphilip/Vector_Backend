@@ -67,7 +67,7 @@ export async function run(rec, browser) {
     await m.getByRole('button', { name: 'Create company' }).click();
     await p.waitForURL(/\/app\/accounts\/[0-9a-f-]{36}/, { timeout: 10000 });
     const id = p.url().split('/').pop();
-    eq(sql(`SELECT CONCAT_WS('|',name,domain,industry,emp_band,annual_revenue,city,country,lifecycle_stage) FROM accounts WHERE account_id='${id}'`), 'Soylent Corp|soylent.example|Food|51-200|2500000.00|Chicago|US|CUSTOMER', 'DB row (domain normalised)');
+    eq(sql(`SELECT CONCAT_WS('|',name,domain,industry,emp_band,annual_revenue,city,country,lifecycle_stage) FROM accounts WHERE account_id='${id}'`), 'Soylent Corp|soylent.example|Food|51-200|2500000.00|Chicago|United States|CUSTOMER', 'DB row (domain normalised; the country picker stores the name, src/lib/countries.js)');
     await p.getByRole('heading', { name: /^Soylent Corp/ }).first().waitFor({ timeout: 8000 });
     ok(await p.getByText('$2.5M revenue').isVisible(), 'revenue shown');
   }, { u: A });
@@ -137,13 +137,21 @@ export async function run(rec, browser) {
     const c = await must(t.token, 'POST', '/contacts', { email: `orphan.${t.rid}@brandnewdomain.example`, first_name: 'Orphan', last_name: 'X' });
     sql(`UPDATE prospects SET account_id=NULL WHERE prospect_id='${c.prospect_id}'`);
     await go(A, 'accounts');
-    await p.getByRole('button', { name: /Link contacts by company/ }).click(); await settle(A, 1200);
-    ok(await p.getByText(/Linked \d+ contacts? to companies|already has a company record/).isVisible(), 'notice');
+    // BackfillDialog (C-14): a dry-run preview first, then "Link N contacts", then a "Done: ..." notice (undo in Runs)
+    await p.getByRole('button', { name: /Link contacts by company/ }).click();
+    const dlg = p.getByRole('dialog', { name: 'Link contacts by company' });
+    // "Link 0 contacts" (disabled) until the preview has loaded
+    const runBtn = dlg.getByRole('button', { name: /^Link [1-9][\d,]* contacts?$/ });
+    const found = await runBtn.waitFor({ timeout: 15000 }).then(() => true, () => false);
+    ok(found && await runBtn.isEnabled(), 'preview found contacts to link: ' + await dlg.getByRole('button', { name: /^Link \d/ }).innerText().catch(() => '?'));
+    await runBtn.click();
+    await dlg.getByText(/^Done: \d+ linked/).waitFor({ timeout: 15000 });
+    ok(await dlg.getByText(/^Done: \d+ linked/).isVisible(), 'notice');
     ok(sql(`SELECT account_id IS NOT NULL FROM prospects WHERE prospect_id='${c.prospect_id}'`) === '1', 'orphan linked');
   }, { u: A });
 
   await tc(rec, 'UIC-ACC-11', 'Pagination across 25 per page', async () => {
-    for (let i = 0; i < 24; i++) await must(t.token, 'POST', '/accounts', { name: `Bulk Co ${String(i).padStart(2, '0')}`, domain: `bulk${i}.${t.rid}.example` });
+    for (let i = 0; i < 24; i++) await must(t.token, 'POST', '/accounts', { name: `Bulk Co ${String(i).padStart(2, '0')}`, domain: `bulk${i}-${t.rid}.example` });   // distinct registrable domains (subdomains of one domain are one company, app/services/crm.py)
     await go(A, 'accounts');
     const n = dbn(`SELECT COUNT(*) FROM accounts WHERE ${acct(t)}`);
     eq(await total(p), n, 'total');

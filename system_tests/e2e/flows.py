@@ -5,7 +5,7 @@ DB access is limited to (a) read-only verification and (b) the explicit, labelle
 """
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from .helpers import (FakeImap, HOST_FROM_CONTAINERS, q, req, rows, scalar, ses_captured, ses_verify, sql,
                       upload_csv, wait_until)
@@ -150,7 +150,15 @@ def msgs(cid, step=None, status=None, email_addr=None):
 
 
 def dt(s):
-    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S") if s else None
+    """A timestamp as a naive UTC datetime: a MySQL DATETIME as the mysql CLI prints it (DATETIME(6) since migration
+    0018, so it may carry '.000000') or an API value ('2026-10-26T17:54:09.654321Z': API datetimes end in "Z")."""
+    if not s:
+        return None
+    text = str(s).strip()
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(text)
+    return parsed.astimezone(timezone.utc).replace(tzinfo=None) if parsed.tzinfo else parsed
 
 
 def utc_now():

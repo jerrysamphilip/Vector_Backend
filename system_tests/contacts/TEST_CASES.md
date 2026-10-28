@@ -66,7 +66,7 @@ index, merge/dependents, purge/FKs, campaigns/suppression, email events). Priori
 | CM-052 | BR-CM-30 | System | P2 | – | Import with owner_id=Bob and new_list_name; foreign owner | Static list of 5, all owned by Bob; 400 for foreign owner | Y |
 | CM-053 | BR-CM-25 | System | P2 | – | Preview + import a 4-row XLSX | 4 created, 1 company | Y |
 | CM-054 | BR-CM-25 | System | P2 | Globex exists | Companies-only import (2 new, 1 existing by domain, 1 blank) | 2 created, 1 updated, 1 error | Y |
-| CM-055 | BR-CM-25/26 | System | P2 | – | No key column; unknown target; agent; 10,001 rows; garbage XLSX | 400; 400; 403; 400 "10,000"; 400 | Y |
+| CM-055 | BR-CM-25/26 | System | P2 | – | No key column; unknown target; agent; 50,001 rows; garbage XLSX; 1,001 rows | 400; 400; 403; 400 "50,000" (nothing stored); 400; 202 queued background job | Y |
 | CM-056 | BR-CM-28 | Integration | P1 | 3 users with manage permission | Import the same 300 emails (rotated order) concurrently | 300 rows, 300 distinct, 7 companies, created sum 300, no errors | Y |
 | CM-057 | BR-CM-21/25/11 | Integration | P1 | – | Import with full name + mobile; search by mobile digits and name; history | Found via search index; "created" history row source=IMPORT | Y |
 | CM-058 | BR-CM-31 | System | P1 | Imported contacts | Export view (tag + MQL) CSV with 4 columns | Header labels; rows equal to view; stage labels | Y |
@@ -75,7 +75,7 @@ index, merge/dependents, purge/FKs, campaigns/suppression, email events). Priori
 | CM-061 | BR-CM-31 | System | P3 | Contact with name "=HYPERLINK(...)" | Export | Cell prefixed with `'` | Y |
 | CM-062 | BR-CM-32 | System | P1 | gmail dot-variants; Robert/Rob Brown at one company | GET /contacts/duplicates; agent call | Both pairs grouped with reasons; agent 403 | Y |
 | CM-063 | BR-CM-33 | Integration | P1 | Dup has call, task, list, campaign, tags, phone; primary has note | Merge choosing dup's job title | Chosen value kept, blanks filled, tags unioned, timeline/task/list/campaign/history moved, duplicate gone | Y |
-| CM-064 | BR-CM-33 | System | P2 | Robert/Rob | Self-merge; agent merge; merge keeping dup's email; recreate old address | 400; 403; email swapped; 201 | Y |
+| CM-064 | BR-CM-33 | System | P2 | Robert/Rob | Self-merge; agent merge; merge keeping dup's email; recreate old address | 400; 403; email swapped; 409 naming the survivor (C-11 e-mail history) | Y |
 | CM-065 | BR-CM-34 | System | P2 | – | Create "john SMITHSON" phone "12ab"; and a clean contact | Phone and capitalisation flags; none on the clean contact | Y |
 | CM-066 | BR-CM-35 | System | P1 | Contact | Delete; GET/search/list; recycle bin; recreate same email; restore; history | Hidden everywhere; in bin with purge date and deleter; 409 deleted=true; restore 1; history delete+restore | Y |
 | CM-067 | BR-CM-35/38 | System | P2 | Agent | Agent deletes own, bulk-deletes, opens bin, restores | 403 each | Y |
@@ -98,7 +98,7 @@ index, merge/dependents, purge/FKs, campaigns/suppression, email events). Priori
 | CM-083 | BR-CM-43 (C) | System | P3 | – | Look for fit/engagement score | Score on record, filter/sort | Y (absence → not-implemented) |
 | CM-084 | §5.2 acceptance | Integration | P1 | – | Import 1,000-row contact+company file (990 good, 10 bad) | < 10 s, 50 companies, all 990 linked by domain, a reason per rejected row | Y |
 | CM-085 | BR-CM-25 | System | P1 | – | Preview + import a CSV with only an `Email` column | Header "Email" detected; 3 contacts created | Y |
-| CM-090 | §6 Scale | System | P1 | Tenant P | Import a 10,000-row contact+company file | 10,000 created, 800 companies; time reported | Y |
+| CM-090 | §6 Scale | System | P1 | Tenant P | Import a 10,000-row contact+company file (202: background job, polled to COMPLETED) | 10,000 created, 800 companies; time reported | Y |
 | CM-091 | §6 Perf, §5.2 acceptance | System | P1 | CM-090 | 20 global searches (name, email, phone, company, domain, no-match), after warm-up | p95 < 1 s at ~10k; 100k extrapolated | Y |
 | CM-092 | §6 Perf | System | P1 | CM-090 | Same 20 terms on the contacts list (q=) | p95 < 1 s | Y |
 | CM-093 | §6 Perf | System | P1 | CM-090 | List views: default, sort by name, stage filter, page 200, AND/IN filter, owner=me; board | p95 < 1 s | Y |

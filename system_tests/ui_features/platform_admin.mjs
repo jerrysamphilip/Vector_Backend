@@ -55,7 +55,7 @@ export async function run(rec, browser) {
       eq(await p.locator('tbody tr').count(), 1, 'one row');
       const r = row(vName);
       const cells = await r.locator('td').allInnerTexts();
-      ok(cells[0].includes(vName) && cells[0].includes(v.tenantId.slice(0, 8)), `tenant cell: ${cells[0]}`);
+      ok(cells[0].includes(vName) && cells[0].includes(v.tenantId.slice(-8)), `tenant cell: ${cells[0]}`);   // short id = last 8 characters (UUIDv7 ids share their first 8, app/core/ids.py short_id)
       eq(cells[1].trim(), 'ACTIVE', 'status badge');
       eq(cells[2].trim(), vUsers, 'user count');
       eq(cells[3].trim(), sql(`SELECT COUNT(*) FROM campaigns WHERE tenant_id=${sq(v.tenantId)}`), 'campaign count');

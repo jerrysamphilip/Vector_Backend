@@ -36,15 +36,17 @@ await emp.setSenderIdentity();
 const ws = await fullWorkspace('camplist');
 const dom = `cl${ws.rid}.example`;
 const inbox1 = await mkInbox(ws, 'sales', dom);
+// A contact can be in only one active campaign at a time (active_elsewhere, app/services/enrollment_rules.py, since
+// b537145), so every launched campaign gets its own contacts: 4 for Alpha, 2 for Bravo, 1 for Echo.
 const pids = [];
-for (let i = 0; i < 4; i++) pids.push(await mkContact(ws, `p${i}@acme${ws.rid}.example`, { first_name: 'Pat' + i }));
+for (let i = 0; i < 7; i++) pids.push(await mkContact(ws, `p${i}@acme${ws.rid}.example`, { first_name: 'Pat' + i }));
 const nameA = 'Alpha Active ' + ws.rid, nameP = 'Bravo Paused ' + ws.rid, nameD = 'Charlie Draft ' + ws.rid, nameX = 'Delta Delete ' + ws.rid, nameB = 'Echo Bulk ' + ws.rid;
-const cA = await seedActive(ws, nameA, [inbox1], pids);
-const cP = await seedActive(ws, nameP, [inbox1], pids.slice(0, 2));
+const cA = await seedActive(ws, nameA, [inbox1], pids.slice(0, 4));
+const cP = await seedActive(ws, nameP, [inbox1], pids.slice(4, 6));
 await api('POST', `/campaigns/${cP}/pause`, { token: ws.token });
 const cD = await mkCampaign(ws, nameD, [inbox1]);
 const cX = await mkCampaign(ws, nameX, [inbox1]);
-const cB = await seedActive(ws, nameB, [inbox1], pids.slice(0, 1));
+const cB = await seedActive(ws, nameB, [inbox1], pids.slice(6, 7));
 // tasks for Home
 const tid = (await api('POST', '/tasks', { token: ws.token, body: { title: 'Call Pat ' + ws.rid, due_at: new Date().toISOString(), task_type: 'CALL', priority: 'HIGH' } }));
 
@@ -116,11 +118,16 @@ const tid = (await api('POST', '/tasks', { token: ws.token, body: { title: 'Call
   }, page);
   await S.t(`${A}-LIST-05`, 'Delete: cancelling the confirm keeps the campaign; accepting removes it (UI + DB)', async () => {
     dlg.stop(); const d2 = dialogs(page, 'dismiss');
-    await rowOf(page, nameX).locator('button[title="Delete"]').click(); await sleep(600);
+    // Delete lives in the row's "More actions" menu (CampaignActionsMenu, 5451f65)
+    const deleteX = async () => {
+      await page.getByRole('button', { name: `More actions for ${nameX}` }).click();
+      await page.getByRole('menu', { name: `Actions for ${nameX}` }).getByRole('menuitem', { name: 'Delete' }).click();
+    };
+    await deleteX(); await sleep(600);
     if (!(await rowOf(page, nameX).count())) return 'row removed despite cancel';
     if (sql(`SELECT COUNT(*) FROM campaigns WHERE campaign_id=${q(cX)}`) !== '1') return 'deleted in DB despite cancel';
     d2.stop(); const d3 = dialogs(page, 'accept');
-    await rowOf(page, nameX).locator('button[title="Delete"]').click(); await sleep(1500);
+    await deleteX(); await sleep(1500);
     if (!d3.some(m => m.includes(nameX))) return 'confirm text missing campaign name: ' + d3.join('|');
     if (await rowOf(page, nameX).count()) return 'row still visible after delete';
     const n = sql(`SELECT COUNT(*) FROM campaigns WHERE campaign_id=${q(cX)}`);
@@ -168,7 +175,8 @@ const tid = (await api('POST', '/tasks', { token: ws.token, body: { title: 'Call
     await page.unroute(/\/api\/campaigns(\?.*)?$/, h);
     const t = await body(page); w.drain([/.*/]);
     if (/No campaigns yet/.test(t)) return 'error shown as empty state';
-    if (!/Failed to load|error|try again/i.test(t)) return 'no error message: ' + t.slice(-150);
+    // copy since the campaigns table rewrite: "Couldn't load campaigns" with a Retry button
+    if (!/Failed to load|couldn.t load|could not load|error|try again/i.test(t) || !(await page.getByRole('button', { name: /Retry|Try again/i }).count())) return 'no error message / retry: ' + t.slice(-150);
   }, page);
 
   // ---------- Dashboard (campaign analytics) with data ----------

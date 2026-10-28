@@ -62,15 +62,20 @@ try {
 
 // CM-UI-03 import screen
 try {
+  // /app/import is the import history; the wizard with the file picker is a drawer (role=dialog) opened by
+  // "New import" (or ?new=1 from Contacts -> Import), Vector_Frontend src/pages/ImportContacts.jsx
   await page.goto(`${WEB}/app/import`, { waitUntil: 'networkidle', timeout: 30000 });
-  await page.waitForTimeout(1200);
+  await page.getByRole('button', { name: /new import/i }).click({ timeout: 15000 });
+  const drawer = page.getByRole('dialog');
+  await drawer.waitFor({ timeout: 15000 });
+  await page.waitForTimeout(600);
   const body = await page.innerText('body');
   await shot('import');
   const e = take();
-  const fileInput = await page.$('input[type=file]');
-  const ok = /import/i.test(body) && !!fileInput;
+  const fileInput = await drawer.locator('input[type=file]').count();
+  const ok = /import/i.test(body) && fileInput > 0;
   out('CM-UI-03', 'UI: Import screen renders with a file picker (BR-CM-25)', ok && e.length === 0,
-      `import text=${/import/i.test(body)} file_input=${!!fileInput} errors=${JSON.stringify(e).slice(0, 300)}`);
+      `import text=${/import/i.test(body)} file_input=${fileInput > 0} errors=${JSON.stringify(e).slice(0, 300)}`);
 } catch (ex) {
   out('CM-UI-03', 'UI: Import screen renders with a file picker (BR-CM-25)', false, String(ex).slice(0, 300));
 }

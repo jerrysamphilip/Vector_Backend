@@ -15,7 +15,12 @@ export async function run(rec, browser) {
   await must(tok, 'PUT', '/api/company-profiles/sender-identity',
     { company_name: `AB Co ${t.rid}`, postal_address: '1 Test Street, Austin, TX 78701, USA' });
   const future = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
-  const camp = await must(tok, 'POST', '/campaigns', { campaign_name: `AB UI ${t.rid}`, start_date: future,
+  // Launch needs an ACTIVE sending inbox (app/services/send_guards.py). Connected through POST /inboxes like the
+  // system ab_testing suite; smtp.invalid (RFC 2606) never resolves, so no mail could leave even by accident.
+  // (sending_inboxes survive the tenant wipe, so the address is unique per run)
+  const inbox = await must(tok, 'POST', '/inboxes', { email_address: `ab-ui-${Date.now().toString(36)}@ab-ui-${t.rid}.example`, smtp_host: 'smtp.invalid',
+    smtp_username: `abui-${t.rid}`, smtp_password: `Smtp-${t.rid}`, warmup_enabled: false, daily_limit: 500, max_emails_per_day: 500 });
+  const camp = await must(tok, 'POST', '/campaigns', { campaign_name: `AB UI ${t.rid}`, start_date: future, inbox_ids: [inbox.inbox_id],
     respect_timezone: false, campaign_timezone: 'UTC' });
   const cid = camp.campaign_id;
   const step = await must(tok, 'POST', `/campaigns/${cid}/sequences`, { step_number: 1, wait_days: 0 });

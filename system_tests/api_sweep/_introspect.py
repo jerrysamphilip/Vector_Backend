@@ -52,3 +52,6 @@ for r in ALL:
                          "auth": acc["auth"] or bool(acc["roles"]) or bool(acc["perms"]), "other_deps": sorted(set(acc["other"])),
                          "handler": f"{r.endpoint.__module__}.{r.endpoint.__name__}"})
 print("@@JSON@@" + json.dumps(rows))
+# Default feature permissions per role, from the single source of truth the API enforces (app/domain/identity.py)
+from app.domain.identity import ROLE_DEFAULT_PERMISSIONS  # noqa: E402
+print("@@PERMS@@" + json.dumps({role: sorted(perms) for role, perms in ROLE_DEFAULT_PERMISSIONS.items()}))

@@ -8,7 +8,8 @@ const { page, w } = await S.open(ws);
 const dlg = dialogs(page, 'accept');
 const T = 'UIO-TPL';
 const NAME = 'Intro template ' + ws.rid;
-const modal = () => page.locator('div.fixed').last();
+// the open modal: a Radix dialog panel (role=dialog/alertdialog) since frontend b3f05f5; div.fixed also matches the toast region
+const modal = () => page.locator('[role="dialog"], [role="alertdialog"]').last();
 
 await S.t(`${T}-01`, 'Template library empty state renders; New template opens modal; Cancel closes without saving', async () => {
   await go(page, '/app/templates', { wait: 1000 });
