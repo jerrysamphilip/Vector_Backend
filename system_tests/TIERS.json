@@ -42,14 +42,14 @@
   },
   "tiers": {
     "smoke": {
-      "description": "Every deploy, including UAT: is the build alive and safe? unit + functional, contract, the J1 journey, ~25 key screens and the security slice of the API sweep.",
+      "description": "Every deploy, including UAT: is the build alive and safe? unit + functional, contract, the J1 journey (all but J1-103), ~25 key screens and the security slice of the API sweep.",
       "target_s": 600,
       "suites": {
         "unit": {"reason": "fast, catches logic regressions before anything touches the stack"},
         "functional": {"reason": "API behaviour, permissions and tenant isolation in-process; the cheapest broad check"},
         "contract": {"reason": "every frontend call still has a backend route (seconds)"},
-        "e2e": {"cases": ["E2E-J1-*"],
-                "reason": "J1 is the revenue path: import -> campaign -> send -> reply -> deal -> report"},
+        "e2e": {"cases": ["E2E-J1-[0-9][0-9]", "E2E-J1-[0-9][0-9][a-z]", "E2E-J1-10[0-24-9]*"],
+                "reason": "J1 is the revenue path: import -> campaign -> send -> reply -> deal -> report. J1-103 (step-3 spread after resume, ~10 min of paced sends) runs in core/full; J1-102 no-burst stays in smoke."},
         "api_sweep": {"cases": ["API-*-AUTH-*", "API-*-ROLE-*", "API-*-ISO-*", "API-*-IDEM-*"],
                       "reason": "security slice: 401 without/with bad credentials, 403 per role and permission, tenant isolation, duplicate/idempotent writes (409); the phases with none of these (VAL, HIER) are skipped"},
         "ui_outreach": {"cases": [
