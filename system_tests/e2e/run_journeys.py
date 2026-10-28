@@ -8,6 +8,7 @@ Writes results.md / results.json next to this file. See README.md for bringing t
 import argparse
 import os
 import sys
+import time
 import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -62,11 +63,14 @@ def main():
             pass
 
     def guard(prefix, fn, *a):
+        t0 = time.time()
         try:
             return fn(*a)
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
             R.record(f"E2E-{prefix}-EXC", f"{prefix} aborted: {fn.__name__}", False, f"exception: {exc!r}", "test-issue")
+        finally:  # where the journey spends its time (tier tuning, docs/TESTING.md section 2)
+            print(f"timing {prefix} {fn.__name__}: {time.time() - t0:.0f}s", flush=True)
 
     if "J1" in only:
         from system_tests.e2e import j1_outreach_to_revenue as J1
