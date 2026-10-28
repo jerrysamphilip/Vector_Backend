@@ -145,6 +145,8 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
   plain `search_text LIKE` scan again (always exact) and `0034_drop_contact_fulltext` drops
   `ft_prospects_search_text`; connections no longer set `innodb_ft_enable_stopword`. Regression test
   `tests/test_final_contact_search.py`.
+- Sign-in returned 500 when recording `last_login_at` hit a MySQL deadlock (1213) or lock wait timeout
+  (1205): the login unit of work (session row, refresh token, `last_login_at`) now retries up to 3 times.
 - Regression V1: contact merge / erasure / purge deadlocked with imports (full-table `merged_into_id`
   update across tenants): tenant-first index (0033), tenant-scoped update by key, retry on 1213/1205.
   `POST /uploads/{id}/confirmations` and `/revalidations` use the path id (400 on a mismatching body id, 404
