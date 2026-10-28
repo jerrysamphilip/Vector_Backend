@@ -4,19 +4,21 @@ router modules inside the vector-api image (require_role / require_permission cl
 
 Per endpoint it also computes `expect[role]` = True/False (access expected?) for the sweep's identities:
 PLATFORM_ADMIN, SUPER_ADMIN, ADMIN, MANAGER, AGENT, AGENT_NOPERM (custom_permissions='[]').
-Permission defaults mirror app/core/auth.py (_DEFAULT_PERMS / custom_permissions)."""
+Permission defaults come from app/domain/identity.py (ROLE_DEFAULT_PERMISSIONS, introspected) / custom_permissions.
+Regenerate after any route, schema or permission change:  python3 gen_inventory.py   (stack up; reads the live API)."""
 import json, os, subprocess, sys, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 API = os.environ.get("API_URL", "http://localhost:8191")
 
-# app/core/auth.py::_DEFAULT_PERMS (kept in sync by hand; AGENT has no default permission)
+# Fallback only: introspect() reads the live defaults from app/domain/identity.py::ROLE_DEFAULT_PERMISSIONS inside the
+# api image (AGENT has had manage_campaigns by default since c3ad117, 2026-10-14) and replaces this table.
 DEFAULT_PERMS = {
     "PLATFORM_ADMIN": {"manage_platform"},
     "SUPER_ADMIN": {"manage_campaigns", "manage_templates", "manage_inboxes", "manage_prospects", "view_analytics", "export_data", "manage_team"},
     "ADMIN": {"manage_campaigns", "manage_templates", "manage_inboxes", "manage_prospects", "view_analytics", "export_data", "manage_team"},
     "MANAGER": {"manage_campaigns", "manage_templates", "view_analytics"},
-    "AGENT": set(),
+    "AGENT": {"manage_campaigns"},
 }
 IDENTITIES = ["PLATFORM_ADMIN", "SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT_NOPERM"]
 
@@ -41,8 +43,22 @@ INLINE_PERMS = {
     "DELETE /lists/{list_id}": "manage_prospects",
     # import_router checks can_manage_contacts() in the handler (imports are for users who manage every contact)
     "GET /imports": "manage_prospects", "POST /imports": "manage_prospects", "POST /imports/preview": "manage_prospects",
+    # added since the 2026-10-19 inventory; each handler's service calls require_manager / can_manage_contacts():
+    # background imports + saved mappings (C-03/C-04, import_service.py), duplicate pairs (C-09, duplicate_service.py),
+    # company backfill preview / runs / undo (C-14, account_backfill_service.py), company properties (C-16/C-17)
+    "GET /imports/mappings": "manage_prospects", "POST /imports/mappings": "manage_prospects",
+    "DELETE /imports/mappings/{mapping_id}": "manage_prospects", "POST /imports/uploads": "manage_prospects",
+    "POST /imports/{import_id}/dry-run": "manage_prospects", "POST /imports/{import_id}/start": "manage_prospects",
+    "POST /imports/{import_id}/cancel": "manage_prospects", "POST /imports/{import_id}/resume": "manage_prospects",
+    "GET /contacts/duplicates/pairs": "manage_prospects", "POST /contacts/duplicates/scan": "manage_prospects",
+    "POST /contacts/duplicates/{pair_id}/dismiss": "manage_prospects", "POST /contacts/duplicates/{pair_id}/reopen": "manage_prospects",
+    "POST /accounts/backfill/previews": "manage_prospects", "GET /accounts/backfill/runs": "manage_prospects",
+    "POST /accounts/backfill/runs": "manage_prospects", "POST /accounts/backfill/runs/{run_id}/undo": "manage_prospects",
+    "DELETE /accounts/fields/{field_id}": "manage_prospects",
 }
 INLINE_ROLES = {"GET /contacts/export": ["ADMIN", "MANAGER", "SUPER_ADMIN"],
+                "GET /accounts/export": ["ADMIN", "MANAGER", "SUPER_ADMIN"],   # "Only admins and managers can export companies"
+                "GET /exports/logs": ["ADMIN", "SUPER_ADMIN"],                 # app/services/export_log.py EXPORT_LOG_ROLES
                 "DELETE /contacts/{prospect_id}": ["ADMIN", "MANAGER", "SUPER_ADMIN"],   # "Agents cannot delete contacts"
                 "DELETE /accounts/{account_id}": ["ADMIN", "MANAGER", "SUPER_ADMIN"]}  # "Agents cannot delete companies"  # "Only admins and managers can export contacts"
 
@@ -53,6 +69,11 @@ def introspect():
     line = [l for l in out.splitlines() if l.startswith("@@JSON@@")]
     if not line:
         sys.exit("introspection failed:\n" + out[-2000:])
+    perms = [l for l in out.splitlines() if l.startswith("@@PERMS@@")]
+    if perms:
+        DEFAULT_PERMS.update({role: set(p) for role, p in json.loads(perms[0][len("@@PERMS@@"):]).items()})
+    else:
+        print("WARNING: no role defaults from the image; using the fallback table in gen_inventory.py")
     return json.loads(line[0][len("@@JSON@@"):])
 
 

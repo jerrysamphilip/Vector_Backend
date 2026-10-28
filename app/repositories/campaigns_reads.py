@@ -19,6 +19,7 @@ from app.models.campaign import CampaignProspect
 from app.models.email_message import EmailEvent, EmailMessage
 from app.models.prospect import Prospect
 from app.repositories.reports_campaign_metrics import sent_message_filters, unique_prospects_expr
+from app.repositories.system_notices import reply_message
 
 
 class CampaignReadsRepository:
@@ -120,14 +121,16 @@ class CampaignReadsRepository:
             EmailMessage.sequence_id == sequence_id, EmailMessage.direction == "OUTBOUND",
             EmailMessage.conversation_id.isnot(None))
         return list(self._s.execute(select(EmailMessage).where(
-            EmailMessage.campaign_id == campaign_id, EmailMessage.direction == "INBOUND",
+            EmailMessage.campaign_id == campaign_id, reply_message(),
             EmailMessage.conversation_id.in_(conversations)
         ).order_by(EmailMessage.sent_at.desc()).limit(limit)).scalars())
 
     def schedule_rows(self, campaign_id: str) -> list[Any]:
+        """The campaign's outbound step emails (replies and bounce notes are not part of the schedule)."""
         return list(self._s.execute(select(
             EmailMessage.message_id, EmailMessage.scheduled_at, EmailMessage.sent_at, EmailMessage.status,
             EmailMessage.sequence_id, EmailMessage.prospect_id, EmailMessage.subject_variant,
             Prospect.first_name, Prospect.last_name, Prospect.email,
         ).join(Prospect, Prospect.prospect_id == EmailMessage.prospect_id).where(
-            EmailMessage.campaign_id == campaign_id)).all())
+            EmailMessage.campaign_id == campaign_id,
+            func.coalesce(EmailMessage.direction, "OUTBOUND") != "INBOUND")).all())

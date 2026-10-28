@@ -1,6 +1,8 @@
 """A4 refactor guard: the OpenAPI of the inbox, conversation and deliverability routers (operations and the
 schemas they reference) is identical to the snapshot taken from the classic routers before the layering
-(snapshots/a4_inbox_openapi.json)."""
+(snapshots/a4_inbox_openapi.json), except for the documented additions of UAT defect 2 (agent tz): the
+system-notice flags ``MessageResponse.is_system`` and ``ConversationListItem.last_message_is_system``."""
+import copy
 import json
 from pathlib import Path
 
@@ -9,6 +11,7 @@ from fastapi import FastAPI
 from app.routers import conversation_router, deliverability_router, inbox_router
 
 SNAPSHOT = Path(__file__).with_name("snapshots") / "a4_inbox_openapi.json"
+ADDED_FIELDS = {"MessageResponse": {"is_system"}, "ConversationListItem": {"last_message_is_system"}}
 
 
 def spec() -> dict:
@@ -24,4 +27,9 @@ def test_inbox_conversation_deliverability_openapi_unchanged():
     assert sorted(actual["paths"]) == sorted(expected["paths"])
     for path, methods in expected["paths"].items():
         assert actual["paths"][path] == methods, f"{path} changed"
-    assert actual.get("components") == expected.get("components")
+    components = copy.deepcopy(actual.get("components"))
+    for name, fields in ADDED_FIELDS.items():
+        props = components["schemas"][name]["properties"]
+        for field in fields:
+            assert props.pop(field) == {"default": False, "title": field.replace("_", " ").title(), "type": "boolean"}
+    assert components == expected.get("components")

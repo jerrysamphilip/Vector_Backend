@@ -6,8 +6,8 @@ Pydantic schemas for Automation Rules.
 
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
-from datetime import datetime
 from app.domain.automation import ActionType, TriggerType
+from app.schemas.types import UtcDatetime
 
 class AutomationRuleBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
@@ -31,8 +31,8 @@ class AutomationRuleUpdate(BaseModel):
 class AutomationRuleResponse(AutomationRuleBase):
     rule_id: str
     campaign_id: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
 
     class Config:
         from_attributes = True

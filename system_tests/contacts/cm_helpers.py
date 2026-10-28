@@ -115,6 +115,19 @@ def run_import(token, content: bytes, mapping: dict, options: dict = None, fname
     return status, body, secs
 
 
+def wait_import(token, import_id, timeout=1800, poll=2.0):
+    """Poll GET /imports/{id} until the job is COMPLETED, FAILED or CANCELLED (files over IMPORT_SYNC_MAX_ROWS,
+    default 1,000 rows, are queued background jobs: POST /imports answers 202). Returns (job, seconds waited)."""
+    t0 = time.perf_counter()
+    job = {}
+    while time.perf_counter() - t0 < timeout:
+        s, job = req("GET", f"/imports/{import_id}", None, token)
+        if s == 200 and isinstance(job, dict) and job.get("status") in ("COMPLETED", "FAILED", "CANCELLED"):
+            break
+        time.sleep(poll)
+    return job, time.perf_counter() - t0
+
+
 def timed(method, path, token, body=None):
     t0 = time.perf_counter()
     s, b = req(method, path, body, token)

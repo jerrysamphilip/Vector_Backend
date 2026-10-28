@@ -24,6 +24,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
  
 from app.core.config import settings
+from app.core.json_encoding import install_utc_datetime_encoder
  
 # Import all models FIRST to resolve SQLAlchemy relationships
 import app.models  # noqa: F401
@@ -77,6 +78,9 @@ async def lifespan(app: FastAPI):
             from app import jobs
             await jobs.stop_jobs(tasks)
 
+
+# Plain-dict responses write datetimes as UTC with a zone (...Z), like the response models (UAT defect 2)
+install_utc_datetime_encoder()
 
 # Create FastAPI app with lifespan
 # API docs are off in production unless ENABLE_DOCS=true

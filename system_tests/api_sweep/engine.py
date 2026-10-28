@@ -176,17 +176,19 @@ def _trunc(v, n):
     return s if len(s) <= n else s[:n] + "..."
 
 
-def _idem_second(self, ep_id, t, pp, kind, first_status):
-    """Repeat a successful DELETE: the resource is gone -> 404 (never 5xx, never 2xx 'deleted again')."""
+def _idem_second(self, ep_id, t, pp, kind, first_status, expect=(404, 410)):
+    """Repeat a successful DELETE: the resource is gone -> 404 (never 5xx, never 2xx 'deleted again').
+    A soft delete (e.g. a property is only deactivated, C-17) passes expect=(200,): repeating it is idempotent."""
     ep = self.EP[ep_id]
     if not (200 <= first_status < 300):
         return
     s, b, h = self.call(ep_id, t, "SUPER_ADMIN", pp, tag="idem")
-    ok = s in (404, 410)
+    ok = s in expect
+    want = "/".join(str(x) for x in expect)
     if self.recording:
         self.rec.rec(ep_id, ep["method"], ep["path"], "IDEM", f"second-{kind}", ok,
-                     f"second {ep['method']} returned {s}: {_trunc(b, 200)} (expected 404)",
-                     evidence={"status": s, "resp": _trunc(b, 300)}, title=f"{ep_id} repeated -> 404")
+                     f"second {ep['method']} returned {s}: {_trunc(b, 200)} (expected {want})",
+                     evidence={"status": s, "resp": _trunc(b, 300)}, title=f"{ep_id} repeated -> {want}")
 
 
 Engine.idem_second = _idem_second

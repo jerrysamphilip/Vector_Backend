@@ -5,8 +5,8 @@ Pydantic schemas for Email Template API.
 
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
-from datetime import datetime
 from enum import Enum
+from app.schemas.types import UtcDatetime
 
 
 class TemplateTone(str, Enum):
@@ -91,7 +91,7 @@ class EmailAttachmentResponse(BaseModel):
     filename: str
     content_type: Optional[str] = None
     size_bytes: int
-    created_at: datetime
+    created_at: UtcDatetime
 
     class Config:
         from_attributes = True
@@ -118,10 +118,10 @@ class EmailTemplateResponse(BaseModel):
 
     # Approval info
     approved_by: Optional[str] = None
-    approved_at: Optional[datetime] = None
+    approved_at: Optional[UtcDatetime] = None
     is_approved: bool = False
 
-    created_at: datetime
+    created_at: UtcDatetime
 
     # Version info
     version_count: int = 0
@@ -141,7 +141,7 @@ class EmailTemplateListItem(BaseModel):
     is_ai_generated: bool
     is_approved: bool
     step_number: Optional[int] = None
-    created_at: datetime
+    created_at: UtcDatetime
     
     class Config:
         from_attributes = True
@@ -156,7 +156,7 @@ class TemplateVersionResponse(BaseModel):
     body: str
     version_number: int
     created_by: str
-    created_at: datetime
+    created_at: UtcDatetime
     is_active: bool
     
     class Config:

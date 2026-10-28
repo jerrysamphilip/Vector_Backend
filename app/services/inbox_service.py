@@ -22,7 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from app.adapters import providers
 from app.adapters.mail import MailConnector
-from app.core.clock import utcnow
+from app.core.clock import iso_utc, utcnow
 from app.core.config import settings
 from app.core.errors import BadRequestError, DomainError, NotFoundError, ValidationFailed
 from app.core.tls import tls_error_message
@@ -287,7 +287,7 @@ class InboxService:
             "message": f"IMAP sync for last {days} days completed.",
             "inbox": email_address,
             "imap_host": imap_host,
-            "last_sync_at": last_sync_at.isoformat() if last_sync_at else None,
+            "last_sync_at": iso_utc(last_sync_at),
         }
 
     def test_imap(self, user: User, inbox_id: str) -> Dict[str, Any]:
@@ -306,7 +306,7 @@ class InboxService:
                 "inbox": inbox.email_address, "imap_host": imap.effective_imap_host,
                 "imap_port": imap.effective_imap_port, "imap_username": imap.effective_imap_username,
                 "imap_derived_from_smtp": imap.imap_host_derived,
-                "last_sync_at": inbox.last_sync_at.isoformat() if inbox.last_sync_at else None,
+                "last_sync_at": iso_utc(inbox.last_sync_at),
                 "status": None, "error": None, "recent_inbox_emails": [],
             }
             host, port = imap.effective_imap_host, imap.effective_imap_port

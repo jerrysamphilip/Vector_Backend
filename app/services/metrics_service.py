@@ -5,6 +5,7 @@ Real-time metrics service for campaign dashboard.
 
 from typing import Any
 
+from app.domain.reports import delivered
 from app.models.metrics import CampaignMetricsRealtime
 from app.models.email_message import EmailEvent
 from app.repositories.campaign_metrics import Session, campaign_metrics_repo
@@ -139,9 +140,11 @@ class MetricsService:
 
         m = CampaignAnalyticsService(self.db).get_dynamic_metrics(campaign_id)
         sent = m["sent_count"]
+        # open / reply rates over delivered (sent - bounced), bounce rate over sent (app.domain.reports.delivered)
+        base = delivered(sent, m["bounced_count"])
 
-        def rate(n) -> float:
-            return (n / sent) * 100 if sent else 0.0
+        def rate(n, whole=base) -> float:
+            return (n / whole) * 100 if whole else 0.0
 
         return {
             "sent_count": sent,
@@ -153,7 +156,7 @@ class MetricsService:
             "ooo_count": m["ooo_count"],
             "open_rate": rate(m["opened_count"]),
             "reply_rate": rate(m["replied_count"]),
-            "bounce_rate": rate(m["bounced_count"]),
+            "bounce_rate": rate(m["bounced_count"], sent),
         }
 
     def sync_campaign_metrics(self, campaign_id: str) -> Any:

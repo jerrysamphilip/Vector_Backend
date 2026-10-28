@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from app.core.clock import utcnow
-from app.domain.inbox import ConversationQuery, OwnerScope
+from app.domain.inbox import ConversationQuery, OwnerScope, is_system_notice
 from app.models.conversation import Conversation
 from app.models.email_message import EmailEvent, EmailMessage
 from app.models.user import User
@@ -93,6 +93,7 @@ def _list_item(row: ConversationRow, last: Optional[LastMessage], campaign: Opti
         last_message_direction=(last.direction if last else None) or "OUTBOUND",
         last_message_status=last.status if last else None,
         last_message_final_status=last.final_status if last else None,
+        last_message_is_system=bool(last and last.is_system),
         campaign_id=campaign[0] if campaign else None,
         campaign_name=campaign[1] if campaign else None,
         last_reply_label=label[0] if label else None,
@@ -144,7 +145,7 @@ class ConversationService:
             for message_id, event_type, at, metadata in repo.events_for(outbound_ids):
                 events.setdefault(message_id, []).append((event_type, at, metadata))
             names = repo.campaign_names(user.tenant_id, (m.campaign_id for m in messages))
-            replies_by_time = {m.sent_at: m for m in messages if m.direction == "INBOUND"}
+            replies_by_time = {m.sent_at: m for m in messages if m.direction == "INBOUND" and not is_system_notice(m)}
             detail = ConversationDetailResponse(
                 id=conversation.id, prospect_id=conversation.prospect_id, inbox_id=conversation.inbox_id,
                 subject=conversation.subject,
@@ -161,6 +162,7 @@ class ConversationService:
         response = MessageResponse.model_validate(m)
         response.campaign_name = names.get(m.campaign_id or "")
         response.reply_needs_review = bool(m.reply_needs_review)
+        response.is_system = is_system_notice(m)
         if (m.direction or "OUTBOUND") == "OUTBOUND":
             response.activity = build_activity(m, events, replies_by_time)
         return response

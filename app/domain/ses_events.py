@@ -6,6 +6,7 @@ receives. No I/O.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 # Statuses in which a sent email can receive its SES outcome. SENDING: SES accepted the mail and its
@@ -55,6 +56,25 @@ def dedupe_key(message: dict, notification_type: Optional[str], sns_message_id: 
     if sns_message_id:
         return f"sns:{sns_message_id}"
     return None
+
+
+def parse_ses_timestamp(text: Any) -> Optional[datetime]:
+    """An ISO 8601 timestamp from SES (``2026-10-26T17:54:05.000Z``) as naive UTC (the database form); None
+    when it is missing or unreadable. A value without a zone is taken as UTC."""
+    if not isinstance(text, str) or not text.strip():
+        return None
+    try:
+        value = datetime.fromisoformat(text.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
+
+
+def event_time(message: dict, notification_type: Optional[str]) -> Optional[datetime]:
+    """When SES says the event happened (``bounce.timestamp``, ``complaint.timestamp``, ...) as naive UTC, or
+    None when the event carries no readable timestamp (the caller then uses the processing time)."""
+    detail = message.get(EVENT_DETAIL_KEYS.get(notification_type or "", ""), {}) or {}
+    return parse_ses_timestamp(detail.get("timestamp")) if isinstance(detail, dict) else None
 
 
 def is_sender_attributable_bounce(bounce_type: Optional[str], diagnostic_code: Optional[str]) -> bool:

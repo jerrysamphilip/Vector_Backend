@@ -65,7 +65,7 @@ def test_schedule_buckets_by_day_step_and_state_counting_each_prospect_once():
                     ("2031-03-04", 1, "QUEUED", 1), ("2031-03-04", 2, "QUEUED", 1)]
     sent_bucket = out["schedule"][1]
     assert set(sent_bucket) == {"date", "status", "prospect_count", "step_number", "prospects"}
-    assert sent_bucket["prospects"][0]["sent_at"] == day.isoformat()
+    assert sent_bucket["prospects"][0]["sent_at"] == day.isoformat() + "Z"  # UTC, named (app.core.clock.iso_utc)
     assert sent_bucket["prospects"][0]["name"] == "Ann"
 
 

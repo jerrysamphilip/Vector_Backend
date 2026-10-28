@@ -5,8 +5,10 @@ Pydantic schemas for Campaign API.
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Any, Dict, Literal, Optional, List
-from datetime import datetime, date, time
+from datetime import date, time
 from enum import Enum
+from app.domain.reports import delivered, rate
+from app.schemas.types import UtcDatetime
 
 
 class CampaignStatus(str, Enum):
@@ -242,15 +244,13 @@ class CampaignMetrics(BaseModel):
 
     @property
     def open_rate(self) -> float:
-        if self.sent_count == 0:
-            return 0.0
-        return round((self.opened_count / self.sent_count) * 100, 2)
-    
+        """opened / delivered (sent - bounced), like every other screen."""
+        return rate(self.opened_count, delivered(self.sent_count, self.bounced_count))
+
     @property
     def reply_rate(self) -> float:
-        if self.sent_count == 0:
-            return 0.0
-        return round((self.replied_count / self.sent_count) * 100, 2)
+        """replied / delivered (sent - bounced)."""
+        return rate(self.replied_count, delivered(self.sent_count, self.bounced_count))
     
     class Config:
         from_attributes = True
@@ -269,7 +269,7 @@ class CampaignResponse(BaseModel):
     row_version: int = 1  # send back as expected_version on update / launch / pause / resume (T-3)
     # Why it is paused; auto_paused = paused by the deliverability guard (BR-DF-07)
     paused_reason: Optional[str] = None
-    paused_at: Optional[datetime] = None
+    paused_at: Optional[UtcDatetime] = None
     auto_paused: Optional[bool] = False
     
     created_by: str
@@ -290,8 +290,8 @@ class CampaignResponse(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
 
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
     
     # Metrics (optional, loaded separately)
     metrics: Optional[CampaignMetrics] = None
@@ -349,8 +349,8 @@ class CampaignListItem(BaseModel):
     in_progress_count: int = 0
     prospect_count: int = 0
 
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
     
     class Config:
         from_attributes = True
@@ -373,7 +373,7 @@ class CampaignStateChange(BaseModel):
     previous_status: CampaignStatus
     new_status: CampaignStatus
     reason: Optional[str] = None
-    changed_at: datetime
+    changed_at: UtcDatetime
     row_version: Optional[int] = None  # the campaign's new row_version (T-3)
     # Launch only: the planned volume exceeds what the mailboxes can send in the window (F-04)
     pacing_warning: Optional[Dict[str, Any]] = None

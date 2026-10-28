@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 
 from botocore.exceptions import BotoCoreError, ClientError
 
-from app.core.clock import utcnow
+from app.core.clock import iso_utc, utcnow
 from app.core.config import settings
 from app.core.errors import BadRequestError, ConflictError, GoneError, NotFoundError, TooManyRequests
 from app.core.secrets_guard import is_deployed
@@ -174,7 +174,7 @@ def issue_invite(uow: IdentityUnitOfWork, request: Optional[HeaderSource], actor
         "email": email,
         "role": role,
         "invite_token": None,
-        "expires_at": invitation.expires_at.isoformat(),
+        "expires_at": iso_utc(invitation.expires_at),
         "email_delivery": email_delivery,
         # Local development without email only: the sign-in link, shown once (never a password)
         "show_once_link": show_once_link(email, magic_login_link, bool(email_delivery.get("sent"))),
@@ -205,8 +205,8 @@ def _invitation_out(inv: Invitation) -> Dict[str, Any]:
         "email": inv.email,
         "role": inv.role,
         "status": inv.status,
-        "expires_at": inv.expires_at.isoformat() if inv.expires_at else None,
-        "created_at": inv.created_at.isoformat() if inv.created_at else None,
+        "expires_at": iso_utc(inv.expires_at),
+        "created_at": iso_utc(inv.created_at),
     }
 
 

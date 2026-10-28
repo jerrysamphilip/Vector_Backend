@@ -21,7 +21,7 @@ Run: image `vector-api:e2e` built 13 Oct 07:14 from the tree after commit b51812
 | D10 | Fixed; passed in this run | E2E-J6-03 pass (1 of 1 runs; previously failed 1 of 3); pytest `test_automation_send_is_not_a_duplicate_of_step_one`. The two extra J6 repeats could not run: another agent recreated `vector-api-1`/`vector-worker-1` without the SES stand-in wiring (pre-flight refused). The run was not restarted, per the no-container-restart rule. |
 | NI-1 | Not implemented | E2E-J1-87b: no built-in notification when a deal is won or changes stage (agent got only `ASSIGNED`, manager 0). |
 | NI-2 | Not implemented | E2E-J2-09: auto-pause raises a reputation alert but no in-app notification (`items: []`). |
-| NI-3 | Blocked (needs LLM) | E2E-J1-67: positive-reply detection needs `OPENAI_API_KEY`; there is no keyword fallback. |
+| NI-3 | Resolved (S-09) | E2E-J1-67/68: without `OPENAI_API_KEY` the rule-based reply classifier (app/services/reply_classifier.py) labels the reply POSITIVE (source RULES) and it is suggested as a lead; the cases now assert that. |
 
 No new defects were found in this run.
 
@@ -80,7 +80,7 @@ Self-corrects at send time (B01 re-planning, E2E-J1-96/99 pass) but the schedule
 The temporary password is e-mailed in clear text (by design of that flow).
 
 ### Not implemented (expected by the journeys, absent in the product)
-- No automatic reply -> lead: leads are created by the one-click `/leads/from-message`; "positive reply" suggestions need an LLM (no heuristic fallback) (E2E-J1-67).
+- No automatic reply -> lead: leads are created by the one-click `/leads/from-message`; "positive reply" suggestions come from the reply classifier, which falls back to rules without an LLM (E2E-J1-67).
 - No notification when a deal is won / changes stage, and none to the owner/manager when a campaign is auto-paused (alert only) (E2E-J1-87b, E2E-J2-09). Workflow rules can add them (E2E-J6-07).
 
 ### Observations

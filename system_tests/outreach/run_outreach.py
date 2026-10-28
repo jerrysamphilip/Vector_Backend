@@ -1048,9 +1048,28 @@ def check_scheduler_cases(sc):
         st[0] == "FAILED" and "PERSONAL" in st[4] and st[2] == "FAILED", f"{st}")
     ok = sc["ok"]
     first = mstatus(ok)
+    endpoint = ses_endpoint()
+    if endpoint:
+        # The e2e wiring (CI live-stack `all`/`e2e`) points the api/worker at the SES stand-in, which accepts the
+        # email: the "SES unreachable" path cannot be reached on this stack (environment, not a product result)
+        blocked("OUT-049", "SES unavailable: retried with backoff, then FAILED with a final status",
+                f"needs SES to be unreachable, but the stack is wired to an SES stand-in (AWS_ENDPOINT_URL={endpoint}); "
+                f"observed {first[:3]}")
+        return
     final = wait_until(lambda: mstatus(ok)[2] == "FAILED", timeout=max(10, 600 - (time.time() - sc["t0"])), interval=15)
     rec("OUT-049", "SES unavailable: retried with backoff, then FAILED with a final status and reason",
         final and int(mstatus(ok)[3]) >= 1 and mstatus(ok)[1], f"first={first} final={mstatus(ok)}")
+
+
+def ses_endpoint():
+    """AWS_ENDPOINT_URL of the worker that sends (empty: real SES, unreachable here without AWS credentials)."""
+    container = os.environ.get("TEST_WORKER_CONTAINER", "vector-worker-1")
+    try:
+        out = subprocess.run(["docker", "exec", container, "printenv", "AWS_ENDPOINT_URL"], capture_output=True,
+                             text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return out.stdout.strip() if out.returncode == 0 else ""
 
 
 def check_background(bg):

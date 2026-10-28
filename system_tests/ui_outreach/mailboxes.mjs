@@ -6,7 +6,8 @@ const dom = `mb${ws.rid}.example`;
 const ib = await mkInbox(ws, 'sales', dom);
 const { page, w } = await S.open(ws);
 dialogs(page, 'accept');
-const modal = () => page.locator('div.fixed').last();
+// the open modal: a Radix dialog panel (role=dialog/alertdialog) since frontend b3f05f5; div.fixed also matches the toast region
+const modal = () => page.locator('[role="dialog"], [role="alertdialog"]').last();
 const E = `sales@${dom}`;
 const rowBox = () => page.locator('div').filter({ hasText: E }).filter({ has: page.locator('button[aria-label="Edit sending and receiving settings"]') }).last();
 

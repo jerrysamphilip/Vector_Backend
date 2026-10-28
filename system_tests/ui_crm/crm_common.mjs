@@ -1,5 +1,6 @@
 // Shared helpers for the CRM/Sales functional UI suites (extends ../ui/ui_common.mjs without editing it).
 import { Workspace, launch, session, watch, Recorder, api as rawApi, loginToken, API, WEB } from '../ui/ui_common.mjs';
+import { onConfirm } from '../ui/confirm_dialogs.mjs';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -123,6 +124,9 @@ export async function ui(browser, user, opts = {}) {
   const w = watch(page);
   const u = { ctx, page, w, user };
   page.on('dialog', d => { u.lastDialog = d.message(); d.accept().catch(() => {}); });
+  // the app's in-app ConfirmDialog (Radix, frontend b3f05f5): same contract; set u.confirmMode = 'dismiss' or null per test
+  u.confirmMode = 'accept';
+  await onConfirm(page, text => { u.lastDialog = text; return u.confirmMode; }).ready;
   return u;
 }
 export async function go(u, route, { wait = 600 } = {}) {
@@ -206,7 +210,8 @@ export async function standalone(area, runFn) {
   const c = rec.write(); console.log(JSON.stringify(c));
 }
 export const isMain = (meta) => meta.url === `file://${process.argv[1]}`;
-export const modalLoc = (page) => page.locator('div.fixed.inset-0').last();
+// The open (top-most) modal: every overlay is a DialogPanel (role=dialog, Radix) since frontend b3f05f5
+export const modalLoc = (page) => page.locator('[role="dialog"], [role="alertdialog"]').last();
 
 /** HTML5 drag and drop by dispatching the drag events with one shared DataTransfer (works when source/target are not both in the viewport). */
 export async function dnd(page, src, dst) {

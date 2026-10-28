@@ -232,7 +232,7 @@ class MergeRepo:
     def reassign_children(self, a, b):
         return 0, 0
 
-    def repoint_merged(self, a, b):
+    def repoint_merged(self, tenant_id, a, b):
         pass
 
     def links_of(self, pid):

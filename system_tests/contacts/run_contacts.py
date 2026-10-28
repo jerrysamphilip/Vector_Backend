@@ -24,7 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
 sys.path.insert(0, HERE)
 from common import API, WEB, Results, Workspace, req, sql  # noqa: E402
-from cm_helpers import count, csv_bytes, parse_csv, pct, q, run_import, timed, xlsx_bytes  # noqa: E402
+from cm_helpers import count, csv_bytes, parse_csv, pct, q, run_import, timed, wait_import, xlsx_bytes  # noqa: E402
 
 R = Results("Contact Management (BRD §5.2)", HERE)
 PERF = "--no-perf" not in sys.argv
@@ -997,18 +997,27 @@ def _():
             f"st={st} created={job.get('companies_created')} updated={job.get('companies_updated')} errors={job.get('errors')} industry={ind}")
 
 
-@case("CM-055", "Import validation: no email/company column, bad mapping, agent, >10k rows (BR-CM-25/26)")
+# The row limit is 50,000 since background imports (C-03, app/domain/imports.py ImportLimits.max_rows): files over
+# 1,000 rows are queued (202, covered by CM-090), files over the limit are rejected before anything is stored.
+@case("CM-055", "Import validation: no email/company column, bad mapping, agent, >50k rows (BR-CM-25/26)")
 def _():
     f = csv_bytes(["Email", "Name"], [["a@b.co", "A"]])
     s1, b1, _ = run_import(C.owner, f, {"Name": "contact.first_name"})
     s2, b2, _ = run_import(C.owner, f, {"Email": "contact.password"})
     s3, b3, _ = run_import(C.agent1["token"], f, {"Email": "contact.email"})
-    big = csv_bytes(["Email"], [[f"big{i}.{C.rid}@bigco-{C.rid}.com"] for i in range(10001)])
+    big = csv_bytes(["Email"], [[f"big{i}.{C.rid}@bigco-{C.rid}.com"] for i in range(50001)])
     s4, b4, _ = run_import(C.owner, big, {"Email": "contact.email"})
+    stored = count(f"SELECT COUNT(*) FROM prospects WHERE tenant_id='{W.tenant_id}' AND email LIKE 'big%.{C.rid}@bigco-{C.rid}.com'")
     s5, b5, _ = run_import(C.owner, b"\x00\x01garbage", {"Email": "contact.email"}, fname="x.xlsx")
-    R.check("CM-055", "Import validation: no email/company column, bad mapping, agent, >10k rows (BR-CM-25/26)",
-            s1 == 400 and s2 == 400 and s3 == 403 and s4 == 400 and "10,000" in str(b4) and s5 == 400,
-            f"no_key={s1} bad_target={s2} agent={s3} 10001rows={s4} {str(b4)[:100]} garbage={s5}")
+    # 1,001 rows: over the synchronous limit, so it is queued for the worker (it keeps this tenant small for CM-094)
+    mid = csv_bytes(["Email"], [[f"mid{i}.{C.rid}@midco-{C.rid}.com"] for i in range(1001)])
+    s6, b6, _ = run_import(C.owner, mid, {"Email": "contact.email"})
+    queued = b6.get("status") if isinstance(b6, dict) else b6
+    R.check("CM-055", "Import validation: no email/company column, bad mapping, agent, >50k rows (BR-CM-25/26)",
+            s1 == 400 and s2 == 400 and s3 == 403 and s4 == 400 and "50,000" in str(b4) and stored == 0 and s5 == 400
+            and s6 == 202 and queued in ("QUEUED", "RUNNING", "COMPLETED"),
+            f"no_key={s1} bad_target={s2} agent={s3} 50001rows={s4} {str(b4)[:100]} stored={stored} garbage={s5} "
+            f"1001rows={s6}/{queued}")
 
 
 @case("CM-056", "Simultaneous imports by several users never create duplicate contacts/companies (BR-CM-28)")
@@ -1161,10 +1170,12 @@ def _():
     s2, m = req("POST", "/contacts/merge", {"primary_id": c["prospect_id"], "duplicate_ids": [d["prospect_id"]],
                                             "choices": {"email": d["prospect_id"]}}, C.owner)
     email = m.get("contact", {}).get("email") if isinstance(m, dict) else None
-    s3, _ = req("POST", "/contacts", {"email": c["email"]}, C.owner)  # old address is free again
+    # E-mail history (C-11): the primary's old address stays reserved and resolves to the surviving contact, so
+    # re-creating it is a 409 that names the survivor (app/repositories/contacts.py resolve_contact_by_email)
+    s3, b3 = req("POST", "/contacts", {"email": c["email"]}, C.owner)
     R.check("CM-064", "Merge can keep the duplicate's email; agent cannot merge; self-merge rejected (BR-CM-33)",
-            s0 == 400 and s1 == 403 and s2 == 200 and email == d["email"] and s3 == 201,
-            f"self={s0} agent={s1} merge={s2} email={email} recreate_old_email={s3}")
+            s0 == 400 and s1 == 403 and s2 == 200 and email == d["email"] and s3 == 409 and c["prospect_id"] in str(b3),
+            f"self={s0} agent={s1} merge={s2} email={email} recreate_old_email={s3} {str(b3)[:160]}")
 
 
 @case("CM-065", "Data-quality flags: phone format and name capitalisation (BR-CM-34)")
@@ -1599,13 +1610,19 @@ def perf():
         "Email": "contact.email", "First Name": "contact.first_name", "Last Name": "contact.last_name",
         "Company": "company.name", "Company Domain": "company.domain", "Phone": "contact.phone",
         "Lifecycle Stage": "contact.lifecycle_stage", "Country": "contact.poc_country"}, fname="perf10k.csv", timeout=1800)
+    queued = st
+    if st == 202 and isinstance(job, dict):  # > 1,000 rows: a queued background job (C-03); wait for the worker
+        job, waited = wait_import(P.token, job["import_id"], timeout=1800)
+        secs += waited
     PERF_OUT.update(import_10k_status=st, import_10k_seconds=round(secs, 1),
                     import_10k_created=job.get("contacts_created") if isinstance(job, dict) else str(job)[:200],
                     import_10k_companies=job.get("companies_created") if isinstance(job, dict) else None,
                     import_10k_rows_per_sec=round(10000 / secs, 1))
-    R.check("CM-090", "NFR: a 10,000-row file imports successfully (§6 Scale)",
-            st == 201 and isinstance(job, dict) and job["contacts_created"] == 10000 and job["companies_created"] == 800,
-            f"status={st} secs={secs:.1f} created={PERF_OUT['import_10k_created']} companies={PERF_OUT['import_10k_companies']}")
+    R.check("CM-090", "NFR: a 10,000-row file imports successfully as a background job (§6 Scale)",
+            queued == 202 and isinstance(job, dict) and job.get("status") == "COMPLETED"
+            and job["contacts_created"] == 10000 and job["companies_created"] == 800,
+            f"status={queued} job={job.get('status') if isinstance(job, dict) else job} secs={secs:.1f} "
+            f"created={PERF_OUT['import_10k_created']} companies={PERF_OUT['import_10k_companies']}")
     tenant_rows = count(f"SELECT COUNT(*) FROM prospects WHERE tenant_id='{P.tenant_id}'")
     total_rows = count("SELECT COUNT(*) FROM prospects")
     queries = ["priya", "sharma", "garcia42", "john.smith", "maria.chen.1", "9800001234", "98 0000 5678", "+91 9800009999",

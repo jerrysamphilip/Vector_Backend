@@ -3,6 +3,8 @@
 snapshots/a4_inbox_ddl.txt was generated from the classic models before the conversion: CREATE TABLE /
 CREATE INDEX for MySQL plus every column's nullability, defaults and on-update values. No database needed.
 Snapshot re-rendered for alembic/versions/0032_server_defaults.py (server DEFAULTs only).
+Re-rendered again when conversations.last_message_at lost its ORM-side onupdate (agent follow; the column never
+had a server-side ON UPDATE, so the CREATE TABLE is unchanged and no migration is needed).
 """
 from pathlib import Path
 

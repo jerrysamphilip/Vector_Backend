@@ -5,7 +5,7 @@ Pydantic schemas for the Reports API.
 
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime
+from app.schemas.types import UtcDatetime
 
 
 # ===========================
@@ -57,7 +57,7 @@ class CampaignComparisonItem(BaseModel):
     open_rate: float = 0.0
     reply_rate: float = 0.0
     bounce_rate: float = 0.0
-    created_at: Optional[datetime] = None
+    created_at: Optional[UtcDatetime] = None
 
 
 class CampaignComparisonResponse(BaseModel):

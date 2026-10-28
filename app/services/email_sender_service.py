@@ -30,12 +30,17 @@ from app.services import compliance_service
 from app.services.sender_identity import get_sender_identity
 from app.services.send_errors import PERMANENT_CODES, SENDER_CODES, FailureKind, classify_ses_error
 from app.utils.email_utils import (
+    UNSUBSCRIBE_REPLY_LINE,
+    append_footer,
+    is_html_body,
+    unsubscribe_link_line,
     normalize_unsubscribe_footer,
     strip_cta_content_no_link,
     normalize_cta_link,
     has_effective_cta_link,
     normalize_paragraph_spacing,
     build_signature_block,
+    has_visible_text,
 )
 
 logger = logging.getLogger(__name__)
@@ -193,19 +198,17 @@ def is_internal_mail(sender_email: str, recipient_email: str) -> bool:
     return sender_domain != '' and sender_domain == _domain(recipient_email)
 
 
-def with_unsubscribe_line(body_content: str, unsubscribe_url: str, unsubscribe_mode: Optional[str]) -> str:
-    """Append the unsubscribe sentence (an HTML link, or 'reply unsubscribe') unless a link is already there."""
+def with_unsubscribe_line(body_content: str, unsubscribe_url: str, unsubscribe_mode: Optional[str],
+                          html_body: Optional[bool] = None) -> str:
+    """Append the unsubscribe sentence (an HTML link, or 'reply unsubscribe') unless a link is already there:
+    on its own line, or as a <p> block when the body is HTML (``html_body``; None: decided from the body)."""
     if "/api/tracking/unsubscribe/" in body_content:
         return body_content
+    html_body = is_html_body(body_content) if html_body is None else html_body
     if (unsubscribe_mode or 'plain') == 'html':
-        return body_content + (
-            f'\nPlease click on <a href="{unsubscribe_url}">unsubscribe</a> '
-            f'in case you do not wish to receive such business communication emails in the future.'
-        )
-    return body_content + (
-        "\nPlease reply 'unsubscribe' in case you do not wish to "
-        "receive such business communication emails in the future."
-    )
+        return append_footer(body_content, unsubscribe_link_line(unsubscribe_url), html_body=html_body, gap="\n",
+                             markup=True)
+    return append_footer(body_content, UNSUBSCRIBE_REPLY_LINE, html_body=html_body, gap="\n")
 
 
 # -----------------------------
@@ -678,8 +681,18 @@ class EmailSenderService:
         """
         Refuse before SES: cold outreach to a personal mailbox provider (gmail, yahoo, ...: they flag B2B
         outreach as spam and hurt the sender's reputation), or content over the pre-send lint threshold
-        (spam keywords, subject rules, Microsoft EOP ASF triggers, AI-style wording, link domains).
+        (spam keywords, subject rules, Microsoft EOP ASF triggers, AI-style wording, link domains), or a body
+        with no visible text (the footer and sign-off alone are never sent as an email).
         """
+        if not has_visible_text(body_content):
+            logger.error(f"[SES] Email BLOCKED — the body has no visible text. MessageId={email_message.message_id}, "
+                         f"Campaign={email_message.campaign_id}")
+            return {
+                "success": False,
+                "message_id": email_message.message_id,
+                "status": "BLOCKED_EMPTY_BODY",
+                "error": "Email body has no visible text; not sent. Edit the step's body and re-render the email.",
+            }
         if not compliance_service.is_business_email(prospect.email):
             logger.warning(
                 f"[SES] Email BLOCKED — personal email domain. "
@@ -722,21 +735,24 @@ class EmailSenderService:
                          is_internal: bool, unsubscribe_url: str, sender_name: Optional[str],
                          sender_title: Optional[str]) -> str:
         """The postal address and unsubscribe line (external mail only), the unsubscribe link placeholder
-        and exactly one sign-off."""
+        and exactly one sign-off; each its own <p> block on an HTML body, its own lines on a plain-text one
+        (app.utils.email_utils.append_footer). email_render.finalize_for_send mirrors this for the preview."""
+        html_body = is_html_body(body_content)
         if not is_internal:
-            body_content = self._with_postal_address(body_content, email_message, prospect, identity)
+            body_content = self._with_postal_address(body_content, email_message, prospect, identity, html_body)
             body_content = with_unsubscribe_line(body_content, unsubscribe_url,
-                                                 getattr(email_message.campaign, 'unsubscribe_mode', 'plain'))
+                                                 getattr(email_message.campaign, 'unsubscribe_mode', 'plain'),
+                                                 html_body)
         # Replace explicit unsubscribe placeholder if template uses it
         body_content = body_content.replace("{{unsubscribe_link}}", unsubscribe_url)
         if not self.has_sign_off(body_content):
-            body_content = body_content.rstrip() + (f"\n\nRegards,\n"
-                                                    f"{build_signature_block(sender_name, sender_title, identity.company_name)}")
+            signature = build_signature_block(sender_name, sender_title, identity.company_name)
+            body_content = append_footer(body_content.rstrip(), f"Regards,\n{signature}", html_body=html_body)
         return body_content
 
     @staticmethod
     def _with_postal_address(body_content: str, email_message: EmailMessage, prospect: Prospect,
-                             identity: Any) -> str:
+                             identity: Any, html_body: bool = False) -> str:
         """CAN-SPAM §5(a)(5): the SENDER's physical postal address appears in every email: the tenant's own,
         never a platform default. New launches are blocked without one; mail already in flight goes out
         without the line rather than with another company's."""
@@ -748,7 +764,7 @@ class EmailSenderService:
             )
             return body_content
         if identity.postal_address not in body_content and footer_line not in body_content:
-            body_content += f"\n\n{footer_line}"
+            body_content = append_footer(body_content, footer_line, html_body=html_body)
         return body_content
 
     @staticmethod

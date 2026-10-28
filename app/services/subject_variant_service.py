@@ -18,7 +18,7 @@ The pure rules live in app/services/ab_testing.py.
 from collections import defaultdict
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
-from app.core.clock import utcnow
+from app.core.clock import iso_utc, utcnow
 from app.core.config import settings
 from app.models.campaign import Campaign
 from app.models.email_message import EmailEvent
@@ -331,7 +331,7 @@ class SubjectVariantService:
                 "message_id": m.message_id, "prospect_id": m.prospect_id,
                 "name": f"{first or ''} {last or ''}".strip(), "to_email": m.to_email,
                 "subject": m.subject, "subject_variant": m.subject_variant, "status": m.status,
-                "sent_at": m.sent_at.isoformat() if m.sent_at else None,
-                "scheduled_at": m.scheduled_at.isoformat() if m.scheduled_at else None,
+                "sent_at": iso_utc(m.sent_at),
+                "scheduled_at": iso_utc(m.scheduled_at),
             } for m, first, last in rows],
         }

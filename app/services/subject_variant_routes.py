@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+from app.core.clock import iso_utc
 from app.core.errors import (
     BadRequestError, ConflictError, DomainError, NotFoundError, PermissionDenied, ValidationFailed,
 )
@@ -34,7 +35,7 @@ def _domain_error(e: SubjectVariantError) -> DomainError:
 
 def variant_out(v: Any) -> dict:
     return {"variant_id": v.variant_id, "label": v.label, "subject": v.subject, "weight": v.weight,
-            "is_winner": bool(v.is_winner), "promoted_at": v.promoted_at.isoformat() if v.promoted_at else None}
+            "is_winner": bool(v.is_winner), "promoted_at": iso_utc(v.promoted_at)}
 
 
 class SubjectVariantRoutesService:

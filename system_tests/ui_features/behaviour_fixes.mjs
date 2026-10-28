@@ -82,7 +82,12 @@ export async function run(rec, browser) {
   }, { u: A });
 
   await tc(rec, 'UIF-BF-05', 'Send Now: confirm -> batches continue with a cursor until done -> one result summary (Sent/Failed/Skipped)', async () => {
-    const camp = await must(t.token, 'POST', '/campaigns', { campaign_name: `BF send now ${t.rid}`, start_date: new Date(Date.now() + 20 * 864e5).toISOString().slice(0, 10) });
+    // send-now needs an ACTIVE sending inbox (app/services/send_guards.py); smtp.invalid never resolves (RFC 2606)
+    const sn = `sn${crypto.randomBytes(3).toString('hex')}`;
+    const ib = await must(t.token, 'POST', '/inboxes', { email_address: `${sn}@bfsn${t.rid}.example`, smtp_host: 'smtp.invalid', smtp_username: sn,
+      smtp_password: `Smtp-${t.rid}`, warmup_enabled: false });
+    const camp = await must(t.token, 'POST', '/campaigns', { campaign_name: `BF send now ${t.rid}`, inbox_ids: [ib.inbox_id],
+      start_date: new Date(Date.now() + 20 * 864e5).toISOString().slice(0, 10) });
     const cid = camp.campaign_id;
     await must(t.token, 'POST', `/campaigns/${cid}/sequences`, { step_number: 1, wait_days: 0 });
     await must(t.token, 'POST', `/campaigns/${cid}/content/stub`);
@@ -101,13 +106,14 @@ export async function run(rec, browser) {
     const onReq = r => { if (/\/send-now/.test(r.url())) calls.push(r.url()); };
     p.on('request', onReq);
     await go(A, `campaigns/${cid}`);
-    A.lastDialog = null;
+    // the result is an in-page banner since frontend b3f05f5 (was window.alert): "Send now finished: N sent, N failed, N skipped."
     await p.getByRole('button', { name: /Send Now/ }).click();
-    const deadline = Date.now() + 60000;
-    while (!/Success/.test(A.lastDialog || '') && Date.now() < deadline) await p.waitForTimeout(300);
+    const banner = p.getByText(/^(Send now finished:|Error sending emails)/);
+    const shown = await banner.waitFor({ timeout: 60000 }).then(() => true, () => false);
     p.off('request', onReq);
-    ok(/Success/.test(A.lastDialog || ''), `result summary shown: ${A.lastDialog}`);
-    ok(/Sent: 0/.test(A.lastDialog) && /Failed: 0/.test(A.lastDialog) && /Skipped: 30/.test(A.lastDialog), `totals over all batches: ${A.lastDialog}`);
+    const text = shown ? await banner.innerText() : '';
+    ok(shown, `result summary shown: ${text}`);
+    ok(/\b0 sent\b/.test(text) && /\b0 failed\b/.test(text) && /\b30 skipped\b/.test(text), `totals over all batches: ${text}`);
     eq(calls.length, 2, `two batch requests (25 + 5): ${calls}`);
     ok(new URL(calls[1]).searchParams.get('cursor') && new URL(calls[1]).searchParams.get('since'), 'second request continues the run');
     eq(dbn(`SELECT COUNT(*) FROM email_messages WHERE campaign_id='${cid}' AND status='CANCELLED'`), 30, 'every message handled once');

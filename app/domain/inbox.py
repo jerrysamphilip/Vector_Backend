@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from app.domain.paging import Paging
 
@@ -39,6 +39,7 @@ class LabelSource(str, Enum):
     HEADER = "HEADER"   # RFC 3834 Auto-Submitted (out of office)
     RULES = "RULES"     # rule-based classifier (no key, over budget, LLM failed, or a plain opt-out)
     LLM = "LLM"         # LLM through app/services/llm_budget.py
+    SYSTEM = "SYSTEM"   # not a reply: a system notice (the SES bounce note), never classified
 
 
 # An UNSUBSCRIBE at or above this confidence suppresses the contact; below it the reply is only
@@ -49,6 +50,28 @@ UNSUBSCRIBE_AUTO_CONFIDENCE = 0.85
 MAX_CLASSIFY_ATTEMPTS = 3
 # Replies older than this are not (re)classified by the job.
 CLASSIFY_LOOKBACK_DAYS = 30
+
+
+# System notices (UAT defect 2): the "Delivery Failed" note the SES webhook writes into a thread when a sent
+# email hard-bounces. It is an INBOUND row (it shows in the thread) but not a reply from the contact: its
+# sender is this address and its reply_label_source is SYSTEM (so the reply classifier skips it).
+SYSTEM_NOTICE_SENDER = "MAILER-DAEMON@amazonses.com"
+BOUNCE_NOTICE_SUBJECT_PREFIX = "Delivery Failed: "
+BOUNCE_NOTICE_BODY_PREFIX = "Email delivery failed ("
+
+
+def is_system_notice(message: Any) -> bool:
+    """True for a system notice in a thread (not a reply). ``message`` has ``direction``, ``from_email``,
+    ``reply_label_source``, ``subject`` and ``body_text``. Notes written before the marker existed (sender =
+    the contact) are recognised by the note's fixed wording."""
+    if (getattr(message, "direction", None) or "OUTBOUND") != "INBOUND":
+        return False
+    if getattr(message, "reply_label_source", None) == LabelSource.SYSTEM.value:
+        return True
+    if (getattr(message, "from_email", None) or "").lower() == SYSTEM_NOTICE_SENDER.lower():
+        return True
+    return ((getattr(message, "subject", None) or "").startswith(BOUNCE_NOTICE_SUBJECT_PREFIX)
+            and (getattr(message, "body_text", None) or "").startswith(BOUNCE_NOTICE_BODY_PREFIX))
 
 
 @dataclass(frozen=True, slots=True)

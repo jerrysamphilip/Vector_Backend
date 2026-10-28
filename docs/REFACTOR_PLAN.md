@@ -50,8 +50,9 @@ current violations sit in a shrinking baseline.
 | 0030 | D7 ✅ | FULLTEXT ngram index for contact search |
 | 0031 | C-17 ✅ | Custom-property safety (`is_active`, `is_system`, `max_length`) |
 | 0032 | V1 prep ✅ | Server-side column defaults a fresh build lacked (`0032_server_defaults`) |
-| 0033 | D6 | Retention bookkeeping (archive tables / purge log) |
-| 0034+ | later | Assigned when a decision-gated chunk starts |
+| 0033 | UAT/V1 fix ✅ | Tenant-first index on `prospects.merged_into_id` (merge / erasure deadlocks) |
+| 0034 | D6 | Retention bookkeeping (archive tables / purge log) |
+| 0035+ | later | Assigned when a decision-gated chunk starts |
 
 ## Waves and chunks
 
@@ -74,7 +75,7 @@ current violations sit in a shrinking baseline.
 | D5 ✅ | CHECK constraints for email/campaign/deal/proposal/lead status machines (0029); shared status enums in `app/domain/status.py` | migration, `app/domain/status.py` | M |
 | D7 ✅ | Contact search on FULLTEXT ngram (0030) + 100k-contact seed + timing test | `contact_query_service` search, seed script | M |
 | D8 ✅ | MySQL TLS via `connect_args` (off until DEC-01), RDS CA bundle path | `app/core/database.py`, config, docs | S |
-| D6 ⏸ | Retention: archive/purge job for events, messages, activities, webhook deliveries (0033), default off (DEC-14) | new `app/services/retention.py`, jobs | M |
+| D6 ⏸ | Retention: archive/purge job for events, messages, activities, webhook deliveries (0034), default off (DEC-14) | new `app/services/retention.py`, jobs | M |
 
 ### Wave 2 — layering pattern (one agent, then review before wave 3)
 

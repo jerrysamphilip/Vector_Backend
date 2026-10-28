@@ -19,13 +19,14 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from sqlalchemy import ColumnElement, and_, desc, exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.domain.inbox import ConversationQuery, OwnerScope
+from app.domain.inbox import ConversationQuery, OwnerScope, is_system_notice
 from app.models.campaign import Campaign, CampaignProspect
 from app.models.conversation import Conversation
 from app.models.email_message import EmailEvent, EmailMessage
 from app.models.prospect import Prospect
 from app.models.sending_inbox import SendingInbox
 from app.repositories.base import SqlAlchemyUnitOfWork
+from app.repositories.system_notices import reply_message
 from app.utils import sql_like
 
 
@@ -52,6 +53,7 @@ class LastMessage:
     status: Optional[str]
     final_status: Optional[str]
     reply_label: Optional[str]
+    is_system: bool = False  # a system notice (app.domain.inbox.is_system_notice), not a reply
 
 
 def _message_time() -> ColumnElement[Any]:
@@ -132,7 +134,8 @@ class ConversationRepository:
         return (
             select(EmailMessage.message_id, EmailMessage.conversation_id, EmailMessage.direction,
                    EmailMessage.body_text, EmailMessage.status, EmailMessage.final_status,
-                   EmailMessage.reply_label, EmailMessage.campaign_id, rn)
+                   EmailMessage.reply_label, EmailMessage.campaign_id, EmailMessage.from_email,
+                   EmailMessage.subject, EmailMessage.reply_label_source, rn)
             .where(EmailMessage.conversation_id.in_(list(conversation_ids)), *criteria)
             .subquery()
         )
@@ -144,7 +147,8 @@ class ConversationRepository:
         ranked = self._ranked(conversation_ids)
         rows = self._session.execute(select(ranked).where(ranked.c.rn == 1)).all()
         return {r.conversation_id: LastMessage(r.conversation_id, r.message_id, r.direction, r.body_text,
-                                               r.status, r.final_status, r.reply_label) for r in rows}
+                                               r.status, r.final_status, r.reply_label, is_system_notice(r))
+                for r in rows}
 
     def latest_campaigns(self, conversation_ids: Sequence[str]) -> Dict[str, Tuple[str, str]]:
         """conversation id -> (campaign id, name) of its newest message that carries a campaign: one query."""
@@ -162,8 +166,7 @@ class ConversationRepository:
         """conversation id -> (label, needs review) of its newest labelled reply: one query."""
         if not conversation_ids:
             return {}
-        ranked = self._ranked(conversation_ids, EmailMessage.direction == "INBOUND",
-                              EmailMessage.reply_label.isnot(None))
+        ranked = self._ranked(conversation_ids, reply_message(), EmailMessage.reply_label.isnot(None))
         review = (
             select(EmailMessage.conversation_id)
             .where(EmailMessage.conversation_id.in_(list(conversation_ids)), EmailMessage.reply_needs_review.is_(True))

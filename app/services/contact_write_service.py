@@ -22,6 +22,7 @@ from app.models.prospect import Prospect
 from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.user import User
 from app.repositories.contacts import ContactsAccess, ContactsUnitOfWork, Session, contacts_uow
+from app.repositories.lock_retry import retry_on_lock_conflict
 from app.schemas.contact_schema import BulkAction, CompanyLinkCreate, CompanyLinkUpdate, ContactCreate, ContactUpdate, MergeRequest
 from app.services import contact_companies, contact_scoring, crm
 from app.services.contact_field_service import clean_custom_fields, required_missing
@@ -560,9 +561,13 @@ class ContactWriteService:
         """Delete forever contacts in Recently deleted (same visibility as the list and restore).
         Uses the erase path; each contact leaves an audit row."""
         require_manager(user)
+        return retry_on_lock_conflict(lambda: self._purge(user, prospect_ids))
+
+    def _purge(self, user: User, prospect_ids: List[str]) -> dict:
+        """One attempt (the whole unit of work; re-run after a deadlock)."""
         with self.uow as uow:
             ids = uow.contacts.deleted_ids(user.tenant_id, visibility_scope(uow.session, user), prospect_ids)
-            delete_contacts(uow.session, ids, actor_id=user.user_id, reason="PURGE_CONTACT")
+            delete_contacts(uow.session, ids, actor_id=user.user_id, reason="PURGE_CONTACT", tenant_id=user.tenant_id)
             uow.commit()
         return {"status": "purged", "purged": len(ids)}
 
@@ -588,6 +593,10 @@ class ContactWriteService:
         duplicate_ids = [i for i in dict.fromkeys(payload.duplicate_ids) if i != payload.primary_id]
         if not duplicate_ids:
             raise BadRequestError("Choose at least one other contact to merge")
+        return retry_on_lock_conflict(lambda: self._merge(user, payload, duplicate_ids))
+
+    def _merge(self, user: User, payload: MergeRequest, duplicate_ids: List[str]) -> dict:
+        """One attempt (the whole unit of work; re-run after a deadlock)."""
         with self.uow as uow:
             repo = uow.contacts
             primary = find_contact(uow, user, payload.primary_id)

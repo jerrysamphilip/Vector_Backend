@@ -390,12 +390,16 @@ export async function run(rec, browser) {
   await tc(rec, 'UIC-CON-29', 'Properties modal: create NUMBER and SELECT custom fields; appear in DB and Add form', async () => {
     await go(A, 'contacts');
     await p.getByRole('button', { name: 'Properties' }).click();
+    // PropertySettingsModal (bd5f153): "Add property", one input per choice ("Choice N" + "Add choice")
     const m = modalLoc(p);
-    await m.getByLabel('Label').fill('Budget'); await m.getByLabel('Type').selectOption('NUMBER');
-    await m.getByRole('button', { name: 'Add field' }).click(); await settle(A, 500);
-    await m.getByLabel('Label').fill('Tier'); await m.getByLabel('Type').selectOption('SELECT');
-    await m.getByLabel('Choices').fill('Gold, Silver, Bronze');
-    await m.getByRole('button', { name: 'Add field' }).click(); await settle(A, 500);
+    await m.getByLabel('Label', { exact: true }).fill('Budget'); await m.getByLabel('Type').selectOption('NUMBER');
+    await m.getByRole('button', { name: 'Add property' }).click(); await settle(A, 500);
+    await m.getByLabel('Label', { exact: true }).fill('Tier'); await m.getByLabel('Type').selectOption('SELECT');
+    for (const [i, c] of ['Gold', 'Silver', 'Bronze'].entries()) {
+      if (i) await m.getByRole('button', { name: 'Add choice' }).click();
+      await m.getByLabel(`Choice ${i + 1}`, { exact: true }).fill(c);
+    }
+    await m.getByRole('button', { name: 'Add property' }).click(); await settle(A, 500);
     ok(await m.getByText('Tier').first().isVisible() && await m.getByText('Gold, Silver, Bronze').isVisible(), 'listed');
     eq(dbn(`SELECT COUNT(*) FROM contact_field_definitions WHERE tenant_id='${t.tenantId}' AND label IN ('Budget','Tier')`), 2, 'defs in DB');
     await m.getByRole('button', { name: 'Done' }).click();
@@ -405,8 +409,8 @@ export async function run(rec, browser) {
     await go(A, 'contacts');
     await p.getByRole('button', { name: 'Properties' }).click();
     const m = modalLoc(p);
-    ok(await m.getByRole('button', { name: 'Add field' }).isDisabled(), 'disabled blank');
-    await m.getByLabel('Label').fill('Budget'); await m.getByRole('button', { name: 'Add field' }).click(); await settle(A, 500);
+    ok(await m.getByRole('button', { name: 'Add property' }).isDisabled(), 'disabled blank');
+    await m.getByLabel('Label', { exact: true }).fill('Budget'); await m.getByRole('button', { name: 'Add property' }).click(); await settle(A, 500);
     const dup = (await must(t.token, 'GET', '/contacts/fields')).filter(f => f.label === 'Budget');
     for (const f of dup.slice(1)) await call(t.token, 'DELETE', `/contacts/fields/${f.field_id}`);   // clean up so later cases see one Budget field
     ok(dup.length === 1 && await m.locator('.bg-red-50').count() > 0, `duplicate property label should be rejected with a message (found ${dup.length} 'Budget' properties)`);
@@ -431,13 +435,19 @@ export async function run(rec, browser) {
     eq(await listTotal(p), dbc(t, `JSON_UNQUOTE(JSON_EXTRACT(custom_fields,'$.tier'))='Gold' OR JSON_SEARCH(custom_fields,'one','Gold') IS NOT NULL`), 'custom filter');
   }, { u: A });
 
-  await tc(rec, 'UIC-CON-32', 'Properties modal: delete a custom field', async () => {
+  // "Delete" is a deactivation since C-17 (bd5f153): hidden from forms, values kept, can be reactivated
+  await tc(rec, 'UIC-CON-32', 'Properties modal: delete (deactivate) a custom field', async () => {
     await go(A, 'contacts');
     await p.getByRole('button', { name: 'Properties' }).click();
     const m = modalLoc(p);
-    await m.getByRole('button', { name: 'Delete Tier' }).click(); await settle(A, 600);
-    eq(await m.getByText('Gold, Silver, Bronze').count(), 0, 'removed from list');
-    eq(dbn(`SELECT COUNT(*) FROM contact_field_definitions WHERE tenant_id='${t.tenantId}' AND label='Tier'`), 0, 'deleted in DB');
+    A.lastDialog = null;
+    await m.getByRole('button', { name: 'Deactivate Tier' }).click(); await settle(A, 800);
+    ok(/Deactivate "Tier"/.test(A.lastDialog || ''), 'confirm dialog: ' + A.lastDialog);
+    ok(await m.getByRole('button', { name: 'Reactivate Tier' }).isVisible(), 'listed as inactive (Reactivate offered)');
+    eq(dbn(`SELECT COUNT(*) FROM contact_field_definitions WHERE tenant_id='${t.tenantId}' AND label='Tier' AND is_active=0`), 1, 'deactivated in DB (definition kept)');
+    await m.getByRole('button', { name: 'Done' }).click();
+    await p.getByRole('button', { name: /Add contact/ }).first().click();
+    eq(await modalLoc(p).getByLabel('Tier').count(), 0, 'hidden from the Add contact form');
   }, { u: A });
 
   // ---------------- bulk ----------------
@@ -572,9 +582,17 @@ export async function run(rec, browser) {
 
   // ---------------- merge duplicates ----------------
   await tc(rec, 'UIC-CON-42', 'Duplicates modal: no duplicates state, then merge with per-property choices', async () => {
+    // The duplicate finder also flags similar names at one company (C-08), which the numbered seed contacts
+    // ("Seed3 Person03" / "Seed43 Person43" at Umbrella) are; mark those pairs "not the same person" first
+    await must(t.token, 'POST', '/contacts/duplicates/scan');   // pairs are stored; bring them up to date first
+    const pre = await must(t.token, 'GET', '/contacts/duplicates?limit=200');
+    for (const g of pre.groups || []) if (g.pair_id) await call(t.token, 'POST', `/contacts/duplicates/${g.pair_id}/dismiss`);
+    const left = ((await must(t.token, 'GET', '/contacts/duplicates?limit=200')).groups || []).length;
+    eq(left, 0, 'seed pairs dismissed');
     await go(A, 'contacts');
-    await p.getByRole('button', { name: 'Duplicates' }).click();
-    let m = modalLoc(p);
+    // MergeDuplicatesModal "Find duplicates" (5451f65) -> "Merge N" opens the "Review merge" preview with per-property radios
+    await p.getByRole('button', { name: 'Find duplicates' }).click();
+    let m = p.getByRole('dialog', { name: 'Find duplicates' });
     await m.getByText(/No duplicates found|Merge/).first().waitFor();
     const none = await m.getByText('No duplicates found').isVisible().catch(() => false);
     ok(none, 'initially none');
@@ -583,18 +601,22 @@ export async function run(rec, browser) {
     const a = await must(t.token, 'POST', '/contacts', { email: `jane.doe.${t.rid}@gmail.com`, first_name: 'Jane', last_name: 'Doe', phone: '+14155550111', designation: 'CEO', company_name: 'DupCo' });
     const bId = sql(`SELECT UUID()`);
     sql(`INSERT INTO prospects (prospect_id,tenant_id,first_name,last_name,email,phone,designation,company_name,lifecycle_stage,created_at,updated_at) VALUES ('${bId}','${t.tenantId}','Jane','Doe',${sq(`janedoe.${t.rid}@gmail.com`)},'+14155550222','CTO','DupCo','LEAD',NOW(),NOW())`);
+    // the modal lists stored pairs (C-08: the worker rescans; a row inserted by SQL is found at the next scan)
+    await must(t.token, 'POST', '/contacts/duplicates/scan');
     await go(A, 'contacts');
-    await p.getByRole('button', { name: 'Duplicates' }).click();
-    m = modalLoc(p);
-    await m.getByText('Choose the value to keep').waitFor();
+    await p.getByRole('button', { name: 'Find duplicates' }).click();
+    m = p.getByRole('dialog', { name: 'Find duplicates' });
+    const grp = m.locator('div.border.rounded-2xl').filter({ hasText: `jane.doe.${t.rid}@` }).filter({ hasText: 'Pick the record to keep' });
+    await grp.first().waitFor();
     // keep record = the one marked KEEP; choose the OTHER record's phone
-    const rowsTxt = await m.locator('div.divide-y > div').allInnerTexts();
+    const rowsTxt = await grp.first().locator('div.divide-y > div').allInnerTexts();
     const keepIsA = rowsTxt.find(t2 => /KEEP/.test(t2))?.includes(`jane.doe.${t.rid}@`);
     const wantPhone = keepIsA ? '+14155550222' : '+14155550111';
-    const phoneRow = m.locator('tr').filter({ hasText: /^Phone/ });
-    await phoneRow.locator('label').filter({ hasText: wantPhone }).getByRole('radio').check();
+    await grp.first().getByRole('button', { name: /^Merge 1/ }).click();
+    const rv = p.getByRole('dialog', { name: 'Review merge' });
+    await rv.getByRole('radio', { name: `Phone: ${wantPhone}` }).check();
     const merged = p.waitForResponse(r => /\/contacts\/merge/.test(r.url()) && r.request().method() === 'POST', { timeout: 15000 });
-    await m.getByRole('button', { name: /^Merge 1/ }).click();
+    await rv.getByRole('button', { name: /^Merge 2 records/ }).click();
     await merged; await settle(A, 500);   // read the DB only after the merge request has committed
     const keptId = a.prospect_id;
     const keeper = sql(`SELECT CONCAT_WS('|',phone,deleted_at IS NULL) FROM prospects WHERE prospect_id IN ('${keptId}','${bId}') AND deleted_at IS NULL`);

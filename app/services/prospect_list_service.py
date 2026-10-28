@@ -28,6 +28,7 @@ from app.models.prospect import Prospect
 from app.models.prospect_list import ProspectList
 from app.models.user import User
 from app.repositories.lists import ListsUnitOfWork, Session, lists_uow
+from app.repositories.lock_retry import retry_on_lock_conflict
 from app.schemas.contact_schema import ContactUpdate
 from app.services import crm, enrollment_rules
 from app.services.campaign_email_service import CampaignEmailService
@@ -226,11 +227,14 @@ class ProspectListService:
             return {"status": "updated", "prospect_id": prospect_id, "row_version": prospect.row_version}
 
     def delete_prospect(self, user: User, prospect_id: str) -> dict:
-        """Erase one contact and everything that references it."""
+        """Erase one contact and everything that references it (re-run whole after a deadlock)."""
+        return retry_on_lock_conflict(lambda: self._delete_prospect(user, prospect_id))
+
+    def _delete_prospect(self, user: User, prospect_id: str) -> dict:
         with self.uow as uow:
             if not uow.lists.prospect(user.tenant_id, prospect_id):
                 raise NotFoundError("Prospect not found")
-            delete_contacts(uow.session, [prospect_id], actor_id=user.user_id)
+            delete_contacts(uow.session, [prospect_id], actor_id=user.user_id, tenant_id=user.tenant_id)
             uow.commit()
         return {"status": "deleted", "prospect_id": prospect_id}
 

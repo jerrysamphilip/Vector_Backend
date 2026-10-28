@@ -13,8 +13,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.core.clock import utcnow
+from app.core.clock import iso_utc, utcnow
 from app.core.errors import BadRequestError, ExternalServiceUnavailable
+from app.domain.campaigns_edit import IN_SEQUENCE_STATUSES
 from app.domain.sending import SendAttempt, fail
 from app.models.campaign import Campaign
 from app.models.email_message import EmailMessage
@@ -29,6 +30,7 @@ from app.services.email_sender_service import (
 )
 from app.services.send_guards import require_active_inbox
 from app.services.sequence_stop import stop_reason
+from app.utils.campaign_prospect_status import set_prospect_status
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +94,7 @@ class CampaignSendNowService:
         batch = self.queue.send_now_batch(criteria, limit)
         queued_emails = self._batch_messages(batch)
         next_cursor = format_cursor(batch[-1][1], batch[-1][0]) if batch else cursor
-        run_started = started_at.isoformat()
+        run_started = iso_utc(started_at)
 
         if not queued_emails:
             return {"status": "no_emails", "message": "No queued emails to send", "sent": 0, "failed": 0,
@@ -327,7 +329,7 @@ class CampaignSendNowService:
         if not seq_step:
             return
         cp = self.ctx.enrollment(email_msg.campaign_id, email_msg.prospect_id)
-        if not cp or cp.status != "ACTIVE":
+        if not cp or cp.status not in IN_SEQUENCE_STATUSES:   # ACTIVE or OPENED: still in the sequence
             return
         next_step_number = seq_step.step_number + 1
         next_step = self.ctx.step_number(email_msg.campaign_id, next_step_number)
@@ -337,7 +339,7 @@ class CampaignSendNowService:
                 self.db, email_msg, next_step, email_msg.sent_at
             ) or utcnow() + timedelta(days=next_step.wait_days)
         else:
-            cp.status = "COMPLETED"
+            set_prospect_status(cp, "COMPLETED")
             cp.next_scheduled_at = None
 
 

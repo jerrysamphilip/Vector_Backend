@@ -12,8 +12,9 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
-from app.core.clock import utcnow
+from app.core.clock import iso_utc, utcnow
 from app.core.errors import NotFoundError
+from app.domain.reports import delivered
 from app.models.campaign import Campaign
 from app.models.email_message import EmailEvent
 from app.models.email_sequence import EmailSequence
@@ -112,8 +113,8 @@ def build_schedule(messages: Iterable[Any], step_by_sequence: Dict[str, int]) ->
                 "message_id": msg.message_id,
                 # Real per-message timestamps so the UI can confirm exactly whether/when THIS
                 # prospect's email went out, not only the day-level bucket it is grouped under.
-                "sent_at": msg.sent_at.isoformat() if msg.sent_at else None,
-                "scheduled_at": msg.scheduled_at.isoformat() if msg.scheduled_at else None,
+                "sent_at": iso_utc(msg.sent_at),
+                "scheduled_at": iso_utc(msg.scheduled_at),
                 "message_status": msg.status,
                 "subject_variant": msg.subject_variant,  # A/B subject test (BR-SF-18)
             })
@@ -207,7 +208,9 @@ class CampaignQueryService:
     def _daily_metrics(self, campaign_id: str, start_date: date, end_date: date) -> List[Dict[str, Any]]:
         reads = self.uow.reads
         sent_map = reads.sent_per_day(campaign_id, start_date)
-        # Opens per day = unique prospects who opened that day
+        # Opens per day = unique prospects who opened that day. Every bar counts that day's events only: the
+        # lifetime enrolment statuses (OPENED / REPLIED) are not added to the last bar (UAT 3-5); manual marks
+        # record an event (campaign_tracking_service), so they show on the day they were made.
         open_map = reads.openers_per_day(campaign_id, start_date)
         by_field: Dict[str, Dict[Any, int]] = {f: {} for f in _DAILY_FIELD_BY_EVENT.values()}
         for day, event_type, count in reads.events_per_day(campaign_id, start_date, _ANALYTICS_EVENT_TYPES):
@@ -218,17 +221,11 @@ class CampaignQueryService:
         bar_data = []
         current_date = start_date
         while current_date <= end_date:
-            d_opened = open_map.get(current_date, 0)
-            d_replied = by_field["replied"].get(current_date, 0)
-            if current_date == end_date:
-                # Today also reflects prospect statuses set without an event (e.g. manual marks)
-                d_opened = max(d_opened, self._prospects_with_status(campaign_id, ["OPENED", "REPLIED"]))
-                d_replied = max(d_replied, self._prospects_with_status(campaign_id, ["REPLIED"]))
             bar_data.append({
                 "date": current_date.isoformat(),
                 "sent": sent_map.get(current_date, 0),
-                "opened": d_opened,
-                "replied": d_replied,
+                "opened": open_map.get(current_date, 0),
+                "replied": by_field["replied"].get(current_date, 0),
                 "bounced": by_field["bounced"].get(current_date, 0),
                 "sender_bounced": by_field["sender_bounced"].get(current_date, 0),
                 "positive_replied": by_field["positive_replied"].get(current_date, 0),
@@ -267,9 +264,9 @@ class CampaignQueryService:
                 "opened_count": opened_count,
                 "replied_count": replied_count,
                 "bounced_count": bounced_count,
-                "open_rate": pct(opened_count, sent_count),
+                "open_rate": pct(opened_count, delivered(sent_count, bounced_count)),
                 "click_rate": pct(clicked_count, opened_count),
-                "reply_rate": pct(replied_count, sent_count),
+                "reply_rate": pct(replied_count, delivered(sent_count, bounced_count)),
                 "bounce_rate": pct(bounced_count, sent_count),
                 "positive_replied_count": e_counts.get(EmailEvent.EVENT_POSITIVE_REPLY, 0),
                 "ooo_count": e_counts.get(EmailEvent.EVENT_REPLY_OOO, 0),
@@ -302,9 +299,9 @@ class CampaignQueryService:
             "bounced_count": total_bounced,
             "sender_bounced_count": reads.messages_with_event(campaign_id, EmailEvent.EVENT_SENDER_BOUNCE),
             "unsubscribed_count": reads.messages_with_event(campaign_id, EmailEvent.EVENT_UNSUBSCRIBE),
-            "open_rate": pct(total_opened, total_sent),
+            "open_rate": pct(total_opened, delivered(total_sent, total_bounced)),
             "click_rate": pct(total_clicked, total_opened),
-            "reply_rate": pct(total_replied, total_sent),
+            "reply_rate": pct(total_replied, delivered(total_sent, total_bounced)),
             "bounce_rate": pct(total_bounced, total_sent),
         }
 
@@ -351,7 +348,7 @@ class CampaignQueryService:
                 "from_email": r.from_email,
                 "subject": r.subject or "No Subject",
                 "body_text": r.body_text or "",
-                "received_at": r.sent_at.isoformat() if r.sent_at else None
+                "received_at": iso_utc(r.sent_at)
             } for r in replies],
         }
 

@@ -12,6 +12,7 @@ from datetime import date as date_type, datetime, time as time_type, timedelta
 from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from app.core.clock import iso_utc
 from app.core.errors import BadRequestError, NotFoundError
 from app.models.campaign import Campaign
 from app.repositories.campaigns import CampaignsUnitOfWork
@@ -141,8 +142,8 @@ class CampaignScheduleService:
             "status": "rescheduled",
             "message_id": message_id,
             "campaign_id": campaign_id,
-            "old_scheduled_at": old_scheduled_at.isoformat() if old_scheduled_at else None,
-            "new_scheduled_at": new_scheduled_at.isoformat(),
+            "old_scheduled_at": iso_utc(old_scheduled_at),
+            "new_scheduled_at": iso_utc(new_scheduled_at),
             "reason": reason,
         }
 
@@ -196,8 +197,8 @@ class CampaignScheduleService:
             "campaign_id": campaign_id,
             "date": date,
             "step_number": step_number,
-            "requested_at": new_scheduled_at.isoformat(),
-            "snapped_utc": snapped.utc_naive.isoformat(),
+            "requested_at": new_scheduled_at.isoformat(),  # campaign-zone wall clock, not UTC
+            "snapped_utc": iso_utc(snapped.utc_naive),
             "snapped_local": snapped.local.strftime("%Y-%m-%d %H:%M") + f" {tz_str}",
             "time_adjusted": snapped.adjusted,
             "adjustment_reason": describe_adjustment(snapped.local, tz_str) if snapped.adjusted else None,

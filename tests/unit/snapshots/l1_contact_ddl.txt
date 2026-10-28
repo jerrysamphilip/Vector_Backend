@@ -72,6 +72,8 @@ CREATE INDEX ix_prospects_tenant_live_score ON prospects (tenant_id, deleted_at,
 
 CREATE INDEX ix_prospects_tenant_live_updated ON prospects (tenant_id, deleted_at, updated_at)
 
+CREATE INDEX ix_prospects_tenant_merged ON prospects (tenant_id, merged_into_id)
+
 prospects.prospect_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
 
 prospects.tenant_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False

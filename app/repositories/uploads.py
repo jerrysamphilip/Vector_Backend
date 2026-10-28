@@ -51,6 +51,11 @@ class SqlAlchemyUploadRepository:
         return self._session.query(ProspectList.list_id).filter(
             ProspectList.list_id == list_id, ProspectList.tenant_id == tenant_id).first() is not None
 
+    def list_held_elsewhere(self, tenant_id: TenantId, list_id: str) -> bool:
+        """Another tenant already holds this list id (an upload id is the id of the list it creates)."""
+        return self._session.query(ProspectList.list_id).filter(
+            ProspectList.list_id == list_id, ProspectList.tenant_id != tenant_id).first() is not None
+
     def member_counts(self, list_id: str) -> tuple[int, int]:
         """(members, members that were new contacts) of the list."""
         total, new = self._session.query(

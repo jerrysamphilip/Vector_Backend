@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { WEB, watch, SHOTS } from '../ui_crm/crm_common.mjs';
+import { onConfirm } from '../ui/confirm_dialogs.mjs';
 
 export const PHONE = { width: 390, height: 844 };
 export const TABLET = { width: 768, height: 1024 };
@@ -28,13 +29,18 @@ function wrap(ctx, page, user = null) {
   page.setDefaultTimeout(15000);
   const u = { ctx, page, w: watch(page), user };
   page.on('dialog', d => { u.lastDialog = d.message(); d.accept().catch(() => {}); });
+  // the app's in-app ConfirmDialog (Radix, frontend b3f05f5): same contract; set u.confirmMode = 'dismiss' or null per test
+  u.confirmMode = 'accept';
+  u.confirmReady = onConfirm(page, text => { u.lastDialog = text; return u.confirmMode; }).ready;
   return u;
 }
 
 /** A signed-out context (no cookies, empty storage). */
 export async function anon(browser, { viewport = DESKTOP } = {}) {
   const ctx = await browser.newContext({ viewport });
-  return wrap(ctx, await ctx.newPage());
+  const u = wrap(ctx, await ctx.newPage());
+  await u.confirmReady;
+  return u;
 }
 
 /** Fill the login form (page must be on /login). */

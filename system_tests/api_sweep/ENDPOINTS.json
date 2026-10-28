@@ -208,6 +208,18 @@
       ],
       "title": "Lifecycle Stage"
      },
+     "custom_fields": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Custom Fields"
+     },
      "expected_version": {
       "anyOf": [
        {
@@ -401,6 +413,18 @@
        }
       ],
       "title": "Lifecycle Stage"
+     },
+     "custom_fields": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Custom Fields"
      }
     },
     "type": "object",
@@ -440,6 +464,54 @@
      "campaign_id"
     ],
     "title": "ActivateRequest"
+   },
+   "ActivityItem": {
+    "properties": {
+     "type": {
+      "type": "string",
+      "title": "Type"
+     },
+     "at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At"
+     },
+     "reply_label": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reply Label"
+     },
+     "reply_message_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reply Message Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "type"
+    ],
+    "title": "ActivityItem",
+    "description": "One step in a sent email's timeline (S-10): SENT / DELIVERED / OPENED / CLICKED / BOUNCED /\nCOMPLAINED / UNSUBSCRIBED / REPLIED (with the reply's label)."
    },
    "ActivityUpdate": {
     "properties": {
@@ -766,6 +838,45 @@
     ],
     "title": "ApproveResponse"
    },
+   "AssignedTemplate": {
+    "properties": {
+     "template_id": {
+      "type": "string",
+      "title": "Template Id"
+     },
+     "designation": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Designation"
+     },
+     "subject": {
+      "type": "string",
+      "title": "Subject"
+     },
+     "body": {
+      "type": "string",
+      "title": "Body"
+     },
+     "recipients": {
+      "type": "integer",
+      "title": "Recipients",
+      "default": 0
+     }
+    },
+    "type": "object",
+    "required": [
+     "template_id",
+     "subject",
+     "body"
+    ],
+    "title": "AssignedTemplate"
+   },
    "AutomationRuleCreate": {
     "properties": {
      "name": {
@@ -1074,6 +1185,18 @@
       "type": "string",
       "contentMediaType": "application/octet-stream",
       "title": "File"
+     },
+     "sheet": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sheet"
      }
     },
     "type": "object",
@@ -1163,6 +1286,32 @@
      "file"
     ],
     "title": "Body_upload_dry_run_uploads_validations_post"
+   },
+   "Body_upload_imports_uploads_post": {
+    "properties": {
+     "file": {
+      "type": "string",
+      "contentMediaType": "application/octet-stream",
+      "title": "File"
+     },
+     "sheet": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sheet"
+     }
+    },
+    "type": "object",
+    "required": [
+     "file"
+    ],
+    "title": "Body_upload_imports_uploads_post"
    },
    "BulkAction": {
     "properties": {
@@ -1504,6 +1653,12 @@
       "description": "Campaign timezone",
       "default": "UTC"
      },
+     "wait_business_days": {
+      "type": "boolean",
+      "title": "Wait Business Days",
+      "description": "Wait days between steps count business days (F-04)",
+      "default": false
+     },
      "sending_mode": {
       "type": "string",
       "title": "Sending Mode",
@@ -1552,7 +1707,7 @@
        }
       ],
       "title": "Daily Batch Size",
-      "description": "Max new prospects to email per day (e.g. 100 → day 1: 1-100, day 2: 101-200)"
+      "description": "Max new prospects to email per day (e.g. 100 \u2192 day 1: 1-100, day 2: 101-200)"
      },
      "start_date": {
       "anyOf": [
@@ -1614,6 +1769,562 @@
      "send_window_start": "09:00:00",
      "start_date": "2025-01-15"
     }
+   },
+   "CampaignDuplicateRequest": {
+    "properties": {
+     "campaign_name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Name",
+      "description": "Name of the copy (default 'Copy of <source>')"
+     },
+     "start_date": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start Date"
+     },
+     "end_date": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End Date"
+     },
+     "send_window_start": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Send Window Start"
+     },
+     "send_window_end": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Send Window End"
+     },
+     "campaign_timezone": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 50
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Timezone"
+     },
+     "inbox_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Inbox Ids",
+      "description": "Mailboxes of the copy (default: the source's usable ones)"
+     },
+     "list_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "List Ids",
+      "description": "Lists to enrol into the copy"
+     },
+     "prospect_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Prospect Ids",
+      "description": "Contacts to enrol into the copy"
+     },
+     "skip_source_prospects": {
+      "type": "boolean",
+      "title": "Skip Source Prospects",
+      "description": "Do not enrol contacts already in the source campaign",
+      "default": true
+     },
+     "copy_automation_rules": {
+      "type": "boolean",
+      "title": "Copy Automation Rules",
+      "default": true
+     },
+     "copy_attachments": {
+      "type": "boolean",
+      "title": "Copy Attachments",
+      "default": true
+     }
+    },
+    "type": "object",
+    "title": "CampaignDuplicateRequest",
+    "description": "POST /campaigns/{id}/duplicates: optional overrides for the copy (S-12). Unset = the source's value."
+   },
+   "CampaignDuplicateResponse": {
+    "properties": {
+     "campaign": {
+      "$ref": "#/components/schemas/CampaignResponse"
+     },
+     "source_campaign_id": {
+      "type": "string",
+      "title": "Source Campaign Id"
+     },
+     "copied": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Copied"
+     },
+     "skipped_inboxes": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Skipped Inboxes",
+      "default": []
+     },
+     "enrollment": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Enrollment"
+     },
+     "persona_gaps": {
+      "items": {
+       "$ref": "#/components/schemas/PersonaGap"
+      },
+      "type": "array",
+      "title": "Persona Gaps",
+      "default": []
+     }
+    },
+    "type": "object",
+    "required": [
+     "campaign",
+     "source_campaign_id",
+     "copied"
+    ],
+    "title": "CampaignDuplicateResponse"
+   },
+   "CampaignEditRequest": {
+    "properties": {
+     "expected_version": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version"
+     },
+     "settings": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/CampaignEditSettings"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "inbox_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array",
+        "maxItems": 50
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Inbox Ids"
+     },
+     "steps": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/StepEditIn"
+        },
+        "type": "array",
+        "maxItems": 7
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Steps"
+     }
+    },
+    "type": "object",
+    "title": "CampaignEditRequest",
+    "description": "One edit of a campaign (DRAFT, ACTIVE or PAUSED). ``steps`` (optional) is the whole step list in order:\nexisting steps keep their relative order, a step left out is deleted (refused once it was sent).\n``expected_version`` (or If-Match) is the campaign's row_version you loaded (409 when stale)."
+   },
+   "CampaignEditResult": {
+    "properties": {
+     "dry_run": {
+      "type": "boolean",
+      "title": "Dry Run"
+     },
+     "settings_changed": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Settings Changed",
+      "default": []
+     },
+     "steps_added": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Steps Added",
+      "default": []
+     },
+     "steps_deleted": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Steps Deleted",
+      "default": []
+     },
+     "steps_renumbered": {
+      "type": "boolean",
+      "title": "Steps Renumbered",
+      "default": false
+     },
+     "templates_changed": {
+      "type": "integer",
+      "title": "Templates Changed",
+      "default": 0
+     },
+     "emails_rerendered": {
+      "type": "integer",
+      "title": "Emails Rerendered",
+      "default": 0
+     },
+     "emails_rescheduled": {
+      "type": "integer",
+      "title": "Emails Rescheduled",
+      "default": 0
+     },
+     "emails_rebound": {
+      "type": "integer",
+      "title": "Emails Rebound",
+      "default": 0
+     },
+     "emails_created": {
+      "type": "integer",
+      "title": "Emails Created",
+      "default": 0
+     },
+     "emails_removed": {
+      "type": "integer",
+      "title": "Emails Removed",
+      "default": 0
+     },
+     "unsent_emails_affected": {
+      "type": "integer",
+      "title": "Unsent Emails Affected",
+      "default": 0
+     },
+     "campaign": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/CampaignResponse"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "dry_run"
+    ],
+    "title": "CampaignEditResult",
+    "description": "What the edit changed (the dry run: what it would change). ``unsent_emails_affected`` is the\n\"N unsent emails will be updated\" number."
+   },
+   "CampaignEditSettings": {
+    "properties": {
+     "campaign_name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 255,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Name"
+     },
+     "sender_name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sender Name"
+     },
+     "sender_title": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 150
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sender Title"
+     },
+     "cta_link": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 500
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cta Link"
+     },
+     "send_window_start": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Send Window Start"
+     },
+     "send_window_end": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Send Window End"
+     },
+     "respect_timezone": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Respect Timezone"
+     },
+     "campaign_timezone": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 50
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Timezone"
+     },
+     "wait_business_days": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Wait Business Days"
+     },
+     "sending_mode": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^(spread|random|batch)$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sending Mode"
+     },
+     "min_gap_minutes": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 10080.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Min Gap Minutes"
+     },
+     "batch_size": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 100000.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Batch Size"
+     },
+     "batch_gap_minutes": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 10080.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Batch Gap Minutes"
+     },
+     "daily_batch_size": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 1000000.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Daily Batch Size"
+     },
+     "unsubscribe_mode": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^(plain|html)$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unsubscribe Mode"
+     },
+     "start_date": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start Date"
+     },
+     "end_date": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End Date"
+     }
+    },
+    "type": "object",
+    "title": "CampaignEditSettings",
+    "description": "Campaign settings to change; a field left out is unchanged, null clears a clearable one."
    },
    "CampaignEnrollmentRequest": {
     "properties": {
@@ -2020,6 +2731,11 @@
       "title": "Campaign Timezone",
       "default": "UTC"
      },
+     "wait_business_days": {
+      "type": "boolean",
+      "title": "Wait Business Days",
+      "default": false
+     },
      "sending_mode": {
       "type": "string",
       "title": "Sending Mode",
@@ -2124,6 +2840,17 @@
       "type": "array",
       "title": "Sending Inboxes",
       "default": []
+     },
+     "source_campaign_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Campaign Id"
      }
     },
     "type": "object",
@@ -2208,6 +2935,18 @@
        }
       ],
       "title": "Row Version"
+     },
+     "pacing_warning": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pacing Warning"
      }
     },
     "type": "object",
@@ -2386,6 +3125,18 @@
       ],
       "title": "Campaign Timezone"
      },
+     "wait_business_days": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Wait Business Days",
+      "description": "Wait days count business days (F-04)"
+     },
      "sending_mode": {
       "anyOf": [
        {
@@ -2446,7 +3197,7 @@
        }
       ],
       "title": "Unsubscribe Mode",
-      "description": "'plain' or 'html' — controls unsubscribe footer style"
+      "description": "'plain' or 'html' \u2014 controls unsubscribe footer style"
      },
      "daily_batch_size": {
       "anyOf": [
@@ -3646,6 +4397,66 @@
       "type": "string",
       "title": "Last Message Direction",
       "default": "OUTBOUND"
+     },
+     "last_message_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Message Status"
+     },
+     "last_message_final_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Message Final Status"
+     },
+     "campaign_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Id"
+     },
+     "campaign_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Name"
+     },
+     "last_reply_label": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Reply Label"
+     },
+     "needs_review": {
+      "type": "boolean",
+      "title": "Needs Review",
+      "default": false
      }
     },
     "type": "object",
@@ -3683,6 +4494,11 @@
      "page_size": {
       "type": "integer",
       "title": "Page Size"
+     },
+     "has_more": {
+      "type": "boolean",
+      "title": "Has More",
+      "default": false
      }
     },
     "type": "object",
@@ -4455,6 +5271,237 @@
     "title": "EmailAttachmentResponse",
     "description": "Attachment metadata attached to a template."
    },
+   "EmailPreview": {
+    "properties": {
+     "campaign_id": {
+      "type": "string",
+      "title": "Campaign Id"
+     },
+     "prospect_id": {
+      "type": "string",
+      "title": "Prospect Id"
+     },
+     "step_number": {
+      "type": "integer",
+      "title": "Step Number"
+     },
+     "sequence_id": {
+      "type": "string",
+      "title": "Sequence Id"
+     },
+     "persona": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Persona"
+     },
+     "source": {
+      "type": "string",
+      "title": "Source"
+     },
+     "template_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Template Id"
+     },
+     "designation": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Designation"
+     },
+     "message_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Message Id"
+     },
+     "message_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Message Status"
+     },
+     "scheduled_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Scheduled At"
+     },
+     "sent_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sent At"
+     },
+     "from_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "From Name"
+     },
+     "from_email": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "From Email"
+     },
+     "to_email": {
+      "type": "string",
+      "title": "To Email"
+     },
+     "subject": {
+      "type": "string",
+      "title": "Subject"
+     },
+     "body": {
+      "type": "string",
+      "title": "Body"
+     },
+     "is_html": {
+      "type": "boolean",
+      "title": "Is Html"
+     },
+     "is_internal": {
+      "type": "boolean",
+      "title": "Is Internal",
+      "default": false
+     },
+     "subject_variant": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subject Variant"
+     }
+    },
+    "type": "object",
+    "required": [
+     "campaign_id",
+     "prospect_id",
+     "step_number",
+     "sequence_id",
+     "source",
+     "to_email",
+     "subject",
+     "body",
+     "is_html"
+    ],
+    "title": "EmailPreview"
+   },
+   "EmailPreviewRequest": {
+    "properties": {
+     "prospect_id": {
+      "type": "string",
+      "maxLength": 36,
+      "title": "Prospect Id"
+     },
+     "step_number": {
+      "type": "integer",
+      "maximum": 7.0,
+      "minimum": 1.0,
+      "title": "Step Number"
+     },
+     "template_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 36
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Template Id",
+      "description": "Preview this persona version instead"
+     },
+     "subject": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 998
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subject",
+      "description": "Unsaved subject from the editor"
+     },
+     "body": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Body",
+      "description": "Unsaved body from the editor"
+     }
+    },
+    "type": "object",
+    "required": [
+     "prospect_id",
+     "step_number"
+    ],
+    "title": "EmailPreviewRequest",
+    "description": "Preview one step for one enrolled contact. Without subject / body / template_id: the email as it will be\nsent (the scheduled email when it exists, else the template launch picks for the contact's persona)."
+   },
    "EmailTemplateApprove": {
     "properties": {
      "approved_by": {
@@ -4971,6 +6018,101 @@
     ],
     "title": "EnrollRequest"
    },
+   "EnrollmentCheckRequest": {
+    "properties": {
+     "path": {
+      "type": "string",
+      "enum": [
+       "campaign",
+       "wizard"
+      ],
+      "title": "Path",
+      "default": "campaign"
+     },
+     "list_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "List Ids"
+     },
+     "prospect_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Prospect Ids"
+     },
+     "list_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "List Id"
+     },
+     "persona_types": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Persona Types"
+     },
+     "exclude_personal_emails": {
+      "type": "boolean",
+      "title": "Exclude Personal Emails",
+      "default": true
+     },
+     "cool_off_days": {
+      "type": "integer",
+      "maximum": 3650.0,
+      "minimum": 0.0,
+      "title": "Cool Off Days",
+      "default": 7
+     },
+     "excluded_prospect_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Excluded Prospect Ids"
+     }
+    },
+    "type": "object",
+    "title": "EnrollmentCheckRequest",
+    "description": "POST /campaigns/{id}/enrollments/checks: who would be enrolled and why the others would not,\nwithout enrolling anyone (S-20). ``path`` picks the rules: ``campaign`` = POST /campaigns/{id}/prospects\n(list_ids / prospect_ids, 24h cool-off), ``wizard`` = POST /campaigns/{id}/enrollments (list_id +\nsegmentation, cool_off_days)."
+   },
    "EnrollmentRequest": {
     "properties": {
      "campaign_id": {
@@ -5176,6 +6318,34 @@
     ],
     "title": "ExternalMetricResponse"
    },
+   "FieldOption": {
+    "properties": {
+     "value": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     },
+     "label": {
+      "type": "string",
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Label"
+     }
+    },
+    "type": "object",
+    "required": [
+     "label"
+    ],
+    "title": "FieldOption",
+    "description": "A choice option (C-17): ``value`` is what records store, ``label`` what people see. Renaming a label\nkeeps the value; a new option without a value takes its label as value."
+   },
    "FieldWrite": {
     "properties": {
      "label": {
@@ -5185,15 +6355,28 @@
       "title": "Label"
      },
      "field_type": {
-      "type": "string",
-      "title": "Field Type",
-      "default": "TEXT"
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Field Type"
      },
      "options": {
       "anyOf": [
        {
         "items": {
-         "type": "string"
+         "anyOf": [
+          {
+           "type": "string"
+          },
+          {
+           "$ref": "#/components/schemas/FieldOption"
+          }
+         ]
         },
         "type": "array"
        },
@@ -5202,6 +6385,30 @@
        }
       ],
       "title": "Options"
+     },
+     "max_length": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 10000.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Length"
+     },
+     "is_active": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Is Active"
      },
      "sort_order": {
       "anyOf": [
@@ -6388,6 +7595,29 @@
     ],
     "title": "Members"
    },
+   "MergePreviewRequest": {
+    "properties": {
+     "primary_id": {
+      "type": "string",
+      "title": "Primary Id"
+     },
+     "duplicate_ids": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "maxItems": 20,
+      "minItems": 1,
+      "title": "Duplicate Ids"
+     }
+    },
+    "type": "object",
+    "required": [
+     "primary_id",
+     "duplicate_ids"
+    ],
+    "title": "MergePreviewRequest"
+   },
    "MergeRequest": {
     "properties": {
      "primary_id": {
@@ -6505,6 +7735,73 @@
      "status": {
       "type": "string",
       "title": "Status"
+     },
+     "final_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Final Status"
+     },
+     "campaign_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Id"
+     },
+     "campaign_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Name"
+     },
+     "reply_label": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reply Label"
+     },
+     "reply_confidence": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reply Confidence"
+     },
+     "reply_needs_review": {
+      "type": "boolean",
+      "title": "Reply Needs Review",
+      "default": false
+     },
+     "activity": {
+      "items": {
+       "$ref": "#/components/schemas/ActivityItem"
+      },
+      "type": "array",
+      "title": "Activity"
      }
     },
     "type": "object",
@@ -6769,6 +8066,33 @@
     },
     "type": "object",
     "title": "OppWrite"
+   },
+   "PersonaGap": {
+    "properties": {
+     "persona_type": {
+      "type": "string",
+      "title": "Persona Type"
+     },
+     "prospect_count": {
+      "type": "integer",
+      "title": "Prospect Count"
+     },
+     "missing_steps": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Missing Steps"
+     }
+    },
+    "type": "object",
+    "required": [
+     "persona_type",
+     "prospect_count",
+     "missing_steps"
+    ],
+    "title": "PersonaGap",
+    "description": "A persona of the enrolled contacts with no template (own or generic) for some steps."
    },
    "PlatformStats": {
     "properties": {
@@ -7069,6 +8393,76 @@
     "type": "object",
     "title": "ProposalWrite"
    },
+   "ProspectAssignments": {
+    "properties": {
+     "prospect_id": {
+      "type": "string",
+      "title": "Prospect Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name",
+      "default": ""
+     },
+     "email": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email"
+     },
+     "designation": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Designation"
+     },
+     "persona": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Persona"
+     },
+     "enrolment_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Enrolment Status"
+     },
+     "assignments": {
+      "items": {
+       "$ref": "#/components/schemas/StepAssignment"
+      },
+      "type": "array",
+      "title": "Assignments",
+      "default": []
+     }
+    },
+    "type": "object",
+    "required": [
+     "prospect_id"
+    ],
+    "title": "ProspectAssignments"
+   },
    "ProspectInListResponse": {
     "properties": {
      "prospect_id": {
@@ -7359,7 +8753,8 @@
      "first_name": {
       "anyOf": [
        {
-        "type": "string"
+        "type": "string",
+        "maxLength": 100
        },
        {
         "type": "null"
@@ -7370,7 +8765,8 @@
      "last_name": {
       "anyOf": [
        {
-        "type": "string"
+        "type": "string",
+        "maxLength": 100
        },
        {
         "type": "null"
@@ -7381,7 +8777,9 @@
      "email": {
       "anyOf": [
        {
-        "type": "string"
+        "type": "string",
+        "maxLength": 255,
+        "format": "email"
        },
        {
         "type": "null"
@@ -7392,7 +8790,8 @@
      "company_name": {
       "anyOf": [
        {
-        "type": "string"
+        "type": "string",
+        "maxLength": 255
        },
        {
         "type": "null"
@@ -7403,7 +8802,8 @@
      "designation": {
       "anyOf": [
        {
-        "type": "string"
+        "type": "string",
+        "maxLength": 150
        },
        {
         "type": "null"
@@ -7414,7 +8814,8 @@
      "poc_city": {
       "anyOf": [
        {
-        "type": "string"
+        "type": "string",
+        "maxLength": 100
        },
        {
         "type": "null"
@@ -7425,7 +8826,8 @@
      "poc_state": {
       "anyOf": [
        {
-        "type": "string"
+        "type": "string",
+        "maxLength": 100
        },
        {
         "type": "null"
@@ -7436,7 +8838,8 @@
      "poc_country": {
       "anyOf": [
        {
-        "type": "string"
+        "type": "string",
+        "maxLength": 100
        },
        {
         "type": "null"
@@ -8713,7 +10116,9 @@
      "delay_between_emails": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "integer",
+        "maximum": 3600.0,
+        "minimum": 0.0
        },
        {
         "type": "null"
@@ -8955,6 +10360,16 @@
       ],
       "title": "Imap Last Error"
      },
+     "imap_configured": {
+      "type": "boolean",
+      "title": "Imap Configured",
+      "default": false
+     },
+     "imap_derived_from_smtp": {
+      "type": "boolean",
+      "title": "Imap Derived From Smtp",
+      "default": false
+     },
      "auth_type": {
       "anyOf": [
        {
@@ -9259,6 +10674,62 @@
       ],
       "title": "Warmup Today Saved",
       "default": 0
+     },
+     "paused_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Paused Reason"
+     },
+     "paused_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Paused At"
+     },
+     "daily_capacity": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Daily Capacity"
+     },
+     "sent_today": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sent Today"
+     },
+     "remaining_today": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remaining Today"
      },
      "domain_verification": {
       "anyOf": [
@@ -9448,6 +10919,16 @@
       ],
       "title": "Imap Last Error"
      },
+     "imap_configured": {
+      "type": "boolean",
+      "title": "Imap Configured",
+      "default": false
+     },
+     "imap_derived_from_smtp": {
+      "type": "boolean",
+      "title": "Imap Derived From Smtp",
+      "default": false
+     },
      "auth_type": {
       "anyOf": [
        {
@@ -9752,6 +11233,62 @@
       ],
       "title": "Warmup Today Saved",
       "default": 0
+     },
+     "paused_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Paused Reason"
+     },
+     "paused_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Paused At"
+     },
+     "daily_capacity": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Daily Capacity"
+     },
+     "sent_today": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sent Today"
+     },
+     "remaining_today": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remaining Today"
      }
     },
     "type": "object",
@@ -9924,7 +11461,9 @@
      "delay_between_emails": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "integer",
+        "maximum": 3600.0,
+        "minimum": 0.0
        },
        {
         "type": "null"
@@ -10599,6 +12138,149 @@
     "type": "object",
     "title": "StageWrite"
    },
+   "StepAssignment": {
+    "properties": {
+     "step_number": {
+      "type": "integer",
+      "title": "Step Number"
+     },
+     "sequence_id": {
+      "type": "string",
+      "title": "Sequence Id"
+     },
+     "template_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Template Id"
+     },
+     "source": {
+      "type": "string",
+      "title": "Source"
+     },
+     "message_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Message Status"
+     }
+    },
+    "type": "object",
+    "required": [
+     "step_number",
+     "sequence_id",
+     "source"
+    ],
+    "title": "StepAssignment"
+   },
+   "StepEditIn": {
+    "properties": {
+     "sequence_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 36
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sequence Id"
+     },
+     "wait_days": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 30.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Wait Days"
+     },
+     "stop_on_reply": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stop On Reply"
+     },
+     "stop_on_bounce": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stop On Bounce"
+     },
+     "templates": {
+      "items": {
+       "$ref": "#/components/schemas/TemplateEditIn"
+      },
+      "type": "array",
+      "maxItems": 20,
+      "title": "Templates"
+     }
+    },
+    "type": "object",
+    "title": "StepEditIn",
+    "description": "A step of the edited sequence, in order: with sequence_id it is kept, without it a step is added."
+   },
+   "StepTemplates": {
+    "properties": {
+     "sequence_id": {
+      "type": "string",
+      "title": "Sequence Id"
+     },
+     "step_number": {
+      "type": "integer",
+      "title": "Step Number"
+     },
+     "wait_days": {
+      "type": "integer",
+      "title": "Wait Days",
+      "default": 0
+     },
+     "templates": {
+      "items": {
+       "$ref": "#/components/schemas/AssignedTemplate"
+      },
+      "type": "array",
+      "title": "Templates",
+      "default": []
+     },
+     "unassigned": {
+      "type": "integer",
+      "title": "Unassigned",
+      "default": 0
+     }
+    },
+    "type": "object",
+    "required": [
+     "sequence_id",
+     "step_number"
+    ],
+    "title": "StepTemplates"
+   },
    "SubmitIn": {
     "properties": {
      "note": {
@@ -10785,6 +12467,106 @@
     },
     "type": "object",
     "title": "TaskWrite"
+   },
+   "TemplateAssignments": {
+    "properties": {
+     "campaign_id": {
+      "type": "string",
+      "title": "Campaign Id"
+     },
+     "steps": {
+      "items": {
+       "$ref": "#/components/schemas/StepTemplates"
+      },
+      "type": "array",
+      "title": "Steps"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "limit": {
+      "type": "integer",
+      "title": "Limit"
+     },
+     "offset": {
+      "type": "integer",
+      "title": "Offset"
+     },
+     "prospects": {
+      "items": {
+       "$ref": "#/components/schemas/ProspectAssignments"
+      },
+      "type": "array",
+      "title": "Prospects"
+     }
+    },
+    "type": "object",
+    "required": [
+     "campaign_id",
+     "steps",
+     "total",
+     "limit",
+     "offset",
+     "prospects"
+    ],
+    "title": "TemplateAssignments"
+   },
+   "TemplateEditIn": {
+    "properties": {
+     "template_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 36
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Template Id"
+     },
+     "designation": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 150
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Designation",
+      "description": "Persona; empty = the generic version"
+     },
+     "subject": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 998
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subject"
+     },
+     "body": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Body"
+     }
+    },
+    "type": "object",
+    "title": "TemplateEditIn",
+    "description": "A persona version of a step: with template_id it is edited, without it a version is added."
    },
    "TemplateInfo": {
     "properties": {
@@ -11231,6 +13013,7 @@
     "enum": [
      "EMAIL_OPENED",
      "EMAIL_CLICKED",
+     "EMAIL_BOUNCED",
      "NO_REPLY",
      "TIME_DELAY"
     ],
@@ -11308,10 +13091,13 @@
     "properties": {
      "upload_id": {
       "type": "string",
+      "maxLength": 36,
+      "minLength": 1,
       "title": "Upload Id"
      },
      "title": {
       "type": "string",
+      "maxLength": 255,
       "title": "Title"
      },
      "records": {
@@ -12209,6 +13995,37 @@
       "default": 25,
       "title": "Page Size"
      }
+    },
+    {
+     "name": "filters",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "JSON AND/OR filter on company properties and custom.<key>",
+      "title": "Filters"
+     },
+     "description": "JSON AND/OR filter on company properties and custom.<key>"
+    },
+    {
+     "name": "status",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "string",
+      "pattern": "^(active|archived)$",
+      "description": "'archived': companies in the recycle bin (managers)",
+      "default": "active",
+      "title": "Status"
+     },
+     "description": "'archived': companies in the recycle bin (managers)"
     }
    ],
    "body_required": false,
@@ -12332,6 +14149,203 @@
    }
   },
   {
+   "id": "POST /accounts/backfill/previews",
+   "method": "POST",
+   "path": "/accounts/backfill/previews",
+   "operationId": "preview_backfill_accounts_backfill_previews_post",
+   "tags": [
+    "Companies"
+   ],
+   "summary": "Preview Backfill",
+   "params": [],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {}
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.accounts_router.preview_backfill",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "GET /accounts/backfill/runs",
+   "method": "GET",
+   "path": "/accounts/backfill/runs",
+   "operationId": "list_backfill_runs_accounts_backfill_runs_get",
+   "tags": [
+    "Companies"
+   ],
+   "summary": "List Backfill Runs",
+   "params": [
+    {
+     "name": "limit",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "maximum": 100,
+      "minimum": 1,
+      "default": 20,
+      "title": "Limit"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.accounts_router.list_backfill_runs",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /accounts/backfill/runs",
+   "method": "POST",
+   "path": "/accounts/backfill/runs",
+   "operationId": "run_backfill_accounts_backfill_runs_post",
+   "tags": [
+    "Companies"
+   ],
+   "summary": "Run Backfill",
+   "params": [],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "201": {}
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.accounts_router.run_backfill",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /accounts/backfill/runs/{run_id}/undo",
+   "method": "POST",
+   "path": "/accounts/backfill/runs/{run_id}/undo",
+   "operationId": "undo_backfill_run_accounts_backfill_runs__run_id__undo_post",
+   "tags": [
+    "Companies"
+   ],
+   "summary": "Undo Backfill Run",
+   "params": [
+    {
+     "name": "run_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Run Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.accounts_router.undo_backfill_run",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
    "id": "GET /accounts/deleted",
    "method": "GET",
    "path": "/accounts/deleted",
@@ -12371,6 +14385,420 @@
     "MANAGER": false,
     "AGENT": false,
     "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "GET /accounts/export",
+   "method": "GET",
+   "path": "/accounts/export",
+   "operationId": "export_accounts_accounts_export_get",
+   "tags": [
+    "Companies"
+   ],
+   "summary": "Export Accounts",
+   "params": [
+    {
+     "name": "format",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "string",
+      "pattern": "^(csv|xlsx)$",
+      "default": "csv",
+      "title": "Format"
+     }
+    },
+    {
+     "name": "columns",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Comma-separated column keys",
+      "title": "Columns"
+     },
+     "description": "Comma-separated column keys"
+    },
+    {
+     "name": "q",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Q"
+     }
+    },
+    {
+     "name": "owner",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Owner"
+     }
+    },
+    {
+     "name": "lifecycle_stage",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lifecycle Stage"
+     }
+    },
+    {
+     "name": "industry",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Industry"
+     }
+    },
+    {
+     "name": "filters",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Filters"
+     }
+    },
+    {
+     "name": "status",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "string",
+      "pattern": "^(active|archived)$",
+      "default": "active",
+      "title": "Status"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.accounts_router.export_accounts",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "GET /accounts/fields",
+   "method": "GET",
+   "path": "/accounts/fields",
+   "operationId": "list_company_fields_accounts_fields_get",
+   "tags": [
+    "Companies"
+   ],
+   "summary": "List Company Fields",
+   "params": [
+    {
+     "name": "include_inactive",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "boolean",
+      "description": "Also list deactivated properties",
+      "default": false,
+      "title": "Include Inactive"
+     },
+     "description": "Also list deactivated properties"
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.accounts_router.list_company_fields",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "POST /accounts/fields",
+   "method": "POST",
+   "path": "/accounts/fields",
+   "operationId": "create_company_field_accounts_fields_post",
+   "tags": [
+    "Companies"
+   ],
+   "summary": "Create Company Field",
+   "params": [],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/FieldWrite"
+   },
+   "responses": {
+    "201": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.accounts_router.create_company_field",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "DELETE /accounts/fields/{field_id}",
+   "method": "DELETE",
+   "path": "/accounts/fields/{field_id}",
+   "operationId": "delete_company_field_accounts_fields__field_id__delete",
+   "tags": [
+    "Companies"
+   ],
+   "summary": "Delete Company Field",
+   "params": [
+    {
+     "name": "field_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Field Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.accounts_router.delete_company_field",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "PATCH /accounts/fields/{field_id}",
+   "method": "PATCH",
+   "path": "/accounts/fields/{field_id}",
+   "operationId": "update_company_field_accounts_fields__field_id__patch",
+   "tags": [
+    "Companies"
+   ],
+   "summary": "Update Company Field",
+   "params": [
+    {
+     "name": "field_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Field Id"
+     }
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/FieldWrite"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.accounts_router.update_company_field",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "GET /accounts/meta",
+   "method": "GET",
+   "path": "/accounts/meta",
+   "operationId": "account_meta_accounts_meta_get",
+   "tags": [
+    "Companies"
+   ],
+   "summary": "Account Meta",
+   "params": [],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {}
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.accounts_router.account_meta",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
    }
   },
   {
@@ -12498,12 +14926,28 @@
       "type": "string",
       "title": "Account Id"
      }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
+     }
     }
    ],
    "body_required": true,
    "body_content_type": "application/json",
    "body_schema": {
-    "$ref": "#/components/schemas/AccountWrite"
+    "$ref": "#/components/schemas/AccountUpdate"
    },
    "responses": {
     "200": {},
@@ -12951,7 +15395,9 @@
    "public": true,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.auth_router.auth_service"
+   ],
    "handler": "app.routers.auth_router.forgot_password",
    "in_introspection": true,
    "guard": "PUBLIC",
@@ -13028,7 +15474,9 @@
    "public": true,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.auth_router.auth_service"
+   ],
    "handler": "app.routers.auth_router.google_callback",
    "in_introspection": true,
    "guard": "PUBLIC",
@@ -13070,7 +15518,9 @@
    "public": true,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.auth_router.auth_service"
+   ],
    "handler": "app.routers.auth_router.login",
    "in_introspection": true,
    "guard": "PUBLIC",
@@ -13118,7 +15568,9 @@
    "public": true,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.auth_router.auth_service"
+   ],
    "handler": "app.routers.auth_router.logout",
    "in_introspection": true,
    "guard": "PUBLIC",
@@ -13160,7 +15612,9 @@
    "public": true,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.auth_router.auth_service"
+   ],
    "handler": "app.routers.auth_router.magic_login",
    "in_introspection": true,
    "guard": "PUBLIC",
@@ -13235,7 +15689,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.auth_router.auth_service"
+   ],
    "handler": "app.routers.auth_router.update_me",
    "in_introspection": true,
    "guard": "any-auth-user",
@@ -13275,8 +15731,52 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.auth_router.auth_service"
+   ],
    "handler": "app.routers.auth_router.change_password",
+   "in_introspection": true,
+   "guard": "any-auth-user",
+   "expect": {
+    "PLATFORM_ADMIN": null,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "POST /api/auth/me/set-password",
+   "method": "POST",
+   "path": "/api/auth/me/set-password",
+   "operationId": "set_initial_password_api_auth_me_set_password_post",
+   "tags": [
+    "Authentication"
+   ],
+   "summary": "Set Initial Password",
+   "params": [],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/SetPasswordRequest"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": null,
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [
+    "app.routers.auth_router.auth_service"
+   ],
+   "handler": "app.routers.auth_router.set_initial_password",
    "in_introspection": true,
    "guard": "any-auth-user",
    "expect": {
@@ -13564,7 +16064,9 @@
    "public": true,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.auth_router.auth_service"
+   ],
    "handler": "app.routers.auth_router.refresh_token",
    "in_introspection": true,
    "guard": "PUBLIC",
@@ -13606,7 +16108,9 @@
    "public": true,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.auth_router.auth_service"
+   ],
    "handler": "app.routers.auth_router.register",
    "in_introspection": true,
    "guard": "PUBLIC",
@@ -13646,7 +16150,9 @@
    "public": true,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.auth_router.auth_service"
+   ],
    "handler": "app.routers.auth_router.reset_password",
    "in_introspection": true,
    "guard": "PUBLIC",
@@ -14766,7 +17272,9 @@
     "MANAGER",
     "SUPER_ADMIN"
    ],
-   "perms": [],
+   "perms": [
+    "manage_campaigns"
+   ],
    "auth_required": true,
    "public": false,
    "dangerous": false,
@@ -14774,14 +17282,14 @@
    "other_deps": [],
    "handler": "app.routers.automation_router.create_rule",
    "in_introspection": true,
-   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_campaigns",
    "expect": {
     "PLATFORM_ADMIN": false,
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
     "AGENT": true,
-    "AGENT_NOPERM": true
+    "AGENT_NOPERM": false
    }
   },
   {
@@ -14818,7 +17326,9 @@
     "MANAGER",
     "SUPER_ADMIN"
    ],
-   "perms": [],
+   "perms": [
+    "manage_campaigns"
+   ],
    "auth_required": true,
    "public": false,
    "dangerous": false,
@@ -14826,7 +17336,7 @@
    "other_deps": [],
    "handler": "app.routers.automation_router.delete_rule",
    "in_introspection": true,
-   "guard": "roles=ADMIN,MANAGER,SUPER_ADMIN",
+   "guard": "roles=ADMIN,MANAGER,SUPER_ADMIN perm=manage_campaigns",
    "expect": {
     "PLATFORM_ADMIN": false,
     "SUPER_ADMIN": true,
@@ -14875,7 +17385,9 @@
     "MANAGER",
     "SUPER_ADMIN"
    ],
-   "perms": [],
+   "perms": [
+    "manage_campaigns"
+   ],
    "auth_required": true,
    "public": false,
    "dangerous": false,
@@ -14883,14 +17395,14 @@
    "other_deps": [],
    "handler": "app.routers.automation_router.update_rule",
    "in_introspection": true,
-   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_campaigns",
    "expect": {
     "PLATFORM_ADMIN": false,
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
     "AGENT": true,
-    "AGENT_NOPERM": true
+    "AGENT_NOPERM": false
    }
   },
   {
@@ -15401,7 +17913,7 @@
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
-    "AGENT": false,
+    "AGENT": true,
     "AGENT_NOPERM": false
    }
   },
@@ -15632,7 +18144,7 @@
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
-    "AGENT": false,
+    "AGENT": true,
     "AGENT_NOPERM": false
    }
   },
@@ -15653,6 +18165,22 @@
      "schema": {
       "type": "string",
       "title": "Sequence Id"
+     }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
      }
     }
    ],
@@ -15691,7 +18219,7 @@
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
-    "AGENT": false,
+    "AGENT": true,
     "AGENT_NOPERM": false
    }
   },
@@ -15911,6 +18439,22 @@
       "type": "string",
       "title": "Campaign Id"
      }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
+     }
     }
    ],
    "body_required": true,
@@ -15948,7 +18492,7 @@
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
-    "AGENT": false,
+    "AGENT": true,
     "AGENT_NOPERM": false
    }
   },
@@ -15969,6 +18513,22 @@
      "schema": {
       "type": "string",
       "title": "Campaign Id"
+     }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
      }
     }
    ],
@@ -16196,6 +18756,270 @@
    }
   },
   {
+   "id": "POST /campaigns/{campaign_id}/duplicates",
+   "method": "POST",
+   "path": "/campaigns/{campaign_id}/duplicates",
+   "operationId": "duplicate_campaign_campaigns__campaign_id__duplicates_post",
+   "tags": [
+    "Campaigns"
+   ],
+   "summary": "Duplicate Campaign",
+   "params": [
+    {
+     "name": "campaign_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Campaign Id"
+     }
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/CampaignDuplicateRequest"
+   },
+   "responses": {
+    "201": {
+     "$ref": "#/components/schemas/CampaignDuplicateResponse"
+    },
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_campaigns"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.campaign_router.duplicate_campaign",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_campaigns",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /campaigns/{campaign_id}/edits",
+   "method": "POST",
+   "path": "/campaigns/{campaign_id}/edits",
+   "operationId": "edit_campaign_campaigns__campaign_id__edits_post",
+   "tags": [
+    "Campaigns"
+   ],
+   "summary": "Edit Campaign",
+   "params": [
+    {
+     "name": "campaign_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Campaign Id"
+     }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
+     }
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/CampaignEditRequest"
+   },
+   "responses": {
+    "200": {
+     "$ref": "#/components/schemas/CampaignEditResult"
+    },
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_campaigns"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.campaign_router.edit_campaign",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,MANAGER,SUPER_ADMIN perm=manage_campaigns",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /campaigns/{campaign_id}/edits/checks",
+   "method": "POST",
+   "path": "/campaigns/{campaign_id}/edits/checks",
+   "operationId": "check_campaign_edit_campaigns__campaign_id__edits_checks_post",
+   "tags": [
+    "Campaigns"
+   ],
+   "summary": "Check Campaign Edit",
+   "params": [
+    {
+     "name": "campaign_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Campaign Id"
+     }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
+     }
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/CampaignEditRequest"
+   },
+   "responses": {
+    "200": {
+     "$ref": "#/components/schemas/CampaignEditResult"
+    },
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_campaigns"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.campaign_router.check_campaign_edit",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,MANAGER,SUPER_ADMIN perm=manage_campaigns",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /campaigns/{campaign_id}/email-previews",
+   "method": "POST",
+   "path": "/campaigns/{campaign_id}/email-previews",
+   "operationId": "preview_step_email_campaigns__campaign_id__email_previews_post",
+   "tags": [
+    "Campaigns"
+   ],
+   "summary": "Preview Step Email",
+   "params": [
+    {
+     "name": "campaign_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Campaign Id"
+     }
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/EmailPreviewRequest"
+   },
+   "responses": {
+    "200": {
+     "$ref": "#/components/schemas/EmailPreview"
+    },
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.campaign_router.preview_step_email",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
    "id": "POST /campaigns/{campaign_id}/enrollments",
    "method": "POST",
    "path": "/campaigns/{campaign_id}/enrollments",
@@ -16310,6 +19134,63 @@
    }
   },
   {
+   "id": "POST /campaigns/{campaign_id}/enrollments/checks",
+   "method": "POST",
+   "path": "/campaigns/{campaign_id}/enrollments/checks",
+   "operationId": "check_enrollment_campaigns__campaign_id__enrollments_checks_post",
+   "tags": [
+    "Campaigns"
+   ],
+   "summary": "Check Enrollment",
+   "params": [
+    {
+     "name": "campaign_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Campaign Id"
+     }
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/EnrollmentCheckRequest"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_campaigns"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.campaign_router.check_enrollment",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_campaigns",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
    "id": "POST /campaigns/{campaign_id}/generations",
    "method": "POST",
    "path": "/campaigns/{campaign_id}/generations",
@@ -16382,11 +19263,37 @@
       "type": "string",
       "title": "Campaign Id"
      }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
+     }
     }
    ],
    "body_required": false,
-   "body_content_type": null,
-   "body_schema": null,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "anyOf": [
+     {
+      "$ref": "#/components/schemas/CampaignVersionedAction"
+     },
+     {
+      "type": "null"
+     }
+    ],
+    "title": "Payload"
+   },
    "responses": {
     "200": {
      "$ref": "#/components/schemas/CampaignStateChange"
@@ -16635,11 +19542,37 @@
       "title": "Reason"
      },
      "description": "Reason for pausing"
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
+     }
     }
    ],
    "body_required": false,
-   "body_content_type": null,
-   "body_schema": null,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "anyOf": [
+     {
+      "$ref": "#/components/schemas/CampaignVersionedAction"
+     },
+     {
+      "type": "null"
+     }
+    ],
+    "title": "Payload"
+   },
    "responses": {
     "200": {
      "$ref": "#/components/schemas/CampaignStateChange"
@@ -16755,6 +19688,18 @@
       "type": "string",
       "title": "Campaign Id"
      }
+    },
+    {
+     "name": "include_removed",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "boolean",
+      "description": "Also list contacts removed from the campaign",
+      "default": false,
+      "title": "Include Removed"
+     },
+     "description": "Also list contacts removed from the campaign"
     }
    ],
    "body_required": false,
@@ -16843,7 +19788,7 @@
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
-    "AGENT": false,
+    "AGENT": true,
     "AGENT_NOPERM": false
    }
   },
@@ -16907,7 +19852,7 @@
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
-    "AGENT": false,
+    "AGENT": true,
     "AGENT_NOPERM": false
    }
   },
@@ -17053,11 +19998,37 @@
       "type": "string",
       "title": "Campaign Id"
      }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
+     }
     }
    ],
    "body_required": false,
-   "body_content_type": null,
-   "body_schema": null,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "anyOf": [
+     {
+      "$ref": "#/components/schemas/CampaignVersionedAction"
+     },
+     {
+      "type": "null"
+     }
+    ],
+    "title": "Payload"
+   },
    "responses": {
     "200": {
      "$ref": "#/components/schemas/CampaignStateChange"
@@ -17298,7 +20269,7 @@
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
-    "AGENT": false,
+    "AGENT": true,
     "AGENT_NOPERM": false
    }
   },
@@ -17412,7 +20383,7 @@
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
-    "AGENT": false,
+    "AGENT": true,
     "AGENT_NOPERM": false
    }
   },
@@ -17614,7 +20585,7 @@
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
-    "AGENT": false,
+    "AGENT": true,
     "AGENT_NOPERM": false
    }
   },
@@ -17873,7 +20844,7 @@
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
-    "AGENT": false,
+    "AGENT": true,
     "AGENT_NOPERM": false
    }
   },
@@ -17957,7 +20928,7 @@
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
-    "AGENT": false,
+    "AGENT": true,
     "AGENT_NOPERM": false
    }
   },
@@ -18039,8 +21010,90 @@
     "SUPER_ADMIN": true,
     "ADMIN": true,
     "MANAGER": true,
-    "AGENT": false,
+    "AGENT": true,
     "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "GET /campaigns/{campaign_id}/template-assignments",
+   "method": "GET",
+   "path": "/campaigns/{campaign_id}/template-assignments",
+   "operationId": "get_template_assignments_campaigns__campaign_id__template_assignments_get",
+   "tags": [
+    "Campaigns"
+   ],
+   "summary": "Get Template Assignments",
+   "params": [
+    {
+     "name": "campaign_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Campaign Id"
+     }
+    },
+    {
+     "name": "limit",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "maximum": 2000,
+      "minimum": 1,
+      "description": "Contacts per page",
+      "default": 200,
+      "title": "Limit"
+     },
+     "description": "Contacts per page"
+    },
+    {
+     "name": "offset",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Contacts to skip",
+      "default": 0,
+      "title": "Offset"
+     },
+     "description": "Contacts to skip"
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {
+     "$ref": "#/components/schemas/TemplateAssignments"
+    },
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.campaign_router.get_template_assignments",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
    }
   },
   {
@@ -19366,6 +22419,255 @@
    }
   },
   {
+   "id": "GET /contacts/duplicates/pairs",
+   "method": "GET",
+   "path": "/contacts/duplicates/pairs",
+   "operationId": "duplicate_pairs_contacts_duplicates_pairs_get",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "Duplicate Pairs",
+   "params": [
+    {
+     "name": "status",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "string",
+      "pattern": "^(OPEN|DISMISSED|MERGED)$",
+      "default": "OPEN",
+      "title": "Status"
+     }
+    },
+    {
+     "name": "confidence",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^(HIGH|MEDIUM)$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Confidence"
+     }
+    },
+    {
+     "name": "page",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "title": "Page"
+     }
+    },
+    {
+     "name": "page_size",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "maximum": 100,
+      "minimum": 1,
+      "default": 25,
+      "title": "Page Size"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.duplicates_router.duplicate_pairs",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /contacts/duplicates/scan",
+   "method": "POST",
+   "path": "/contacts/duplicates/scan",
+   "operationId": "scan_duplicates_contacts_duplicates_scan_post",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "Scan Duplicates",
+   "params": [],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {}
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.duplicates_router.scan_duplicates",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /contacts/duplicates/{pair_id}/dismiss",
+   "method": "POST",
+   "path": "/contacts/duplicates/{pair_id}/dismiss",
+   "operationId": "dismiss_pair_contacts_duplicates__pair_id__dismiss_post",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "Dismiss Pair",
+   "params": [
+    {
+     "name": "pair_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Pair Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.duplicates_router.dismiss_pair",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /contacts/duplicates/{pair_id}/reopen",
+   "method": "POST",
+   "path": "/contacts/duplicates/{pair_id}/reopen",
+   "operationId": "reopen_pair_contacts_duplicates__pair_id__reopen_post",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "Reopen Pair",
+   "params": [
+    {
+     "name": "pair_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Pair Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.duplicates_router.reopen_pair",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
    "id": "GET /contacts/export",
    "method": "GET",
    "path": "/contacts/export",
@@ -19598,12 +22900,28 @@
     "Contacts"
    ],
    "summary": "List Fields",
-   "params": [],
+   "params": [
+    {
+     "name": "include_inactive",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "boolean",
+      "description": "Also list deactivated properties",
+      "default": false,
+      "title": "Include Inactive"
+     },
+     "description": "Also list deactivated properties"
+    }
+   ],
    "body_required": false,
    "body_content_type": null,
    "body_schema": null,
    "responses": {
-    "200": {}
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
    },
    "roles": [
     "ADMIN",
@@ -19925,6 +23243,51 @@
    "platform_only": false,
    "other_deps": [],
    "handler": "app.routers.contacts_router.merge",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "POST /contacts/merge/preview",
+   "method": "POST",
+   "path": "/contacts/merge/preview",
+   "operationId": "merge_preview_contacts_merge_preview_post",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "Merge Preview",
+   "params": [],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/MergePreviewRequest"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.duplicates_router.merge_preview",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
    "expect": {
@@ -20350,6 +23713,22 @@
       "type": "string",
       "title": "Prospect Id"
      }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
+     }
     }
    ],
    "body_required": true,
@@ -20696,6 +24075,59 @@
    }
   },
   {
+   "id": "GET /contacts/{prospect_id}/emails",
+   "method": "GET",
+   "path": "/contacts/{prospect_id}/emails",
+   "operationId": "email_history_contacts__prospect_id__emails_get",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "Email History",
+   "params": [
+    {
+     "name": "prospect_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Prospect Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.duplicates_router.email_history",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
    "id": "GET /contacts/{prospect_id}/history",
    "method": "GET",
    "path": "/contacts/{prospect_id}/history",
@@ -20753,6 +24185,71 @@
    "platform_only": false,
    "other_deps": [],
    "handler": "app.routers.contacts_router.property_history",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "GET /contacts/{prospect_id}/merges",
+   "method": "GET",
+   "path": "/contacts/{prospect_id}/merges",
+   "operationId": "merge_history_contacts__prospect_id__merges_get",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "Merge History",
+   "params": [
+    {
+     "name": "prospect_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Prospect Id"
+     }
+    },
+    {
+     "name": "limit",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "maximum": 200,
+      "minimum": 1,
+      "default": 50,
+      "title": "Limit"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.duplicates_router.merge_history",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
    "expect": {
@@ -21009,9 +24506,54 @@
      "in": "query",
      "required": false,
      "schema": {
-      "type": "string",
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 36
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Campaign Id"
      }
+    },
+    {
+     "name": "search",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Contact name, email or subject (matched literally)",
+      "title": "Search"
+     },
+     "description": "Contact name, email or subject (matched literally)"
+    },
+    {
+     "name": "label",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Reply label: POSITIVE / NEUTRAL / NEGATIVE / OUT_OF_OFFICE / UNSUBSCRIBE",
+      "title": "Label"
+     },
+     "description": "Reply label: POSITIVE / NEUTRAL / NEGATIVE / OUT_OF_OFFICE / UNSUBSCRIBE"
     }
    ],
    "body_required": false,
@@ -21508,6 +25050,18 @@
       "type": "string",
       "title": "Domain Name"
      }
+    },
+    {
+     "name": "live",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "boolean",
+      "description": "Compare each record with live DNS (status OK / ADD / UPDATE / UNKNOWN)",
+      "default": true,
+      "title": "Live"
+     },
+     "description": "Compare each record with live DNS (status OK / ADD / UPDATE / UNKNOWN)"
     }
    ],
    "body_required": false,
@@ -22291,6 +25845,104 @@
    }
   },
   {
+   "id": "GET /exports/logs",
+   "method": "GET",
+   "path": "/exports/logs",
+   "operationId": "export_logs_exports_logs_get",
+   "tags": [
+    "Exports"
+   ],
+   "summary": "Export Logs",
+   "params": [
+    {
+     "name": "object_type",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^(CONTACT|LIST|COMPANY)$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Object Type"
+     }
+    },
+    {
+     "name": "user_id",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Id"
+     }
+    },
+    {
+     "name": "page",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "title": "Page"
+     }
+    },
+    {
+     "name": "page_size",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "maximum": 200,
+      "minimum": 1,
+      "default": 50,
+      "title": "Page Size"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.exports_router.export_logs",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
    "id": "GET /health",
    "method": "GET",
    "path": "/health",
@@ -22477,6 +26129,153 @@
    }
   },
   {
+   "id": "GET /imports/mappings",
+   "method": "GET",
+   "path": "/imports/mappings",
+   "operationId": "list_mappings_imports_mappings_get",
+   "tags": [
+    "Imports"
+   ],
+   "summary": "List Mappings",
+   "params": [],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {}
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.import_router.list_mappings",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /imports/mappings",
+   "method": "POST",
+   "path": "/imports/mappings",
+   "operationId": "save_mapping_imports_mappings_post",
+   "tags": [
+    "Imports"
+   ],
+   "summary": "Save Mapping",
+   "params": [],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "additionalProperties": true,
+    "type": "object",
+    "title": "Payload",
+    "description": "{\"name\", \"mapping\": {column: target}, \"options\"}"
+   },
+   "responses": {
+    "201": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.import_router.save_mapping",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "DELETE /imports/mappings/{mapping_id}",
+   "method": "DELETE",
+   "path": "/imports/mappings/{mapping_id}",
+   "operationId": "delete_mapping_imports_mappings__mapping_id__delete",
+   "tags": [
+    "Imports"
+   ],
+   "summary": "Delete Mapping",
+   "params": [
+    {
+     "name": "mapping_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Mapping Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.import_router.delete_mapping",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
    "id": "POST /imports/preview",
    "method": "POST",
    "path": "/imports/preview",
@@ -22512,6 +26311,53 @@
    "platform_only": false,
    "other_deps": [],
    "handler": "app.routers.import_router.preview",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /imports/uploads",
+   "method": "POST",
+   "path": "/imports/uploads",
+   "operationId": "upload_imports_uploads_post",
+   "tags": [
+    "Imports"
+   ],
+   "summary": "Upload",
+   "params": [],
+   "body_required": true,
+   "body_content_type": "multipart/form-data",
+   "body_schema": {
+    "$ref": "#/components/schemas/Body_upload_imports_uploads_post"
+   },
+   "responses": {
+    "201": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.import_router.upload",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
    "expect": {
@@ -22577,6 +26423,121 @@
    }
   },
   {
+   "id": "POST /imports/{import_id}/cancel",
+   "method": "POST",
+   "path": "/imports/{import_id}/cancel",
+   "operationId": "cancel_imports__import_id__cancel_post",
+   "tags": [
+    "Imports"
+   ],
+   "summary": "Cancel",
+   "params": [
+    {
+     "name": "import_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Import Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.import_router.cancel",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /imports/{import_id}/dry-run",
+   "method": "POST",
+   "path": "/imports/{import_id}/dry-run",
+   "operationId": "dry_run_imports__import_id__dry_run_post",
+   "tags": [
+    "Imports"
+   ],
+   "summary": "Dry Run",
+   "params": [
+    {
+     "name": "import_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Import Id"
+     }
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "type": "object",
+    "additionalProperties": true,
+    "description": "{\"mapping\", \"options\"}",
+    "title": "Payload"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.import_router.dry_run",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
    "id": "GET /imports/{import_id}/errors.csv",
    "method": "GET",
    "path": "/imports/{import_id}/errors.csv",
@@ -22627,6 +26588,121 @@
     "MANAGER": true,
     "AGENT": true,
     "AGENT_NOPERM": true
+   }
+  },
+  {
+   "id": "POST /imports/{import_id}/resume",
+   "method": "POST",
+   "path": "/imports/{import_id}/resume",
+   "operationId": "resume_imports__import_id__resume_post",
+   "tags": [
+    "Imports"
+   ],
+   "summary": "Resume",
+   "params": [
+    {
+     "name": "import_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Import Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "202": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.import_router.resume",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /imports/{import_id}/start",
+   "method": "POST",
+   "path": "/imports/{import_id}/start",
+   "operationId": "start_imports__import_id__start_post",
+   "tags": [
+    "Imports"
+   ],
+   "summary": "Start",
+   "params": [
+    {
+     "name": "import_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Import Id"
+     }
+    }
+   ],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "type": "object",
+    "additionalProperties": true,
+    "description": "{\"mapping\", \"options\"}",
+    "title": "Payload"
+   },
+   "responses": {
+    "202": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_prospects"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.import_router.start",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN perm=manage_prospects",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
    }
   },
   {
@@ -23080,6 +27156,61 @@
    "platform_only": false,
    "other_deps": [],
    "handler": "app.routers.inbox_router.ms365_start",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,SUPER_ADMIN perm=manage_inboxes",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": false,
+    "AGENT": false,
+    "AGENT_NOPERM": false
+   }
+  },
+  {
+   "id": "POST /inboxes/{inbox_id}/resume",
+   "method": "POST",
+   "path": "/inboxes/{inbox_id}/resume",
+   "operationId": "resume_inbox_inboxes__inbox_id__resume_post",
+   "tags": [
+    "Inboxes"
+   ],
+   "summary": "Resume Inbox",
+   "params": [
+    {
+     "name": "inbox_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Inbox Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {
+     "$ref": "#/components/schemas/SendingInboxResponse"
+    },
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "SUPER_ADMIN"
+   ],
+   "perms": [
+    "manage_inboxes"
+   ],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.inbox_router.resume_inbox",
    "in_introspection": true,
    "guard": "roles=ADMIN,SUPER_ADMIN perm=manage_inboxes",
    "expect": {
@@ -24559,6 +28690,22 @@
       "type": "string",
       "title": "Lead Id"
      }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
+     }
     }
    ],
    "body_required": true,
@@ -24692,6 +28839,43 @@
        }
       ],
       "title": "Q"
+     }
+    },
+    {
+     "name": "page",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Send page / page_size for a paged response",
+      "title": "Page"
+     },
+     "description": "Send page / page_size for a paged response"
+    },
+    {
+     "name": "page_size",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 200,
+        "minimum": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Page Size"
      }
     }
    ],
@@ -24982,6 +29166,88 @@
    }
   },
   {
+   "id": "GET /lists/{list_id}/export",
+   "method": "GET",
+   "path": "/lists/{list_id}/export",
+   "operationId": "export_list_lists__list_id__export_get",
+   "tags": [
+    "Lists"
+   ],
+   "summary": "Export List",
+   "params": [
+    {
+     "name": "list_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "List Id"
+     }
+    },
+    {
+     "name": "format",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "string",
+      "pattern": "^(csv|xlsx)$",
+      "default": "csv",
+      "title": "Format"
+     }
+    },
+    {
+     "name": "columns",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Comma-separated column keys",
+      "title": "Columns"
+     },
+     "description": "Comma-separated column keys"
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.lists_router.export_list",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
    "id": "POST /lists/{list_id}/members",
    "method": "POST",
    "path": "/lists/{list_id}/members",
@@ -25144,7 +29410,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.list_notifications",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
@@ -25189,7 +29457,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.notification_prefs",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
@@ -25234,7 +29504,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.mark_read",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
@@ -25762,6 +30034,22 @@
      "schema": {
       "type": "string",
       "title": "Opportunity Id"
+     }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
      }
     }
    ],
@@ -26591,6 +30879,22 @@
       "type": "string",
       "title": "Proposal Id"
      }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
+     }
     }
    ],
    "body_required": true,
@@ -26699,6 +31003,22 @@
       "type": "string",
       "title": "Proposal Id"
      }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
+     }
     }
    ],
    "body_required": false,
@@ -26762,6 +31082,22 @@
       "type": "string",
       "title": "Proposal Id"
      }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
+     }
     }
    ],
    "body_required": true,
@@ -26816,6 +31152,22 @@
      "schema": {
       "type": "string",
       "title": "Proposal Id"
+     }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
      }
     }
    ],
@@ -26932,6 +31284,22 @@
      "schema": {
       "type": "string",
       "title": "Proposal Id"
+     }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
      }
     }
    ],
@@ -27680,6 +32048,22 @@
      "schema": {
       "type": "string",
       "title": "Prospect Id"
+     }
+    },
+    {
+     "name": "If-Match",
+     "in": "header",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "If-Match"
      }
     }
    ],
@@ -30198,7 +34582,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.read_settings",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
@@ -30243,7 +34629,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.write_settings",
    "in_introspection": true,
    "guard": "roles=ADMIN,SUPER_ADMIN",
@@ -30453,7 +34841,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.list_targets",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
@@ -30498,7 +34888,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.set_target",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
@@ -31108,7 +35500,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_router.admin_service"
+   ],
    "handler": "app.routers.sales_router.get_hierarchy",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
@@ -31161,7 +35555,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_router.admin_service"
+   ],
    "handler": "app.routers.sales_router.set_hierarchy",
    "in_introspection": true,
    "guard": "roles=ADMIN,SUPER_ADMIN",
@@ -31237,7 +35633,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.list_templates",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
@@ -31282,7 +35680,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.create_template",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
@@ -31335,7 +35735,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.delete_template",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
@@ -31390,7 +35792,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.update_template",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
@@ -31445,7 +35849,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.render_template",
    "in_introspection": true,
    "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
@@ -32799,7 +37205,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.list_rules",
    "in_introspection": true,
    "guard": "roles=ADMIN,SUPER_ADMIN",
@@ -32842,7 +37250,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.create_rule",
    "in_introspection": true,
    "guard": "roles=ADMIN,SUPER_ADMIN",
@@ -32893,7 +37303,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.delete_rule",
    "in_introspection": true,
    "guard": "roles=ADMIN,SUPER_ADMIN",
@@ -32946,7 +37358,9 @@
    "public": false,
    "dangerous": false,
    "platform_only": false,
-   "other_deps": [],
+   "other_deps": [
+    "app.routers.sales_admin_router.admin_service"
+   ],
    "handler": "app.routers.sales_admin_router.update_rule",
    "in_introspection": true,
    "guard": "roles=ADMIN,SUPER_ADMIN",

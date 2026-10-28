@@ -20,6 +20,7 @@ class FakeEvents:
         self.messages = {}
         self.by_provider = {}
         self.events = []
+        self.event_times = []
         self.added_messages = []
         self.prospects = {}
         self.conversations = {}
@@ -47,8 +48,9 @@ class FakeEvents:
     def prospect(self, prospect_id):
         return self.prospects.get(prospect_id)
 
-    def add_event(self, message_id, event_type, metadata):
+    def add_event(self, message_id, event_type, metadata, at=None):
         self.events.append((message_id, event_type, metadata))
+        self.event_times.append(at)
 
     def add_message(self, **fields):
         self.added_messages.append(fields)

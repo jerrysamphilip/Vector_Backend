@@ -5,7 +5,7 @@ Pydantic schemas for Deliverability and Domain Reputation.
 """
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any
-from datetime import datetime
+from app.schemas.types import UtcDatetime
 
 # Domain Schemas
 class SendingDomainBase(BaseModel):
@@ -22,8 +22,8 @@ class SendingDomainBase(BaseModel):
     account_reputation_score: Optional[float] = 1.0
 
 class SendingDomainResponse(SendingDomainBase):
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
     
     # Associations
     associated_inboxes: list[str] = []
@@ -40,14 +40,14 @@ class ReputationAlertResponse(BaseModel):
     severity: str
     details: Optional[str] = None
     is_resolved: bool
-    created_at: datetime
+    created_at: UtcDatetime
     
     class Config:
         from_attributes = True
 
 # Statistics Schema
 class SESDataPoint(BaseModel):
-    Timestamp: datetime
+    Timestamp: UtcDatetime
     DeliveryAttempts: int
     Bounces: int
     Complaints: int
@@ -77,7 +77,7 @@ class ExternalMetricResponse(BaseModel):
     reputation_score: Optional[float] = None
     delivery_error_rate: Optional[float] = None
     source: str
-    ingested_at: datetime
+    ingested_at: UtcDatetime
 
     class Config:
         from_attributes = True
@@ -88,9 +88,9 @@ class ExternalFeedbackEventResponse(BaseModel):
     provider: str
     domain_name: str
     event_type: str
-    event_time: Optional[datetime] = None
+    event_time: Optional[UtcDatetime] = None
     recipient_hash: Optional[str] = None
-    ingested_at: datetime
+    ingested_at: UtcDatetime
 
     class Config:
         from_attributes = True
@@ -102,7 +102,7 @@ class DashboardAlertResponse(BaseModel):
     severity: str
     title: str
     message: str
-    created_at: Optional[datetime] = None
+    created_at: Optional[UtcDatetime] = None
     route: Optional[str] = None
     action_label: Optional[str] = None
     alert_type: str
@@ -139,8 +139,8 @@ class SentEmailLogEntry(BaseModel):
     subject: Optional[str] = None
     to_email: str
     from_email: Optional[str] = None
-    sent_at: Optional[datetime] = None
-    scheduled_at: Optional[datetime] = None
+    sent_at: Optional[UtcDatetime] = None
+    scheduled_at: Optional[UtcDatetime] = None
     status: str
     campaign_name: Optional[str] = None
 

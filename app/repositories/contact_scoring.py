@@ -23,6 +23,7 @@ from app.models.crm import CrmTask, PropertyChange
 from app.models.email_message import EmailEvent, EmailMessage
 from app.models.prospect import Prospect
 from app.repositories.base import TenantId
+from app.repositories.system_notices import reply_message
 
 __all__ = ["ScoringRepository", "Session", "SqlAlchemyScoringRepository", "scoring_repo"]
 
@@ -118,7 +119,7 @@ class SqlAlchemyScoringRepository:
         rows = self._session.query(
             EmailMessage.prospect_id, EmailMessage.sent_at, func.substr(EmailMessage.subject, 1, chars),
             func.substr(EmailMessage.body_text, 1, chars)).filter(
-            EmailMessage.prospect_id.in_(list(ids)), EmailMessage.direction == "INBOUND",
+            EmailMessage.prospect_id.in_(list(ids)), reply_message(),
             EmailMessage.sent_at >= since).limit(cap)
         for pid, sent_at, subject, body in rows:
             yield pid, sent_at, subject, body

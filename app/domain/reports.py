@@ -155,6 +155,12 @@ def quarter_bounds(fy_start: date, fy_end: date, quarter: Optional[int]) -> tupl
 
 # ── Percentages ───────────────────────────────────────────────
 
+def delivered(sent: int, bounced: int) -> int:
+    """Delivered = sent - bounced (never below 0): the one denominator of open and reply rates on every
+    screen. Bounce rate stays bounced / sent; click rate is clicked / opened."""
+    return max(sent - bounced, 0)
+
+
 def rate(part: Union[int, float], whole: Union[int, float]) -> float:
     """Analytics rate: part / whole x 100 to two decimals; 0.0 without a denominator."""
     return round((part / whole) * 100, 2) if whole > 0 else 0.0

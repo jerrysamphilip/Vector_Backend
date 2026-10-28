@@ -146,3 +146,68 @@ def test_export_logs_route(make_client):
     client.get("/exports/logs", params={"object_type": "LIST", "page": 2, "page_size": 10})
     assert fake.calls[-1] == ("page", (ME, "LIST", None, Paging(2, 10)), {})
     assert client.get("/exports/logs", params={"object_type": "X"}).status_code == 422
+
+
+class _Db:
+    def __init__(self):
+        self.rolled_back = 0
+
+    def rollback(self):
+        self.rolled_back += 1
+
+
+@pytest.fixture
+def upload_client(make_client, monkeypatch):
+    """The upload routes call module functions with the request's db: record them instead."""
+    calls, db = [], _Db()
+
+    def record(name, result=None, error=None):
+        def call(**kwargs):
+            calls.append((name, kwargs))
+            if error:
+                raise error
+            return {"accepted": 2} if result is None else result
+        return call
+
+    def build(**patches):
+        for name, fn in patches.items():
+            monkeypatch.setattr(prospect_list_router, name, fn)
+        client = make_client(Recorder())
+        client.app.dependency_overrides[prospect_list_router.get_db] = lambda: db
+        return client
+    return build, record, calls, db
+
+
+UID = "0b5c1e3a-9d1f-4f7e-8a2b-111111111111"
+
+
+def test_upload_confirm_uses_the_path_id(upload_client):
+    build, record, calls, _ = upload_client
+    client = build(confirm_upload=record("confirm"))
+    r = client.post(f"/uploads/{UID}/confirmations", json={"upload_id": UID, "title": "Q4", "records": []})
+    assert r.status_code == 200 and r.json() == {"accepted": 2}
+    assert calls[0][0] == "confirm" and calls[0][1]["upload_id"] == UID
+
+
+def test_upload_confirm_refuses_a_body_id_that_differs_from_the_path(upload_client):
+    build, record, calls, _ = upload_client
+    client = build(confirm_upload=record("confirm"))
+    r = client.post(f"/uploads/{UID}/confirmations", json={"upload_id": "other", "title": "Q4", "records": []})
+    assert r.status_code == 400 and "does not match" in r.json()["detail"] and calls == []
+
+
+def test_upload_confirm_and_revalidate_pass_domain_errors_through(upload_client):
+    build, record, _, db = upload_client
+    missing = NotFoundError("Upload not found")
+    client = build(confirm_upload=record("confirm", error=missing),
+                   revalidate_prospect_records=record("revalidate", error=missing))
+    assert client.post(f"/uploads/{UID}/confirmations",
+                       json={"upload_id": UID, "title": "Q4", "records": []}).status_code == 404
+    assert client.post(f"/uploads/{UID}/revalidations", json={"records": []}).status_code == 404
+
+
+def test_upload_revalidate_uses_the_path_id(upload_client):
+    build, record, calls, _ = upload_client
+    client = build(revalidate_prospect_records=record("revalidate", result={"records": []}))
+    r = client.post(f"/uploads/{UID}/revalidations", json={"records": [{"email": "a@b.co"}]})
+    assert r.status_code == 200 and calls[0][1]["upload_id"] == UID and calls[0][1]["tenant_id"] == "t1"

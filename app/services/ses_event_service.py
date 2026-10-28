@@ -12,6 +12,7 @@ the not-yet-migrated helpers (metrics, suppression, send safety, automation) get
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any, Optional
 
 import httpx
@@ -20,8 +21,9 @@ from app.core.clock import utcnow
 from app.core.errors import BadRequestError
 from app.core.observability import record_ses_event
 from app.domain.automation import TriggerType
+from app.domain.inbox import SYSTEM_NOTICE_SENDER, LabelSource
 from app.domain.ses_events import (
-    OUTCOME_STATUSES, dedupe_key, extract_tags, header_message_id, is_sender_attributable_bounce,
+    OUTCOME_STATUSES, dedupe_key, event_time, extract_tags, header_message_id, is_sender_attributable_bounce,
     notification_type_of, unwrap_ses_event,
 )
 from app.models.email_message import EmailEvent, EmailMessage
@@ -161,7 +163,7 @@ class SesEventService:
 
     # bounce --------------------------------------------------------------------
     def _soft_bounce(self, uow: EmailEventsUnitOfWork, message: dict, email_message: EmailMessage,
-                     recipient: dict, ses_message_id: Optional[str]) -> None:
+                     recipient: dict, ses_message_id: Optional[str], when: datetime) -> None:
         """Soft bounce: one "sender bounced" event, nothing else."""
         bounce = message.get("bounce", {})
         uow.events.add_event(email_message.message_id, EmailEvent.EVENT_SENDER_BOUNCE, {
@@ -170,16 +172,18 @@ class SesEventService:
             "bounce_subtype": bounce.get("bounceSubType"),
             "diagnostic_code": recipient.get("diagnosticCode"),
             "ses_message_id": ses_message_id,
-        })
+        }, at=when)
         _count_metric(uow.session, email_message.campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
 
     def _record_hard_bounce(self, uow: EmailEventsUnitOfWork, message: dict, email_message: EmailMessage,
-                            recipient: dict, email: Optional[str], ses_message_id: Optional[str]) -> None:
-        """A permanent bounce of one sent message: status, events, metrics and the inbox thread note."""
+                            recipient: dict, email: Optional[str], ses_message_id: Optional[str],
+                            when: datetime) -> None:
+        """A permanent bounce of one sent message: status, events, metrics and the inbox thread note, all
+        stamped ``when`` (SES's bounce time)."""
         bounce = message.get("bounce", {})
         bounce_type, bounce_subtype = bounce.get("bounceType"), bounce.get("bounceSubType")
         email_message.status = "BOUNCED"
-        set_final_status(email_message, "BOUNCED")
+        set_final_status(email_message, "BOUNCED", when)
         email_message.failure_reason = f"{bounce_type}: {bounce_subtype}"
         email_message.last_error_code = f"BOUNCE_{bounce_type}"
         if email_message.campaign_id and email_message.prospect_id:
@@ -193,21 +197,22 @@ class SesEventService:
             "diagnostic_code": recipient.get("diagnosticCode"),
         }
         uow.events.add_event(email_message.message_id, EmailEvent.EVENT_BOUNCE,
-                             {**detail, "ses_message_id": ses_message_id})
+                             {**detail, "ses_message_id": ses_message_id}, at=when)
         # Sender-attributable bounces (soft/transient, or a permanent rejection citing our domain's
         # SPF/DKIM/DMARC/reputation) also count for the "Sender Bounced" metric: additive to
         # EVENT_BOUNCE, so total bounce_rate is unaffected.
         if is_sender_attributable_bounce(bounce_type, recipient.get("diagnosticCode")):
-            uow.events.add_event(email_message.message_id, EmailEvent.EVENT_SENDER_BOUNCE, detail)
+            uow.events.add_event(email_message.message_id, EmailEvent.EVENT_SENDER_BOUNCE, detail, at=when)
             _count_metric(uow.session, email_message.campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
         if email_message.conversation_id:
-            self._bounce_note(uow, email_message, recipient, email, bounce_type, bounce_subtype)
+            self._bounce_note(uow, email_message, recipient, bounce_type, bounce_subtype, when)
         _count_metric(uow.session, email_message.campaign_id, EmailEvent.EVENT_BOUNCE)
 
     @staticmethod
     def _bounce_note(uow: EmailEventsUnitOfWork, email_message: EmailMessage, recipient: dict,
-                     email: Optional[str], bounce_type: Optional[str], bounce_subtype: Optional[str]) -> None:
-        """A visible INBOUND note in the conversation, so the bounce shows in the inbox thread."""
+                     bounce_type: Optional[str], bounce_subtype: Optional[str], when: datetime) -> None:
+        """A visible INBOUND note in the conversation, so the bounce shows in the inbox thread. It is a system
+        notice (app.domain.inbox.is_system_notice), not a reply: sent by MAILER-DAEMON, never classified."""
         diagnostic = recipient.get("diagnosticCode") or f"{bounce_type} - {bounce_subtype}"
         uow.events.add_message(
             campaign_id=email_message.campaign_id,
@@ -222,14 +227,17 @@ class SesEventService:
                 f"Detail: {diagnostic}"
             ),
             to_email=email_message.from_email or "",
-            from_email=email or "",
+            from_email=SYSTEM_NOTICE_SENDER,
             status="SENT",
-            sent_at=utcnow(),
+            sent_at=when,
+            reply_label_source=LabelSource.SYSTEM.value,
+            reply_classified_at=when,
         )
         conv = uow.events.conversation(str(email_message.conversation_id))
         if conv:
             conv.is_unread = True
-            conv.last_message_at = utcnow()
+            if conv.last_message_at is None or conv.last_message_at < when:
+                conv.last_message_at = when
 
     def _bounce(self, uow: EmailEventsUnitOfWork, message: dict) -> dict:
         bounce_info = message.get("bounce", {})
@@ -243,6 +251,7 @@ class SesEventService:
         # Only a Permanent bounce means the address is dead (B10). Transient/Undetermined bounces are
         # recorded as an event only: status, the contact, suppression and auto-pause are left alone.
         is_hard = bounce_type == "Permanent"
+        when = event_time(message, "Bounce") or utcnow()
         processed_emails = []
         email_message = None
         for recipient in bounce_info.get("bouncedRecipients", []):
@@ -250,9 +259,9 @@ class SesEventService:
             processed_emails.append(email)
             email_message = uow.events.message(internal_message_id) if internal_message_id else None
             if email_message and not is_hard:
-                self._soft_bounce(uow, message, email_message, recipient, ses_message_id)
+                self._soft_bounce(uow, message, email_message, recipient, ses_message_id, when)
             elif email_message:
-                self._record_hard_bounce(uow, message, email_message, recipient, email, ses_message_id)
+                self._record_hard_bounce(uow, message, email_message, recipient, email, ses_message_id, when)
             if is_hard:
                 # Dead address: suppressed and stopped in every campaign in the workspace (BR-DF-08)
                 for tenant_id in self._tenants_for(uow, email_message, email):
@@ -277,6 +286,7 @@ class SesEventService:
         source_email = extract_sender_address(mail_info.get("source"))
         sender_domain = extract_sender_domain(mail_info.get("source"))
         internal_message_id = self._resolve_message_id(uow, mail_info)
+        when = event_time(message, "Complaint") or utcnow()
         processed_emails = []
         email_message = None
         for recipient in complaint_info.get("complainedRecipients", []):
@@ -286,13 +296,13 @@ class SesEventService:
                 email_message = uow.events.message(internal_message_id)
                 if email_message:
                     email_message.status = "COMPLAINED"
-                    set_final_status(email_message, "COMPLAINED")
+                    set_final_status(email_message, "COMPLAINED", when)
                     email_message.failure_reason = f"Spam complaint: {complaint_type}"
                     uow.events.add_event(email_message.message_id, EmailEvent.EVENT_UNSUBSCRIBE, {
                         "dedupe_key": message.get("_dedupe_key"),
                         "complaint_type": complaint_type,
                         "source": "ses_complaint",
-                    })
+                    }, at=when)
             # A complaint unsubscribes the contact from every campaign, permanently (BR-DF-08)
             for tenant_id in self._tenants_for(uow, email_message if internal_message_id else None, email):
                 suppress(uow.session, tenant_id, email, f"Spam complaint: {complaint_type or 'unknown'}",

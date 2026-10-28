@@ -1,9 +1,9 @@
 # app/schemas/user_admin_schema.py
 """Request and response bodies of the team management API (app/routers/user_router.py)."""
 
-from datetime import datetime
 
 from pydantic import BaseModel, EmailStr
+from app.schemas.types import UtcDatetime
 
 
 class InviteRequest(BaseModel):
@@ -33,8 +33,8 @@ class UserOut(BaseModel):
     auth_provider: str
     email_verified: bool
     avatar_url: str | None
-    created_at: datetime | None
-    last_login_at: datetime | None
+    created_at: UtcDatetime | None
+    last_login_at: UtcDatetime | None
     permissions: list[str]  # Effective permissions (custom or role default)
 
 

@@ -109,14 +109,17 @@ class FakeCampaignRepo:
 def test_global_kpis_apply_status_fallbacks_and_rates():
     svc = ReportsService(FakeCampaignRepo())
     k = svc.get_global_analytics("t1", date(2025, 5, 1), date(2025, 5, 2), user_id="u1").kpis
-    assert (k.total_opened, k.total_replied, k.overall_open_rate, k.overall_reply_rate) == (4, 3, 40.0, 30.0)
+    # open / reply rates over delivered: 10 sent - 1 bounced = 9 (UAT 3-5; was 40.0 / 30.0 over sent)
+    assert (k.total_opened, k.total_replied, k.overall_open_rate, k.overall_reply_rate) == (4, 3, 44.44, 33.33)
+    assert k.overall_bounce_rate == 10.0
 
 
 def test_comparison_fallback_rates_and_whitelisted_sort():
     repo = FakeCampaignRepo()
     page = ReportsService(repo).get_campaign_comparison("t1", sort_by="nope", sort_dir="asc", page=2, page_size=5)
     first = page.items[0]
-    assert (first.opened_count, first.replied_count, first.open_rate, first.bounce_rate) == (3, 1, 75.0, 25.0)
+    # open rate over delivered (4 sent - 1 bounced = 3; was 75.0 over sent), bounce rate over sent
+    assert (first.opened_count, first.replied_count, first.open_rate, first.bounce_rate) == (3, 1, 100.0, 25.0)
     _, owners, sort, paging = repo.calls[-1]
     assert sort.field == "created_at" and not sort.descending and (paging.offset, paging.limit) == (5, 5)
 

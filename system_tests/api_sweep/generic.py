@@ -475,7 +475,7 @@ def iso_checks(E, A, B):
                     txt = _trunc(b, 4000)
                     fv_list = fv if isinstance(fv, list) else [fv]
                     leaks = [x for x in find_leaks(txt, B) if x not in fv_list] if 200 <= s < 300 else []
-                    rejected = isinstance(b, dict) and bool(b.get("rejected_count") or b.get("not_found")) and not b.get("enrolled_count")
+                    rejected = _rejected_all(b)
                     ignored = 200 <= s < 300 and not leaks and (rejected or not any(x in _trunc(b, 20000) for x in fv_list))
                     ok = (s in (400, 403, 404, 409, 410, 422) and not is_bad5(s)) or ignored
                     E.rec.rec(ep["id"], meth, ep["path"], "ISO", f"body-foreign-{pname}", ok,
@@ -514,6 +514,7 @@ def iso_checks(E, A, B):
         E.rec.rec(ep["id"], "POST", ep["path"], "ISO", f"bulk-{action}-foreign-{field}", ok,
                   f"bulk {action} with tenant B's {field} -> {s}: {_trunc(b, 200)}", title=f"POST /contacts/bulk {action} with tenant B's {field}")
     # ---- (3) list/read endpoints without path ids: never contain the other tenant's records
+    # (the export log records the filter the caller sent: an id tenant A itself put in a filter is not tenant B's data)
     for ep in E.inv["endpoints"]:
         if ep["method"] != "GET" or ep["public"] or E.path_params(ep) or ep["dangerous"] or ep["roles"] == ["PLATFORM_ADMIN"]:
             continue
@@ -524,7 +525,7 @@ def iso_checks(E, A, B):
                 if pr["name"] in ("page_size", "limit", "per_column", "per_stage") and pr["name"] not in q2:
                     q2[pr["name"]] = 100
             s, b, h = E.call(ep["id"], me, "SUPER_ADMIN", query=q2, tag="iso-list")
-            txt = b.decode("latin-1") if isinstance(b, bytes) else _trunc(b, 400000)
+            txt = b.decode("latin-1") if isinstance(b, bytes) else _trunc(_without_echoes(ep["id"], b), 400000)
             leaks = find_leaks(txt, other) if 200 <= s < 300 else []
             E.rec.rec(ep["id"], "GET", ep["path"], "ISO", f"list-{me.label}-sees-{other.label}", not leaks and not is_bad5(s),
                       f"tenant {me.label} response contains tenant {other.label}'s data {leaks[:3]} (status {s})",
@@ -557,3 +558,26 @@ def _bulk_unchanged(A, action, fv):
     if action == "add_to_list":
         return sql(f"SELECT COUNT(*) FROM prospect_list_members WHERE list_id='{fv}' AND prospect_id='{pid}'") == "0"
     return sql(f"SELECT COUNT(*) FROM campaign_prospects WHERE campaign_id='{fv}' AND prospect_id='{pid}'") == "0"
+
+
+# Fields that echo what the caller itself sent (not data of another tenant), per list endpoint
+_ECHO_FIELDS = {"GET /exports/logs": ("filter_summary",)}
+
+
+def _without_echoes(ep_id, body):
+    fields = _ECHO_FIELDS.get(ep_id)
+    if not fields or not isinstance(body, dict) or not isinstance(body.get("items"), list):
+        return body
+    return {**body, "items": [{k: v for k, v in it.items() if k not in fields} if isinstance(it, dict) else it
+                              for it in body["items"]]}
+
+
+def _rejected_all(body):
+    """The response says every submitted id was rejected (top level, or an enrolment result nested under "enrollment",
+    e.g. POST /campaigns/{id}/duplicates: {"enrollment": {"enrolled_count": 0, "rejected": [{"reason_code": "not_found"}]}})."""
+    if not isinstance(body, dict):
+        return False
+    for part in (body, body.get("enrollment")):
+        if isinstance(part, dict) and (part.get("rejected_count") or part.get("not_found")) and not part.get("enrolled_count"):
+            return True
+    return False

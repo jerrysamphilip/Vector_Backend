@@ -6,13 +6,14 @@ GET /campaigns/{id}/template-assignments (app/services/campaign_edit_service.py)
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, time
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.domain.campaigns_edit import CampaignEdit, StepEdit, TemplateEdit
 from app.schemas.campaign_schema import CLEARABLE_FIELDS, CampaignResponse
+from app.schemas.types import UtcDatetime
 
 
 class CampaignEditSettings(BaseModel):
@@ -137,8 +138,8 @@ class EmailPreview(BaseModel):
     designation: Optional[str] = None
     message_id: Optional[str] = None
     message_status: Optional[str] = None
-    scheduled_at: Optional[datetime] = None
-    sent_at: Optional[datetime] = None
+    scheduled_at: Optional[UtcDatetime] = None
+    sent_at: Optional[UtcDatetime] = None
     from_name: Optional[str] = None
     from_email: Optional[str] = None
     to_email: str

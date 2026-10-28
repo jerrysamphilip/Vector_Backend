@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from app.core.clock import utcnow
+from app.core.clock import iso_utc, utcnow
 from app.core.config import settings
 from app.core.errors import BadRequestError, ConflictError, NotFoundError
 from app.core.security import hash_token
@@ -34,7 +34,7 @@ USER_EXISTS = "A user with this email already exists"
 
 
 def _iso(value: Any) -> Optional[str]:
-    return value.isoformat() if value else None
+    return iso_utc(value) if value else None
 
 
 def _get_ses_client() -> Any:

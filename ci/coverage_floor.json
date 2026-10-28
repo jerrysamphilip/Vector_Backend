@@ -16,62 +16,62 @@
   "layers": {
     "unit": {
       "app": {
-        "line": 65.82,
-        "branch": 45.36
+        "line": 66.11,
+        "branch": 45.79
       },
       "app.core": {
-        "line": 79.79,
-        "branch": 60.0
+        "line": 80.06,
+        "branch": 60.52
       },
       "app.routers": {
-        "line": 80.87,
-        "branch": 63.09
+        "line": 81.28,
+        "branch": 65.11
       },
       "app.services": {
-        "line": 55.84,
-        "branch": 37.65
+        "line": 56.09,
+        "branch": 37.98
       },
       "app.utils": {
-        "line": 85.49,
-        "branch": 81.72
+        "line": 86.22,
+        "branch": 82.22
       },
       "app.domain": {
         "line": 100.0,
         "branch": 100.0
       },
       "app.repositories": {
-        "line": 48.29,
-        "branch": 6.81
+        "line": 48.64,
+        "branch": 7.21
       }
     },
     "functional": {
       "app": {
-        "line": 78.85,
-        "branch": 57.27
+        "line": 80.22,
+        "branch": 59.03
       },
       "app.core": {
         "line": 81.26,
-        "branch": 56.33
+        "branch": 56.57
       },
       "app.routers": {
-        "line": 86.15,
-        "branch": 57.14
+        "line": 88.48,
+        "branch": 59.3
       },
       "app.services": {
-        "line": 71.86,
-        "branch": 54.58
+        "line": 73.47,
+        "branch": 56.42
       },
       "app.utils": {
-        "line": 73.17,
-        "branch": 60.04
+        "line": 74.39,
+        "branch": 61.32
       },
       "app.domain": {
-        "line": 86.43,
-        "branch": 66.17
+        "line": 86.84,
+        "branch": 66.7
       },
       "app.repositories": {
-        "line": 91.92,
-        "branch": 72.85
+        "line": 93.55,
+        "branch": 75.87
       }
     }
   },

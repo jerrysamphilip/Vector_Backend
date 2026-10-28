@@ -34,6 +34,7 @@ from app.models.user import User
 from app.repositories.base import SqlAlchemyRepository, SqlAlchemyUnitOfWork, TenantId
 from app.repositories.contacts import _compare as compare_values
 from app.repositories.contacts import apply_scope, company_condition
+from app.repositories.system_notices import reply_message
 from app.utils import sql_like
 
 __all__ = [
@@ -268,7 +269,7 @@ class SqlAlchemyAccountRepository(SqlAlchemyRepository[Account, str]):
             EmailMessage.prospect_id.in_(prospect_ids), EmailMessage.direction == "OUTBOUND",
             EmailMessage.sent_at.isnot(None)).scalar()
         replies = self._session.query(func.count(EmailMessage.message_id)).filter(
-            EmailMessage.prospect_id.in_(prospect_ids), EmailMessage.direction == "INBOUND").scalar()
+            EmailMessage.prospect_id.in_(prospect_ids), reply_message()).scalar()
         return int(sent or 0), int(replies or 0)
 
     def open_tasks(self, account_id: str) -> int:

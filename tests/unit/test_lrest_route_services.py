@@ -108,7 +108,7 @@ def test_variant_reads(variants):
     service, uow = variants
     listing = service.listing("c1", 2, ME)
     assert listing["step"] == 2 and listing["promoted_label"] == "B" and listing["ab_active"] is True
-    assert listing["variants"][1]["promoted_at"] == "2026-01-02T03:04:05"
+    assert listing["variants"][1]["promoted_at"] == "2026-01-02T03:04:05Z"
     assert service.stats("c1", 2, ME) == {"step": 2}
     assert service.messages("c1", 2, "b", 5, 0, ME) == {"label": "B", "limit": 5, "offset": 0}
     assert service.messages("c1", 2, None, 5, 0, ME)["label"] is None

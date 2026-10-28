@@ -37,6 +37,7 @@ from app.repositories.sales_common import SessionRepository as _SessionRepositor
 from app.repositories.sales_common import owner_condition, scoped
 from app.repositories.sales_forecast import SqlAlchemyForecastRepository
 from app.repositories.sales_quotes import SqlAlchemyQuoteRepository
+from app.repositories.system_notices import reply_message
 from app.utils.sql_like import ilike
 
 SqlSession = Session
@@ -522,7 +523,7 @@ class SqlAlchemySalesLookupRepository(_SessionRepository):
 
     def latest_reply(self, prospect_id: str) -> Optional[EmailMessage]:
         return self._session.query(EmailMessage).filter(EmailMessage.prospect_id == prospect_id,
-                                                        EmailMessage.direction == "INBOUND") \
+                                                        reply_message()) \
             .order_by(EmailMessage.sent_at.desc()).first()
 
     def deal_activities(self, opportunity_id: str, prospect_id: Optional[str], since: datetime,

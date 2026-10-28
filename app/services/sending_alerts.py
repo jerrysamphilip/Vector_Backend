@@ -58,6 +58,8 @@ def _alert(alert_id: str, alert_type: str, severity: str, title: str, message: s
 
 
 def day_start(now: datetime) -> datetime:
+    """00:00 UTC of ``now``'s day: "sent today" and the daily capacity run on the UTC day (no workspace time
+    zone exists); the UI labels it "since 00:00 UTC"."""
     return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
 

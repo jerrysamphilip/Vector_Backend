@@ -26,6 +26,7 @@ from app.domain.reports import (
     ReportInputError,
     ReportViewer,
     build_timeseries,
+    delivered,
     median_hours,
     rate,
     report_owner_scope,
@@ -145,7 +146,8 @@ class ReportsService:
         return GlobalKPIs(
             total_leads_contacted=c.leads_contacted, total_emails_sent=c.sent, total_opened=opened,
             total_replied=replied, total_bounced=c.bounced, total_clicked=c.clicked,
-            overall_open_rate=rate(opened, c.sent), overall_reply_rate=rate(replied, c.sent),
+            overall_open_rate=rate(opened, delivered(c.sent, c.bounced)),
+            overall_reply_rate=rate(replied, delivered(c.sent, c.bounced)),
             overall_bounce_rate=rate(c.bounced, c.sent), active_campaigns=c.active_campaigns)
 
     def _timeseries(self, tenant_id: str, window: DateWindow, granularity: str, owners: Owners) -> list:
@@ -176,7 +178,8 @@ class ReportsService:
         return CampaignComparisonItem(
             campaign_id=r.campaign_id, campaign_name=r.campaign_name, status=r.status, sent_count=sent,
             opened_count=opened, replied_count=replied, bounced_count=r.bounced_count,
-            open_rate=rate(opened, sent), reply_rate=rate(replied, sent), bounce_rate=rate(r.bounced_count, sent),
+            open_rate=rate(opened, delivered(sent, r.bounced_count)),
+            reply_rate=rate(replied, delivered(sent, r.bounced_count)), bounce_rate=rate(r.bounced_count, sent),
             created_at=r.created_at)
 
     # ------------------------------------------------------------------
@@ -194,8 +197,8 @@ class ReportsService:
             bounced = events.get(EmailEvent.EVENT_BOUNCE, 0)
             items.append(ProviderPerformanceItem(
                 provider=prov, sent_count=sent, delivered_count=max(sent - bounced, 0), opened_count=opened,
-                replied_count=replied, bounced_count=bounced, open_rate=rate(opened, sent),
-                reply_rate=rate(replied, sent), bounce_rate=rate(bounced, sent)))
+                replied_count=replied, bounced_count=bounced, open_rate=rate(opened, delivered(sent, bounced)),
+                reply_rate=rate(replied, delivered(sent, bounced)), bounce_rate=rate(bounced, sent)))
         return ProviderPerformanceResponse(providers=items)
 
     # ------------------------------------------------------------------
@@ -233,7 +236,8 @@ class ReportsService:
             bounced = events.get(EmailEvent.EVENT_BOUNCE, 0)
             items.append(MailboxHealthItem(
                 mailbox=mailbox, lead_contacted=leads or 0, email_sent=sent, opened=opened,
-                opened_rate=rate(opened, sent), replied=replied, replied_rate=rate(replied, sent), bounced=bounced,
+                opened_rate=rate(opened, delivered(sent, bounced)), replied=replied,
+                replied_rate=rate(replied, delivered(sent, bounced)), bounced=bounced,
                 bounce_rate=rate(bounced, sent)))
         return sorted(items, key=lambda x: x.email_sent, reverse=True)
 
@@ -260,7 +264,8 @@ class ReportsService:
             results.append(UserPerformanceItem(
                 user_id=u.user_id, first_name=u.first_name, last_name=u.last_name, email=u.email, role=u.role,
                 campaigns_created=c.campaigns, total_sent=c.sent, total_opened=c.opened, total_replied=c.replied,
-                total_bounced=c.bounced, open_rate=rate(c.opened, c.sent), reply_rate=rate(c.replied, c.sent),
+                total_bounced=c.bounced, open_rate=rate(c.opened, delivered(c.sent, c.bounced)),
+                reply_rate=rate(c.replied, delivered(c.sent, c.bounced)),
                 bounce_rate=rate(c.bounced, c.sent)))
         return results
 

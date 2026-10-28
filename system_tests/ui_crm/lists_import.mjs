@@ -137,10 +137,11 @@ export async function runLists(rec, browser) {
     await p.getByRole('button', { name: 'Active', exact: true }).click(); await settle(A, 400);
     ok(await listRow(p, 'Hot leads').isVisible() && await listRow(p, 'Oct webinar').count() === 0, 'active only');
     await p.getByRole('button', { name: 'All', exact: true }).click();
-    await p.getByPlaceholder('Search lists…').fill('webinar'); await settle(A, 300);
-    ok(await p.getByText('1 list', { exact: true }).isVisible(), 'search count');
-    await p.getByPlaceholder('Search lists…').fill('zzz'); await settle(A, 300);
-    ok(await p.getByText('No lists match').isVisible(), 'empty search');
+    // server-side search, debounced 300 ms with the previous page kept meanwhile (src/pages/Lists.jsx): wait for the result
+    await p.getByPlaceholder('Search lists…').fill('webinar');
+    ok(await p.getByText('1 list', { exact: true }).waitFor({ timeout: 8000 }).then(() => true, () => false), 'search count');
+    await p.getByPlaceholder('Search lists…').fill('zzz');
+    ok(await p.getByText('No lists match').waitFor({ timeout: 8000 }).then(() => true, () => false), 'empty search');
   }, { u: A });
 
   const AG = await ui(browser, alice);
@@ -173,138 +174,181 @@ export async function runLists(rec, browser) {
 }
 
 // =============================== IMPORT ===============================
+// /app/import is the import history; the wizard is a drawer (role=dialog "Import contacts and companies", Vector_Frontend
+// src/components/import/ImportDrawer.jsx since 5451f65): File -> Columns -> Options -> Preview (dry run, nothing written)
+// -> Start import (a background job; the drawer polls its progress) -> result counts + error file.
+function importWizard(A, p) {
+  const drawer = () => p.getByRole('dialog', { name: 'Import contacts and companies' });
+  const W = {
+    drawer,
+    fileInput: () => drawer().locator('input[type=file]'),
+    nextBtn: () => drawer().getByRole('button', { name: 'Next', exact: true }),
+    async open() {
+      await p.getByRole('button', { name: /New import/ }).click();
+      await drawer().waitFor();
+    },
+    async goImport() {
+      await go(A, 'import');
+      await p.getByRole('heading', { name: /Import contacts and companies/ }).first().waitFor();
+      await W.open();
+    },
+    async upload(file) { await W.fileInput().setInputFiles(file); await drawer().getByText(/rows · /).waitFor({ timeout: 20000 }); },
+    /** upload, then Next to the column mapping */
+    async toMap(file) { await W.upload(file); await W.nextBtn().click(); await drawer().getByText('Column in file').waitFor(); },
+    select: header => drawer().getByLabel(`Import ${header} as`, { exact: true }),
+    async toOptions() { await W.nextBtn().click(); await drawer().getByLabel('What to do').waitFor(); },
+    async toPreview() { await W.nextBtn().click(); await drawer().getByText(/Nothing has been imported yet|Could not check/).first().waitFor({ timeout: 60000 }); },
+    async result() {
+      await drawer().getByText(/^Import (finished|stopped|cancelled)$/).waitFor({ timeout: 120000 });
+      return drawer().innerText();
+    },
+    /** from the mapping step: options (optional callback), preview, start, wait for the result */
+    async run(atOptions) {
+      await W.toOptions();
+      if (atOptions) await atOptions();
+      await W.toPreview();
+      await drawer().getByRole('button', { name: /Start import/ }).click();
+      return W.result();
+    },
+    async stat(label) {
+      const el = drawer().locator('div.rounded-xl').filter({ has: p.getByText(label, { exact: true }) }).first();
+      return num(await el.locator('p').nth(1).innerText());
+    },
+    overwrite: () => drawer().getByLabel(/Overwrite values of existing records/),
+  };
+  return W;
+}
+
 export async function runImport(rec, browser) {
   const t = await (await Tenant.get('imports')).init();
   const alice = await t.addUser('AGENT', 'Alice');
   const A = await ui(browser, t.owner); const p = A.page;
-  const fileInput = () => p.locator('input[type=file]');
-  const upload = async (file) => { await fileInput().setInputFiles(file); await p.getByText(/rows ·/).waitFor({ timeout: 20000 }); };
+  const W = importWizard(A, p);
   const mk = (n, extra = {}) => Array.from({ length: n }, (_, i) => ({ email: `imp${i}.${t.rid}@impco${i % 5}.example`, first: `Imp${i}`, last: `User${i}`, company: `ImpCo ${i % 5}`, title: i % 2 ? 'Manager' : 'Director', country: 'US', ...extra }));
   const header = ['Email', 'First Name', 'Last Name', 'Company', 'Job Title', 'Country'];
   const rowsOf = list => list.map(r => [r.email, r.first, r.last, r.company, r.title, r.country]);
-  const goImport = async () => { await go(A, 'import'); await p.getByRole('heading', { name: /Import contacts and companies/ }).waitFor(); };
-  const result = async () => { await p.getByRole('heading', { name: /Import (finished|stopped)/ }).waitFor({ timeout: 90000 }); return (await p.locator('body').innerText()); };
-  const stat = async (label) => { const el = p.locator('div.rounded-xl').filter({ has: p.getByText(label, { exact: true }) }).first(); return num(await el.locator('p').nth(1).innerText()); };
 
   await tc(rec, 'UIC-IMP-01', 'Import page renders drop zone + options hidden until a file is chosen', async () => {
-    await goImport();
-    ok(await p.getByText('Drop a file here or click to choose').isVisible(), 'dropzone');
-    eq(await p.getByRole('button', { name: /^Import \d/ }).count(), 0, 'no import button yet');
+    await W.goImport();
+    ok(await W.drawer().getByText('Drop a file here or click to choose').isVisible(), 'dropzone');
+    ok(await W.nextBtn().isDisabled(), 'Next disabled until a file is read');
+    eq(await W.drawer().getByLabel('What to do').count(), 0, 'no options yet');
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-02', 'CSV preview: row/column count, suggested mapping, sample values', async () => {
     const rows = mk(12);
     const f = writeTmp('imp-basic.csv', csvText(header, rowsOf(rows)));
-    await goImport(); await upload(f);
-    ok(await p.getByText('12 rows · 6 columns').isVisible(), 'row/column count');
-    const emailRow = p.locator('tr').filter({ hasText: 'Email' }).first();
-    eq(await emailRow.locator('select').inputValue(), 'contact.email', 'Email auto-mapped');
-    ok(await p.getByText(rows[0].email).first().isVisible(), 'sample value visible');
-    ok(await p.getByRole('button', { name: 'Import 12 rows' }).isEnabled(), 'import button enabled');
+    await W.goImport(); await W.upload(f);
+    ok(await W.drawer().getByText('12 rows · 6 columns').isVisible(), 'row/column count');
+    ok(await W.nextBtn().isEnabled(), 'Next enabled');
+    await W.nextBtn().click();
+    eq(await W.select('Email').inputValue(), 'contact.email', 'Email auto-mapped');
+    ok(await W.drawer().getByText(rows[0].email, { exact: false }).first().isVisible(), 'sample value visible');
+    ok(await W.nextBtn().isEnabled(), 'mapping accepted');
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-03', 'Run import with defaults: result counts, DB rows, owner = me, company linked', async () => {
     const rows = mk(12);
-    await goImport(); await upload(writeTmp('imp-basic.csv', csvText(header, rowsOf(rows))));
-    await p.getByRole('button', { name: 'Import 12 rows' }).click();
-    await result();
-    eq(await stat('Contacts created'), 12, 'created stat');
-    eq(await stat('Rows with errors'), 0, 'no errors');
+    await W.goImport(); await W.toMap(writeTmp('imp-basic.csv', csvText(header, rowsOf(rows))));
+    await W.run();
+    eq(await W.stat('Contacts created'), 12, 'created stat');
+    eq(await W.stat('Rows with errors'), 0, 'no errors');
     eq(cnt(t, `email LIKE 'imp%.${t.rid}@%'`), 12, 'DB rows');
     eq(cnt(t, `email LIKE 'imp%.${t.rid}@%' AND owner_id='${t.owner.userId}'`), 12, 'owner');
     eq(cnt(t, `email LIKE 'imp%.${t.rid}@%' AND account_id IS NOT NULL`), 12, 'linked to company accounts');
     eq(dbn(`SELECT COUNT(*) FROM accounts WHERE tenant_id='${t.tenantId}' AND name LIKE 'ImpCo %' AND deleted_at IS NULL`), 5, '5 companies');
-    await p.getByRole('link', { name: 'View contacts' }).click(); await p.waitForURL(/\/app\/contacts/);
+    await W.drawer().getByRole('link', { name: 'View contacts' }).click(); await p.waitForURL(/\/app\/contacts/);
   }, { u: A });
 
+  // "Overwrite values of existing records" OFF: existing values stay, only empty fields are filled (blank cells never overwrite)
   await tc(rec, 'UIC-IMP-04', 'Re-import same file: update_existing OFF leaves records untouched; ON updates (no duplicates)', async () => {
     const rows = mk(12).map(r => ({ ...r, title: 'VP Updated' }));
     const f = writeTmp('imp-update.csv', csvText(header, rowsOf(rows)));
-    await goImport(); await upload(f);
-    await p.getByLabel(/Update existing contacts/).uncheck();
-    await p.getByRole('button', { name: 'Import 12 rows' }).click(); await result();
-    eq(await stat('Contacts created'), 0, 'none created');
+    await W.goImport(); await W.toMap(f);
+    await W.run(() => W.overwrite().uncheck());
+    eq(await W.stat('Contacts created'), 0, 'none created');
     eq(cnt(t, `email LIKE 'imp%.${t.rid}@%' AND designation='VP Updated'`), 0, 'titles untouched when OFF');
-    await goImport(); await upload(f);
-    await p.getByRole('button', { name: 'Import 12 rows' }).click(); await result();
-    eq(await stat('Contacts updated'), 12, 'updated 12');
+    await W.goImport(); await W.toMap(f);
+    await W.run();
+    eq(await W.stat('Contacts updated'), 12, 'updated 12');
     eq(cnt(t, `email LIKE 'imp%.${t.rid}@%' AND designation='VP Updated'`), 12, 'titles updated');
     eq(cnt(t, `email LIKE 'imp%.${t.rid}@%'`), 12, 'no duplicates');
   }, { u: A });
   await tc(rec, 'UIC-IMP-04B', 'With update_existing OFF the result card must report 0 contacts updated', async () => {
     const rows = mk(12).map(r => ({ ...r, title: 'Should Not Apply' }));
-    await goImport(); await upload(writeTmp('imp-off.csv', csvText(header, rowsOf(rows))));
-    await p.getByLabel(/Update existing contacts/).uncheck();
-    await p.getByRole('button', { name: 'Import 12 rows' }).click(); await result();
+    await W.goImport(); await W.toMap(writeTmp('imp-off.csv', csvText(header, rowsOf(rows))));
+    await W.run(() => W.overwrite().uncheck());
     eq(cnt(t, `designation='Should Not Apply'`), 0, 'DB untouched');
-    eq(await stat('Contacts updated'), 0, 'result card "Contacts updated" (API reports contacts_updated=12 although nothing was written)');
+    eq(await W.stat('Contacts updated'), 0, 'result card "Contacts updated" (API reports contacts_updated=12 although nothing was written)');
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-05', 'Blank cells never overwrite existing values', async () => {
     const rows = mk(3).map(r => ({ ...r, title: '', country: '' }));
-    await goImport(); await upload(writeTmp('imp-blank.csv', csvText(header, rowsOf(rows))));
-    await p.getByRole('button', { name: 'Import 3 rows' }).click(); await result();
+    await W.goImport(); await W.toMap(writeTmp('imp-blank.csv', csvText(header, rowsOf(rows))));
+    await W.run();
     eq(cnt(t, `email LIKE 'imp0.${t.rid}@%' AND designation='VP Updated' AND poc_country='US'`), 1, 'values preserved');
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-06', 'Mapping: create a new custom property from a column (type Number) -> property + values stored', async () => {
     const f = writeTmp('imp-custom.csv', csvText(['Email', 'First Name', 'Deal Size'], [[`cust1.${t.rid}@cimp.example`, 'Cus', '5000'], [`cust2.${t.rid}@cimp.example`, 'Tom', '7500']]));
-    await goImport(); await upload(f);
-    const r = p.locator('tr').filter({ hasText: 'Deal Size' }).first();
-    await r.locator('select').first().selectOption('__new__');
-    await r.getByPlaceholder('Property label').fill('Deal Size');
-    await r.locator('select').nth(1).selectOption('NUMBER');
-    await p.getByRole('button', { name: 'Import 2 rows' }).click(); await result();
+    await W.goImport(); await W.toMap(f);
+    await W.select('Deal Size').selectOption('__new__');
+    await W.drawer().getByLabel('New property label').fill('Deal Size');
+    await W.drawer().getByLabel('New property type').selectOption('NUMBER');
+    await W.run();
     eq(dbn(`SELECT COUNT(*) FROM contact_field_definitions WHERE tenant_id='${t.tenantId}' AND label='Deal Size' AND field_type='NUMBER'`), 1, 'property created');
     ok(/5000/.test(sql(`SELECT custom_fields FROM prospects WHERE email='cust1.${t.rid}@cimp.example'`)), 'value stored: ' + sql(`SELECT custom_fields FROM prospects WHERE email='cust1.${t.rid}@cimp.example'`));
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-07', 'Options: add to a new list, set owner to Alice', async () => {
     const rows = mk(4).map(r => ({ ...r, email: r.email.replace('imp', 'opt') }));
-    await goImport(); await upload(writeTmp('imp-opt.csv', csvText(header, rowsOf(rows))));
-    await p.getByLabel('Owner of new contacts').selectOption({ label: 'Alice Test' });
-    await p.getByLabel('Add imported contacts to a list').selectOption('new');
-    await p.getByLabel('New list name').fill('Imported Q4');
-    await p.getByRole('button', { name: 'Import 4 rows' }).click(); await result();
+    await W.goImport(); await W.toMap(writeTmp('imp-opt.csv', csvText(header, rowsOf(rows))));
+    await W.run(async () => {
+      await W.drawer().getByLabel('Owner of new contacts').selectOption({ label: 'Alice Test' });
+      await W.drawer().getByLabel('Add imported contacts to a list').selectOption('new');
+      await W.drawer().getByLabel('New list name').fill('Imported Q4');
+    });
     const lid = sql(`SELECT list_id FROM prospect_lists WHERE tenant_id='${t.tenantId}' AND list_name='Imported Q4'`);
     eq(dbn(`SELECT COUNT(*) FROM prospect_list_members WHERE list_id='${lid}'`), 4, 'list members');
     eq(cnt(t, `email LIKE 'opt%.${t.rid}@%' AND owner_id='${alice.userId}'`), 4, 'owner Alice');
-    await p.getByRole('link', { name: 'View contacts' }).click(); await p.waitForURL(/list_id=/);
+    await W.drawer().getByRole('link', { name: 'View contacts' }).click(); await p.waitForURL(/list_id=/);
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-08', 'Options: existing list requires choosing one; imports into it', async () => {
     const rows = mk(2).map(r => ({ ...r, email: r.email.replace('imp', 'ex') }));
-    await goImport(); await upload(writeTmp('imp-ex.csv', csvText(header, rowsOf(rows))));
-    await p.getByLabel('Add imported contacts to a list').selectOption('existing');
-    ok(await p.getByRole('button', { name: 'Import 2 rows' }).isDisabled(), 'disabled until list chosen');
-    await p.locator('select').filter({ hasText: 'Choose a list' }).selectOption({ label: 'Imported Q4' });
-    await p.getByRole('button', { name: 'Import 2 rows' }).click(); await result();
+    await W.goImport(); await W.toMap(writeTmp('imp-ex.csv', csvText(header, rowsOf(rows))));
+    await W.run(async () => {
+      await W.drawer().getByLabel('Add imported contacts to a list').selectOption('existing');
+      ok(await W.nextBtn().isDisabled(), 'disabled until list chosen');
+      await W.drawer().locator('select').filter({ hasText: 'Choose a list' }).selectOption({ label: 'Imported Q4' });
+    });
     const lid = sql(`SELECT list_id FROM prospect_lists WHERE tenant_id='${t.tenantId}' AND list_name='Imported Q4'`);
     eq(dbn(`SELECT COUNT(*) FROM prospect_list_members WHERE list_id='${lid}'`), 6, 'members now 6');
   }, { u: A });
 
-  let errImportRows = null;
   await tc(rec, 'UIC-IMP-09', 'Bad rows (invalid email, missing email, duplicate in file): counts, reasons list, error file download', async () => {
     const good = `good1.${t.rid}@bad.example`;
     const rows = [[good, 'Good', 'One'], ['not-an-email', 'Bad', 'Email'], ['', 'No', 'Email'], [`dup.${t.rid}@bad.example`, 'Dup', 'A'], [`dup.${t.rid}@bad.example`, 'Dup', 'B'], [`good2.${t.rid}@bad.example`, 'Good', 'Two']];
-    await goImport(); await upload(writeTmp('imp-bad.csv', csvText(['Email', 'First Name', 'Last Name'], rows)));
-    await p.getByRole('button', { name: 'Import 6 rows' }).click();
-    const body = await result();
-    const errs = await stat('Rows with errors');
+    await W.goImport(); await W.toMap(writeTmp('imp-bad.csv', csvText(['Email', 'First Name', 'Last Name'], rows)));
+    await W.toOptions(); await W.toPreview();
+    const sample = W.drawer().getByRole('list', { name: 'Sample errors' });
+    ok(await sample.count() > 0 && /Row \d+:/.test(await sample.innerText()), 'error list shown in the dry run');
+    await W.drawer().getByRole('button', { name: /Start import/ }).click();
+    await W.result();
+    const errs = await W.stat('Rows with errors');
     ok(errs >= 2, `expected >=2 error rows, got ${errs}`);
-    ok(/Rows that were not imported/.test(body) && /Row \d+:/.test(body), 'error list shown');
     eq(cnt(t, `email IN ('${good}','good2.${t.rid}@bad.example')`), 2, 'good rows imported');
     eq(cnt(t, `email='not-an-email'`), 0, 'bad row not imported');
-    const d = await downloadVia(p, () => p.getByRole('button', { name: /Download error file/ }).click());
+    const d = await downloadVia(p, () => W.drawer().getByRole('button', { name: /Download error file/ }).click());
     const txt = d.buf.toString('utf8');
     ok(/not-an-email/.test(txt) && /reason|error/i.test(txt.split('\n')[0]), 'error file has failing row + reason column: ' + txt.slice(0, 160));
     ok(!txt.includes(good), 'error file excludes good rows');
-    errImportRows = errs;
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-10', 'Past imports table lists runs with error counts and downloadable error file', async () => {
-    await goImport();
+    await go(A, 'import');
     const row = p.locator('table').last().locator('tbody tr').filter({ hasText: 'imp-bad.csv' }).first();
+    await row.waitFor({ timeout: 15000 }).catch(() => {});
     ok(await row.isVisible(), 'row for imp-bad.csv');
     const btn = row.getByRole('button', { name: /↓/ });
     const d = await downloadVia(p, () => btn.click());
@@ -313,81 +357,85 @@ export async function runImport(rec, browser) {
 
   await tc(rec, 'UIC-IMP-11', 'Bad files: .txt / binary / empty / header-only show a clear message and no crash', async () => {
     for (const [name, content] of [['not-a-csv.txt', 'hello this is not a spreadsheet'], ['empty.csv', ''], ['header-only.csv', 'Email,First Name\n']]) {
-      await goImport();
-      await fileInput().setInputFiles(writeTmp(name, content)); await settle(A, 1500);
-      const body = await p.locator('body').innerText();
-      const showedErr = await p.locator('.bg-red-50').count() > 0;
+      await W.goImport();
+      await W.fileInput().setInputFiles(writeTmp(name, content)); await settle(A, 1500);
+      const body = await W.drawer().innerText();
+      const showedErr = await W.drawer().locator('.bg-red-50').count() > 0;
       const preview = /rows ·/.test(body);
-      ok(showedErr || (preview && /0 rows/.test(body)), `${name}: expected an error or a 0-row preview. error=${showedErr} preview=${preview}`);
-      if (preview) ok(await p.getByRole('button', { name: /^Import 0 rows/ }).isDisabled().catch(() => true) || true, 'n/a');
+      ok(showedErr || (preview && /\b0 rows/.test(body)), `${name}: expected an error or a 0-row preview. error=${showedErr} preview=${preview}`);
     }
-  }, { u: A, allow: [/http 4\d\d POST .*\/imports\/preview/, /Failed to load resource/] });
+  }, { u: A, allow: [/http 4\d\d POST .*\/imports\/uploads/, /Failed to load resource/] });
 
   await tc(rec, 'UIC-IMP-12', 'One-column CSV (email only) imports', async () => {
     const f = writeTmp('imp-one.csv', csvText(['Email'], [[`one1.${t.rid}@solo.example`], [`one2.${t.rid}@solo.example`], [`one3.${t.rid}@solo.example`]]));
-    await goImport(); await upload(f);
-    ok(await p.getByText('3 rows · 1 columns').isVisible(), 'preview');
-    await p.getByRole('button', { name: 'Import 3 rows' }).click(); await result();
-    eq(await stat('Contacts created'), 3);
+    await W.goImport(); await W.upload(f);
+    ok(await W.drawer().getByText('3 rows · 1 columns').isVisible(), 'preview');
+    await W.nextBtn().click();
+    await W.run();
+    eq(await W.stat('Contacts created'), 3);
     eq(cnt(t, `email LIKE 'one_.${t.rid}@solo.example'`), 3);
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-13', 'File without an Email/Company column: warning shown and Import disabled', async () => {
-    await goImport(); await upload(writeTmp('imp-noemail.csv', csvText(['Favourite colour', 'Shoe size'], [['blue', '42'], ['red', '38']])));
-    ok(await p.getByText(/Map an Email column or a Company name\/domain column/).isVisible(), 'warning');
-    ok(await p.getByRole('button', { name: /^Import 2 rows/ }).isDisabled(), 'import disabled');
+    await W.goImport(); await W.toMap(writeTmp('imp-noemail.csv', csvText(['Favourite colour', 'Shoe size'], [['blue', '42'], ['red', '38']])));
+    ok(await W.drawer().getByText(/Map an Email column or a Company name\/domain column/).isVisible(), 'warning');
+    ok(await W.nextBtn().isDisabled(), 'import disabled (cannot leave the mapping step)');
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-14', 'Two columns mapped to the same property show the "last one wins" warning', async () => {
-    await goImport(); await upload(writeTmp('imp-dupmap.csv', csvText(['Email', 'Work Email'], [[`dm1.${t.rid}@dm.example`, `dm1b.${t.rid}@dm.example`]])));
-    const r = p.locator('tr').filter({ has: p.locator('td p', { hasText: /^Work Email$/ }) }).first();
-    await r.locator('select').first().selectOption('contact.email');
-    ok(await p.getByText(/More than one column maps to the same property/).isVisible(), 'warning');
+    await W.goImport(); await W.toMap(writeTmp('imp-dupmap.csv', csvText(['Email', 'Work Email'], [[`dm1.${t.rid}@dm.example`, `dm1b.${t.rid}@dm.example`]])));
+    await W.select('Work Email').selectOption('contact.email');
+    ok(await W.drawer().getByText(/More than one column maps to the same property/).isVisible(), 'warning');
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-15', 'Company-only import (no email column) creates companies', async () => {
     const f = writeTmp('imp-companies.csv', csvText(['Company', 'Website', 'Industry'], [['Delta Dynamics', 'https://delta-dyn.example', 'Aero'], ['Epsilon Labs', 'https://epsilon-labs.example', 'Biotech']]));
-    await goImport(); await upload(f);
-    const r = p.locator('tr').filter({ has: p.locator('td p', { hasText: /^Company$/ }) }).first();
-    await r.locator('select').first().selectOption('company.name');
-    await p.locator('tr').filter({ has: p.locator('td p', { hasText: /^Website$/ }) }).first().locator('select').first().selectOption('company.website');
-    await p.locator('tr').filter({ has: p.locator('td p', { hasText: /^Industry$/ }) }).first().locator('select').first().selectOption('skip');
-    await p.getByRole('button', { name: 'Import 2 rows' }).click(); await result();
-    eq(await stat('Companies created'), 2, 'companies created stat');
+    await W.goImport(); await W.toMap(f);
+    await W.select('Company').selectOption('company.name');
+    await W.select('Website').selectOption('company.website');
+    await W.select('Industry').selectOption('skip');
+    await W.run();
+    eq(await W.stat('Companies created'), 2, 'companies created stat');
     eq(dbn(`SELECT COUNT(*) FROM accounts WHERE tenant_id='${t.tenantId}' AND name IN ('Delta Dynamics','Epsilon Labs')`), 2);
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-16', 'Excel (.xlsx) file imports', async () => {
     const f = xlsxFile('imp-excel.xlsx', header, rowsOf(mk(5).map(r => ({ ...r, email: r.email.replace('imp', 'xl') }))));
-    await goImport(); await upload(f);
-    ok(await p.getByText('5 rows · 6 columns').isVisible(), 'preview');
-    await p.getByRole('button', { name: 'Import 5 rows' }).click(); await result();
-    eq(await stat('Contacts created'), 5);
+    await W.goImport(); await W.upload(f);
+    ok(await W.drawer().getByText('5 rows · 6 columns').isVisible(), 'preview');
+    await W.nextBtn().click();
+    await W.run();
+    eq(await W.stat('Contacts created'), 5);
     eq(cnt(t, `email LIKE 'xl%.${t.rid}@%'`), 5);
   }, { u: A });
 
+  // Cancel closes the drawer and drops the stored upload; "New import" starts from the file step again
   await tc(rec, 'UIC-IMP-17', 'Cancel resets the wizard', async () => {
-    await goImport(); await upload(writeTmp('imp-basic.csv', csvText(header, rowsOf(mk(3)))));
-    await p.getByRole('button', { name: 'Cancel' }).click();
-    ok(await p.getByText('Drop a file here or click to choose').isVisible(), 'back to drop zone');
-    eq(await p.getByRole('button', { name: /^Import \d/ }).count(), 0, 'no import button');
+    await W.goImport(); await W.toMap(writeTmp('imp-basic.csv', csvText(header, rowsOf(mk(3)))));
+    await W.drawer().getByRole('button', { name: 'Cancel', exact: true }).click();
+    eq(await W.drawer().count(), 0, 'drawer closed');
+    await W.open();
+    ok(await W.drawer().getByText('Drop a file here or click to choose').isVisible(), 'back to drop zone');
+    ok(await W.nextBtn().isDisabled(), 'nothing to import');
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-18', '"Import another file" after a run starts over', async () => {
-    await goImport(); await upload(writeTmp('imp-again.csv', csvText(['Email'], [[`again.${t.rid}@solo.example`]])));
-    await p.getByRole('button', { name: 'Import 1 rows' }).click(); await result();
-    await p.getByRole('button', { name: 'Import another file' }).click();
-    ok(await p.getByText('Drop a file here or click to choose').isVisible(), 'wizard reset');
+    await W.goImport(); await W.toMap(writeTmp('imp-again.csv', csvText(['Email'], [[`again.${t.rid}@solo.example`]])));
+    await W.run();
+    await W.drawer().getByRole('button', { name: 'Close', exact: true }).click();
+    await W.open();
+    ok(await W.drawer().getByText('Drop a file here or click to choose').isVisible(), 'wizard reset');
   }, { u: A });
 
   await tc(rec, 'UIC-IMP-19', '1,000-row CSV imports in one run (DB count + time)', async () => {
     const rows = Array.from({ length: 1000 }, (_, i) => [`k${i}.${t.rid}@k1.example`, `K${i}`, `Row${i}`, `KCo ${i % 40}`]);
-    await goImport(); await upload(writeTmp('imp-1k.csv', csvText(['Email', 'First Name', 'Last Name', 'Company'], rows)));
-    ok(await p.getByText('1,000 rows · 4 columns').isVisible(), 'preview 1,000');
+    await W.goImport(); await W.upload(writeTmp('imp-1k.csv', csvText(['Email', 'First Name', 'Last Name', 'Company'], rows)));
+    ok(await W.drawer().getByText('1,000 rows · 4 columns').isVisible(), 'preview 1,000');
+    await W.nextBtn().click();
     const t0 = Date.now();
-    await p.getByRole('button', { name: 'Import 1,000 rows' }).click(); await result();
+    await W.run();
     const secs = (Date.now() - t0) / 1000;
-    eq(await stat('Contacts created'), 1000, 'created stat');
+    eq(await W.stat('Contacts created'), 1000, 'created stat');
     eq(cnt(t, `email LIKE 'k%.${t.rid}@k1.example'`), 1000, 'DB rows');
     ok(secs < 120, `import took ${secs}s`);
   }, { u: A });
@@ -401,10 +449,10 @@ export async function runImport(rec, browser) {
   }, { u: AG });
 
   await tc(rec, 'UIC-IMP-21', 'Preview API failure shows an error message', async () => {
-    await goImport();
-    await failApi(p, /\/api\/imports\/preview$/, 500);
-    await fileInput().setInputFiles(writeTmp('imp-x.csv', 'Email\na@b.example\n')); await settle(A, 900);
-    ok(await p.locator('.bg-red-50').count() > 0, 'error note shown');
+    await W.goImport();
+    await failApi(p, /\/api\/imports\/uploads$/, 500);
+    await W.fileInput().setInputFiles(writeTmp('imp-x.csv', 'Email\na@b.example\n')); await settle(A, 900);
+    ok(await W.drawer().locator('.bg-red-50').count() > 0, 'error note shown');
     await p.unrouteAll({ behavior: 'ignoreErrors' });
   }, { u: A, allow: [/http 500/, /Failed to load resource/] });
   await A.ctx.close(); await AG.ctx.close();

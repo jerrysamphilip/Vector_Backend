@@ -20,7 +20,7 @@ from datetime import date, datetime, timedelta, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(HERE))
-from common import API, WEB, Results, req, sql  # noqa: E402
+from common import API, WEB, Results, parse_utc, req, sql  # noqa: E402
 from rp_helpers import (add_user, diff_dict, feq, fake_ip, fq_of, fy_of, leaked_money, make_workspace,  # noqa: E402
                         pct, quarter_range, xff_headers)
 
@@ -1032,7 +1032,7 @@ def t_audit():
         if not h.get("changed_by_name") or "Sys" not in h["changed_by_name"]:
             errs.append(f"{f} by {h.get('changed_by_name')}")
         try:
-            at = datetime.fromisoformat(str(h["changed_at"]).replace("Z", ""))
+            at = parse_utc(h["changed_at"])
             if at < t0:
                 errs.append(f"{f} at {at}")
         except Exception:
@@ -1176,7 +1176,7 @@ def t_recycle():
     s, b = get(tok, f"/leads/{CTX['L']['L4']}")
     ra = b.get("recycle_at") if s == 200 else None
     try:
-        days = (datetime.fromisoformat(str(ra)) - utcnow()).days
+        days = (parse_utc(ra) - utcnow()).days
     except Exception:
         days = None
     R.check("RP-081", "Disqualified lead keeps its reason and a recycle date (30 days) and shows in the report",

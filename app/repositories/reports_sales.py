@@ -26,6 +26,7 @@ from app.models.sales import Lead, Opportunity, SalesStage
 from app.models.sales_extra import SalesTarget
 from app.models.user import User
 from app.repositories.base import TenantId
+from app.repositories.system_notices import reply_message
 
 __all__ = ["LeadReportRows", "OpportunityCounts", "SalesReportRepository", "Session",
            "SqlAlchemySalesReportRepository", "TeamCounts", "in_owners"]
@@ -173,7 +174,7 @@ class SqlAlchemySalesReportRepository:
             EmailMessage.sent_at >= start, EmailMessage.sent_at < end)
         distinct = func.count(func.distinct(EmailMessage.prospect_id))
         sent = base.filter(EmailMessage.direction == "OUTBOUND").with_entities(distinct).scalar() or 0
-        replied = base.filter(EmailMessage.direction == "INBOUND").with_entities(distinct).scalar() or 0
+        replied = base.filter(reply_message()).with_entities(distinct).scalar() or 0
         return sent, replied
 
     # ── the viewer's work queue ──

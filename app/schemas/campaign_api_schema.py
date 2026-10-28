@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+from app.schemas.types import UtcDatetime
 
 class DailyMetrics(BaseModel):
     date: str
@@ -50,8 +51,8 @@ class TemplateInfo(BaseModel):
     ai_model: Optional[str] = None
     is_ai_generated: bool = False
     is_approved: bool = False
-    approved_at: Optional[datetime] = None
-    created_at: datetime
+    approved_at: Optional[UtcDatetime] = None
+    created_at: UtcDatetime
 
 class CampaignTemplatesResponse(BaseModel):
     campaign_id: str
@@ -76,12 +77,12 @@ class RegenerateResponse(BaseModel):
     subject: str
     body: str
     ai_model: str
-    regenerated_at: datetime
+    regenerated_at: UtcDatetime
 
 class ApproveResponse(BaseModel):
     template_id: str
     is_approved: bool
-    approved_at: Optional[datetime] = None
+    approved_at: Optional[UtcDatetime] = None
 
 class ApproveAllResponse(BaseModel):
     approved_count: int
@@ -92,7 +93,7 @@ class RescheduleRequest(BaseModel):
     Request body for rescheduling a queued/scheduled email message.
     new_scheduled_at should be a UTC datetime string, e.g. '2026-03-15T09:00:00'.
     """
-    new_scheduled_at: datetime
+    new_scheduled_at: UtcDatetime
     reason: Optional[str] = None
 
 class RescheduleDateRequest(BaseModel):
@@ -104,7 +105,7 @@ class RescheduleDateRequest(BaseModel):
     """
     date: str
     step_number: int
-    new_scheduled_at: datetime
+    new_scheduled_at: datetime  # campaign-zone wall clock, so not UtcDatetime
     reason: Optional[str] = None
 
 class RevalidateProspectRequest(BaseModel):

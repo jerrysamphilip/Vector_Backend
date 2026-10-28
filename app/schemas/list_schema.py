@@ -3,10 +3,10 @@ Request / response models of the lists aggregate (/lists, /prospect-lists, list 
 moved out of app/routers/lists_router.py and app/routers/prospect_list_router.py unchanged (chunk A1).
 """
 
-from datetime import datetime
 from typing import Any, List, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
+from app.schemas.types import UtcDatetime
 
 
 # ── /lists ─────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ class ProspectListResponse(BaseModel):
     list_name: str
     source_type: str
     prospect_count: int
-    uploaded_at: Optional[datetime] = None  # S10: column is nullable
+    uploaded_at: Optional[UtcDatetime] = None  # S10: column is nullable
 
     class Config:
         from_attributes = True

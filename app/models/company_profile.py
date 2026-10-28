@@ -6,6 +6,7 @@ Scoped to a tenant (tenant_id). Legacy rows with NULL tenant_id are hidden.
 
 from sqlalchemy import Column, String, Boolean, Text, ForeignKey
 
+from app.core.clock import iso_utc
 from app.models import Base
 from app.models.types import NOW6, UtcDateTime
 from app.core.ids import new_id
@@ -59,5 +60,5 @@ class CompanyProfile(Base):
             "postal_address": self.postal_address,
             "default_sender_name": self.default_sender_name,
             "default_cta_link": self.default_cta_link,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": iso_utc(self.created_at),
         }

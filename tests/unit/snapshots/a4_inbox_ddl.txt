@@ -23,7 +23,7 @@ col inbox_id String notnull    default=None onupdate=None server_default=None se
 col subject String null    default=None onupdate=None server_default=None server_onupdate=None
 col status String null    default='OPEN' onupdate=None server_default=None server_onupdate=None
 col is_unread Boolean null    default='True' onupdate=None server_default=None server_onupdate=None
-col last_message_at DateTime null    default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col last_message_at DateTime null    default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
 col created_at DateTime null    default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
 col updated_at DateTime null    default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
 rel inbox -> SendingInbox uselist=False back_populates=None cascade=['merge', 'save-update']
