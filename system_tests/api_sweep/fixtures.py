@@ -113,9 +113,33 @@ def build_tenant_b():
     return t
 
 
+# A whole sweep takes ~7-8 min (longer in a --jobs pool): reuse cached tokens only while they outlive it with room to spare.
+# Reusing them up to 25 min after sign-up (30 min TTL) let them expire mid-run in back-to-back runs: every check after
+# that got 401 "Invalid or expired token" (seen as ~280 ISO / IDEM failures in a full run).
+MIN_TOKEN_LIFE_S = 15 * 60
+
+
+def token_seconds_left(token):
+    """Seconds until the JWT's exp (payload read without verification; 0 when it cannot be read)."""
+    import base64
+    try:
+        payload = token.split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+        return float(claims["exp"]) - time.time()
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+        return 0.0
+
+
+def _cache_usable(st):
+    if "A" not in st or "B" not in st:
+        return False
+    toks = [t for d in (st["A"], st["B"]) for t in (d.get("tok") or {}).values()]
+    return bool(toks) and min(token_seconds_left(t) for t in toks) >= MIN_TOKEN_LIFE_S
+
+
 def get_tenants(fresh=False):
     st = load()
-    if not fresh and "A" in st and "B" in st and time.time() - st["A"]["ts"] < 25 * 60:
+    if not fresh and _cache_usable(st):
         A, B = Tenant.load(st["A"]), Tenant.load(st["B"])
         s, _, _, _ = http("GET", "/api/auth/me", token=A.tok["SUPER_ADMIN"])
         if s == 200 and sql(f"SELECT COUNT(*) FROM users WHERE tenant_id={q(A.tenant_id)}"):
