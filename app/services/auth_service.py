@@ -33,6 +33,7 @@ from app.domain.identity import (
 )
 from app.models.user import User
 from app.repositories.identity import DuplicateAccount, IdentityAccess, IdentityUnitOfWork, Session, identity_uow
+from app.repositories.lock_retry import retry_on_lock_conflict
 from app.services import password_reset_email, session_limits, token_revocation
 from app.services.audit_service import AuditService
 from app.services.auth_session import complete_sign_in, issue_session, user_profile
@@ -140,8 +141,15 @@ class AuthService:
             return complete_sign_in(uow, user)
 
     def login(self, email: str, password: str, throttle: Throttle) -> dict:
-        """Email + password sign-in, with lockout per (email, client) pair."""
+        """Email + password sign-in, with lockout per (email, client) pair.
+
+        Issuing the session updates ``users.last_login_at``, which can deadlock (1213) or time out on a row
+        lock (1205) next to other writes to the user row: the whole sign-in then runs again from the start
+        (its unit of work was rolled back, so no refresh token or session row from the failed attempt stays)."""
         throttle.check()
+        return retry_on_lock_conflict(lambda: self._login(email, password, throttle))
+
+    def _login(self, email: str, password: str, throttle: Throttle) -> dict:
         with self.uow as uow:
             user = login_account(uow.users, email)
             if not user or not user.password_hash or not verify_password(password, user.password_hash):

@@ -125,7 +125,7 @@ class Engine:
                          category=category, evidence={"req": _trunc(body, 400), "resp": _trunc(b, 400), "status": s},
                          title=title or f"{ep_id} valid request by {who} -> {expect[0]}xx")
             if is_env:
-                self.rec.meta[self.rec.last_id]["env"] = True
+                self.rec.mark_env()
         if ok and not is_env:
             self.hits_ok.add(ep_id)
             if keep and who == "SUPER_ADMIN" and self.recording:

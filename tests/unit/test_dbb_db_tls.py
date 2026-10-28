@@ -78,7 +78,7 @@ def test_dbb_tls_u08_connect_args_keep_session_settings_and_add_tls(monkeypatch,
     assert args["connect_timeout"] == 10
     assert args["init_command"] == MYSQL_SESSION_INIT_COMMAND
     assert MYSQL_SESSION_INIT_COMMAND.startswith(MYSQL_INIT_COMMAND)
-    assert "innodb_ft_enable_stopword = OFF" in MYSQL_SESSION_INIT_COMMAND
+    assert "innodb_ft" not in MYSQL_SESSION_INIT_COMMAND  # 0034 dropped the FULLTEXT index (D7 reverted)
     monkeypatch.setattr(database.settings, "MYSQL_SSL_MODE", "verify_identity")
     monkeypatch.setattr(database.settings, "MYSQL_SSL_CA", ca_file)
     assert mysql_connect_args()["ssl"]["check_hostname"] is True

@@ -1214,12 +1214,16 @@ def _():
     try:
         row = lambda m: sql(f"SELECT CONCAT_WS('|', status, IFNULL(last_error_code,'-'), IFNULL(DATE(scheduled_at),'-'), "  # noqa: E731
                             f"IFNULL(failure_reason,'-')) FROM email_messages WHERE message_id='{m}'")
-        held = poll(lambda: HELD in row(m_new) and row(m_new), timeout=200)
+        # one scheduler pass now under the worker's lock (instead of waiting for its 30 s cycle); the polls stay
+        # as the bound (and as the path on an image without app.jobs.run_once, where the worker does it)
+        run_job("scheduler")
+        held = poll(lambda: HELD in row(m_new) and row(m_new), timeout=200, every=2)
         tomorrow = str(date.today() + timedelta(days=1)) if utcnow().date() == date.today() else str(utcnow().date() + timedelta(days=1))
         r = row(m_new)
         R.check("SP-139", "Worker: 501st new contact's first email is held (QUEUED, DAILY_NEW_CONTACT_LIMIT) and rescheduled to tomorrow",
                 bool(held) and r.startswith("QUEUED|") and f"|{tomorrow}|" in r, f"row={r}", "defect")
-        fu = poll(lambda: (row(m_fu).split("|")[0] != "QUEUED" or row(m_fu).split("|")[3] != "-") and row(m_fu), timeout=120)
+        fu = poll(lambda: (row(m_fu).split("|")[0] != "QUEUED" or row(m_fu).split("|")[3] != "-") and row(m_fu), timeout=120,
+                  every=2)
         rf = row(m_fu)
         R.check("SP-140", "Worker: a follow-up for the same user at the limit is not held by the daily limit (it proceeds to send)",
                 bool(fu) and HELD not in rf, f"row={rf}" if fu else f"follow-up never processed within 120 s: {rf}",

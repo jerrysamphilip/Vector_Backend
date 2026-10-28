@@ -25,6 +25,11 @@ x-api-env: &api-env
   # Mailbox SMTP/IMAP certificates are verified. Set MAIL_TLS_VERIFY=false in .env only to run the
   # system tests' self-signed fake IMAP server (system_tests/outreach); refused in production.
   MAIL_TLS_VERIFY: ${MAIL_TLS_VERIFY:-true}
+  # Test-stack speed-ups for the live suites (docs/TESTING.md); both are refused in production.
+  # RATE_LIMIT_TEST_MULTIPLIER=100 raises the per-client-IP sign-in / sign-up limits (account lockouts stay),
+  # so suites need no API restart between them. SEND_RETRY_BASE_SECONDS=1 retries failed sends after 2, 4 s.
+  RATE_LIMIT_TEST_MULTIPLIER: "${RATE_LIMIT_TEST_MULTIPLIER:-1}"
+  SEND_RETRY_BASE_SECONDS: "${SEND_RETRY_BASE_SECONDS:-60}"
   MYSQL_HOST: mysql
   MYSQL_PORT: "3306"
   MYSQL_USER: ${LOCAL_MYSQL_USER:-vector}

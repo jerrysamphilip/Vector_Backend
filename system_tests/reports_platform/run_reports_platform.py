@@ -21,7 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(HERE))
 from common import API, WEB, Results, parse_utc, req, sql  # noqa: E402
-from rp_helpers import (add_user, diff_dict, feq, fake_ip, fq_of, fy_of, leaked_money, make_workspace,  # noqa: E402
+from rp_helpers import (DEFAULT_LIMITS_HEADER, add_user, diff_dict, feq, fake_ip, fq_of, fy_of, leaked_money, make_workspace,  # noqa: E402
                         pct, quarter_range, xff_headers)
 
 R = Results("reports_platform", HERE)
@@ -1401,12 +1401,18 @@ def t_rate_limit():
         return
     ws = CTX["ws"]
     rl = add_user(ws, "AGENT", "Ratelim")
+
+    def strict(ip):
+        # A test stack may relax the per-IP limits (RATE_LIMIT_TEST_MULTIPLIER); this header makes the API count
+        # these requests against the real limits (own bucket). Ignored when the limits are not relaxed.
+        return {**xff_headers(ip), DEFAULT_LIMITS_HEADER: "1"}
+
     ip = fake_ip()
     codes = []
     for i in range(11):
-        s, b = req("POST", "/api/auth/login", {"email": rl["email"], "password": "wrong-password"}, headers=xff_headers(ip))
+        s, b = req("POST", "/api/auth/login", {"email": rl["email"], "password": "wrong-password"}, headers=strict(ip))
         codes.append(s)
-    s, b = req("POST", "/api/auth/login", {"email": rl["email"], "password": ws.password}, headers=xff_headers(fake_ip()))
+    s, b = req("POST", "/api/auth/login", {"email": rl["email"], "password": ws.password}, headers=strict(fake_ip()))
     # Retry-After is not exposed by req(); read it with a raw call
     import urllib.request
     import urllib.error
@@ -1414,7 +1420,7 @@ def t_rate_limit():
     try:
         r = urllib.request.Request(API + "/api/auth/login", method="POST",
                                    data=json.dumps({"email": rl["email"], "password": ws.password}).encode(),
-                                   headers={"Content-Type": "application/json", "X-Forwarded-For": fake_ip()})
+                                   headers={"Content-Type": "application/json", **strict(fake_ip())})
         urllib.request.build_opener(urllib.request.ProxyHandler({})).open(r, timeout=30)
     except urllib.error.HTTPError as e:
         retry = e.headers.get("Retry-After")
@@ -1424,9 +1430,9 @@ def t_rate_limit():
             j(CTX["lockout"]))
     ip = fake_ip()
     codes = [req("POST", "/api/auth/login", {"email": f"nobody{i}-{ws.rid}@nowhere.example", "password": "x"},
-                 headers=xff_headers(ip))[0] for i in range(61)]
+                 headers=strict(ip))[0] for i in range(61)]
     other = req("POST", "/api/auth/login", {"email": f"nobody-x-{ws.rid}@nowhere.example", "password": "x"},
-                headers=xff_headers(fake_ip()))[0]
+                headers=strict(fake_ip()))[0]
     CTX["ip_limit"] = {"first_429_at": codes.index(429) + 1 if 429 in codes else None, "fresh_xff_status": other}
     R.check("RP-141", "Login: per-IP limit (60 attempts / 5 min) answers 429 from the 61st attempt", codes[:60] == [401] * 60 and codes[60] == 429,
             j(CTX["ip_limit"]))

@@ -4,7 +4,8 @@ name: CI
 #   unit        every push / PR, no database          -> job "unit"
 #   functional  every push / PR, MySQL service         -> job "test" (also lint + audit)
 #   system/e2e/ui need the whole docker stack; they run only on demand (Actions -> CI -> Run workflow)
-#               in job "live-stack". They are never part of the PR gate or of CICD.yaml's deploy gate.
+#               in job "live-stack", by tier (smoke | core | full, system_tests/TIERS.json) or by layer.
+#               They are never part of the PR gate or of CICD.yaml's deploy gate.
 on:
   pull_request:
   push:
@@ -12,11 +13,16 @@ on:
   workflow_call:  # reused by CICD.yaml so a deploy only happens after these gates pass
   workflow_dispatch:
     inputs:
-      layer:
-        description: "Live-stack layer to run (system, e2e, ui or all). Unit + functional always run too."
+      tier:
+        description: "Live-stack tier (docs/TESTING.md 'Tiers'): smoke (every deploy, ~10 min), core (nightly / before UAT), full (everything)"
         type: choice
-        options: [system, e2e, ui, all]
-        default: system
+        options: [smoke, core, full]
+        default: core
+      layer:
+        description: "Instead of the tier, run one layer (system, e2e or ui); 'tier' = use the tier input"
+        type: choice
+        options: [tier, system, e2e, ui]
+        default: tier
       suite:
         description: "Optional suite id(s), comma separated (see python3 scripts/test.py list)"
         required: false
@@ -80,6 +86,9 @@ jobs:
 
       - name: Traceability (docs/REQUIREMENTS.md -> test cases, static)
         run: python scripts/test.py trace --check
+
+      - name: Test tiers (system_tests/TIERS.json, static)
+        run: python scripts/test.py tiers --check
 
       - name: Release identity (VERSION == CHANGELOG.md == manifests == docs)
         run: python scripts/ci/check_version.py
@@ -269,7 +278,7 @@ jobs:
     # Needs: read access to the Vector_Frontend repository (secret FRONTEND_REPO_TOKEN, a fine-grained token with
     # contents:read), Docker Compose v2.24+ (for `!reset` in the e2e compose file) and about 1-2 h for "all".
     # The suites create their own workspaces; nothing outside the runner is touched. OPENAI_API_KEY stays empty.
-    name: Live-stack suites (${{ inputs.layer }})
+    name: Live-stack suites (${{ inputs.layer == 'tier' && inputs.tier || inputs.layer }})
     if: github.event_name == 'workflow_dispatch'
     needs: [unit, test]
     runs-on: ubuntu-latest
@@ -277,6 +286,10 @@ jobs:
     env:
       FRONTEND_DIR: ../Vector_Frontend
       OPENAI_API_KEY: ""
+      # Test-stack speedups (docs/TESTING.md section 7), read by docker compose for api + worker: per-IP rate limits x100
+      # (per-email lockouts unchanged; refused in production) and a 1 s send-retry base instead of minutes.
+      RATE_LIMIT_TEST_MULTIPLIER: "100"
+      SEND_RETRY_BASE_SECONDS: "1"
       TEST_CERTS_DIR: ${{ github.workspace }}/.ci-certs
     steps:
       - uses: actions/checkout@v4
@@ -313,7 +326,8 @@ jobs:
           python3 scripts/test.py env status
 
       - name: E2E wiring (SES stand-in, SEND_ON_ANY_DAY)
-        if: inputs.layer == 'e2e' || inputs.layer == 'all'
+        # every tier contains e2e journeys (smoke: J1)
+        if: inputs.layer == 'tier' || inputs.layer == 'e2e'
         run: |
           mkdir -p "$TEST_CERTS_DIR" && cp /etc/ssl/certs/ca-certificates.crt "$TEST_CERTS_DIR/ca.crt"
           python3 scripts/test.py env up --e2e --build --execute
@@ -321,11 +335,15 @@ jobs:
       - name: Prerequisites
         run: python3 scripts/test.py doctor || true
 
-      - name: Run ${{ inputs.layer }}
+      - name: Run ${{ inputs.layer == 'tier' && inputs.tier || inputs.layer }}
         run: |
           SUITE_ARGS=""
           if [ -n "${{ inputs.suite }}" ]; then SUITE_ARGS="--suite ${{ inputs.suite }}"; fi
-          python3 scripts/test.py run ${{ inputs.layer }} --keep-going --restart-api-between \
+          TARGET="${{ inputs.layer }}"
+          if [ "$TARGET" = "tier" ]; then TARGET="${{ inputs.tier }}"; fi
+          # unit + functional already ran as the gates of this workflow (jobs unit, test): skip them here.
+          # --jobs 4: parallel-safe suites share the stack (RATE_LIMIT_TEST_MULTIPLIER makes that safe for the limits).
+          python3 scripts/test.py run "$TARGET" --keep-going --jobs 4 --skip unit,functional \
             --report-dir reports/ci-live $SUITE_ARGS
 
       - name: Upload live-stack report

@@ -529,7 +529,11 @@ def t_events():
     # Unconfirmed after DELIVERY_CONFIRM_MINUTES (15) — the 1-minute send_safety job sets it
     late = m[5]
     sql(f"UPDATE email_messages SET sent_at=UTC_TIMESTAMP() - INTERVAL 20 MINUTE WHERE message_id={q(late)}")
-    got = wait_until(lambda: mstatus(late)[2] == "UNCONFIRMED", timeout=150, interval=5)
+    # one send_safety pass now under the worker's lock (instead of waiting up to a minute for its cycle);
+    # the bounded poll still covers an image without app.jobs.run_once, where the worker sets it
+    from common import run_job
+    run_job("send_safety")
+    got = wait_until(lambda: mstatus(late)[2] == "UNCONFIRMED", timeout=150, interval=2)
     rec("OUT-046", "Sent email with no SES outcome after 15 minutes gets final status UNCONFIRMED (worker)", got,
         f"after 150s: {mstatus(late)}")
     ses_post(ses_delivery(late, em("evt5"), sent[late][0], src))
@@ -1056,7 +1060,12 @@ def check_scheduler_cases(sc):
                 f"needs SES to be unreachable, but the stack is wired to an SES stand-in (AWS_ENDPOINT_URL={endpoint}); "
                 f"observed {first[:3]}")
         return
-    final = wait_until(lambda: mstatus(ok)[2] == "FAILED", timeout=max(10, 600 - (time.time() - sc["t0"])), interval=15)
+    # Stop waiting once the outcome is decided: FAILED, or a state the retries can no longer turn into FAILED
+    # (SES accepted it, or it was cancelled). Test stacks set SEND_RETRY_BASE_SECONDS=1, so the retries
+    # (2, 4 min by default) are over within seconds.
+    wait_until(lambda: mstatus(ok)[2] == "FAILED" or mstatus(ok)[0] in ("SENT", "CANCELLED"),
+               timeout=max(10, 600 - (time.time() - sc["t0"])), interval=5)
+    final = mstatus(ok)[2] == "FAILED"
     rec("OUT-049", "SES unavailable: retried with backoff, then FAILED with a final status and reason",
         final and int(mstatus(ok)[3]) >= 1 and mstatus(ok)[1], f"first={first} final={mstatus(ok)}")
 
@@ -1075,7 +1084,7 @@ def ses_endpoint():
 def check_background(bg):
     remaining = max(5, 600 - (time.time() - bg["t0"]))
     got = wait_until(lambda: scalar(f"SELECT COUNT(*) FROM email_messages WHERE prospect_id={q(bg['pid'])} "
-                                    f"AND direction='INBOUND'") == "1", timeout=remaining, interval=15)
+                                    f"AND direction='INBOUND'") == "1", timeout=remaining, interval=5)
     took = time.time() - bg["t0"]
     rec("OUT-057", "Worker syncs a reply into the inbox within 10 minutes without a manual sync",
         got and cp_status(bg["cid"], bg["pid"]) == "REPLIED", f"after {took:.0f}s inbound={got} cp={cp_status(bg['cid'], bg['pid'])}")

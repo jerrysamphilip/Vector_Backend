@@ -733,7 +733,7 @@ class EmailSchedulerService:
         if retries_exhausted(email_msg.retry_count, email_msg.max_retries):
             fail(email_msg, result.get("error", "Unknown error"), now)
         else:
-            requeue(email_msg, retry_at=now + retry_delay(email_msg.retry_count))  # exponential backoff
+            requeue(email_msg, retry_at=now + retry_delay(email_msg.retry_count, settings.SEND_RETRY_BASE_SECONDS))  # exponential backoff
             email_msg.last_error_code = result.get("error", "")[:50]
         logger.warning(f"[Scheduler] Email failed for {prospect.email}: {result.get('error')}")
         return FAILED
@@ -759,7 +759,7 @@ class EmailSchedulerService:
             record_email_sent("failed")
         else:
             record_email_sent("retry")
-            requeue(email_msg, retry_at=utcnow() + retry_delay(email_msg.retry_count))
+            requeue(email_msg, retry_at=utcnow() + retry_delay(email_msg.retry_count, settings.SEND_RETRY_BASE_SECONDS))
             logger.warning(f"[Scheduler] Transient failure, will retry: {e}")
         return FAILED
 

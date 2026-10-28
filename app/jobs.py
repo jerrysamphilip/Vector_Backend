@@ -305,6 +305,33 @@ async def run_job_loop(job: Job) -> None:
         await asyncio.sleep(sleep_for)
 
 
+def job_by_name(name: str) -> Job:
+    """The loop called ``name`` (KeyError for an unknown name)."""
+    jobs = {job.name: job for job in all_jobs()}
+    if name not in jobs:
+        raise KeyError(f"Unknown job {name!r}; known: {', '.join(sorted(jobs))}")
+    return jobs[name]
+
+
+async def run_once(name: str, wait_seconds: float = 60) -> bool:
+    """Run one iteration of the named loop now, under the same named lock as the worker's loop: waits up to
+    wait_seconds for an iteration running elsewhere to finish, so when this returns True every item that was
+    due when it was called has been handled. False: the lock stayed busy. For live test suites and operators
+    (`docker exec <api|worker> python -c "import asyncio; from app.jobs import run_once; asyncio.run(run_once('webhooks'))"`);
+    a fresh process also runs the hourly parts of send_safety / sales_jobs."""
+    job = job_by_name(name)
+    conn = await _run_in_thread(try_acquire, job.name, wait_seconds)
+    if conn is None:
+        return False
+    try:
+        await job.run()
+        LAST_RUN[job.name] = time.time()
+        record_job_heartbeat(job.name)
+    finally:
+        await _run_in_thread(release, conn, job.name)
+    return True
+
+
 def start_jobs() -> List[asyncio.Task]:
     """Start every loop as an asyncio task on the running loop; returns the tasks."""
     from app.services.email_scheduler_service import email_scheduler
