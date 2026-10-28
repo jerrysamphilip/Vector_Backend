@@ -12,6 +12,22 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 `docs/REQUIREMENTS.md`; test traceability: `docs/TRACEABILITY.md`.
 
 ### Added
+- Layered architecture applied to every remaining aggregate (wave 3: accounts, lists, identity/auth, import,
+  automation, webhooks, scoring, notifications, campaigns, inbox, deliverability, worker): routers thin, services own
+  the unit of work, SQL in repositories, `Mapped[]` models with identical DDL, OpenAPI unchanged for existing paths.
+  External services behind adapters with DI providers (`app/adapters`: SES, SMTP/IMAP, OpenAI, file storage, OAuth).
+- Edit a campaign after launch: `POST /campaigns/{id}/edits` (+ `/edits/checks` dry run) re-renders and re-plans unsent
+  mail under row locks and row_version, adds/deletes steps safely, rebinds inboxes; e-mail previews as a real contact,
+  template assignments, launch `pacing_warning`, business-day waits (migration 0027).
+- Contacts: stored duplicate pairs with confidence and reasons, dismiss/reopen, merge preview with row locks, merge log
+  snapshots, e-mail history so retired and merged addresses resolve to the surviving contact, export audit log, unique
+  list names and paged lists (migration 0025).
+- Companies: custom properties, backfill preview / run history / undo, export, field propagation with history
+  (migration 0024).
+- Background CRM import: upload, mapping (saved), dry run, checkpointed worker job with progress, cancel and resume;
+  import modes, date/number/choice parsing, sheet choice (migration 0026). Hard-bounce automation trigger.
+- Jobs: duplicate scan (6 h), hourly domain-health snapshots with 90-day retention; the scheduler wakes when the next
+  paced mailbox is ready.
 - Layered architecture applied to contacts (reference, `docs/LAYER_PATTERN.md`), sales and reports: typed domain
   query objects, repositories holding all SQL, services owning the unit of work, thin routers, `Mapped[]` models
   with identical DDL. OpenAPI and report outputs unchanged (golden test `tests/test_a6_report_outputs.py`).
@@ -47,6 +63,9 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - Layered test framework (`scripts/test.py`: unit, functional, system, e2e, ui) and the `docs/TESTING.md` guide.
 
 ### Changed
+- A hard bounce stops the campaign's remaining steps per step stop_on_bounce; company backfill covers only the contacts
+  the user can see; `DELETE /campaigns/sequences/{id}` refuses (409) once a step was sent, else removes its unsent mail
+  and renumbers; list names that already exist get " (2)" on upload/import/bulk add.
 - Conversations follow the contact owner/team visibility scope (an agent sees the conversations of the contacts
   they can see); before, any member of the workspace saw all of them.
 - Refactor: routers are thin HTTP adapters over services; service-layer domain errors (`app/core/errors.py`);
@@ -56,6 +75,8 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - `domain_error_handler` guards its input with an explicit type check instead of `assert` (kept under `python -O`).
 
 ### Security
+- SMTP/IMAP connections resolve the host once, check it (no private/loopback/metadata addresses when deployed) and
+  connect to that address with the hostname kept for TLS verification, closing the DNS-rebinding gap (S2).
 - Session tokens on PyJWT 2.15.1 behind `app/core/tokens.py` (S1): python-jose and ecdsa removed, so the
   dependency audit has no accepted exceptions left. Only the configured HS algorithm is accepted (`none`, other HS
   sizes and asymmetric headers refused); `exp` (and `jti` on access tokens) required. Tokens issued before the

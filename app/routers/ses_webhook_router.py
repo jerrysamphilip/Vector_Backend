@@ -19,7 +19,8 @@ from app.models import EmailMessage, EmailEvent, Prospect, GlobalUnsubscribe
 from app.models.campaign import CampaignProspect
 from app.models.conversation import Conversation
 from app.services.automation_rule_service import automation_service
-from app.models.automation_rule import TriggerType
+from app.services.sequence_stop import stop_pending_steps
+from app.domain.automation import TriggerType
 from app.services.metrics_service import MetricsService
 from app.services.deliverability_service import deliverability_service
 from app.utils.campaign_prospect_status import set_prospect_status
@@ -346,6 +347,87 @@ async def handle_ses_notification(
         raise HTTPException(status_code=500, detail="Error processing notification")
 
 
+def _record_hard_bounce(db: Session, message: dict, email_message: EmailMessage, recipient: dict, email: str,
+                        bounce_type: str, bounce_subtype: str, ses_message_id: str) -> None:
+    """A permanent bounce of one sent message: status, events, metrics and the inbox thread note."""
+    # Update message status
+    email_message.status = "BOUNCED"
+    set_final_status(email_message, "BOUNCED")
+    email_message.failure_reason = f"{bounce_type}: {bounce_subtype}"
+    email_message.last_error_code = f"BOUNCE_{bounce_type}"
+    if email_message.campaign_id and email_message.prospect_id:
+        # The campaign's remaining steps stop with the bounce reason, per step's stop_on_bounce
+        # flag (before suppression, which would otherwise cancel them without it)
+        stop_pending_steps(db, email_message.campaign_id, email_message.prospect_id, "BOUNCED")
+
+    # Create bounce event
+    event = EmailEvent(
+        message_id=email_message.message_id,
+        event_type=EmailEvent.EVENT_BOUNCE,
+        event_time=utcnow(),
+        event_metadata={
+            "dedupe_key": message.get("_dedupe_key"),
+            "bounce_type": bounce_type,
+            "bounce_subtype": bounce_subtype,
+            "diagnostic_code": recipient.get("diagnosticCode"),
+            "ses_message_id": ses_message_id
+        }
+    )
+    db.add(event)
+
+    # Additionally tag sender-attributable bounces (soft/transient, or
+    # a permanent rejection citing our domain's SPF/DKIM/DMARC/reputation)
+    # for the "Sender Bounced" metric — additive to EVENT_BOUNCE, not a
+    # replacement, so total bounce_rate is unaffected.
+    if _is_sender_attributable_bounce(bounce_type, recipient.get("diagnosticCode")):
+        db.add(EmailEvent(
+            message_id=email_message.message_id,
+            event_type=EmailEvent.EVENT_SENDER_BOUNCE,
+            event_time=utcnow(),
+            event_metadata={
+                "dedupe_key": message.get("_dedupe_key"),
+                "bounce_type": bounce_type,
+                "bounce_subtype": bounce_subtype,
+                "diagnostic_code": recipient.get("diagnosticCode"),
+            }
+        ))
+        _count_metric(db, email_message.campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
+
+    # Inject a visible INBOUND notification into the conversation so the
+    # bounce appears in the campaign inbox thread (not just analytics).
+    if email_message.conversation_id:
+        diagnostic = recipient.get("diagnosticCode") or f"{bounce_type} - {bounce_subtype}"
+        bounce_msg = EmailMessage(
+            message_id=str(uuid.uuid4()),
+            campaign_id=email_message.campaign_id,
+            prospect_id=email_message.prospect_id,
+            inbox_id=email_message.inbox_id,
+            conversation_id=email_message.conversation_id,
+            direction="INBOUND",
+            subject=f"Delivery Failed: {email_message.subject or 'Your email'}",
+            body_text=(
+                f"Email delivery failed ({bounce_type}).\n"
+                f"Reason: {bounce_subtype}\n"
+                f"Detail: {diagnostic}"
+            ),
+            to_email=email_message.from_email or "",
+            from_email=email or "",
+            status="SENT",
+            sent_at=utcnow(),
+        )
+        db.add(bounce_msg)
+
+        conv = db.query(Conversation).filter(
+            Conversation.id == email_message.conversation_id
+        ).first()
+        if conv:
+            conv.is_unread = True
+            conv.last_message_at = utcnow()
+
+    # Update metrics
+    _count_metric(db, email_message.campaign_id, EmailEvent.EVENT_BOUNCE)
+
+
 async def _handle_bounce(message: dict, db: Session) -> dict:
     """
     Handle SES bounce notification.
@@ -400,78 +482,7 @@ async def _handle_bounce(message: dict, db: Session) -> dict:
             _count_metric(db, email_message.campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
 
         elif email_message:
-            # Update message status
-            email_message.status = "BOUNCED"
-            set_final_status(email_message, "BOUNCED")
-            email_message.failure_reason = f"{bounce_type}: {bounce_subtype}"
-            email_message.last_error_code = f"BOUNCE_{bounce_type}"
-
-            # Create bounce event
-            event = EmailEvent(
-                message_id=email_message.message_id,
-                event_type=EmailEvent.EVENT_BOUNCE,
-                event_time=utcnow(),
-                event_metadata={
-                    "dedupe_key": message.get("_dedupe_key"),
-                    "bounce_type": bounce_type,
-                    "bounce_subtype": bounce_subtype,
-                    "diagnostic_code": recipient.get("diagnosticCode"),
-                    "ses_message_id": ses_message_id
-                }
-            )
-            db.add(event)
-
-            # Additionally tag sender-attributable bounces (soft/transient, or
-            # a permanent rejection citing our domain's SPF/DKIM/DMARC/reputation)
-            # for the "Sender Bounced" metric — additive to EVENT_BOUNCE, not a
-            # replacement, so total bounce_rate is unaffected.
-            if _is_sender_attributable_bounce(bounce_type, recipient.get("diagnosticCode")):
-                db.add(EmailEvent(
-                    message_id=email_message.message_id,
-                    event_type=EmailEvent.EVENT_SENDER_BOUNCE,
-                    event_time=utcnow(),
-                    event_metadata={
-                        "dedupe_key": message.get("_dedupe_key"),
-                        "bounce_type": bounce_type,
-                        "bounce_subtype": bounce_subtype,
-                        "diagnostic_code": recipient.get("diagnosticCode"),
-                    }
-                ))
-                _count_metric(db, email_message.campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
-
-            # Inject a visible INBOUND notification into the conversation so the
-            # bounce appears in the campaign inbox thread (not just analytics).
-            if email_message.conversation_id:
-                diagnostic = recipient.get("diagnosticCode") or f"{bounce_type} - {bounce_subtype}"
-                bounce_msg = EmailMessage(
-                    message_id=str(uuid.uuid4()),
-                    campaign_id=email_message.campaign_id,
-                    prospect_id=email_message.prospect_id,
-                    inbox_id=email_message.inbox_id,
-                    conversation_id=email_message.conversation_id,
-                    direction="INBOUND",
-                    subject=f"Delivery Failed: {email_message.subject or 'Your email'}",
-                    body_text=(
-                        f"Email delivery failed ({bounce_type}).\n"
-                        f"Reason: {bounce_subtype}\n"
-                        f"Detail: {diagnostic}"
-                    ),
-                    to_email=email_message.from_email or "",
-                    from_email=email or "",
-                    status="SENT",
-                    sent_at=utcnow(),
-                )
-                db.add(bounce_msg)
-
-                conv = db.query(Conversation).filter(
-                    Conversation.id == email_message.conversation_id
-                ).first()
-                if conv:
-                    conv.is_unread = True
-                    conv.last_message_at = utcnow()
-
-            # Update metrics
-            _count_metric(db, email_message.campaign_id, EmailEvent.EVENT_BOUNCE)
+            _record_hard_bounce(db, message, email_message, recipient, email, bounce_type, bounce_subtype, ses_message_id)
         
         # For PERMANENT bounces, add to global unsubscribe and mark the
         # prospect's status in THIS campaign as BOUNCED — a hard bounce means

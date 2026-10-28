@@ -14,6 +14,8 @@ HEARTBEATS holds, per loop, the last time (time.time()) the loop was alive; the 
 """
 import asyncio
 import logging
+import os
+import socket
 import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Dict, List, Optional
@@ -24,7 +26,7 @@ import app.models  # noqa: F401  (resolve SQLAlchemy relationships before any qu
 from app.core.config import settings
 from app.core.observability import record_job_heartbeat
 from app.core.database import SessionLocal
-from app.services import reply_classifier, sending_alerts
+from app.services import domain_health_jobs, duplicate_scan, import_service, reply_classifier, sending_alerts
 from app.services.alert_center_service import alert_center_service as sending_alert_center
 
 logger = logging.getLogger("app.jobs")
@@ -112,7 +114,8 @@ async def scheduler_iteration() -> Optional[float]:
         return None  # paused through POST /scheduler/stop (shared by every process)
     stats = await email_scheduler.process_scheduled_emails() or {}
     # Come straight back while there is work, so pace is set by the inboxes (BR-DF-01)
-    return 2 if stats.get("processed") else None
+    # Straight back while there is work, else when the soonest paced mailbox is ready (A8)
+    return stats.get("next_run_in")
 
 
 async def imap_iteration() -> None:
@@ -266,6 +269,22 @@ async def sending_alerts_iteration() -> None:
                 db, tenant_id, only_types=sending_alerts.SENDING_ALERT_TYPES)
 
 
+async def duplicate_scan_iteration() -> None:
+    # Stored duplicate suggestions (C-08): rescan every workspace; dismissed pairs are never re-suggested
+    await _run_in_thread(duplicate_scan.run_scan_job, SessionLocal)
+
+
+async def imports_iteration() -> Optional[float]:
+    # Background CRM imports (C-03, F-16): queued jobs, and RUNNING ones whose heartbeat went stale
+    # (the process running them died), continue from their checkpoint in chunks; each pass works for
+    # at most import_service.WORKER_BUDGET_SECONDS and comes straight back while work is left
+    worker = f"{socket.gethostname()}:{os.getpid()}"
+    stats = await _run_in_thread(import_service.run_background, SessionLocal, worker)
+    if stats.get("claimed"):
+        logger.info("Imports: %s", stats)
+    return 2 if stats.get("pending") else None
+
+
 def all_jobs() -> List[Job]:
     return [
         Job("scheduler", 30, scheduler_iteration),
@@ -280,6 +299,9 @@ def all_jobs() -> List[Job]:
         Job("webhooks", 15, webhooks_iteration),
         Job("reply_classification", 300, reply_classification_iteration),
         Job("sending_alerts", 60, sending_alerts_iteration),
+        Job("imports", 5, imports_iteration),
+        Job("duplicate_scan", 6 * 3600, duplicate_scan_iteration),
+        Job("domain_health_snapshots", 3600, domain_health_jobs.snapshot_iteration),
     ]
 
 

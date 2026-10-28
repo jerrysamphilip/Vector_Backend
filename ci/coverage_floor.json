@@ -16,62 +16,62 @@
   "layers": {
     "unit": {
       "app": {
-        "line": 51.11,
-        "branch": 26.07
+        "line": 62.88,
+        "branch": 40.47
       },
       "app.core": {
-        "line": 74.66,
-        "branch": 51.16
+        "line": 79.79,
+        "branch": 57.72
       },
       "app.routers": {
-        "line": 42.54,
-        "branch": 4.13
+        "line": 64.07,
+        "branch": 16.11
       },
       "app.services": {
-        "line": 39.44,
-        "branch": 22.42
+        "line": 53.13,
+        "branch": 34.32
       },
       "app.utils": {
-        "line": 80.62,
-        "branch": 76.54
+        "line": 80.88,
+        "branch": 76.85
       },
       "app.domain": {
         "line": 100.0,
         "branch": 100.0
       },
       "app.repositories": {
-        "line": 45.27,
-        "branch": 7.5
+        "line": 46.66,
+        "branch": 5.31
       }
     },
     "functional": {
       "app": {
-        "line": 71.97,
-        "branch": 49.31
+        "line": 77.97,
+        "branch": 55.69
       },
       "app.core": {
-        "line": 83.67,
-        "branch": 60.85
+        "line": 81.26,
+        "branch": 57.72
       },
       "app.routers": {
-        "line": 69.89,
-        "branch": 43.56
+        "line": 76.83,
+        "branch": 35.52
       },
       "app.services": {
-        "line": 65.07,
-        "branch": 47.75
+        "line": 71.86,
+        "branch": 54.39
       },
       "app.utils": {
-        "line": 68.17,
-        "branch": 53.98
+        "line": 68.88,
+        "branch": 55.24
       },
       "app.domain": {
-        "line": 89.37,
-        "branch": 69.4
+        "line": 87.2,
+        "branch": 66.83
       },
       "app.repositories": {
-        "line": 89.39,
-        "branch": 68.63
+        "line": 91.0,
+        "branch": 71.4
       }
     }
   },
@@ -102,6 +102,60 @@
       "from": 61.38,
       "to": 60.85,
       "reason": "app.core: S1 moved token checks into app/core/tokens.py; its refusal branches (alg confusion, missing claims, wrong type) are covered by tests/unit/test_s1_tokens.py, not reachable through the functional API tests"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "unit",
+      "key": "app.repositories",
+      "metric": "branch",
+      "from": 7.5,
+      "to": 5.31,
+      "reason": "app.repositories (branch): this round moved the SQL of accounts, lists, identity, imports, automation, webhooks, campaigns, inbox and sending into repositories; ADR 0009 tests repositories against MySQL in the functional layer"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.core",
+      "metric": "line",
+      "from": 83.67,
+      "to": 81.26,
+      "reason": "app.core: S2's IP-pinned SMTP/IMAP classes in tls.py need live mail servers (functional tests use fake connectors; unit-tested in test_s2_mail_pinning). app.routers branch: routers are thin now (304 branches left); the covered logic moved to services. app.domain: fully covered by unit tests (100 %); the functional figure is incidental"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.core",
+      "metric": "branch",
+      "from": 60.85,
+      "to": 57.72,
+      "reason": "app.core: S2's IP-pinned SMTP/IMAP classes in tls.py need live mail servers (functional tests use fake connectors; unit-tested in test_s2_mail_pinning). app.routers branch: routers are thin now (304 branches left); the covered logic moved to services. app.domain: fully covered by unit tests (100 %); the functional figure is incidental"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.routers",
+      "metric": "branch",
+      "from": 43.56,
+      "to": 35.52,
+      "reason": "app.core: S2's IP-pinned SMTP/IMAP classes in tls.py need live mail servers (functional tests use fake connectors; unit-tested in test_s2_mail_pinning). app.routers branch: routers are thin now (304 branches left); the covered logic moved to services. app.domain: fully covered by unit tests (100 %); the functional figure is incidental"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.domain",
+      "metric": "line",
+      "from": 89.37,
+      "to": 87.2,
+      "reason": "app.core: S2's IP-pinned SMTP/IMAP classes in tls.py need live mail servers (functional tests use fake connectors; unit-tested in test_s2_mail_pinning). app.routers branch: routers are thin now (304 branches left); the covered logic moved to services. app.domain: fully covered by unit tests (100 %); the functional figure is incidental"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.domain",
+      "metric": "branch",
+      "from": 69.4,
+      "to": 66.83,
+      "reason": "app.core: S2's IP-pinned SMTP/IMAP classes in tls.py need live mail servers (functional tests use fake connectors; unit-tested in test_s2_mail_pinning). app.routers branch: routers are thin now (304 branches left); the covered logic moved to services. app.domain: fully covered by unit tests (100 %); the functional figure is incidental"
     }
   ]
 }
