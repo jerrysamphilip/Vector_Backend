@@ -15,7 +15,7 @@
   ],
   "version": 1,
   "locks": {
-    "worker": "runs background-job passes that act on every tenant (send_safety, sales_jobs, deliverability) and/or waits for the single worker's scheduler to send; two such suites at once slow each other's sends past their timeouts or pause each other's inboxes"
+    "worker": "held by no suite since the tune run of 2026-10-28: the job passes suites trigger go through app.jobs.run_once (the worker loop's own lock, never two at once) and are idempotent per tenant, and the scheduler sends every inbox lane in parallel without sleeping. Give it to suites whose assertions depend on job passes they did not trigger themselves"
   },
   "suites": {
     "unit": {"parallel": true, "reason": "pure logic: no database, no network, no stack"},
@@ -23,8 +23,8 @@
     "contract": {"parallel": true, "reason": "reads the frontend source and /openapi.json only"},
     "new_features": {"parallel": true, "reason": "own sign-up workspaces W/W2; purge acts on its own ids only"},
     "contacts": {"parallel": false, "reason": "runs the global CRM purge job (every tenant's recycle bin) and times the 10k import and search latency (CM-090..094)"},
-    "sales_pipeline": {"parallel": true, "locks": ["worker"], "reason": "waits for the scheduler (daily new-contact limit) and runs global sales_jobs passes"},
-    "outreach": {"parallel": true, "locks": ["worker"], "reason": "runs the global send_safety job and waits for scheduler sends; IMAP fake on its own port, OUT-007 lockout on its own user and X-Forwarded-For"},
+    "sales_pipeline": {"parallel": true, "reason": "own workspaces; its scheduler / sales_jobs passes go through run_once (the worker loop's lock, never two at once) and are idempotent per tenant: the recycle / stale-deal parts act only on rows a suite back-dates itself, alerts are one per deal per week; the daily new-contact limit is per user. No worker lock (measured, tune run 2026-10-28)"},
+    "outreach": {"parallel": true, "reason": "own workspace and mailboxes; its send_safety passes go through run_once and apply the same per-(tenant, domain) / per-campaign rules the bounce and complaint events already apply, so a pass from another suite changes nothing it asserts; IMAP fake on an ephemeral port, OUT-007 lockout on its own user and X-Forwarded-For. No worker lock (measured)"},
     "api_sweep": {"parallel": true, "reason": "touches only its cached tenants A/B; its cases do not depend on other traffic (only the informational ENDPOINT_COVERAGE.md metrics diff counts other suites' requests)"},
     "ab_testing": {"parallel": true, "reason": "own sign-up workspace; tracking and stats inside it"},
     "admin_controls": {"parallel": true, "reason": "own workspace; AC-010/012 hit the per-user invite-resend limit of its own user only"},
@@ -32,11 +32,11 @@
     "contact_scoring": {"parallel": true, "reason": "own workspace; the recompute runs in the API request for that tenant"},
     "crm_kpis": {"parallel": true, "reason": "own workspace; every KPI is computed from the data it seeds"},
     "discount_approval": {"parallel": true, "reason": "own workspace and users"},
-    "webhooks": {"parallel": true, "locks": ["worker"], "reason": "waits for the worker to deliver its webhooks (receiver on its own port 18765)"},
-    "e2e": {"parallel": true, "locks": ["worker"], "reason": "runs the hourly jobs on demand (they act on every tenant) and waits for real sends through the SES stand-in"},
+    "webhooks": {"parallel": true, "reason": "its only job pass is run_once('webhooks'): outbox delivery, idempotent, under the worker loop's lock; receiver on its own port 18765, and no other suite asserts on its tenant's deliveries. No worker lock (measured)"},
+    "e2e": {"parallel": true, "reason": "a sign-up workspace per journey; the hourly jobs it runs on demand go through run_once and are idempotent per tenant; the scheduler sends every inbox's lane in parallel without sleeping, so other suites' sends do not delay its own; every SES stand-in check filters by its own recipients / domain; J6 opts agent 3 out of e-mail before its deal exists, so an early sales_jobs pass cannot mail it. No worker lock (measured)"},
     "reports_platform": {"parallel": false, "reason": "login lockout / per-IP limit probes lock this client IP for ~15 min and a 25-user load test measures latency: alone and last"},
     "ui_outreach": {"parallel": true, "reason": "own cached workspaces with a per-workspace X-Forwarded-For; seeds and asserts inside them only"},
-    "ui_crm": {"parallel": true, "locks": ["worker"], "reason": "SQL-created tenants of its own, but UIC-SAL-26 runs a global sales_jobs pass"},
+    "ui_crm": {"parallel": true, "reason": "SQL-created tenants of its own; UIC-SAL-26's sales_jobs pass goes through run_once and only adds the one-per-week stale-deal alerts other suites already expect from the worker. No worker lock (measured)"},
     "ui_features.*": {"parallel": true, "reason": "each file uses its own Tenant.get('<area>') tenant, wiped at its start"},
     "ui_features.platform_admin": {"parallel": false, "reason": "pauses / resumes the global scheduler (platform_flags.scheduler_paused) and creates a PLATFORM_ADMIN user"}
   },
@@ -64,8 +64,8 @@
         "ui_crm": {"cases": [
             "UIC-CON-01", "UIC-CON-43", "UIC-CD-01", "UIC-ACC-01", "UIC-LST-01",
             "UIC-IMP-01", "UIC-IMP-02", "UIC-IMP-03",
-            "UIC-SAL-01", "UIC-SAL-08", "UIC-SAL-14", "UIC-SAL-16"], "parallel": true, "locks": [],
-          "reason": "key CRM screens: contacts list + record, companies, lists, import (render -> preview -> run), leads, deals, pipeline, sales reports; agent sees only own contacts. No worker lock: the cut leaves out UIC-SAL-26, its only global job pass"},
+            "UIC-SAL-01", "UIC-SAL-08", "UIC-SAL-14", "UIC-SAL-16"],
+          "reason": "key CRM screens: contacts list + record, companies, lists, import (render -> preview -> run), leads, deals, pipeline, sales reports; agent sees only own contacts"},
         "ui_features.session_auth": {"cases": ["UIF-SESS-01", "UIF-SESS-12", "UIF-SESS-16"],
           "reason": "signed-out redirect, API 401 without credentials, CSRF on cookie-authenticated writes"},
         "ui_features.platform_admin": {"cases": ["UIF-PA-01", "UIF-PA-12", "UIF-PA-13"], "parallel": true,
@@ -78,6 +78,9 @@
       "include": ["smoke"],
       "suites": {
         "layer:system": {"reason": "all system suites, whole (new run_*.py suites join automatically)"},
+        "contacts": {"args": ["--no-perf"], "parallel": true,
+          "reason": "whole suite but the 10k-row import / search latency cases (CM-090..094): a latency measurement next to a --jobs pool measures the pool; they run in full. Without them it joins the pool: its global CRM purge only removes contacts deleted > 90 days ago, i.e. rows a suite back-dated itself (ui_crm UIC-RD-01 counts its back-dated one as gone either way)"},
+        "reports_platform": {"args": ["--skip-load"], "reason": "whole suite but the 25-user concurrency load test (RP-131): load testing runs in full. Stays serial: RP-130 times the dashboards (< 3 s), which a busy pool would distort"},
         "e2e": {"reason": "all six journeys (J1-J6)"},
         "ui_outreach": {"cases": [
             "UIO-AUTH-01", "UIO-AUTH-03", "UIO-AUTH-06", "UIO-AUTH-07", "UIO-AUTH-09", "UIO-AUTH-10", "UIO-AUTH-11",
@@ -125,8 +128,8 @@
         "ui_features.platform_admin": {"cases": ["UIF-PA-0[1-2]", "UIF-PA-0[4-9]", "UIF-PA-1[1-3]", "UIF-PA-1[5-7]"],
           "reason": "console sign-in, roster, tenant detail, suspend -> refused login -> reactivate, add tenant, stats, every guard and the scheduler switch with its 403s"},
         "ui_features.session_auth": {"reason": "every case is a session / auth security check"},
-        "ui_features.template_library": {"cases": ["UIF-TL-01", "UIF-TL-03", "UIF-TL-09", "UIF-TL-1[0-2]"],
-          "reason": "screen, create, and every sharing / visibility rule between admin and agents"},
+        "ui_features.template_library": {"cases": ["UIF-TL-01", "UIF-TL-03", "UIF-TL-04", "UIF-TL-09", "UIF-TL-1[0-2]"],
+          "reason": "screen, create, and every sharing / visibility rule between admin and agents; UIF-TL-04 (rename) because UIF-TL-09 checks the renamed template"},
         "ui_features.webhooks": {"cases": ["UIF-WH-01", "UIF-WH-03", "UIF-WH-04", "UIF-WH-08"],
           "reason": "screen, add endpoint, signed test delivery, agent kept out"}
       }

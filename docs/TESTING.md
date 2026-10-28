@@ -82,9 +82,10 @@ How a tier reaches the suites: the runner sets `TEST_CASES` (comma-separated cas
 The parallel-safety rule, recorded per suite under `suites` in `TIERS.json` with its reason:
 
 - **serial** (`parallel: false`, runs alone): the suite changes state other suites depend on (the global scheduler flag, the CRM purge across all tenants), locks the shared client IP, or measures latency (load tests, the 10k import). Today: contacts, reports_platform, ui_features.platform_admin. A suite not listed is serial until reviewed.
-- **parallel with a lock**: suites holding the same lock never overlap. `worker`: the suite runs background-job passes that act on every tenant (`send_safety`, `sales_jobs`, `deliverability`) or waits for the single worker's sends: outreach, sales_pipeline, webhooks, e2e, ui_crm.
+- **parallel with a lock**: suites holding the same lock never overlap. The `worker` lock is defined but held by no suite since the tune run of 2026-10-28: outreach, sales_pipeline, webhooks, e2e and ui_crm ran together in one core pool with no failure. Their job passes go through `app.jobs.run_once` (the worker loop's own lock, so never two passes of a job at once) and are idempotent per tenant; the scheduler sends every inbox lane in parallel without sleeping, so other suites' sends do not delay a suite's own. Give the lock back to a suite whose assertions depend on job passes it did not trigger itself.
 - **parallel**: everything else (own workspaces, own data, own receiver ports).
-- A tier entry may override it (`"parallel": true` with a reason) when its cut leaves out the cases that touch shared state, e.g. smoke runs three platform_admin cases without the scheduler switch.
+- A tier entry may override it (`"parallel": true` with a reason) when its cut leaves out the cases that touch shared state, e.g. smoke runs three platform_admin cases without the scheduler switch, and core runs contacts in the pool because it leaves out the 10k-row import / latency cases (`--no-perf`).
+- core passes `--no-perf` to contacts and `--skip-load` to reports_platform (args in `TIERS.json`): latency and load measurements run in full only, where those suites run alone.
 
 Without `RATE_LIMIT_TEST_MULTIPLIER` on the stack (section 7) parallel suites share the default per-IP limits; the runner warns, and `--restart-api-between` / `--pause` only act between steps, never during a pool.
 
