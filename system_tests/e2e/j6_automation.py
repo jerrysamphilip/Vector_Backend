@@ -6,13 +6,23 @@ from datetime import date, datetime, timedelta
 
 from .flows import (add_missing_step_templates, captured_for, detach_imap, mk_inbox, msgs, quick_campaign, travel_due,
                     wait_status, upload_list, CSV_HEAD)
-from .helpers import (add_user, ev_click, ev_delivery, ev_open, new_workspace, q, req, rows, run_job, scalar, ses_captured,
+from .helpers import (add_user, ev_click, ev_delivery, ev_open, new_workspace, q, req, rows, run_job, scalar, scheduler_pass,
+                      ses_captured,
                       ses_post, ses_verify, sql, utcnow, wait_until)
 
 
 def _notes(token):
     s, b = req("GET", "/notifications?page_size=100", token=token)
     return b.get("items", []) if isinstance(b, dict) else (b or [])
+
+
+def _await_step2(cid, live):
+    """Step 2 was forced due: the live contacts' emails go out (bounded by the previous fixed 75 s wait), then one more
+    full scheduler pass so the paused contact's forced-due step has been considered too. On an image without
+    app.jobs.run_once this is the previous 75 s sleep."""
+    if scheduler_pass(fallback_sleep=75):
+        wait_until(lambda: live <= {m["email"] for m in msgs(cid, 2, "SENT")}, timeout=75, interval=3)
+        scheduler_pass(fallback_sleep=0)
 
 
 def run(R):
@@ -49,7 +59,7 @@ def run(R):
             bool(got) and "Special offer for Pat1" in got[0].subject, f"subjects mailed to the contact={[c.subject for c in captured_for(emails=[em_[1]])]}; rule message state="
             f"{rows(f'SELECT status, LEFT(failure_reason,90) FROM email_messages WHERE campaign_id={q(cid)} AND template_id={q(t_extra.get(chr(116)+chr(101)+chr(109)+chr(112)+chr(108)+chr(97)+chr(116)+chr(101)+chr(95)+chr(105)+chr(100)))}')}")
     travel_due(cid, 2)
-    time.sleep(75)
+    _await_step2(cid, {em_[1], em_[2], em_[3]})
     sent2 = {m["email"] for m in msgs(cid, 2, "SENT")}
     R.check("E2E-J6-04", "A PAUSED prospect receives no further sequence step (step 2 goes only to the other 3 contacts)",
             em_[0] not in sent2 and sent2 == {em_[1], em_[2], em_[3]}, f"step2 sent to {sorted(e[:3] for e in sent2)}; paused contact included={em_[0] in sent2}")
@@ -109,11 +119,13 @@ def run(R):
     nt = _notes(ag[1]["token"])
     R.check("E2E-J6-11", "Assigned agent gets an 'ASSIGNED' notification per lead (agent 2 received 2)", len([n for n in nt if "New lead" in (n.get("title") or "")]) == 2, f"{[n.get('title') for n in nt]}")
     # ── stale deals ──
+    # agent 3 opts out of e-mail BEFORE its overdue deal exists: a sales_jobs pass from anywhere (the worker, another
+    # suite's run_job) between the two calls would otherwise e-mail the alert before the opt-out (J6-15)
+    req("PUT", "/notifications/preferences", {"email": False}, ag[2]["token"])
     d_old = req("POST", "/opportunities", {"name": f"Stale idle {rid}", "owner_id": ag[1]["user_id"], "amount": 1000, "close_date": str(date.today() + timedelta(days=60))}, owner)[1]
     d_late = req("POST", "/opportunities", {"name": f"Stale late {rid}", "owner_id": ag[2]["user_id"], "amount": 2000, "close_date": str(date.today() - timedelta(days=1))}, owner)[1]
     d_ok = req("POST", "/opportunities", {"name": f"Fresh {rid}", "owner_id": ag[2]["user_id"], "amount": 3000, "close_date": str(date.today() + timedelta(days=60))}, owner)[1]
     sql(f"UPDATE opportunities SET updated_at = UTC_TIMESTAMP() - INTERVAL 20 DAY, created_at = UTC_TIMESTAMP() - INTERVAL 20 DAY WHERE opportunity_id={q(d_old['opportunity_id'])}")
-    req("PUT", "/notifications/preferences", {"email": False}, ag[2]["token"])      # agent 3 opts out of e-mail
     ok, out = run_job("sales_jobs")
     sa = [n for n in _notes(ag[1]["token"]) if "Stale deal" in (n.get("title") or "")]
     sb = [n for n in _notes(ag[2]["token"]) if "Stale deal" in (n.get("title") or "")]

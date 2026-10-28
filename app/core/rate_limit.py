@@ -7,6 +7,12 @@ project builds from, so this is a small sliding-window limiter with no dependenc
   plus a higher per-email backstop across all IPs; all attempts are also counted per client IP.
   Password-reset and register requests are limited per IP / per email.
 - Everything else: a generous per-client-IP ceiling (RateLimitMiddleware).
+- Test stacks only: RATE_LIMIT_TEST_MULTIPLIER > 1 raises the per-client-IP limits (login attempts,
+  sign-ups, reset/magic-link requests, two-factor attempts, the global ceiling) so the live test suites
+  can share one client IP without restarting the API. Per-email and per-(email, IP) limits (the
+  account lockouts) never change. A request carrying ``X-Test-Default-Rate-Limits: 1`` is counted
+  against the real limits in a separate bucket, so the rate-limit tests still see them. The setting is
+  refused at start-up in production (app/core/config.py) and ignored there as well.
 
 Counters live in the API process, which is enough for the single-replica deployment. With
 several replicas, move them to Redis so limits are shared.
@@ -20,6 +26,8 @@ from collections import defaultdict, deque
 from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
+
+from app.core.config import settings
 
 
 class SlidingWindowLimiter:
@@ -78,12 +86,35 @@ def client_ip(request: Request) -> str:
     so take the hop appended by our own proxy: the TRUSTED_PROXY_HOPS-th entry from the right."""
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        from app.core.config import settings
         hops = [h.strip() for h in forwarded.split(",") if h.strip()]
         trusted = max(1, int(settings.TRUSTED_PROXY_HOPS or 1))
         if hops:
             return hops[-trusted] if len(hops) >= trusted else hops[0]
     return request.client.host if request.client else "unknown"
+
+
+DEFAULT_LIMITS_HEADER = "x-test-default-rate-limits"
+
+
+def ip_limit_multiplier() -> int:
+    """Factor applied to the per-client-IP limits: RATE_LIMIT_TEST_MULTIPLIER on a test stack, 1 in production."""
+    if settings.is_production:
+        return 1
+    try:
+        return max(1, int(settings.RATE_LIMIT_TEST_MULTIPLIER or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _ip_bucket(request: Request, key: str, limit: tuple) -> tuple[str, tuple]:
+    """(key, limit) for a per-client-IP counter. Relaxed on a test stack unless the request asks for the
+    real limits (DEFAULT_LIMITS_HEADER), which are then counted in their own bucket."""
+    factor = ip_limit_multiplier()
+    if factor == 1:
+        return key, limit
+    if request.headers.get(DEFAULT_LIMITS_HEADER) == "1":
+        return f"default-limits:{key}", limit
+    return key, (limit[0] * factor, limit[1])
 
 
 def _too_many(retry_after: int, message: str) -> NoReturn:
@@ -92,7 +123,8 @@ def _too_many(retry_after: int, message: str) -> NoReturn:
 
 def check(request: Request, scope: str, ip_limit: tuple, email: str | None = None, email_limit: tuple | None = None) -> None:
     """Count one request for this scope; raise 429 when the IP or email is over its limit."""
-    wait = limiter.hit(f"{scope}:ip:{client_ip(request)}", *ip_limit)
+    key, limit = _ip_bucket(request, f"{scope}:ip:{client_ip(request)}", ip_limit)
+    wait = limiter.hit(key, *limit)
     if wait:
         _too_many(wait, "Too many requests. Please wait a few minutes and try again.")
     if email and email_limit:
@@ -157,7 +189,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if not request.url.path.startswith(self.EXEMPT):
-            wait = limiter.hit(f"global:{client_ip(request)}", *GLOBAL_PER_IP)
+            key, limit = _ip_bucket(request, f"global:{client_ip(request)}", GLOBAL_PER_IP)
+            wait = limiter.hit(key, *limit)
             if wait:
                 return JSONResponse({"detail": "Too many requests. Please slow down."},
                                     status_code=429, headers={"Retry-After": str(wait)})

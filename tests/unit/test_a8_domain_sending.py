@@ -151,6 +151,12 @@ def test_a8_retry_budget_and_backoff():
     assert rules.retries_exhausted(1, 1) and not rules.retries_exhausted(4, 5)
 
 
+def test_a8_backoff_unit_is_configurable():
+    """SEND_RETRY_BASE_SECONDS (test stacks): the unit of the 2^n backoff; 60 keeps 2, 4, 8 minutes."""
+    assert rules.retry_delay(2, 60) == rules.retry_delay(2) == timedelta(minutes=4)
+    assert rules.retry_delay(1, 1) == timedelta(seconds=2) and rules.retry_delay(3, 1) == timedelta(seconds=8)
+
+
 @pytest.mark.parametrize("fields, events, accepted", [
     ({"final_status": "BOUNCED"}, set(), True),
     ({"provider_message_id": "<p>"}, set(), True),

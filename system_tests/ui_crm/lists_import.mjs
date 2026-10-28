@@ -50,7 +50,13 @@ export async function runLists(rec, browser) {
     ok(await m.getByRole('button', { name: 'Create list' }).isDisabled(), 'disabled without criteria');
     await m.getByRole('button', { name: 'Condition', exact: true }).click();
     await m.getByLabel('Property').first().selectOption({ label: 'Lifecycle stage' });
-    await m.getByLabel('Operator').first().locator('xpath=following-sibling::*[1]').selectOption({ value: 'LEAD' });
+    // The value control is a text <input> until the lifecycle options (GET /contacts/meta) have loaded, then a
+    // <select>; the Operator's next sibling could still be the <input> (flaky "Element is not a <select>"). Wait for
+    // the condition row's third <select> (Property, Operator, Value) as in UIC-LST-08; selectOption then waits for LEAD.
+    const row = m.getByLabel('Property').first().locator('xpath=..');
+    const valueSel = row.locator('select').nth(2);
+    await valueSel.waitFor({ timeout: 10000 });
+    await valueSel.selectOption({ value: 'LEAD' });
     const expected = cnt(t, `lifecycle_stage='LEAD'`);
     await m.getByText(/contacts? match right now/).waitFor();
     eq(Number((await m.getByText(/contacts? match right now/).innerText()).match(/(\d+)\s+contacts?\s+match/)[1]), expected, 'preview count');

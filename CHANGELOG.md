@@ -17,9 +17,7 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
     with tenant-first indexes and database-enforced tenant integrity (composite keys, one primary company per
     contact) (D3, C-22; migration 0028). CHECK constraints on status columns, vocabularies in
     `app/domain/status.py` (D5; 0029).
-  - Contact and global search use a FULLTEXT ngram pre-filter with identical results (D7; 0030): at 100k
-    contacts p95 drops from 0.6-1.1 s to 0.01-0.21 s. Timing test `tests/test_dbb_contact_search_perf.py`
-    (`PERF=1`).
+  - Contact and global search used a FULLTEXT ngram pre-filter (D7; 0030); reverted by 0034 (see Fixed).
   - Optional MySQL TLS (`MYSQL_SSL_MODE`, `MYSQL_SSL_CA`; D8) and time-ordered UUIDv7 primary keys for new rows
     (`app/core/ids.py`; D4). Short ids in file names, PDF references and logs now use an id's last 8
     characters (`short_id`), because UUIDv7s made in the same minute share their first 8.
@@ -142,6 +140,16 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - UAT 3-5: open and reply rates divide by delivered (sent − bounced) everywhere (campaign analytics, steps,
   reports, exports); the daily chart's last day no longer adds lifetime opens; "sent today" counts only sent
   emails; enrolments marked OPENED advance and complete (campaigns can auto-complete). Frontend labels fixed.
+- Contact and global search missed committed contacts: while another workspace was committing inserts, some
+  contacts never matched the FULLTEXT pre-filter (D7, 0030) and so never appeared in search. Search is the
+  plain `search_text LIKE` scan again (always exact) and `0034_drop_contact_fulltext` drops
+  `ft_prospects_search_text`; connections no longer set `innodb_ft_enable_stopword`. Regression test
+  `tests/test_final_contact_search.py`.
+- Sign-in returned 500 when recording `last_login_at` hit a MySQL deadlock (1213) or lock wait timeout
+  (1205): the login unit of work (session row, refresh token, `last_login_at`) now retries up to 3 times.
+- "Send now" returned 500 for the rest of a batch when one message hit a MySQL deadlock: the error handler
+  read the expired message before rolling the session back. It now rolls back first, retries the message once
+  while it is still QUEUED, and otherwise marks it FAILED and carries on.
 - Regression V1: contact merge / erasure / purge deadlocked with imports (full-table `merged_into_id`
   update across tenants): tenant-first index (0033), tenant-scoped update by key, retry on 1213/1205.
   `POST /uploads/{id}/confirmations` and `/revalidations` use the path id (400 on a mismatching body id, 404

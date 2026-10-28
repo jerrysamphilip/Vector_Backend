@@ -16,20 +16,20 @@
   "layers": {
     "unit": {
       "app": {
-        "line": 66.11,
-        "branch": 45.79
+        "line": 66.32,
+        "branch": 45.83
       },
       "app.core": {
-        "line": 80.06,
-        "branch": 60.52
+        "line": 80.76,
+        "branch": 62.26
       },
       "app.routers": {
         "line": 81.28,
         "branch": 65.11
       },
       "app.services": {
-        "line": 56.09,
-        "branch": 37.98
+        "line": 56.19,
+        "branch": 38.0
       },
       "app.utils": {
         "line": 86.22,
@@ -40,8 +40,8 @@
         "branch": 100.0
       },
       "app.repositories": {
-        "line": 48.64,
-        "branch": 7.21
+        "line": 48.36,
+        "branch": 5.56
       }
     },
     "functional": {
@@ -50,11 +50,11 @@
         "branch": 59.03
       },
       "app.core": {
-        "line": 81.26,
-        "branch": 56.57
+        "line": 80.68,
+        "branch": 55.66
       },
       "app.routers": {
-        "line": 88.48,
+        "line": 88.52,
         "branch": 59.3
       },
       "app.services": {
@@ -62,15 +62,15 @@
         "branch": 56.42
       },
       "app.utils": {
-        "line": 74.39,
-        "branch": 61.32
+        "line": 74.46,
+        "branch": 61.52
       },
       "app.domain": {
         "line": 86.84,
         "branch": 66.7
       },
       "app.repositories": {
-        "line": 93.55,
+        "line": 93.59,
         "branch": 75.87
       }
     }
@@ -183,6 +183,42 @@
       "from": 66.83,
       "to": 66.17,
       "reason": "Round 4: new pure rules (custom properties, DNS compare, SES events, sending window) and MySQL TLS/UUIDv7 option branches are covered by unit tests (app.domain unit 100%); the API layer does not reach their error branches"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "unit",
+      "key": "app.repositories",
+      "metric": "line",
+      "from": 48.64,
+      "to": 48.36,
+      "reason": "0034 removed the FULLTEXT search helpers from app/repositories/contacts.py, which were fully unit-covered (29 statements, 14 branches); nothing else changed"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "unit",
+      "key": "app.repositories",
+      "metric": "branch",
+      "from": 7.21,
+      "to": 5.56,
+      "reason": "0034 removed the FULLTEXT search helpers from app/repositories/contacts.py, which were fully unit-covered (29 statements, 14 branches); nothing else changed"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.core",
+      "metric": "line",
+      "from": 81.26,
+      "to": 80.68,
+      "reason": "Test-stack-only code added to app.core (RATE_LIMIT_TEST_MULTIPLIER / X-Test-Default-Rate-Limits paths in rate_limit.py, refused_test_settings production guard, job_locks wait) is unit-tested; the API tests run with the default settings so they never reach it"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.core",
+      "metric": "branch",
+      "from": 56.57,
+      "to": 55.66,
+      "reason": "Test-stack-only code added to app.core (RATE_LIMIT_TEST_MULTIPLIER / X-Test-Default-Rate-Limits paths in rate_limit.py, refused_test_settings production guard, job_locks wait) is unit-tested; the API tests run with the default settings so they never reach it"
     }
   ]
 }

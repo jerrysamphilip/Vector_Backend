@@ -25,6 +25,10 @@ if "app.core.config" not in sys.modules:
     # Point the (lazily connecting) engine at a closed port, so even a missed guard cannot reach a DB.
     os.environ.setdefault("MYSQL_HOST", "127.0.0.1")
     os.environ.setdefault("MYSQL_PORT", "9")
+    # The test-stack speed-ups (docs/TESTING.md section 7) are often exported in the shell that runs the live
+    # tiers; the unit tests assert the production defaults, so they never inherit them.
+    for _name in ("RATE_LIMIT_TEST_MULTIPLIER", "SEND_RETRY_BASE_SECONDS"):
+        os.environ.pop(_name, None)
 # Tests must never call OpenAI: an empty key disables every LLM code path (env beats .env).
 os.environ["OPENAI_API_KEY"] = ""
 

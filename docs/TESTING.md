@@ -7,7 +7,8 @@ Everything runs through one runner, `scripts/test.py`. It uses only the Python 3
 ```bash
 python3 scripts/test.py list            # every suite per layer, with case counts and the last results
 python3 scripts/test.py doctor          # check prerequisites per layer, and print the fix for each missing one
-python3 scripts/test.py run unit        # or: functional | system | e2e | ui | all
+python3 scripts/test.py run smoke --jobs 4   # a tier: smoke | core | full (= all); see "Tiers" below
+python3 scripts/test.py run unit        # or a layer: functional | system | e2e | ui
 make test-unit                          # the same through make (test-functional, test-system, test-e2e, test-ui, test-all)
 ```
 
@@ -42,9 +43,51 @@ The unit layer starts with tests for e-mail parsing and reply extraction, the bu
 | unit | `python3 scripts/test.py run unit` | `pytest tests/unit` on the host when the app's dependencies are importable (it also picks up `./venv`). Otherwise it runs in a throwaway container from `TEST_PY_IMAGE` (default `vector-api:latest`). |
 | functional | `python3 scripts/test.py run functional` | Recreates the throwaway schema (`db reset`, skip with `--keep-db`), then runs `pytest tests --ignore=tests/unit`. In docker mode this runs on the compose network. |
 | system | `python3 scripts/test.py run system` | Each suite runs from its own folder, one at a time. `reports_platform` runs last. |
-| e2e | `python3 scripts/test.py run e2e` | `python3 -m system_tests.e2e.run_journeys`. Bring the stand-ins up first (see section 5). |
+| e2e | `python3 scripts/test.py run e2e` | `python3 -m system_tests.e2e.run_journeys`: J1 in a thread next to J2-J6 (each journey has its own workspace; `--serial` runs them one after another). The log has a `timing <journey> <phase>: Ns` line per J1 phase and per journey. Bring the stand-ins up first (see section 5). |
 | ui | `python3 scripts/test.py run ui` | Each Playwright suite runs with `node`, one after another. |
-| all | `python3 scripts/test.py run all --keep-going --restart-api-between` | All layers in order. `reports_platform` runs at the very end. |
+| all | `python3 scripts/test.py run all --keep-going` | The `full` tier: all layers, every case. `reports_platform` runs at the very end (unless the stack relaxes the per-IP limits, section 7). |
+
+### Tiers: smoke, core, full
+
+Live suites are grouped into three tiers. A tier is a selection of suites and, for suites it cuts down, of their case ids. It is written down, with a one-line reason per suite, in `system_tests/TIERS.json`. Nothing is ever deleted: a case left out of smoke and core still runs in full.
+
+| Tier | When | Contents | Target |
+|---|---|---|---|
+| **smoke** | every deploy, including UAT | unit + functional; the contract check; the J1 journey (import -> campaign -> send -> reply -> deal -> report); ~25 key screens (login/session, home, contacts list + record, companies, lists, import, campaigns list / wizard / analytics / details + inbox tab, unified inbox, email accounts, domain health, deals, pipeline, leads, reports, team, platform admin); the security slice of the API sweep (401, 403 per role, tenant isolation, duplicate / idempotent writes) | <= 10 min |
+| **core** | nightly, before a build goes to UAT | smoke + every system suite + every e2e journey + the UI suites cut to one case per screen / feature plus every security and permission case | ~25 min |
+| **full** | release candidates, weekly | everything (`run all` is the same) | ~45 min |
+
+```bash
+python3 scripts/test.py run smoke --jobs 4 --keep-going     # also: core, full (= all)
+python3 scripts/test.py run core --dry-run --jobs 4         # the plan: suites, cases per suite, serial / parallel steps, estimate
+python3 scripts/test.py tiers                               # case counts and estimated time of every tier
+python3 scripts/test.py tiers --check                       # validate TIERS.json (also a CI gate in job "unit")
+```
+
+How a tier reaches the suites: the runner sets `TEST_CASES` (comma-separated case-id patterns, fnmatch syntax `*`, `?`, `[0-9]`, `[!x]`) for every suite the tier cuts down. `system_tests/common.py` (`CaseFilter`, used by `Results`) and `system_tests/ui/ui_common.mjs` (`caseFilter`, used by `Recorder`, `S.t` and `tc`) never run or record an unselected case, and skip whole units whose ids cannot match: ui_outreach sub-suites, ui_crm areas, api_sweep phases (AUTH, ROLE, HIER, VAL, DUP, ISO), e2e journeys. Rows of a crash or setup failure (`*-CRASH`, `*-EXC`, `*-SETUP`) are always kept. A cut run carries the unselected rows of the previous `results.json` over (marked `carried_over`), so the file keeps listing the whole suite; the runner reports only the fresh, selected rows. The summary gets a "Tier" section: cases run per suite, cases known, the excluded case ids, and the suites left out of the tier.
+
+`--dry-run` estimates each suite from the newest earlier run in `reports/test-results/` where it finished (`--timings RUN_DIR` puts another run first), scaled by the share of its cases the tier selects, and simulates the parallel pool. Setup time of a suite is not scaled down, so estimates for heavily cut UI suites are optimistic.
+
+#### Adding a case or a suite to a tier
+
+1. Find the case id (`results.json` of the suite, or its catalogue).
+2. Add the id or a pattern to the suite's `cases` list in `system_tests/TIERS.json` under the tier (`smoke` or `core`; `core` includes everything in `smoke`, so a smoke case is never listed twice). A suite with no `cases` key runs whole. Keys may be a suite id, a glob (`ui_features.*`) or `layer:<layer>` (`core` lists `layer:system`, so a new system suite is in core automatically; a new UI suite is only in full until someone adds it).
+3. UI suites are written as flows: a case often uses the page or the data an earlier case in the same block left behind. Select the first case of a screen block, or the whole chain up to the case you want (`UIO-AUTH-3?`, `UIC-CON-2[3-5]`), never a mid-chain case alone.
+4. Run `python3 scripts/test.py tiers --check` (fails on unknown suites, patterns that select no known case, a tier that drops cases of a tier it includes, a pytest suite with `cases`) and `run <tier> --dry-run` to see the new estimate.
+
+#### Parallel runs (`--jobs N`)
+
+`--jobs N` runs up to N parallel-safe suites at once (3-4 suits the UI suites); the run lock still allows one run at a time. The plan is one parallel pool (every parallel-safe suite, the longest estimated first so the long pole, usually e2e, starts at once), then the serial suites one at a time, then `reports_platform`. Each suite keeps its own log (`logs/<suite>.log`) and results files, so nothing collides; console output of pooled suites goes to their logs only.
+
+The parallel-safety rule, recorded per suite under `suites` in `TIERS.json` with its reason:
+
+- **serial** (`parallel: false`, runs alone): the suite changes state other suites depend on (the global scheduler flag, the CRM purge across all tenants), locks the shared client IP, or measures latency (load tests, the 10k import). Today: contacts, reports_platform, ui_features.platform_admin. A suite not listed is serial until reviewed.
+- **parallel with a lock**: suites holding the same lock never overlap. The `worker` lock is defined but held by no suite since the tune run of 2026-10-28: outreach, sales_pipeline, webhooks, e2e and ui_crm ran together in one core pool with no failure. Their job passes go through `app.jobs.run_once` (the worker loop's own lock, so never two passes of a job at once) and are idempotent per tenant; the scheduler sends every inbox lane in parallel without sleeping, so other suites' sends do not delay a suite's own. Give the lock back to a suite whose assertions depend on job passes it did not trigger itself.
+- **parallel**: everything else (own workspaces, own data, own receiver ports).
+- A tier entry may override it (`"parallel": true` with a reason) when its cut leaves out the cases that touch shared state, e.g. smoke runs three platform_admin cases without the scheduler switch, and core runs contacts in the pool because it leaves out the 10k-row import / latency cases (`--no-perf`).
+- core passes `--no-perf` to contacts and `--skip-load` to reports_platform (args in `TIERS.json`): latency and load measurements run in full only, where those suites run alone.
+
+Without `RATE_LIMIT_TEST_MULTIPLIER` on the stack (section 7) parallel suites share the default per-IP limits; the runner warns, and `--restart-api-between` / `--pause` only act between steps, never during a pool.
 
 ### Useful options
 
@@ -58,8 +101,9 @@ The unit layer starts with tests for e-mail parsing and reply extraction, the bu
 - `--extra=--no-perf` appends arguments to the command of every selected suite. Use the `=` form, because the value starts with `--`. For example, `--suite contacts --extra=--no-ui`.
 - `--dry-run` prints the plan, every command, its working directory, where results will appear and the prerequisite status, and runs nothing.
 - `--keep-going` continues after a suite fails. By default the run stops at the first suite with a FAIL or an ERROR.
-- `--restart-api-between` runs `docker restart vector-api-1` between live-stack suites. This clears the in-memory rate limiter (see section 7).
-- `--pause N` waits N seconds between live-stack suites.
+- `--restart-api-between` runs `docker restart vector-api-1` between live-stack suites. This clears the in-memory rate limiter (see section 7). It is skipped (not needed) when the stack runs with `RATE_LIMIT_TEST_MULTIPLIER` > 1.
+- `--pause N` waits N seconds between live-stack suites (also skipped with the multiplier).
+- `--jobs N` runs parallel-safe suites concurrently (see "Parallel runs"). `--skip unit,functional` leaves suites out. `--timings RUN_DIR` feeds the dry-run estimate.
 - `--where host|docker` forces where pytest runs.
 - `--force` runs a suite even when a hard prerequisite is missing.
 - `-q` stops echoing suite output to the console. The output is still written to the log.
@@ -364,18 +408,24 @@ Statuses come from each suite's `results.json`, overlaid with the latest run's `
 
 ## 7. Known constraints (the runner plans around them)
 
-- **Never run live suites in parallel.** The runner runs suites one at a time and takes a lock (`reports/.runner.lock`), so a second run refuses to start. The UI suites run one after another.
+- **One run at a time.** The runner takes a lock (`reports/.runner.lock`), so a second run refuses to start. Within a run, suites run one at a time unless `--jobs N` (only suites `TIERS.json` marks parallel-safe, section 2 "Parallel runs").
 - **Login limit: 60 per 5 minutes per client IP. Sign-up limit: 10 per hour per IP.** Both live in the API process memory. Every suite on this machine shares the IP.
   - The registry records how many sign-ups each suite makes. `run` warns when a plan would exceed the budget, and `doctor` estimates what is left since the API last started.
   - `--restart-api-between` (`docker restart vector-api-1`) clears the counters between suites. The suites themselves also cache workspaces (`.state.json`) and login cookies (`system_tests/.auth`).
-- **reports_platform always runs last.** Its rate-limit checks lock this IP out of logins for about 15 minutes. The registry marks it `run_last`, and in `run all` it comes after the UI suites.
+- **Test-stack speedups** (settings of the api and worker containers; both are refused at start-up in production):
+  - `RATE_LIMIT_TEST_MULTIPLIER=<n>` (default 1) multiplies the **per-client-IP** limits only: login attempts, sign-ups, reset / magic-link requests, two-factor attempts and the global per-IP ceiling. Per-email and per-(email, IP) limits, i.e. the account lockouts, are never relaxed. With n > 1 the runner skips `--restart-api-between` / `--pause`, scales the sign-up budget (`run` warning, `doctor`) by n, runs `--jobs` pools without the 429 warning and no longer forces reports_platform last. With n = 1 everything behaves as before. `TEST_RATE_LIMIT_MULTIPLIER=<n>` tells the runner the value of a stack it cannot inspect.
+  - `X-Test-Default-Rate-Limits: 1` on a request makes a relaxed API count it against the real limits, in a bucket of its own. The rate-limit cases (reports_platform RP-140..142, opt-in with `RP_RATELIMIT=1`) send it, so they still see the production limits. Without the multiplier the header changes nothing.
+  - `SEND_RETRY_BASE_SECONDS=<s>` (default 60) is the base of the send-retry backoff; 1 retries a failed send after 2 s, 4 s instead of minutes.
+  - Jobs on demand: `docker exec vector-api-1 python -c "import asyncio; from app.jobs import run_once; asyncio.run(run_once('webhooks'))"` runs one iteration of a worker job (any job name of `app/jobs.py`) under the worker loop's own lock, so it never overlaps the worker and, when it returns, everything due at the call has been handled. Suites use it through `system_tests/common.run_job` instead of sleeping for worker cycles.
+  - Local bring-up with both: `RATE_LIMIT_TEST_MULTIPLIER=100 SEND_RETRY_BASE_SECONDS=1 docker compose up -d --build api worker`. The e2e wiring sets the multiplier to 100 by default; CI's live-stack job sets both.
+- **reports_platform runs alone and last** while the per-IP limits are the defaults: with `RP_RATELIMIT=1` its checks lock this IP out of logins for about 15 minutes, and its load test measures latency. The registry marks it `run_last`. With the multiplier its lockout probes use their own bucket, so it is no longer forced last, but it stays serial (never two copies of RP-140..142 or the load test at once).
 - **Sending needs a business day.** The scheduler holds every send outside US business days, so on weekends and US holidays a few cases in outreach and sales_pipeline are BLOCKED. `SEND_ON_ANY_DAY=true` lifts this. It is a test and staging aid that the app ignores in production, and the e2e wiring sets it. `doctor` warns on weekends.
 - **OpenAI: tests must never call it.** There is a daily spend cap (`OPENAI_MAX_USD_PER_DAY`, default $0.20, enforced in `app/services/llm_budget.py`). Guards:
   - `tests/conftest.py` and `tests/unit/conftest.py` force `OPENAI_API_KEY=""`, so every LLM path takes its no-key fallback. The environment variable beats `.env`.
   - The unit layer blocks all network access.
   - The runner gives every child process an empty key.
   - `doctor` warns if the API container has a key. Recreate the stack with `OPENAI_API_KEY= docker compose up -d api worker` for test runs, because the e2e wizard and reply classification would otherwise call OpenAI.
-- Typical durations: system about 45 min, e2e about 30 min, ui about 45 min, everything about 2 h 15 min.
+- Typical durations (one at a time, default limits, run 20261028-050134): system about 30 min, e2e about 27 min (J1 alone about 15-19 min), ui about 43 min, everything about 1 h 30 min. Targets with the tiers, `--jobs 4` and the test-stack speedups: smoke <= 10 min, core ~25 min, full ~45 min; `run <tier> --dry-run` prints the current estimate. Measured on the 4-vCPU sandbox with `RATE_LIMIT_TEST_MULTIPLIER=100` and `SEND_RETRY_BASE_SECONDS=1` (tune runs of 2026-10-28): smoke about 16 min, nearly all of it J1, whose real waits are the background IMAP cadence for J1-69 (~4 min) and the 120 s re-spread of step 3 for J1-103 (~9 min); core about 18 min with J1 next to J2-J6 (26-28 min with the journeys one after another); full about 32 min (without the contacts perf cases and the reports_platform load test).
 
 ## 8. Test data and fixtures
 
@@ -427,4 +477,5 @@ The exceptions all reuse their own data or touch something shared, never demo da
 
 - `unit`: ruff, the gates in docs/CI_GATES.md and `scripts/test.py run unit` with coverage, then the unit coverage floor (`scripts/ci/check_coverage.py`), with no database. It runs on every push and PR and uploads `coverage-unit` (JSON, XML, HTML).
 - `test`: ruff, pip-audit, migrations and the functional layer with coverage against a `mysql:8.4` service, then the functional coverage floor; uploads `coverage-functional`. It runs on every push and PR, and gates `CICD.yaml` deploys together with `unit` and `secrets`.
-- `live-stack`: only on **Run workflow** (`workflow_dispatch`). It builds the whole compose stack on the runner and installs Playwright, and for `e2e` / `all` it wires the SES stand-in. Then it runs `scripts/test.py run <layer> --keep-going --restart-api-between` and uploads `reports/ci-live`. It needs the secret `FRONTEND_REPO_TOKEN` (read access to Vector_Frontend).
+- `live-stack`: only on **Run workflow** (`workflow_dispatch`). Input `tier` (smoke, core, full; default core), or input `layer` (system, e2e, ui) to run one layer instead. It builds the whole compose stack on the runner with `RATE_LIMIT_TEST_MULTIPLIER=100` and `SEND_RETRY_BASE_SECONDS=1`, installs Playwright, and wires the SES stand-in (every tier has e2e journeys). Then it runs `scripts/test.py run <tier> --keep-going --jobs 4 --skip unit,functional` (those two already ran as the `unit` / `test` gates) and uploads `reports/ci-live`. It needs the secret `FRONTEND_REPO_TOKEN` (read access to Vector_Frontend).
+- The `unit` job also runs `scripts/test.py tiers --check` (static validation of `system_tests/TIERS.json`).

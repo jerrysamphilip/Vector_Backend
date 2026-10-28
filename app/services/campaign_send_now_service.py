@@ -21,6 +21,7 @@ from app.models.campaign import Campaign
 from app.models.email_message import EmailMessage
 from app.models.prospect import Prospect
 from app.models.sending_inbox import SendingInbox
+from app.repositories.lock_retry import is_lock_conflict
 from app.repositories.sending import Session, SqlAlchemySendingQueueRepository
 from app.repositories.sending_context import SqlAlchemySendingContextRepository
 from app.services import daily_limit, send_breaker, suppression
@@ -145,20 +146,36 @@ class CampaignSendNowService:
 
     async def _send_safely(self, campaign: Campaign, email_msg: EmailMessage, sender_name: Optional[str],
                            tally: "_Tally") -> None:
-        """Safety net: one bad message must not abort the whole batch."""
-        try:
-            await self._send_one(campaign, email_msg, sender_name, tally)
-        except Exception as e:
-            logger.error(f"[SendNow] Error processing email {email_msg.message_id}: {e}")
+        """Safety net: one bad message must not abort the whole batch. A lock conflict (MySQL deadlock or
+        lock wait timeout) on a message that is still QUEUED is tried once more; anything else marks it FAILED."""
+        message_id = email_msg.message_id  # read before a failed flush expires the instance
+        for attempt in (1, 2):
             try:
-                email_msg.status = "FAILED"
-                email_msg.failure_reason = str(e)[:200]
-                self.db.add(email_msg)
-                self.db.commit()
-            except Exception:  # the session itself failed: discard and keep going
-                self.db.rollback()
-            tally.failed += 1
-            tally.errors.append(str(e)[:100])
+                await self._send_one(campaign, email_msg, sender_name, tally)
+                return
+            except Exception as e:
+                self.db.rollback()  # the session is unusable until the failed transaction is rolled back
+                if attempt == 1 and is_lock_conflict(e) and self._still_queued(email_msg):
+                    logger.warning(f"[SendNow] Lock conflict on email {message_id}; trying it once more")
+                    continue
+                logger.error(f"[SendNow] Error processing email {message_id}: {e}")
+                self._mark_failed(email_msg, str(e))
+                tally.failed += 1
+                tally.errors.append(str(e)[:100])
+                return
+
+    def _still_queued(self, email_msg: EmailMessage) -> bool:
+        self.db.refresh(email_msg)
+        return email_msg.status == "QUEUED"
+
+    def _mark_failed(self, email_msg: EmailMessage, error: str) -> None:
+        try:
+            email_msg.status = "FAILED"
+            email_msg.failure_reason = error[:200]
+            self.db.add(email_msg)
+            self.db.commit()
+        except Exception:  # the session itself failed: discard and keep going
+            self.db.rollback()
 
     def _sender_name(self, campaign_id: str) -> Optional[str]:
         """Campaign's sender name, else the creator's full name."""

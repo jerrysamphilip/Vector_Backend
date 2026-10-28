@@ -52,8 +52,6 @@ CREATE TABLE prospects (
 	FOREIGN KEY(account_id) REFERENCES accounts (account_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 
-CREATE FULLTEXT INDEX ft_prospects_search_text ON prospects (search_text) WITH PARSER ngram
-
 CREATE INDEX ix_prospects_account_id ON prospects (account_id)
 
 CREATE INDEX ix_prospects_deleted_at ON prospects (deleted_at)

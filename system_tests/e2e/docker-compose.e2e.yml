@@ -9,6 +9,10 @@ x-e2e-env: &e2e-env
   AWS_REGION: us-east-1
   SENDER_EMAIL: platform@e2e-platform.example
   SEND_ON_ANY_DAY: "true"
+  # Test stack only (refused in production): per-client-IP sign-in / sign-up limits x100 so the suites need no
+  # API restart between them; account lockouts are unchanged and the rate-limit cases opt back into the real
+  # limits with the X-Test-Default-Rate-Limits header (app/core/rate_limit.py)
+  RATE_LIMIT_TEST_MULTIPLIER: "${RATE_LIMIT_TEST_MULTIPLIER:-100}"
 
 services:
   # The prebuilt vector-api:latest predates SEND_ON_ANY_DAY; the e2e stack runs an image built from the current tree:

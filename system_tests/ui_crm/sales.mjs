@@ -322,7 +322,11 @@ export async function run(rec, browser) {
     sql(`UPDATE opportunities SET updated_at = NOW() - INTERVAL 40 DAY WHERE tenant_id='${t.tenantId}' AND name='Deal D'`);
     sql(`UPDATE leads SET owner_id='${alice.userId}' WHERE lead_id='${leads[8].lead_id}'`);
     const { execFileSync } = await import('node:child_process');
-    execFileSync('docker', ['exec', 'vector-api-1', 'python', '-c', 'import asyncio; from app.jobs import sales_jobs_iteration; asyncio.run(sales_jobs_iteration())'], { stdio: 'ignore' });
+    // one sales_jobs pass under the worker loop's lock (app.jobs.run_once), so it never runs alongside the worker's or
+    // another suite's pass (two hourly stale-deal passes at once could alert twice); older images: the bare iteration
+    const job = 'import asyncio\ntry:\n    from app.jobs import run_once\n    asyncio.run(run_once("sales_jobs", wait_seconds=120))\n'
+      + 'except ImportError:\n    from app.jobs import sales_jobs_iteration\n    asyncio.run(sales_jobs_iteration())\n';
+    execFileSync('docker', ['exec', 'vector-api-1', 'python', '-c', job], { stdio: 'ignore' });
     const n = dbn(`SELECT COUNT(*) FROM notifications WHERE tenant_id='${t.tenantId}' AND user_id='${t.owner.userId}' AND (title LIKE '%tale%' OR kind LIKE '%stale%')`);
     ok(n >= 1, 'stale notification row for owner (count ' + n + ')');
     await go(A, 'dashboard'); await p.getByRole('button', { name: /notification/i }).first().click().catch(() => {}); await settle(A, 600);
