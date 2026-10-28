@@ -23,6 +23,8 @@ MODULES = (conversation, domain_reputation, imap_sync_state, inbox_warmup_event,
 def _arg(d):
     if d is None:
         return None
+    if not hasattr(d, "arg"):  # FetchedValue (server_onupdate): the server sets the value
+        return type(d).__name__
     a = d.arg
     if callable(a):
         return "callable:" + getattr(a, "__name__", "?")

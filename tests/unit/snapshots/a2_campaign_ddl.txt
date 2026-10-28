@@ -93,7 +93,7 @@ CREATE TABLE campaigns (
 	status VARCHAR(50), 
 	paused_reason TEXT, 
 	paused_at DATETIME(6), 
-	auto_paused BOOL DEFAULT '0', 
+	auto_paused BOOL NOT NULL DEFAULT '0', 
 	health_baseline_at DATETIME(6), 
 	created_by VARCHAR(36) NOT NULL, 
 	sender_name VARCHAR(100), 
@@ -130,7 +130,7 @@ col campaign_description Text null   default=None onupdate=None server_default=N
 col status String null   default='DRAFT' onupdate=None server_default=None server_onupdate=None
 col paused_reason Text null   default=None onupdate=None server_default=None server_onupdate=None
 col paused_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
-col auto_paused Boolean null   default='False' onupdate=None server_default='0' server_onupdate=None
+col auto_paused Boolean notnull   default='False' onupdate=None server_default='0' server_onupdate=None
 col health_baseline_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
 col created_by String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col sender_name String null   default=None onupdate=None server_default=None server_onupdate=None

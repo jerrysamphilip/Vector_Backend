@@ -250,6 +250,7 @@ def test_ab_f07_stats_per_variant(client, ab):
     _event(a_sent[0], EmailEvent.EVENT_CLICK)
     _event(b_sent[0], EmailEvent.EVENT_OPEN)
     _event(b_sent[0], EmailEvent.EVENT_REPLY)
+    _event(b_sent[1], EmailEvent.EVENT_BOUNCE)  # B: 3 sent, 1 bounced -> 2 delivered
 
     r = client.get(ab["url1"] + "/stats", headers=ab["h"])
     assert r.status_code == 200, r.text
@@ -257,7 +258,10 @@ def test_ab_f07_stats_per_variant(client, ab):
     rows = {v["label"]: v for v in body["variants"]}
     assert (rows["A"]["sent"], rows["A"]["opened"], rows["A"]["clicked"], rows["A"]["replied"]) == (3, 2, 1, 0)
     assert (rows["B"]["sent"], rows["B"]["opened"], rows["B"]["clicked"], rows["B"]["replied"]) == (3, 1, 0, 1)
-    assert rows["A"]["open_rate"] == 66.67 and rows["A"]["click_rate"] == 50.0 and rows["B"]["reply_rate"] == 33.33
+    assert (rows["A"]["bounced"], rows["A"]["delivered"], rows["B"]["bounced"], rows["B"]["delivered"]) == (0, 3, 1, 2)
+    # open / reply over delivered (sent - bounced), click over opened, bounce over sent
+    assert rows["A"]["open_rate"] == 66.67 and rows["A"]["click_rate"] == 50.0 and rows["A"]["bounce_rate"] == 0.0
+    assert rows["B"]["open_rate"] == 50.0 and rows["B"]["reply_rate"] == 50.0 and rows["B"]["bounce_rate"] == 33.33
     assert rows["A"]["scheduled"] + rows["B"]["scheduled"] == 4
     assert body["min_sends_per_variant"] == 30
     assert body["winner"]["status"] == "insufficient_data" and body["winner"]["label"] is None

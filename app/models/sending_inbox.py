@@ -36,7 +36,7 @@ class SendingInbox(Base):
 
     # Mailbox sign-in (BR-DF-05): PASSWORD, or OAUTH_MS365 for Microsoft 365 mailboxes
     # where basic auth is blocked; IMAP/SMTP then authenticate with XOAUTH2.
-    auth_type: Mapped[Optional[str]] = mapped_column(String(30), default="PASSWORD", server_default="PASSWORD", nullable=True)
+    auth_type: Mapped[str] = mapped_column(String(30), default="PASSWORD", server_default="PASSWORD", nullable=False)
     oauth_refresh_token: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
     oauth_access_token: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
     oauth_expires_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)

@@ -8,8 +8,9 @@ No database or network access here, so every rule can be unit tested:
 - the even, deterministic assignment of prospects to variants, honouring
   optional weights and the assignments that already exist;
 - re-balancing of not-yet-sent messages when the variant set changes;
-- the winner rule: highest unique open rate, once every variant has at least
-  MIN_SENDS_PER_VARIANT sent emails.
+- the winner rule: highest unique open rate (opened / delivered, delivered = sent - bounced as on every
+  other screen; app/domain/reports.delivered), once every variant has at least MIN_SENDS_PER_VARIANT
+  sent emails.
 
 The database side (who gets which message, stats queries, promotion) lives in
 app/services/subject_variant_service.py.
@@ -17,6 +18,8 @@ app/services/subject_variant_service.py.
 
 from fractions import Fraction
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+
+from app.domain.reports import delivered
 
 VARIANT_LABELS: Tuple[str, ...] = ("A", "B", "C", "D")
 MIN_VARIANTS = 2           # an A/B test runs only with at least two variants
@@ -159,14 +162,22 @@ def rate(numerator: int, denominator: int) -> float:
     return round(numerator * 100.0 / denominator, 2) if denominator else 0.0
 
 
+def open_rate_fraction(stat: Mapping) -> Fraction:
+    """Exact unique open rate of one variant: opened / delivered (delivered = sent - bounced); 0 without
+    a delivered email."""
+    base = delivered(int(stat.get("sent") or 0), int(stat.get("bounced") or 0))
+    return Fraction(int(stat.get("opened") or 0), base) if base else Fraction(0)
+
+
 def pick_winner(
     stats: Sequence[Mapping],
     min_sends: int = MIN_SENDS_PER_VARIANT,
     promoted_label: Optional[str] = None,
 ) -> Dict:
-    """Decide the winner by unique open rate.
+    """Decide the winner by unique open rate over delivered emails (the rate the stats show).
 
-    stats: one mapping per variant with at least label, sent and opened.
+    stats: one mapping per variant with at least label, sent and opened (bounced optional, default 0).
+    The minimum sample counts sent emails (MIN_SENDS_PER_VARIANT).
     Returns {"status", "label", "reason"}; label is set for 'winner' / 'promoted'.
     """
     if promoted_label:
@@ -180,7 +191,7 @@ def pick_winner(
         return {"status": WINNER_INSUFFICIENT, "label": None,
                 "reason": f"Every variant needs at least {min_sends} sent emails before a winner is named "
                           f"(still short: {', '.join(short)})."}
-    open_rates = {s["label"]: Fraction(int(s.get("opened") or 0), int(s["sent"])) for s in stats}
+    open_rates = {s["label"]: open_rate_fraction(s) for s in stats}
     best = max(open_rates.values())
     best_pct = float(round(best * 100, 2))
     leaders = [label for label, r in open_rates.items() if r == best]

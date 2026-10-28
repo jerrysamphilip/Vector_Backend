@@ -5,6 +5,7 @@ weights, balancing against existing assignments), re-balancing of unsent emails,
 the winner rule with its minimum sample size.
 """
 from collections import Counter
+from fractions import Fraction
 
 import pytest
 
@@ -144,3 +145,34 @@ def test_ab_u19_single_variant_is_not_a_test():
 def test_ab_u20_promoted_variant_overrides_the_computation():
     w = ab.pick_winner([_s("A", 1, 0), _s("B", 1, 1)], promoted_label="A")
     assert w == {"status": ab.WINNER_PROMOTED, "label": "A", "reason": w["reason"]}
+
+
+# ── AB-U21.. open rate over delivered (sent - bounced), as on every other screen ──
+
+def _sb(label, sent, opened, bounced):
+    return {"label": label, "sent": sent, "opened": opened, "bounced": bounced}
+
+
+def test_ab_u21_open_rate_fraction_is_over_delivered():
+    assert ab.open_rate_fraction(_sb("A", 30, 9, 0)) == Fraction(9, 30)
+    assert ab.open_rate_fraction(_sb("A", 30, 9, 6)) == Fraction(9, 24)
+    assert ab.open_rate_fraction(_s("A", 30, 9)) == Fraction(9, 30)  # bounced missing = 0
+    assert ab.open_rate_fraction(_sb("A", 30, 0, 30)) == 0             # nothing delivered: 0, no division
+    assert ab.open_rate_fraction(_sb("A", 3, 0, 5)) == 0               # never below zero
+
+
+def test_ab_u22_bounces_can_change_the_winner():
+    # over sent A leads (9/30 = 30% vs 8/30 = 26.7%); over delivered B leads (8/24 = 33.3% vs 9/30 = 30%)
+    stats = [_sb("A", 30, 9, 0), _sb("B", 30, 8, 6)]
+    w = ab.pick_winner(stats)
+    assert w["status"] == ab.WINNER_FOUND and w["label"] == "B" and "33.33%" in w["reason"]
+    assert ab.pick_winner([_s("A", 30, 9), _s("B", 30, 8)])["label"] == "A"
+
+
+def test_ab_u23_tie_and_sample_size_with_bounces():
+    # 10/40 and 9/36 are both 25% once B's 4 bounces are left out
+    w = ab.pick_winner([_sb("A", 40, 10, 0), _sb("B", 40, 9, 4)])
+    assert w["status"] == ab.WINNER_TIE
+    # the minimum sample still counts sent emails, bounced ones included
+    assert ab.pick_winner([_sb("A", 30, 1, 25), _sb("B", 30, 2, 0)])["label"] == "A"
+    assert ab.pick_winner([_sb("A", 29, 1, 0), _sb("B", 30, 2, 0)])["status"] == ab.WINNER_INSUFFICIENT

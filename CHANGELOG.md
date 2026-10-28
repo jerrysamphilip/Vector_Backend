@@ -131,6 +131,10 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - API sweep results are redacted before they are recorded; cached test tokens and raw captures are untracked.
 
 ### Fixed
+- Warm-up now reads peer mailboxes with the effective IMAP settings (S-26) like the IMAP sync: a mailbox with
+  SMTP settings but blank IMAP fields takes part in open/spam-rescue engagement (derived host, SMTP password
+  reused) and is no longer flagged `IMAP_NOT_CONFIGURED`; saved IMAP settings still win, Microsoft 365
+  mailboxes keep signing in with their OAuth token, send-only relays (SES, SendGrid...) are never read.
 - UAT 1: step bodies saved by the rich-text editor (one line of HTML) were wiped by the line-based CTA and
   footer cleanup, so emails went out with only the footer and sign-off and the inbox showed "(No content)".
   The cleanup now works per HTML block (links unwrapped, text kept); rendering keeps the body if cleanup
@@ -144,6 +148,17 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - UAT 3-5: open and reply rates divide by delivered (sent − bounced) everywhere (campaign analytics, steps,
   reports, exports); the daily chart's last day no longer adds lifetime opens; "sent today" counts only sent
   emails; enrolments marked OPENED advance and complete (campaigns can auto-complete). Frontend labels fixed.
+- A/B subject-variant stats divided open and reply rates by sent: they now use delivered (sent − bounced) like
+  every other screen (bounce rate stays bounced / sent, click rate clicked / opened). Each variant row gains
+  `bounced`, `delivered` and `bounce_rate`; the winner rule uses the same open-over-delivered rate (the minimum
+  sample still counts sent emails), so a variant with more bounces can now win where it lost before.
+- Fresh-vs-upgraded schema parity (`0035_schema_parity`): five columns NOT NULL in upgraded databases but
+  NULLable in fresh builds (`campaigns.auto_paused`, `sending_domains.sends_24h` / `bounce_rate_24h` /
+  `complaint_rate_24h`, `sending_inboxes.auth_type`) are NOT NULL everywhere (NULLs set to the default first);
+  `updated_at` of `imap_sync_state`, `import_mappings` and `webhook_endpoints` refreshes on UPDATE in fresh builds
+  too; upgraded databases get the five foreign keys the models declare and lose four legacy single-column
+  indexes and a duplicate `users.invited_by` foreign key. information_schema of a fresh build and an upgraded copy
+  is now identical (columns, indexes, keys).
 - Contact and global search missed committed contacts: while another workspace was committing inserts, some
   contacts never matched the FULLTEXT pre-filter (D7, 0030) and so never appeared in search. Search is the
   plain `search_text LIKE` scan again (always exact) and `0034_drop_contact_fulltext` drops

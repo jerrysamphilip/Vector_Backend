@@ -3,13 +3,13 @@ Outbound webhooks (BRD v2.0 BR-SF-20): endpoints a workspace admin registers, an
 delivery outbox the worker sends from (app/services/webhooks.py).
 """
 
-from sqlalchemy import JSON, Boolean, Column, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, FetchedValue, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 
 from app.core.encrypted_type import EncryptedString
 from app.models.base import Base
 from app.models.status_checks import status_check
-from app.models.types import NOW6, UtcDateTime
+from app.models.types import NOW6, NOW6_ON_UPDATE, UtcDateTime
 from app.core.ids import new_id
 
 
@@ -35,7 +35,7 @@ class WebhookEndpoint(Base):
     last_failure_at = Column(UtcDateTime, nullable=True)
     created_by = Column(String(36), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
     created_at = Column(UtcDateTime, server_default=NOW6)
-    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
+    updated_at = Column(UtcDateTime, server_default=NOW6_ON_UPDATE, onupdate=NOW6, server_onupdate=FetchedValue())
 
     __table_args__ = (
         Index("ix_webhook_endpoints_tenant", "tenant_id", "active"),

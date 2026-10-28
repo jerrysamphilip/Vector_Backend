@@ -8,8 +8,10 @@ A/B testing of email subject lines (BR-SF-18 / RP-104) - database side.
   assignments are kept when the schedule is re-planned. When the variant set or
   weights change, only NOT-YET-SENT emails are re-balanced / re-rendered.
 - Stats per variant with the campaign-wide definitions from
-  campaign_analytics_service (sent / unique opened / unique clicked / replied).
-- Winner by open rate once every variant has MIN_SENDS_PER_VARIANT sends, and
+  campaign_analytics_service (sent / unique opened / unique clicked / replied /
+  bounced) and the same rates (open and reply over delivered = sent - bounced,
+  click over opened, bounce over sent).
+- Winner by open rate (over delivered) once every variant has MIN_SENDS_PER_VARIANT sends, and
   promotion of the winner: the step's remaining unsent emails switch to it.
 
 The pure rules live in app/services/ab_testing.py.
@@ -20,6 +22,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from app.core.clock import iso_utc, utcnow
 from app.core.config import settings
+from app.domain.reports import delivered
 from app.models.campaign import Campaign
 from app.models.email_message import EmailEvent
 from app.models.email_sequence import EmailSequence
@@ -287,15 +290,20 @@ class SubjectVariantService:
         opened = msgs.variant_unique_contacts(sid, EmailEvent.EVENT_OPEN)
         clicked = msgs.variant_unique_contacts(sid, EmailEvent.EVENT_CLICK)
         replied = msgs.variant_replied(sid)
+        bounced = msgs.variant_bounced(sid)
         rows = []
         for v in variants:
             s, o, c, r = sent.get(v.label, 0), opened.get(v.label, 0), clicked.get(v.label, 0), replied.get(v.label, 0)
+            b = bounced.get(v.label, 0)
+            d = delivered(s, b)
             rows.append({
                 "label": v.label, "subject": v.subject, "weight": v.weight, "is_winner": bool(v.is_winner),
                 "sent": s, "scheduled": scheduled.get(v.label, 0), "opened": o, "clicked": c, "replied": r,
-                # same rate definitions as the step analytics: open/reply over sent, click over opened
-                "open_rate": ab_testing.rate(o, s), "click_rate": ab_testing.rate(c, o),
-                "reply_rate": ab_testing.rate(r, s),
+                "bounced": b, "delivered": d,
+                # same rate definitions as every other analytics screen (app/domain/reports.delivered):
+                # open/reply over delivered, click over opened, bounce over sent
+                "open_rate": ab_testing.rate(o, d), "click_rate": ab_testing.rate(c, o),
+                "reply_rate": ab_testing.rate(r, d), "bounce_rate": ab_testing.rate(b, s),
             })
         winner_row = self.promoted(variants)
         winner = ab_testing.pick_winner(rows, ab_testing.MIN_SENDS_PER_VARIANT,
