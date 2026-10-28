@@ -3,11 +3,13 @@
 
     python3 -m system_tests.e2e.run_journeys                 # all journeys
     python3 -m system_tests.e2e.run_journeys --only J2,J3    # a subset
+    python3 -m system_tests.e2e.run_journeys --serial        # J1, then J2-J6 (default: J1 alongside J2-J6)
 Writes results.md / results.json next to this file. See README.md for bringing the stand-ins up.
 """
 import argparse
 import os
 import sys
+import threading
 import time
 import traceback
 
@@ -41,6 +43,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="", help="comma list of J1..J6")
     ap.add_argument("--merge", action="store_true", help="keep results of journeys not re-run from the previous results.json")
+    ap.add_argument("--serial", action="store_true", help="run J1 and then J2-J6 (default: J1 in a thread next to J2-J6)")
     args = ap.parse_args()
     from system_tests.e2e import helpers as H
     problems = H.preflight()
@@ -72,24 +75,18 @@ def main():
         finally:  # where the journey spends its time (tier tuning, docs/TESTING.md section 2)
             print(f"timing {prefix} {fn.__name__}: {time.time() - t0:.0f}s", flush=True)
 
-    if "J1" in only:
-        from system_tests.e2e import j1_outreach_to_revenue as J1
-        C = {}
-        try:
-            for ph in ("setup", "upload", "campaign", "send", "events", "unsub", "replies", "bg_reply", "sales", "reports",
-                       "followups", "gdpr"):
-                if guard("J1", getattr(J1, "phase_" + ph), R, C) is None and "w" not in C:
-                    break
-        finally:
-            if "w" in C:
-                from system_tests.e2e.flows import detach_imap
-                detach_imap(C["w"])
-    for key, mod, fn in (("J2", "j2_deliverability", "run"), ("J3", "j3_accounts_access", "run"), ("J4", "j4_cross_tenant", "run"),
-                         ("J5", "j5_crm_chain", "run"), ("J6", "j6_automation", "run")):
-        if key not in only:
-            continue
-        m = __import__(f"system_tests.e2e.{mod}", fromlist=["run"])
-        guard(key, getattr(m, fn), R)
+    if "J1" not in only or args.serial or not only - {"J1"}:
+        _run_j1(R, guard, only)
+        _run_others(R, guard, only)
+    else:
+        # J1 (~15 min, mostly real waits for the worker: background IMAP cadence, 120 s re-spread of step 3) runs in a
+        # thread next to J2-J6 (~10 min): every journey has its own sign-up workspace, mailboxes and fake IMAP port,
+        # and their job passes go through run_once (see system_tests/TIERS.json, "e2e"). --serial: one after another.
+        from system_tests.e2e import j1_outreach_to_revenue  # noqa: F401  (import before the thread starts)
+        t = threading.Thread(target=_run_j1, args=(R, guard, only), name="J1", daemon=True)
+        t.start()
+        _run_others(R, guard, only)
+        t.join()
     import re as _re
 
     def _key(r):
@@ -98,6 +95,31 @@ def main():
     R.rows.sort(key=_key)
     counts = R.write()
     print(counts)
+
+
+def _run_j1(R, guard, only):
+    if "J1" not in only:
+        return
+    from system_tests.e2e import j1_outreach_to_revenue as J1
+    C = {}
+    try:
+        for ph in ("setup", "upload", "campaign", "send", "events", "unsub", "replies", "bg_reply", "sales", "reports",
+                   "followups", "gdpr"):
+            if guard("J1", getattr(J1, "phase_" + ph), R, C) is None and "w" not in C:
+                break
+    finally:
+        if "w" in C:
+            from system_tests.e2e.flows import detach_imap
+            detach_imap(C["w"])
+
+
+def _run_others(R, guard, only):
+    for key, mod, fn in (("J2", "j2_deliverability", "run"), ("J3", "j3_accounts_access", "run"), ("J4", "j4_cross_tenant", "run"),
+                         ("J5", "j5_crm_chain", "run"), ("J6", "j6_automation", "run")):
+        if key not in only:
+            continue
+        m = __import__(f"system_tests.e2e.{mod}", fromlist=["run"])
+        guard(key, getattr(m, fn), R)
 
 
 if __name__ == "__main__":

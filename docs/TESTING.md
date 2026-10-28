@@ -43,7 +43,7 @@ The unit layer starts with tests for e-mail parsing and reply extraction, the bu
 | unit | `python3 scripts/test.py run unit` | `pytest tests/unit` on the host when the app's dependencies are importable (it also picks up `./venv`). Otherwise it runs in a throwaway container from `TEST_PY_IMAGE` (default `vector-api:latest`). |
 | functional | `python3 scripts/test.py run functional` | Recreates the throwaway schema (`db reset`, skip with `--keep-db`), then runs `pytest tests --ignore=tests/unit`. In docker mode this runs on the compose network. |
 | system | `python3 scripts/test.py run system` | Each suite runs from its own folder, one at a time. `reports_platform` runs last. |
-| e2e | `python3 scripts/test.py run e2e` | `python3 -m system_tests.e2e.run_journeys`. Bring the stand-ins up first (see section 5). |
+| e2e | `python3 scripts/test.py run e2e` | `python3 -m system_tests.e2e.run_journeys`: J1 in a thread next to J2-J6 (each journey has its own workspace; `--serial` runs them one after another). The log has a `timing <journey> <phase>: Ns` line per J1 phase and per journey. Bring the stand-ins up first (see section 5). |
 | ui | `python3 scripts/test.py run ui` | Each Playwright suite runs with `node`, one after another. |
 | all | `python3 scripts/test.py run all --keep-going` | The `full` tier: all layers, every case. `reports_platform` runs at the very end (unless the stack relaxes the per-IP limits, section 7). |
 
@@ -425,7 +425,7 @@ Statuses come from each suite's `results.json`, overlaid with the latest run's `
   - The unit layer blocks all network access.
   - The runner gives every child process an empty key.
   - `doctor` warns if the API container has a key. Recreate the stack with `OPENAI_API_KEY= docker compose up -d api worker` for test runs, because the e2e wizard and reply classification would otherwise call OpenAI.
-- Typical durations (one at a time, default limits, run 20261028-050134): system about 30 min, e2e about 27 min (J1 alone about 15-19 min), ui about 43 min, everything about 1 h 30 min. Targets with the tiers, `--jobs 4` and the test-stack speedups: smoke <= 10 min, core ~25 min, full ~45 min; `run <tier> --dry-run` prints the current estimate.
+- Typical durations (one at a time, default limits, run 20261028-050134): system about 30 min, e2e about 27 min (J1 alone about 15-19 min), ui about 43 min, everything about 1 h 30 min. Targets with the tiers, `--jobs 4` and the test-stack speedups: smoke <= 10 min, core ~25 min, full ~45 min; `run <tier> --dry-run` prints the current estimate. Measured on the 4-vCPU sandbox with `RATE_LIMIT_TEST_MULTIPLIER=100` and `SEND_RETRY_BASE_SECONDS=1` (tune runs of 2026-10-28): smoke about 16 min, nearly all of it J1, whose real waits are the background IMAP cadence for J1-69 (~4 min) and the 120 s re-spread of step 3 for J1-103 (~9 min); core about 18 min with J1 next to J2-J6 (26-28 min with the journeys one after another); full about 32 min (without the contacts perf cases and the reports_platform load test).
 
 ## 8. Test data and fixtures
 
