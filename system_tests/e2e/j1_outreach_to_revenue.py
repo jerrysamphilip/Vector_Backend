@@ -445,12 +445,14 @@ def phase_events(R, C):
     ci = [i for i in cc["items"] if i["campaign_id"] == cid][0]
     R.check("E2E-J1-41", "Campaign detail metrics: sent 16, opened 10 (unique contacts), bounced 1",
             cm["sent_count"] == 16 and cm["opened_count"] == 10 and cm["bounced_count"] == 1, f"{cm}")
-    R.check("E2E-J1-42", "GET /campaigns/{id}/metrics agrees with the campaign detail (opened 10, bounced 1, open rate 10/16)",
+    R.check("E2E-J1-42", "GET /campaigns/{id}/metrics agrees with the campaign detail (opened 10, bounced 1, open rate 10 of 15 "
+            "delivered = 66.7: rates divide by sent - bounced, UAT 3-5)",
             mm["sent_count"] == 16 and mm["opened_count"] == 10 and mm["bounced_count"] == 1
-            and abs(mm["open_rate"] - 62.5) < 0.1, f"{mm} (campaign detail says {cm})")
-    R.check("E2E-J1-43", "Analytics step 1: sent 16, opened 10, bounced 1, open rate 62.5, click rate 40.0 (4 of 10 openers)",
+            and abs(mm["open_rate"] - 100 * 10 / 15) < 0.1, f"{mm} (campaign detail says {cm})")
+    R.check("E2E-J1-43", "Analytics step 1: sent 16, opened 10, bounced 1, open rate 66.7 (10 of 15 delivered), click rate 40.0 "
+            "(4 of 10 openers)",
             seq1["sent"] == 16 and seq1["opened_count"] == 10 and seq1["bounced_count"] == 1
-            and abs(seq1["open_rate"] - 62.5) < 0.1 and abs(seq1["click_rate"] - 40.0) < 0.1, f"{seq1}")
+            and abs(seq1["open_rate"] - 100 * 10 / 15) < 0.1 and abs(seq1["click_rate"] - 40.0) < 0.1, f"{seq1}")
     R.check("E2E-J1-44", "Dashboard summary (tenant total) matches: 16 sent, 10 opened, 4 clicked, 1 bounced, 16 contacted",
             k["total_emails_sent"] == 16 and k["total_opened"] == 10 and k["total_clicked"] == 4 and k["total_bounced"] == 1
             and k["total_leads_contacted"] == 16, f"{k}")
