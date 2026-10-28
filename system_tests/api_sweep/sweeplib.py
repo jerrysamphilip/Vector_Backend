@@ -341,6 +341,7 @@ class Recorder:
     def __init__(self, out_dir):
         self.R = Results("API sweep", out_dir)
         self.meta = {}
+        self.last_id = None
         self.out_dir = out_dir
         self.seen_ids = set()
         self._lk = threading.Lock()
@@ -349,6 +350,7 @@ class Recorder:
         """check: AUTH|ROLE|HAPPY|VAL|ISO|HIER|IDEM|SCHEMA ; kind: sub-id suffix"""
         cid = f"API-{slug(method, path)}-{check}" + (f"-{kind}" if kind else "")
         if not CASES.wants(cid):
+            self.last_id = None  # nothing recorded: callers must not annotate the previous case
             return ok  # not selected by this run's tier (TEST_CASES)
         with self._lk:
             base, i = cid, 2
@@ -369,6 +371,11 @@ class Recorder:
         self.meta[cid] = {"ep": ep_id, "check": check, "kind": kind, "status": row["status"], "category": category or "",
                           "evidence": evidence}
         return ok
+
+    def mark_env(self):
+        """Flag the case just recorded as an environment limitation (nothing when the tier filter skipped it)."""
+        if self.last_id in self.meta:
+            self.meta[self.last_id]["env"] = True
 
     def write(self):
         counts = self.R.write()
