@@ -19,6 +19,7 @@ from app.models.inbox_warmup_event import InboxWarmupEvent
 from app.models.join_tables import campaign_inboxes
 from app.models.prospect import Prospect
 from app.models.sending_inbox import SendingInbox
+from app.repositories.reports_campaign_metrics import SENT_STATUSES
 
 PENDING_STATUSES = ("QUEUED", "SCHEDULED")
 PAUSE_EVENT_PREFIX = "Mailbox paused"
@@ -66,12 +67,15 @@ class SendingAlertRepository:
         return q.first()
 
     def sent_since_by_inbox(self, inbox_ids: Iterable[str], since: datetime) -> Dict[str, int]:
+        """Outbound mail per inbox that actually went out since ``since`` (status SENT, or BOUNCED / COMPLAINED
+        after the send: the campaign counters' SENT_STATUSES); FAILED / QUEUED rows with a stray sent_at are
+        not counted. Every campaign using the inbox counts."""
         ids = list(inbox_ids)
         if not ids:
             return {}
         rows = self._session.query(EmailMessage.inbox_id, func.count(EmailMessage.message_id)).filter(
             EmailMessage.inbox_id.in_(ids), EmailMessage.direction == "OUTBOUND",
-            EmailMessage.sent_at >= since,
+            EmailMessage.status.in_(SENT_STATUSES), EmailMessage.sent_at >= since,
         ).group_by(EmailMessage.inbox_id).all()
         return {inbox_id: int(n) for inbox_id, n in rows}
 

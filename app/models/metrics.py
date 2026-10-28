@@ -43,17 +43,15 @@ class CampaignMetricsRealtime(Base):
 
     @property
     def open_rate(self) -> float:
-        """Calculate open rate percentage."""
-        if self.sent_count == 0:
-            return 0.0
-        return (self.opened_count / self.sent_count) * 100
+        """Open rate percentage over delivered (sent - bounced), as on every screen."""
+        whole = max((self.sent_count or 0) - (self.bounced_count or 0), 0)
+        return (self.opened_count / whole) * 100 if whole else 0.0
 
     @property
     def reply_rate(self) -> float:
-        """Calculate reply rate percentage."""
-        if self.sent_count == 0:
-            return 0.0
-        return (self.replied_count / self.sent_count) * 100
+        """Reply rate percentage over delivered (sent - bounced), as on every screen."""
+        whole = max((self.sent_count or 0) - (self.bounced_count or 0), 0)
+        return (self.replied_count / whole) * 100 if whole else 0.0
 
     @property
     def bounce_rate(self) -> float:

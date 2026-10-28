@@ -118,7 +118,7 @@ def test_sync_history_runs_outside_the_unit_of_work():
             row.last_sync_at = datetime(2026, 10, 1)
             return True
     out = InboxService(uow, imap_sync=Sync).sync_history(USER, "i1", 5)
-    assert out["last_sync_at"] == "2026-10-01T00:00:00" and out["inbox"] == "me@acme.io"
+    assert out["last_sync_at"] == "2026-10-01T00:00:00Z" and out["inbox"] == "me@acme.io"
 
     class Failing:
         def sync_inbox(self, row, days_back):

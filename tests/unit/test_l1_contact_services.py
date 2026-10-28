@@ -119,7 +119,7 @@ class FakeRepo:
     def reassign_children(self, source_id, target_id):
         return 2, 1
 
-    def repoint_merged(self, source_id, target_id):
+    def repoint_merged(self, tenant_id, source_id, target_id):
         pass
 
     def delete_rows(self, ids):

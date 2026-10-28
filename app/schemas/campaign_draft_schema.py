@@ -3,10 +3,10 @@ Request / response models of the campaign drafts API (app/routers/campaign_draft
 the router unchanged (chunk A2); the OpenAPI schema is the same.
 """
 
-from datetime import datetime
 from typing import Any, Optional
 
 from pydantic import BaseModel
+from app.schemas.types import UtcDatetime
 
 class SaveDraftRequest(BaseModel):
     """Request to save campaign draft state."""
@@ -20,8 +20,8 @@ class DraftResponse(BaseModel):
     draft_name: Optional[str]
     current_step: int
     draft_data: dict[str, Any]
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: Optional[UtcDatetime] = None
+    updated_at: Optional[UtcDatetime] = None
 
     class Config:
         from_attributes = True

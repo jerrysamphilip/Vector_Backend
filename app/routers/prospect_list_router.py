@@ -263,15 +263,17 @@ def upload_revalidate(
     current_user: Any = Depends(tenant_user),
 ):
     """
-    Step 1.5: Re-validate edited records.
+    Step 1.5: Re-validate edited records of the upload in the path (404 for an id that is not an
+    upload id or that another workspace holds).
     """
     try:
         return revalidate_prospect_records(
             records=payload.records,
             db=db,
             tenant_id=current_user.tenant_id,
+            upload_id=upload_id,
         )
-    except HTTPException:
+    except (HTTPException, DomainError):
         raise
     except Exception as e:
         db.rollback()
@@ -291,13 +293,18 @@ def upload_confirm(
     Every row is validated again on the server; rows that fail (or that the database refuses)
     are returned in `not_added` with a reason and the rest are saved. Confirming the same
     upload_id again returns the stored result (`already_confirmed`).
+
+    The path id is the upload: a body `upload_id` that differs is a 400; an id that is not an upload id
+    or that another workspace holds is a 404.
     """
+    if payload.upload_id != upload_id:
+        raise HTTPException(status_code=400, detail="upload_id in the body does not match the upload in the URL")
     if not payload.title.strip():
         raise HTTPException(status_code=400, detail="Upload title is required")
 
     try:
         return confirm_upload(
-            upload_id=payload.upload_id,
+            upload_id=upload_id,
             title=payload.title,
             records=payload.records,
             db=db,

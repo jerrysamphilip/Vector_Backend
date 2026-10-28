@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import Any, Optional, Protocol
 
 from sqlalchemy import func, or_
-from sqlalchemy.exc import DataError, IntegrityError, OperationalError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.repositories import lists as lists_repo
@@ -34,16 +34,13 @@ from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.user import User
 from app.repositories.base import SqlAlchemyUnitOfWork, TenantId
 from app.repositories.contacts import SqlAlchemyContactRepository
+from app.repositories.lock_retry import is_lock_conflict
 
 __all__ = [
     "DuplicateRow", "ImportRepository", "ImportsUnitOfWork", "RejectedValue", "Session",
     "SqlAlchemyImportRepository", "SqlAlchemyImportsUnitOfWork", "imports_uow",
 ]
 
-# MySQL errors after which the whole chunk is worth running again: 1213 deadlock, 1205 lock wait
-# timeout; 1305 "savepoint does not exist" surfaces when the deadlock hit inside a savepoint
-# (MySQL dropped the whole transaction)
-RETRYABLE_ERRORS = (1213, 1205, 1305)
 EMAIL_BATCH = 1000
 
 
@@ -313,9 +310,8 @@ class SqlAlchemyImportsUnitOfWork(SqlAlchemyUnitOfWork):
         return SqlAlchemyImportRepository(self.session)
 
     def is_retryable(self, exc: BaseException) -> bool:
-        if not isinstance(exc, OperationalError):
-            return False
-        return getattr(exc.orig, "args", [None])[0] in RETRYABLE_ERRORS
+        """A deadlock / lock wait timeout after which the whole chunk may run again (lock_retry's list)."""
+        return is_lock_conflict(exc)
 
 
 def imports_uow(session: Session) -> SqlAlchemyImportsUnitOfWork:

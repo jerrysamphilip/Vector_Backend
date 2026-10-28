@@ -34,6 +34,7 @@ from app.repositories.contacts import (
     compile_filter,
     list_member_query,
 )
+from app.repositories.lock_retry import retry_on_lock_conflict
 from app.services.contact_service import delete_contacts, visibility_scope
 from app.services.sales_settings import can_see_amounts
 from app.utils.company_domain import bare_domain, is_valid_domain, registrable_domain
@@ -265,7 +266,12 @@ def restore_contacts(db: Session, tenant_id: str, ids: list, user_id: Optional[s
 
 
 def purge_expired(db: Session) -> int:
-    """Permanently delete contacts and companies deleted more than 90 days ago."""
+    """Permanently delete contacts and companies deleted more than 90 days ago (one batch; the whole
+    batch runs again after a deadlock / lock wait timeout)."""
+    return retry_on_lock_conflict(lambda: _purge_expired_once(db))
+
+
+def _purge_expired_once(db: Session) -> int:
     cutoff = utcnow() - timedelta(days=RESTORE_WINDOW_DAYS)
     with SqlAlchemyContactsUnitOfWork.for_session(db) as uow:
         repo = uow.contacts

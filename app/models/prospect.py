@@ -126,6 +126,8 @@ class Prospect(Base):
         Index("ix_prospects_tenant_live_score", "tenant_id", "deleted_at", "score"),
         Index("ix_prospects_tenant_live_grade", "tenant_id", "deleted_at", "score_grade"),
         Index("ix_prospects_scored_at", "scored_at"),
+        # Merge / erasure re-point merged_into_id within one tenant (0033_prospect_merged_into_index)
+        Index("ix_prospects_tenant_merged", "tenant_id", "merged_into_id"),
         # Contact search pre-filter (D7, 0030): ngram tokens of ngram_token_size (server default 2), built
         # without stopwords (app.core.database.MYSQL_SESSION_INIT_COMMAND); see app/repositories/contacts.py
         Index("ft_prospects_search_text", "search_text", mysql_prefix="FULLTEXT", mysql_with_parser="ngram"),

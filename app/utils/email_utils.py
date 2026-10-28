@@ -1,9 +1,12 @@
 from email.utils import parseaddr
-from typing import Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional
 import html
+import logging
 import re
 
 # app/utils/email_utils.py
+
+logger = logging.getLogger(__name__)
 
 PERSONAL_EMAIL_DOMAINS = {
     "gmail.com",
@@ -17,6 +20,72 @@ PERSONAL_EMAIL_DOMAINS = {
 }
 
 CTA_PLACEHOLDER_PATTERN = re.compile(r"^\{+\s*(calendar_link|cta_link)\s*\}+$", re.IGNORECASE)
+
+# ── HTML bodies, block by block ─────────────────────────────────────
+# The rich-text editor (TipTap getHTML) saves a body as ONE line of HTML: line-based cleanup must work on its
+# blocks instead, or one rule match removes the whole email.
+
+_HTML_BODY_RE = re.compile(r"<[a-z][\s\S]*>", re.IGNORECASE)
+_BLOCK_TAGS = r"p|div|li|ul|ol|h[1-6]|blockquote|pre|table|thead|tbody|tr|td|th"
+_INLINE_TAGS = r"a|span|strong|b|em|i|u|s|small|font|code"
+_BLOCK_BOUNDARY = re.compile(rf"(<br\s*/?>|</?(?:{_BLOCK_TAGS})\b[^>]*>)", re.IGNORECASE)
+_DROPPED = "\x00"  # marks the text of a removed block until its emptied elements are removed
+_DROPPED_ELEMENT = re.compile(
+    rf"<({_BLOCK_TAGS}|{_INLINE_TAGS})\b[^>]*>\s*{_DROPPED}[\s{_DROPPED}]*</\1\s*>", re.IGNORECASE)
+_BR_BEFORE_DROPPED = re.compile(rf"<br\s*/?>\s*{_DROPPED}", re.IGNORECASE)
+_BR_LEADING_DROPPED = re.compile(rf"(^|<(?!/)[^>]*>)\s*{_DROPPED}\s*<br\s*/?>", re.IGNORECASE)
+_TAG_OR_TEXT = re.compile(r"(<[^>]*>)|([^<]+)")
+
+
+def is_html_body(body: Optional[str]) -> bool:
+    """Whether a body is HTML (same test as format_email_body_html and the sender's MIME builder)."""
+    return bool(_HTML_BODY_RE.search(body or ""))
+
+
+def block_text(fragment: str) -> str:
+    """The visible text of an HTML fragment: tags removed, entities decoded, whitespace collapsed."""
+    text = html.unescape(re.sub(r"<[^>]*>", "", fragment or ""))
+    return " ".join(text.replace("\xa0", " ").replace("\u200b", "").split())
+
+
+def has_visible_text(body: Optional[str]) -> bool:
+    """Whether a (plain-text or HTML) body shows any text at all."""
+    return bool(block_text(html_to_text(body or "")))
+
+
+def map_html_text(fragment: str, edit: Callable[[str], str]) -> str:
+    """The fragment with ``edit`` applied to its text runs only (never to tags or attribute values)."""
+    return _TAG_OR_TEXT.sub(lambda m: m.group(1) or edit(m.group(2)), fragment)
+
+
+def map_html_blocks(body: str, edit: Callable[[str], Optional[str]]) -> str:
+    """
+    Apply ``edit`` to the content of each block of an HTML body: the text between block boundaries (<p>, <li>,
+    <div>, headings, table cells, <br>). ``edit`` returns the new content, or None to remove the block: its
+    element goes with it (and a list left empty, and one adjacent <br>); blocks without text are left alone.
+    """
+    parts = _BLOCK_BOUNDARY.split(body)
+    dropped = False
+    for i in range(0, len(parts), 2):  # even indexes: content; odd: the boundary tags
+        if not block_text(parts[i]):
+            continue
+        new = edit(parts[i])
+        if new is None:
+            parts[i] = map_html_text(parts[i], lambda _text: _DROPPED)
+            dropped = True
+        else:
+            parts[i] = new
+    out = "".join(parts)
+    if not dropped:
+        return out
+    previous = None
+    while previous != out:
+        previous = out
+        out = _DROPPED_ELEMENT.sub(_DROPPED, out)
+        out = _BR_BEFORE_DROPPED.sub(_DROPPED, out)
+        out = _BR_LEADING_DROPPED.sub(lambda m: m.group(1) + _DROPPED, out)
+    return out.replace(_DROPPED, "")
+
 
 # Practical address check: one @, no spaces, a dot-atom local part and a domain of
 # letter/digit/hyphen labels with a 2+ letter TLD (rejects "broken@", "has space@x.com").
@@ -116,10 +185,27 @@ def parse_email(raw_email) -> Optional[dict]:
     }
 
 
+# Unsubscribe / footer wording an LLM (or a user) puts in the body; the sender appends the real line.
+_UNSUBSCRIBE_LINE_PATTERNS = (
+    r"(?im)^\s*(please\s+)?unsubscribe\b.*$",
+    r"(?im)^\s*to\s+unsubscribe\b.*$",
+    r"(?im)^.*\bif\s+you\s+do\s+not\s+wish\s+to\s+receive\b.*$",
+    r"(?im)^.*\bclick\s+here\s+to\s+unsubscribe\b.*$",
+    r"(?im)^.*\bunsubscribe<https?://\S+>.*$",
+)
+_UNSUBSCRIBE_PLACEHOLDER = re.compile(r"\{\{\s*unsubscribe_link\s*\}\}", re.IGNORECASE)
+# In HTML a URL ends at a quote or a tag: "\S+" would run on through the rest of a one-line body
+_HTML_TRACKING_UNSUBSCRIBE_URL = re.compile(r"https?://[^\s\"'<>]+/api/tracking/unsubscribe/[^\s\"'<>]*",
+                                            re.IGNORECASE)
+
+
 def normalize_unsubscribe_footer(body_content: str) -> str:
     """
     Normalize unsubscribe content to a single canonical footer line.
     Used in preview/generation and sender pipeline for consistent output.
+
+    Plain text: the matching LINES are removed. HTML (e.g. the rich-text editor's one-line ``getHTML``): only
+    the matching BLOCK (<p>, <li>, <div>, a <br>-separated line) is removed, never the rest of the body.
     """
     if not body_content:
         body_content = ""
@@ -127,20 +213,16 @@ def normalize_unsubscribe_footer(body_content: str) -> str:
     text = str(body_content).replace("\r\n", "\n")
 
     # Remove placeholders and raw tracking unsubscribe links.
-    text = re.sub(r"\{\{\s*unsubscribe_link\s*\}\}", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"https?://\S+/api/tracking/unsubscribe/\S+", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"<https?://\S+/api/tracking/unsubscribe/\S+>", "", text, flags=re.IGNORECASE)
-
-    # Remove common unsubscribe/footer variants from LLM output.
-    unsubscribe_patterns = [
-        r"(?im)^\s*(please\s+)?unsubscribe\b.*$",
-        r"(?im)^\s*to\s+unsubscribe\b.*$",
-        r"(?im)^.*\bif\s+you\s+do\s+not\s+wish\s+to\s+receive\b.*$",
-        r"(?im)^.*\bclick\s+here\s+to\s+unsubscribe\b.*$",
-        r"(?im)^.*\bunsubscribe<https?://\S+>.*$",
-    ]
-    for pattern in unsubscribe_patterns:
-        text = re.sub(pattern, "", text)
+    text = _UNSUBSCRIBE_PLACEHOLDER.sub("", text)
+    if is_html_body(text):
+        text = _HTML_TRACKING_UNSUBSCRIBE_URL.sub("", text)
+        text = map_html_blocks(text, lambda block: None if _is_unsubscribe_text(block_text(block)) else block)
+    else:
+        text = re.sub(r"https?://\S+/api/tracking/unsubscribe/\S+", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"<https?://\S+/api/tracking/unsubscribe/\S+>", "", text, flags=re.IGNORECASE)
+        # Remove common unsubscribe/footer variants from LLM output.
+        for pattern in _UNSUBSCRIBE_LINE_PATTERNS:
+            text = re.sub(pattern, "", text)
 
     # Collapse whitespace noise after cleanup.
     text = re.sub(r"[ \t]+\n", "\n", text)
@@ -150,6 +232,10 @@ def normalize_unsubscribe_footer(body_content: str) -> str:
     # with a per-message tracking URL. Do not add any text-based footer here.
 
     return text
+
+
+def _is_unsubscribe_text(text: str) -> bool:
+    return any(re.search(pattern, text) for pattern in _UNSUBSCRIBE_LINE_PATTERNS)
 
 
 def normalize_cta_link(cta_link) -> str:
@@ -177,58 +263,79 @@ def has_effective_cta_link(cta_link) -> bool:
     return bool(normalize_cta_link(cta_link))
 
 
+_CTA_WORDS = re.compile(
+    r"(?i)\b(schedule|book|booking|calendar|demo|meeting|call|chat|walkthrough|connect|talk|discuss|quick look"
+    r"|learn more|explore)\b")
+_CTA_QUESTION_OPENERS = re.compile(
+    r"(?i)^(open to|would you|can we|shall we|should we|worth|interested|up for|want to|do you have)")
+_CTA_PLACEHOLDER_TOKEN = re.compile(r"\{\{?\s*(?:calendar_link|cta_link)\s*\}?\}", re.IGNORECASE)
+_HTML_ANCHOR = re.compile(r"<a\b[^>]*>(.*?)</a\s*>", re.IGNORECASE | re.DOTALL)
+_HTML_URL = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+
+
+def _is_short_cta(text: str) -> bool:
+    """
+    A SHORT (<= 20 words) CTA / meeting ask: booking language, or a question-style ask. Longer text is a
+    body paragraph and is never treated as a CTA, even with 'call', 'connect' or 'explore' in its prose.
+    """
+    stripped = text.strip()
+    if len(stripped.split()) > 20:
+        return False
+    if _CTA_WORDS.search(stripped):
+        return True
+    return stripped.endswith("?") and bool(_CTA_QUESTION_OPENERS.search(stripped.lower()))
+
+
+def _strip_cta_lines(text: str) -> str:
+    """Plain text: the lines with a CTA placeholder or a raw URL, and short CTA lines, removed."""
+    # Remove lines containing CTA placeholders.
+    text = re.sub(r"(?im)^.*\{\{(?:calendar_link|cta_link)\}\}.*$", "", text)
+    text = re.sub(r"(?im)^.*\{(?:calendar_link|cta_link)\}.*$", "", text)
+    cleaned_lines = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        # Always remove lines with raw URLs (CTA / link lines) and short CTA lines.
+        if stripped and (re.search(r"https?://\S+", stripped) or _is_short_cta(stripped)):
+            continue
+        cleaned_lines.append(line)
+    return "\n".join(cleaned_lines)
+
+
+def _strip_cta_block(block: str) -> Optional[str]:
+    """
+    HTML: one block without its links (the anchor markup and bare URLs go, the anchor text stays) and CTA
+    placeholders; None (drop the block) when nothing visible remains, when only a link label is left
+    ("Visit", "Grab time:": at most 3 words around a removed link) or when it is a short CTA ask.
+    """
+    original = block
+    block = _CTA_PLACEHOLDER_TOKEN.sub("", block)
+    block = _HTML_ANCHOR.sub(lambda m: "" if _HTML_URL.fullmatch(block_text(m.group(1))) else m.group(1), block)
+    block = map_html_text(block, lambda text: _HTML_URL.sub("", text))
+    text = block_text(block)
+    link_label_only = block != original and len(text.split()) <= 3
+    if not re.search(r"\w", text) or link_label_only or _is_short_cta(text):
+        return None
+    return block
+
+
 def strip_cta_content_no_link(body_content: str) -> str:
     """
-    Remove CTA/booking/link lines when campaign CTA link is empty.
+    Remove CTA/booking/link content when campaign CTA link is empty.
     Used as a final safety guard so empty CTA config never sends asks/links.
 
     IMPORTANT: Only removes SHORT lines (<= 20 words) matching CTA patterns.
     Long body-content paragraphs are NEVER removed even if they contain words
     like 'call', 'connect', or 'explore' embedded in natural prose.
+
+    Plain text works per line (a line with a URL or a CTA placeholder goes). HTML (the rich-text editor
+    saves one line without "\n") works per block: links and placeholders are removed from the block and
+    its text is kept; only a short CTA block (or one left empty) is removed.
     """
     if not body_content:
         return ""
 
     text = str(body_content).replace("\r\n", "\n").replace("\r", "\n")
-
-    # Remove lines containing CTA placeholders.
-    text = re.sub(r"(?im)^.*\{\{(?:calendar_link|cta_link)\}\}.*$", "", text)
-    text = re.sub(r"(?im)^.*\{(?:calendar_link|cta_link)\}.*$", "", text)
-
-    cleaned_lines = []
-    for line in text.split("\n"):
-        stripped = line.strip()
-        if not stripped:
-            cleaned_lines.append(line)
-            continue
-
-        lower = stripped.lower()
-
-        # Always remove lines with raw URLs — these are CTA/link lines.
-        if re.search(r"https?://\S+", stripped):
-            continue
-
-        # Only apply CTA keyword filtering to SHORT lines (<= 20 words).
-        # Long lines are body-content paragraphs — preserve them unconditionally.
-        word_count = len(stripped.split())
-        if word_count <= 20:
-            # Remove explicit CTA/meeting-booking language.
-            if re.search(
-                r"(?i)\b(schedule|book|booking|calendar|demo|meeting|call|chat|walkthrough|connect|talk|discuss|quick look|learn more|explore)\b",
-                stripped,
-            ):
-                continue
-
-            # Remove question-style asks commonly used as CTA.
-            if stripped.endswith("?") and re.search(
-                r"(?i)^(open to|would you|can we|shall we|should we|worth|interested|up for|want to|do you have)",
-                lower,
-            ):
-                continue
-
-        cleaned_lines.append(line)
-
-    text = "\n".join(cleaned_lines)
+    text = map_html_blocks(text, _strip_cta_block) if is_html_body(text) else _strip_cta_lines(text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     return text
 
@@ -475,12 +582,37 @@ def finalize_email_body(body: str) -> str:
     it only understands plain-text "•" bullet lines and would otherwise pull
     the already-formatted <ul>/<li> block apart.
     """
-    body = ensure_core_personalization_tokens(body)
-    body = normalize_unsubscribe_footer(body)
+    original = ensure_core_personalization_tokens(body)
+    body = normalize_unsubscribe_footer(original)
+    if not has_visible_text(body) and has_visible_text(original):
+        # Never empty a body with its own footer cleanup (e.g. a body that is only an unsubscribe sentence)
+        logger.warning("Email body has no visible text after the unsubscribe cleanup; keeping it as written")
+        body = original
     if not re.search(r"<[a-z][\s\S]*>", body or "", re.IGNORECASE):
         body = normalize_paragraph_spacing(body)
     body = format_email_body_html(body)
     return body
+
+
+# ── Send-time footer (postal line, unsubscribe line, sign-off) ─────────────
+UNSUBSCRIBE_REPLY_LINE = ("Please reply 'unsubscribe' in case you do not wish to "
+                          "receive such business communication emails in the future.")
+
+
+def unsubscribe_link_line(unsubscribe_url: str) -> str:
+    """The unsubscribe sentence with a link (inline HTML)."""
+    return (f'Please click on <a href="{unsubscribe_url}">unsubscribe</a> '
+            f'in case you do not wish to receive such business communication emails in the future.')
+
+
+def append_footer(body: str, line: str, *, html_body: bool, gap: str = "\n\n", markup: bool = False) -> str:
+    """``body`` with ``line`` after it: after ``gap`` on a plain-text body; on an HTML body as its own ``<p>``
+    block (newlines as ``<br>``, the text escaped unless it is already ``markup``), since HTML ignores the
+    newlines and the line would run into the last paragraph."""
+    if not html_body:
+        return body + gap + line
+    inner = line if markup else html.escape(line, quote=False)
+    return body.rstrip() + "<p>" + inner.replace("\n", "<br>") + "</p>"
 
 
 def build_signature_block(sender_name: Optional[str], sender_title: Optional[str] = None,

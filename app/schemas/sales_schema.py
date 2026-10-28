@@ -3,10 +3,11 @@ Request bodies of the sales API (app/routers/sales_router.py, sales_admin_router
 
 The class names are the OpenAPI component names; keep them stable.
 """
-from datetime import date, datetime
+from datetime import date
 from typing import Annotated, Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+from app.schemas.types import UtcDatetime
 
 
 # ── Sales hierarchy, leads, stages, deals, proposals (sales_router) ──
@@ -22,7 +23,7 @@ class LeadCreate(BaseModel):
     source: Optional[str] = None
     stage: Optional[str] = "NEW"
     next_step: Optional[str] = None
-    next_step_at: Optional[datetime] = None
+    next_step_at: Optional[UtcDatetime] = None
     campaign_id: Optional[str] = None
 
 
@@ -31,7 +32,7 @@ class LeadUpdate(BaseModel):
     stage: Optional[str] = None
     source: Optional[str] = None
     next_step: Optional[str] = None
-    next_step_at: Optional[datetime] = None
+    next_step_at: Optional[UtcDatetime] = None
     disqualified_reason: Optional[str] = None
     qualification: Optional[Dict[str, Any]] = None
     recycle_in_days: Optional[int] = None   # reopen a disqualified lead after this many days (BR-SF-02)
@@ -84,7 +85,7 @@ class DealActivity(BaseModel):
     body: Optional[str] = None
     outcome: Optional[str] = None
     duration_minutes: Optional[int] = None
-    occurred_at: Optional[datetime] = None
+    occurred_at: Optional[UtcDatetime] = None
     add_to_calendar: bool = False
     # Colleagues @mentioned in a note (BR-CM-16)
     mentioned_user_ids: Optional[List[Annotated[str, Field(min_length=1, max_length=36)]]] = Field(None, max_length=20)

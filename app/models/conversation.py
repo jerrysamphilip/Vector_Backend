@@ -29,7 +29,9 @@ class Conversation(Base):
     status: Mapped[Optional[str]] = mapped_column(String(50), default="OPEN", nullable=True)  # OPEN / CLOSED / SNOOZED
     is_unread: Mapped[Optional[bool]] = mapped_column(Boolean, default=True, nullable=True)
     
-    last_message_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, onupdate=NOW6, nullable=True)
+    # Set explicitly by each writer that adds a message to the thread; no onupdate, so marking the thread read
+    # (or any other UPDATE) does not move it to now.
+    last_message_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
     updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, onupdate=NOW6, nullable=True)
 

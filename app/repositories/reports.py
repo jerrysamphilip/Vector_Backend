@@ -277,8 +277,9 @@ class SqlAlchemyCampaignReportRepository:
         if sort.is_rate:
             part = cols[{"open_rate": "opened_count", "reply_rate": "replied_count",
                          "bounce_rate": "bounced_count"}[sort.field]]
-            sent = cols["sent_count"]
-            return func.coalesce(case((sent > 0, (part * 100.0) / sent), else_=0.0), 0)
+            # open / reply rates divide by delivered (sent - bounced), bounce rate by sent (domain.reports.delivered)
+            whole = cols["sent_count"] if sort.field == "bounce_rate" else cols["sent_count"] - cols["bounced_count"]
+            return func.coalesce(case((whole > 0, (part * 100.0) / whole), else_=0.0), 0)
         return {**cols, "campaign_name": Campaign.campaign_name, "created_at": Campaign.created_at}[sort.field]
 
     def prospect_status_counts(self, campaign_ids: Sequence[str]) -> dict[str, dict[str, int]]:

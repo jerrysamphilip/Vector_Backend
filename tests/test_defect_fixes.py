@@ -274,7 +274,7 @@ def test_oversize_values_are_422(client, tenant_m):
     r = client.patch(f"/prospects/{pid}", headers=h, json={"first_name": "A" * 5000})
     assert r.status_code == 422, r.text
     rec = {"email": f"big.{RUN}@oversize{RUN}.example.com", "first_name": "B" * 5000, "status": "ACCEPTED"}
-    r = client.post("/uploads/x/confirmations", headers=h,
+    r = client.post("/uploads/00000000-0000-0000-0000-000000000000/confirmations", headers=h,
                     json={"upload_id": "00000000-0000-0000-0000-000000000000", "title": "T", "records": [rec]})
     # The upload re-validates rows: an over-long value is that row's reason, not a failed request
     assert r.status_code == 200, r.text

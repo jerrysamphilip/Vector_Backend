@@ -27,7 +27,7 @@ from datetime import datetime, timedelta, time
 from types import SimpleNamespace
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from app.domain.campaigns_edit import wait_until
+from app.domain.campaigns_edit import IN_SEQUENCE_STATUSES, wait_until
 from app.services.campaign_calendar import schedule_settings
 from app.core.clock import utcnow
 from app.core.config import settings
@@ -908,8 +908,10 @@ class EmailSchedulerService:
                 if following:
                     self.schedule_next_step(db, email_msg, following, email_msg.sent_at or utcnow())
             # Something else (bounce, reply, unsubscribe) may have changed the status since the send was
-            # queued: don't advance / complete over it.
-            if enrollment and enrollment.status == "ACTIVE":
+            # queued: don't advance / complete over it. An enrolment that opened an email (OPENED) is still in
+            # the sequence and advances like an ACTIVE one (UAT 3-5: it used to stay on its step forever and
+            # keep the campaign from completing).
+            if enrollment and enrollment.status in IN_SEQUENCE_STATUSES:
                 self._advance_enrollment(db, email_msg, enrollment, sent_step)
         except Exception as e:
             logger.exception(f"[Scheduler] Failed to update prospect step: {e}")

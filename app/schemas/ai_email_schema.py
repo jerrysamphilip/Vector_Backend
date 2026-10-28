@@ -5,7 +5,7 @@ Pydantic schemas for AI Email Generation endpoints.
 
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from app.schemas.types import UtcDatetime
 
 
 # ============================================================
@@ -71,7 +71,7 @@ class BlueprintResponse(BaseModel):
     proof_points: Optional[List[str]]
     tone_rules: Optional[Dict[str, Any]]
     is_active: bool
-    created_at: datetime
+    created_at: UtcDatetime
 
     @field_validator("openers", "value_angles", "ctas", mode="before")
     @classmethod

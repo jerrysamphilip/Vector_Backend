@@ -1,12 +1,12 @@
 # app/schemas/contact_schema.py
 """Request bodies of the contact management API (app/routers/contacts_router.py)."""
 
-from datetime import datetime
 from typing import Annotated, Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, EmailStr, Field
 
 from app.domain.mentions import MAX_MENTIONS
+from app.schemas.types import UtcDatetime
 
 
 class ContactWrite(BaseModel):
@@ -53,7 +53,7 @@ class ActivityWrite(BaseModel):
     body: Optional[str] = None
     outcome: Optional[str] = Field(None, max_length=100)
     duration_minutes: Optional[int] = Field(None, ge=0, le=24 * 60)
-    occurred_at: Optional[datetime] = None
+    occurred_at: Optional[UtcDatetime] = None
     # Colleagues @mentioned in a note (BR-CM-16); the body keeps the "@First Last" text
     mentioned_user_ids: Optional[List[UserId]] = Field(None, max_length=MAX_MENTIONS)
 
@@ -63,7 +63,7 @@ class ActivityUpdate(BaseModel):
     body: Optional[str] = None
     outcome: Optional[str] = Field(None, max_length=100)
     duration_minutes: Optional[int] = Field(None, ge=0, le=24 * 60)
-    occurred_at: Optional[datetime] = None
+    occurred_at: Optional[UtcDatetime] = None
     mentioned_user_ids: Optional[List[UserId]] = Field(None, max_length=MAX_MENTIONS)
 
 

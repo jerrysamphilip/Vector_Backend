@@ -8,7 +8,7 @@ from datetime import timedelta
 from app.repositories.lists import free_list_name
 from app.repositories.uploads import Session, SqlAlchemyUploadRepository, UploadConflict, UploadRowRefused
 from app.core.clock import utcnow
-from app.core.errors import ConflictError
+from app.core.errors import ConflictError, NotFoundError
 
 from app.models import (
     Prospect,
@@ -277,10 +277,23 @@ def _suppressed_or_repeated(email_lower: Optional[str], unsubscribed_lower: Dict
     return errors
 
 
+def require_upload_id(db: Session, tenant_id: str, upload_id: str) -> None:
+    """NotFoundError (404) unless ``upload_id`` can be this tenant's upload: a UUID as the validation step
+    hands out, not held by another tenant's list (an upload id becomes the id of the list it creates).
+    The validation step stores nothing, so an id this tenant has not confirmed yet is a new upload."""
+    try:
+        canonical = str(uuid.UUID(upload_id))
+    except (TypeError, ValueError):
+        raise NotFoundError("Upload not found") from None
+    if canonical != upload_id.lower() or SqlAlchemyUploadRepository(db).list_held_elsewhere(tenant_id, upload_id):
+        raise NotFoundError("Upload not found")
+
+
 def revalidate_prospect_records(
     records: list,
     db: Session,
     tenant_id: str,
+    upload_id: str,
 ) -> Dict[str, Any]:
     """
     Re-run validation on edited records.
@@ -291,7 +304,9 @@ def revalidate_prospect_records(
     - Checks no duplicates in batch
     - Checks if email already exists in DB (warning only)
     POC State/City/Country are optional — left blank if not provided.
+    ``upload_id`` (the path id) must pass ``require_upload_id``.
     """
+    require_upload_id(db, tenant_id, upload_id)
     validated = []
     accepted_count = 0
     rejected_count = 0
@@ -627,7 +642,9 @@ def confirm_upload(
     The client's ACCEPTED status is not trusted: every row is validated again. A row that fails,
     or that the database refuses, is listed in `not_added` with the reason and the other rows are
     saved. Confirming the same upload_id again returns the stored result instead of re-inserting.
+    ``upload_id`` (the path id) must pass ``require_upload_id``.
     """
+    require_upload_id(db, tenant_id, upload_id)
     stored = stored_upload_result(db, upload_id, tenant_id)
     if stored:
         return stored

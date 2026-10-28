@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional
 from app.core.clock import utcnow
 from app.core.concurrency import resolve_expected
 from app.core.errors import BadRequestError, ConflictError, NotFoundError, PermissionDenied
+from app.domain.inbox import is_system_notice
 from app.domain.paging import Sort
 from app.domain.sales import (CLIENT_TYPES, FORECAST_CATEGORIES, OPP_FIELDS, PROPOSAL_STATUSES, ListQuery,
                               OpportunityFilter, ProposalFilter, naive_utc, stage_write_error)
@@ -426,7 +427,8 @@ class DealService(SalesServiceBase):
             for t in lookups.deal_tasks(opp.opportunity_id, 100):
                 items.append({"kind": "TASK", "at": t.completed_at or t.created_at, "task": task_dict(t, names)})
             if opp.prospect_id:
-                items.extend(_email_item(m) for m in lookups.contact_emails(opp.prospect_id, since, 100))
+                items.extend(_email_item(m) for m in lookups.contact_emails(opp.prospect_id, since, 100)
+                             if not is_system_notice(m))  # the bounce note is not a reply
             show_amounts = None
             for h in history(rules, "DEAL", opp.opportunity_id):
                 if h["field"] == "amount":

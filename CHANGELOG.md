@@ -129,6 +129,25 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - API sweep results are redacted before they are recorded; cached test tokens and raw captures are untracked.
 
 ### Fixed
+- UAT 1: step bodies saved by the rich-text editor (one line of HTML) were wiped by the line-based CTA and
+  footer cleanup, so emails went out with only the footer and sign-off and the inbox showed "(No content)".
+  The cleanup now works per HTML block (links unwrapped, text kept); rendering keeps the body if cleanup
+  would empty it, and the sender refuses a body with no visible text (`FAILED`, `BLOCKED_EMPTY_BODY`, no SES
+  call). HTML emails get the postal line, unsubscribe line and sign-off as separate paragraphs.
+- UAT 2: API datetimes were naive ISO strings, which browsers read as local time (a 17:54 UTC bounce showed
+  as 05:54 PM everywhere). Every API datetime now ends in `Z` (`app/schemas/types.py` `UtcDatetime`,
+  `app/core/json_encoding.py`, `clock.iso_utc`). Bounces use SES's bounce/complaint timestamp, and the
+  "Delivery Failed" note is a system notice (`is_system`, `last_message_is_system`): not shown or counted as a
+  reply anywhere (inbox, timelines, scoring, account/sales/campaign reply counts, reply labels).
+- UAT 3-5: open and reply rates divide by delivered (sent − bounced) everywhere (campaign analytics, steps,
+  reports, exports); the daily chart's last day no longer adds lifetime opens; "sent today" counts only sent
+  emails; enrolments marked OPENED advance and complete (campaigns can auto-complete). Frontend labels fixed.
+- Regression V1: contact merge / erasure / purge deadlocked with imports (full-table `merged_into_id`
+  update across tenants): tenant-first index (0033), tenant-scoped update by key, retry on 1213/1205.
+  `POST /uploads/{id}/confirmations` and `/revalidations` use the path id (400 on a mismatching body id, 404
+  for another workspace's id).
+- `conversations.last_message_at` no longer resets to now when a conversation is updated (e.g. marked read);
+  the campaign schedule lists outbound emails only.
 - Sending (team review): campaign mail is never sent from the platform address (no mailbox: stays queued; launch,
   resume and send-now refuse with NO_ACTIVE_INBOX); pacing no longer sleeps, so one workspace's delay cannot stall
   others (delay capped at 3600 s); SES outages re-queue mail (up to 50 times) behind a 5-minute circuit breaker

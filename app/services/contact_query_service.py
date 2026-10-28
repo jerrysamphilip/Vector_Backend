@@ -30,6 +30,7 @@ from app.domain.contacts import (
     parse_grades,
     search_terms,
 )
+from app.domain.inbox import is_system_notice
 from app.domain.paging import Paging, Sort
 from app.models.contact_activity import ContactActivity
 from app.models.crm import CrmTask, PropertyChange
@@ -574,6 +575,8 @@ def parse_timeline_types(types: Optional[str]) -> Optional[Set[str]]:
 def _email_items(repo: ContactRepository, prospect: Prospect, limit: int) -> List[dict]:
     items = []
     for m, campaign_name in repo.emails_of(prospect.prospect_id, limit):
+        if is_system_notice(m):
+            continue  # the bounce note: the EMAIL_BOUNCED event below already shows the bounce
         inbound = m.direction == "INBOUND"
         items.append({
             "kind": "EMAIL_RECEIVED" if inbound else "EMAIL_SENT",

@@ -15,12 +15,17 @@ Pure: no I/O. Two stages, exactly as an email is built today:
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from app.utils.email_utils import (build_signature_block, finalize_email_body, has_effective_cta_link,
-                                   normalize_cta_link, strip_cta_content_no_link)
+from app.utils.email_utils import (UNSUBSCRIBE_REPLY_LINE, append_footer, build_signature_block,
+                                   finalize_email_body, format_email_body_html, has_effective_cta_link,
+                                   has_visible_text, is_html_body, normalize_cta_link, strip_cta_content_no_link,
+                                   unsubscribe_link_line)
+
+logger = logging.getLogger(__name__)
 
 SIGN_OFF_PATTERN = r"(?i)(Best(\s+Regards)?|Regards|Thanks|Cheers|Sincerely)[,]?\s*\n\s*[A-Za-z0-9 ]+"
 UNSUBSCRIBE_PATH = "/api/tracking/unsubscribe/"
@@ -62,6 +67,12 @@ class FinalEmail:
     from_header: str
 
 
+def _signature(template: str, ctx: RenderContext) -> str:
+    """The {{signature_block}} value; in an HTML body its lines are joined with <br> (a "\\n" is no line break)."""
+    signature = build_signature_block(ctx.sender_name, ctx.sender_title, ctx.our_company)
+    return signature.replace("\n", "<br>") if is_html_body(template) else signature
+
+
 def substitute_placeholders(template: Optional[str], prospect: Any, ctx: RenderContext) -> str:
     """Replace {{tokens}} with the contact's data and the campaign's sender values (any case)."""
     if not template:
@@ -81,7 +92,7 @@ def substitute_placeholders(template: Optional[str], prospect: Any, ctx: RenderC
         "{{city}}": prospect.poc_city or "",
         "{{state}}": prospect.poc_state or "",
         "{{your_name}}": ctx.sender_name or ctx.default_sender_name,
-        "{{signature_block}}": build_signature_block(ctx.sender_name, ctx.sender_title, ctx.our_company),
+        "{{signature_block}}": _signature(template, ctx),
         "{{our_company}}": ctx.our_company or "",
         "{{calendar_link}}": cta_link,
         "{{cta_link}}": cta_link,
@@ -95,10 +106,18 @@ def substitute_placeholders(template: Optional[str], prospect: Any, ctx: RenderC
 
 
 def render_body(body_template: Optional[str], prospect: Any, ctx: RenderContext) -> str:
+    """
+    The personalised body: tokens filled in, CTA content removed when the campaign has no link, finalized.
+    Safety net: when that cleanup leaves no visible text of a template that had some, the unstripped body is
+    kept (and a warning logged): an email is never emptied by its own cleanup rules.
+    """
     body = substitute_placeholders(body_template or "", prospect, ctx)
-    if not has_effective_cta_link(ctx.cta_link):
-        body = strip_cta_content_no_link(body)
-    return finalize_email_body(body)
+    rendered = finalize_email_body(body if has_effective_cta_link(ctx.cta_link) else strip_cta_content_no_link(body))
+    if has_visible_text(rendered) or not has_visible_text(body):
+        return rendered
+    logger.warning("Rendered email body has no visible text after the CTA / footer cleanup; keeping the "
+                   "unstripped body (template starts %r)", (body_template or "")[:80])
+    return format_email_body_html(body.strip())
 
 
 def render_step_email(subject_template: Optional[str], body_template: Optional[str], prospect: Any,
@@ -149,19 +168,19 @@ def finalize_for_send(subject: str, body: str, recipient: str, ctx: SendContext)
     is_internal = sender_domain != "" and sender_domain == _domain(recipient or "")
     unsubscribe_url = f"{ctx.base_url}{UNSUBSCRIBE_PATH}{ctx.message_id}"
     content = body or ""
+    html_body = is_html_body(content)  # footer lines become <p> blocks on an HTML body (append_footer)
     if not is_internal:
         if ctx.footer_line and (ctx.postal_address or "") not in content and ctx.footer_line not in content:
-            content += f"\n\n{ctx.footer_line}"
+            content = append_footer(content, ctx.footer_line, html_body=html_body)
         if UNSUBSCRIBE_PATH not in content:
             if (ctx.unsubscribe_mode or "plain") == "html":
-                content += (f'\nPlease click on <a href="{unsubscribe_url}">unsubscribe</a> '
-                            f'in case you do not wish to receive such business communication emails in the future.')
+                content = append_footer(content, unsubscribe_link_line(unsubscribe_url), html_body=html_body,
+                                        gap="\n", markup=True)
             else:
-                content += ("\nPlease reply 'unsubscribe' in case you do not wish to "
-                            "receive such business communication emails in the future.")
+                content = append_footer(content, UNSUBSCRIBE_REPLY_LINE, html_body=html_body, gap="\n")
     content = content.replace("{{unsubscribe_link}}", unsubscribe_url)
     if not has_sign_off(content):
-        content = content.rstrip() + (
-            f"\n\nRegards,\n{build_signature_block(ctx.sender_name, ctx.sender_title, ctx.company_name)}")
+        signature = build_signature_block(ctx.sender_name, ctx.sender_title, ctx.company_name)
+        content = append_footer(content.rstrip(), f"Regards,\n{signature}", html_body=html_body)
     return FinalEmail(subject=clean_subject(subject), body=content, is_html=bool(_HTML_TAG.search(content)),
                       is_internal=is_internal, from_header=f"{ctx.sender_name or ''} <{ctx.sender_email}>".strip())

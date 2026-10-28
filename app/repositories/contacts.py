@@ -55,6 +55,7 @@ from app.models.user import User
 from app.models.webhook import WebhookDelivery
 from app.repositories.base import SqlAlchemyRepository, SqlAlchemyUnitOfWork, TenantId
 from app.repositories.duplicates import DuplicateRepository, SqlAlchemyDuplicateRepository
+from app.repositories.system_notices import not_system_notice, reply_message
 from app.utils import sql_like
 
 __all__ = [
@@ -411,7 +412,7 @@ class ContactRepository(Protocol):
     def memberships(self, prospect_id: str) -> list[ProspectListMember]: ...
     def enrollment_rows(self, prospect_id: str) -> list[CampaignProspect]: ...
     def reassign_children(self, source_id: str, target_id: str) -> tuple[int, int]: ...
-    def repoint_merged(self, source_id: str, target_id: str) -> None: ...
+    def repoint_merged(self, tenant_id: TenantId, source_id: str, target_id: str) -> None: ...
     def delete_rows(self, ids: Collection[str]) -> None: ...
     def identities(self, ids: Collection[str]) -> list[tuple[str, str, Optional[str]]]: ...
     def lead_ids(self, ids: Collection[str]) -> list[str]: ...
@@ -419,7 +420,7 @@ class ContactRepository(Protocol):
     def deliveries_naming(self, tenant_id: TenantId, needles: Sequence[str]) -> list[WebhookDelivery]: ...
     def delete_notifications(self, tenant_id: TenantId, links: Sequence[str], emails: Iterable[str]) -> None: ...
     def detach_messages(self, ids: Collection[str]) -> None: ...
-    def erase_rows(self, ids: Collection[str]) -> None: ...
+    def erase_rows(self, tenant_id: Optional[TenantId], ids: Collection[str]) -> None: ...
 
     # companies resolution (BR-CM-04) and accounts
     def account_by_name(self, tenant_id: TenantId, name: str) -> Optional[Account]: ...
@@ -715,7 +716,7 @@ class SqlAlchemyContactRepository(SqlAlchemyRepository[Prospect, str]):
             EmailMessage.prospect_id == prospect_id, EmailMessage.direction == "OUTBOUND",
             EmailMessage.sent_at.isnot(None)).one()
         received = db.query(func.count(EmailMessage.message_id), func.max(EmailMessage.sent_at)).filter(
-            EmailMessage.prospect_id == prospect_id, EmailMessage.direction == "INBOUND").one()
+            EmailMessage.prospect_id == prospect_id, reply_message()).one()
         opens = db.query(func.count(func.distinct(EmailEvent.message_id))).join(
             EmailMessage, EmailMessage.message_id == EmailEvent.message_id
         ).filter(EmailMessage.prospect_id == prospect_id, EmailEvent.event_type == EmailEvent.EVENT_OPEN).scalar()
@@ -753,6 +754,7 @@ class SqlAlchemyContactRepository(SqlAlchemyRepository[Prospect, str]):
         ).filter(
             EmailMessage.prospect_id == prospect_id,
             or_(EmailMessage.sent_at.isnot(None), EmailMessage.direction == "INBOUND"),
+            not_system_notice(),  # the bounce note: the EMAIL_BOUNCED event shows the bounce
         ).order_by(func.coalesce(EmailMessage.sent_at, EmailMessage.scheduled_at).desc()).limit(limit).all()]
 
     def email_events_of(self, prospect_id: str, kinds: Collection[str],
@@ -911,10 +913,27 @@ class SqlAlchemyContactRepository(SqlAlchemyRepository[Prospect, str]):
                 {model.prospect_id: target_id}, synchronize_session=False)
         return emails, activities
 
-    def repoint_merged(self, source_id: str, target_id: str) -> None:
-        self._session.query(Prospect).filter(Prospect.merged_into_id == source_id).update(
-            {Prospect.merged_into_id: target_id}, synchronize_session=False)
-        self._session.query(PropertyChange).filter(PropertyChange.object_type == "CONTACT",
+    def _point_merged(self, tenant_id: TenantId, sources: Collection[str], target_id: Optional[str]) -> None:
+        """The tenant's contacts merged into one of ``sources`` now point at ``target_id`` (None: no pointer).
+
+        D1: the old ``UPDATE ... WHERE merged_into_id IN (...)`` had no index and no tenant filter, so it
+        scanned and X-locked every contact of every tenant and deadlocked with background-import inserts.
+        Now a plain (non-locking) read finds them on ix_prospects_tenant_merged and the UPDATE goes by
+        unique key (tenant, primary key), which locks just those rows: no table scan and no gap locks that would make another
+        workspace's inserts wait. Usually nothing points there and no UPDATE is sent. (Nothing else writes
+        merged_into_id, so a pointer cannot appear between the read and the update.)"""
+        pointing = [pid for (pid,) in self._session.query(Prospect.prospect_id).filter(
+            Prospect.tenant_id == tenant_id, Prospect.merged_into_id.in_(list(sources)))]
+        if pointing:
+            self._session.query(Prospect).filter(Prospect.tenant_id == tenant_id, Prospect.prospect_id.in_(pointing),
+                                                 Prospect.merged_into_id.in_(list(sources))).update(
+                {Prospect.merged_into_id: target_id}, synchronize_session=False)
+
+    def repoint_merged(self, tenant_id: TenantId, source_id: str, target_id: str) -> None:
+        """Contacts merged into ``source_id`` now point at ``target_id``; its history follows it."""
+        self._point_merged(tenant_id, [source_id], target_id)
+        self._session.query(PropertyChange).filter(PropertyChange.tenant_id == tenant_id,
+                                                   PropertyChange.object_type == "CONTACT",
                                                    PropertyChange.object_id == source_id).update(
             {PropertyChange.object_id: target_id}, synchronize_session=False)
 
@@ -961,16 +980,31 @@ class SqlAlchemyContactRepository(SqlAlchemyRepository[Prospect, str]):
             db.query(EmailMessage).filter(EmailMessage.conversation_id.in_(conversation_ids)).update(
                 {EmailMessage.conversation_id: None}, synchronize_session=False)
 
-    def erase_rows(self, ids: Collection[str]) -> None:
-        """Deals lose the link to the person; every other row about the contacts goes, then the contacts."""
+    def _ids_by_tenant(self, tenant_id: Optional[TenantId], ids: Collection[str]) -> dict[str, list[str]]:
+        """The existing contacts among ``ids`` grouped by their tenant (only ``tenant_id``'s when given)."""
+        groups: dict[str, list[str]] = {}
+        for pid, tid, _email in self.identities(ids):
+            if tenant_id is None or tid == tenant_id:
+                groups.setdefault(tid, []).append(pid)
+        return groups
+
+    def erase_rows(self, tenant_id: Optional[TenantId], ids: Collection[str]) -> None:
+        """Deals lose the link to the person; every other row about the contacts goes, then the contacts.
+
+        ``tenant_id`` None = the system purge across workspaces (each contact's own tenant is used); with a
+        tenant, contacts of other tenants among ``ids`` are left alone."""
         db = self._session
+        by_tenant = self._ids_by_tenant(tenant_id, ids)
+        ids = [pid for group in by_tenant.values() for pid in group]
+        if not ids:
+            return
         db.query(Opportunity).filter(Opportunity.prospect_id.in_(ids)).update(
             {Opportunity.prospect_id: None}, synchronize_session=False)
         for model in _ERASED_CHILDREN:
             db.query(model).filter(model.prospect_id.in_(ids)).delete(synchronize_session=False)
-        # Contacts merged into these ones keep no pointer to an erased record
-        db.query(Prospect).filter(Prospect.merged_into_id.in_(ids)).update(
-            {Prospect.merged_into_id: None}, synchronize_session=False)
+        # Contacts merged into these ones keep no pointer to an erased record (per tenant, see _point_merged)
+        for tenant, tenant_ids in by_tenant.items():
+            self._point_merged(tenant, tenant_ids, None)
         db.query(PropertyChange).filter(PropertyChange.object_type == "CONTACT",
                                         PropertyChange.object_id.in_(ids)).delete(synchronize_session=False)
         db.query(Prospect).filter(Prospect.prospect_id.in_(ids)).delete(synchronize_session=False)

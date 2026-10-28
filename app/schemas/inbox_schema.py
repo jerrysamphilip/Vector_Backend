@@ -5,7 +5,7 @@ Pydantic schemas for Sending Inboxes.
 """
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from app.schemas.types import UtcDatetime
 
 # Upper bound for delay_between_emails, in seconds (F021): pacing never sleeps, but a longer gap
 # would only starve the inbox's queue
@@ -17,7 +17,7 @@ class SendingInboxResponse(BaseModel):
     email_address: str
     provider: Optional[str] = None
     status: Optional[str] = None  # S10: nullable columns
-    last_sent_at: Optional[datetime] = None
+    last_sent_at: Optional[UtcDatetime] = None
     daily_limit: Optional[int] = None
 
     # SMTP fields
@@ -32,7 +32,7 @@ class SendingInboxResponse(BaseModel):
     imap_port: Optional[int] = 993
     imap_username: Optional[str] = None
     has_imap_password: bool = False
-    last_sync_at: Optional[datetime] = None
+    last_sync_at: Optional[UtcDatetime] = None
     imap_last_error: Optional[str] = None
     # S-26: replies can be read: saved IMAP settings, or ones derived from SMTP (smtp.x -> imap.x, SMTP login)
     imap_configured: bool = False
@@ -40,13 +40,13 @@ class SendingInboxResponse(BaseModel):
 
     # Sign-in: PASSWORD or OAUTH_MS365 (BR-DF-05)
     auth_type: Optional[str] = "PASSWORD"
-    oauth_expires_at: Optional[datetime] = None
+    oauth_expires_at: Optional[UtcDatetime] = None
     oauth_error: Optional[str] = None
 
     # Warm-up & Throttle fields
     warmup_enabled: Optional[bool] = True
     warmup_day: Optional[int] = 0
-    warmup_start_date: Optional[datetime] = None
+    warmup_start_date: Optional[UtcDatetime] = None
     max_emails_per_day: Optional[int] = None
     delay_between_emails: Optional[int] = 60
     emails_sent_today: Optional[int] = 0
@@ -62,7 +62,7 @@ class SendingInboxResponse(BaseModel):
     warmup_identifier: Optional[str] = None
     warmup_issue_code: Optional[str] = None
     warmup_issue_message: Optional[str] = None
-    warmup_last_activity_at: Optional[datetime] = None
+    warmup_last_activity_at: Optional[UtcDatetime] = None
     warmup_today_sent: Optional[int] = 0
     warmup_today_opened: Optional[int] = 0
     warmup_today_replied: Optional[int] = 0
@@ -71,7 +71,7 @@ class SendingInboxResponse(BaseModel):
     # Paused mailbox and capacity (F-20), filled by the router from app/services/sending_alerts.py:
     # why / since when it is paused, emails it can send per day (limit capped by pacing), sent and left today
     paused_reason: Optional[str] = None
-    paused_at: Optional[datetime] = None
+    paused_at: Optional[UtcDatetime] = None
     daily_capacity: Optional[int] = None
     sent_today: Optional[int] = None
     remaining_today: Optional[int] = None
@@ -177,7 +177,7 @@ class InboxWarmupEventResponse(BaseModel):
     subject: Optional[str] = None
     detail: Optional[str] = None
     event_metadata: Optional[Dict[str, Any]] = None
-    event_time: datetime
+    event_time: UtcDatetime
 
     class Config:
         from_attributes = True

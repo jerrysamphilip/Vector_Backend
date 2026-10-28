@@ -11,6 +11,7 @@ services own the transaction.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any, Optional, Protocol
 
 from sqlalchemy import func
@@ -36,7 +37,8 @@ class EmailEventRepository(Protocol):
     def message(self, message_id: str) -> Optional[EmailMessage]: ...
     def conversation(self, conversation_id: str) -> Optional[Conversation]: ...
     def prospect(self, prospect_id: str) -> Optional[Prospect]: ...
-    def add_event(self, message_id: str, event_type: int, metadata: dict) -> EmailEvent: ...
+    def add_event(self, message_id: str, event_type: int, metadata: dict,
+                  at: Optional[datetime] = None) -> EmailEvent: ...
     def add_message(self, **fields: Any) -> EmailMessage: ...
 
 
@@ -75,8 +77,10 @@ class SqlAlchemyEmailEventRepository:
     def prospect(self, prospect_id: str) -> Optional[Prospect]:
         return self._session.query(Prospect).filter(Prospect.prospect_id == prospect_id).first()
 
-    def add_event(self, message_id: str, event_type: int, metadata: dict) -> EmailEvent:
-        event = EmailEvent(message_id=message_id, event_type=event_type, event_time=utcnow(),
+    def add_event(self, message_id: str, event_type: int, metadata: dict,
+                  at: Optional[datetime] = None) -> EmailEvent:
+        """``at``: when the event happened (SES's timestamp, naive UTC); now when not given."""
+        event = EmailEvent(message_id=message_id, event_type=event_type, event_time=at or utcnow(),
                            event_metadata=metadata)
         self._session.add(event)
         return event

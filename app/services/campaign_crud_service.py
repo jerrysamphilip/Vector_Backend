@@ -11,7 +11,7 @@ import uuid
 from datetime import time
 from typing import Any, Callable, Dict, List, Optional
 
-from app.core.clock import utcnow
+from app.core.clock import iso_utc, utcnow
 from app.domain.campaigns import CampaignListFilter, StepMessage, is_removed, lead_timing, total_pages
 from app.domain.paging import Paging
 from app.models.campaign import Campaign
@@ -61,7 +61,7 @@ def inbox_view(inbox: Any) -> Dict[str, Any]:
         "provider": getattr(inbox, "provider", "SMTP"),
         "status": inbox.status,
         "daily_limit": getattr(inbox, "daily_limit", 50),
-        "last_sync_at": inbox.last_sync_at.isoformat() if getattr(inbox, "last_sync_at", None) else None,
+        "last_sync_at": iso_utc(getattr(inbox, "last_sync_at", None)),
         "imap_host": getattr(inbox, "imap_host", None),
         "imap_port": getattr(inbox, "imap_port", 993),
         "imap_username": getattr(inbox, "imap_username", None),
