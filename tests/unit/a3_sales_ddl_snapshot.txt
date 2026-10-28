@@ -61,6 +61,7 @@ CREATE TABLE leads (
 	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
 	row_version INTEGER NOT NULL DEFAULT '1', 
 	PRIMARY KEY (lead_id), 
+	CONSTRAINT ck_leads_stage CHECK (stage IN ('NEW', 'CONTACTED', 'ENGAGED', 'SQL', 'CONVERTED', 'DISQUALIFIED')), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
 	FOREIGN KEY(prospect_id) REFERENCES prospects (prospect_id), 
 	FOREIGN KEY(account_id) REFERENCES accounts (account_id), 
@@ -180,6 +181,7 @@ CREATE TABLE opportunities (
 	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
 	row_version INTEGER NOT NULL DEFAULT '1', 
 	PRIMARY KEY (opportunity_id), 
+	CONSTRAINT ck_opportunities_status CHECK (status IN ('OPEN', 'WON', 'LOST')), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
 	FOREIGN KEY(account_id) REFERENCES accounts (account_id), 
 	FOREIGN KEY(prospect_id) REFERENCES prospects (prospect_id), 
@@ -245,6 +247,7 @@ col created_at DateTime null   default=None onupdate=None server_default='CURREN
 CREATE TABLE proposal_lines (
 	line_id VARCHAR(36) NOT NULL, 
 	proposal_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
 	product_id VARCHAR(36), 
 	description VARCHAR(500) NOT NULL, 
 	quantity NUMERIC(12, 2) NOT NULL, 
@@ -256,9 +259,11 @@ CREATE TABLE proposal_lines (
 	FOREIGN KEY(product_id) REFERENCES products (product_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 CREATE INDEX ix_proposal_lines_proposal_id ON proposal_lines (proposal_id)
+CREATE INDEX ix_proposal_lines_tenant_proposal ON proposal_lines (tenant_id, proposal_id)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
 col line_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
 col proposal_id String notnull  idx default=None onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col product_id String null   default=None onupdate=None server_default=None server_onupdate=None
 col description String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col quantity Numeric notnull   default='1' onupdate=None server_default=None server_onupdate=None
@@ -289,6 +294,8 @@ CREATE TABLE proposals (
 	approval_decided_at DATETIME(6), 
 	approval_reason VARCHAR(1000), 
 	PRIMARY KEY (proposal_id), 
+	CONSTRAINT ck_proposals_status CHECK (status IN ('DRAFT', 'SENT', 'UNDER_REVIEW', 'ACCEPTED', 'REJECTED')), 
+	CONSTRAINT ck_proposals_approval_status CHECK (approval_status IN ('NOT_REQUIRED', 'PENDING', 'APPROVED', 'REJECTED')), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
 	FOREIGN KEY(opportunity_id) REFERENCES opportunities (opportunity_id), 
 	FOREIGN KEY(created_by) REFERENCES users (user_id)

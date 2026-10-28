@@ -46,10 +46,13 @@ CREATE TABLE prospects (
 	row_version INTEGER NOT NULL DEFAULT '1', 
 	PRIMARY KEY (prospect_id), 
 	CONSTRAINT uq_tenant_email UNIQUE (tenant_id, email), 
+	CONSTRAINT uq_prospects_tenant_prospect UNIQUE (tenant_id, prospect_id), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
 	FOREIGN KEY(owner_id) REFERENCES users (user_id), 
 	FOREIGN KEY(account_id) REFERENCES accounts (account_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE FULLTEXT INDEX ft_prospects_search_text ON prospects (search_text) WITH PARSER ngram
 
 CREATE INDEX ix_prospects_account_id ON prospects (account_id)
 
@@ -355,6 +358,7 @@ CREATE TABLE import_jobs (
 	attempts INTEGER NOT NULL DEFAULT '0', 
 	claimed_by VARCHAR(100), 
 	PRIMARY KEY (import_id), 
+	CONSTRAINT ck_import_jobs_status CHECK (status IN ('UPLOADED', 'QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED')), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
 	FOREIGN KEY(created_by) REFERENCES users (user_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
@@ -427,8 +431,11 @@ CREATE TABLE contact_companies (
 	created_by VARCHAR(36), 
 	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
 	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	primary_prospect_id VARCHAR(36) GENERATED ALWAYS AS (CASE WHEN is_primary THEN prospect_id END) VIRTUAL, 
 	PRIMARY KEY (link_id), 
 	CONSTRAINT uq_contact_companies_contact_account UNIQUE (prospect_id, account_id), 
+	CONSTRAINT fk_contact_companies_tenant_prospect FOREIGN KEY(tenant_id, prospect_id) REFERENCES prospects (tenant_id, prospect_id) ON DELETE CASCADE, 
+	CONSTRAINT fk_contact_companies_tenant_account FOREIGN KEY(tenant_id, account_id) REFERENCES accounts (tenant_id, account_id) ON DELETE CASCADE, 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
 	FOREIGN KEY(prospect_id) REFERENCES prospects (prospect_id) ON DELETE CASCADE, 
 	FOREIGN KEY(account_id) REFERENCES accounts (account_id) ON DELETE CASCADE, 
@@ -438,6 +445,12 @@ CREATE TABLE contact_companies (
 CREATE INDEX ix_contact_companies_account ON contact_companies (account_id)
 
 CREATE INDEX ix_contact_companies_tenant ON contact_companies (tenant_id)
+
+CREATE INDEX ix_contact_companies_tenant_account ON contact_companies (tenant_id, account_id)
+
+CREATE INDEX ix_contact_companies_tenant_prospect ON contact_companies (tenant_id, prospect_id)
+
+CREATE UNIQUE INDEX ux_contact_companies_one_primary ON contact_companies (primary_prospect_id)
 
 contact_companies.link_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
 
@@ -456,6 +469,8 @@ contact_companies.created_by: type=String(length=36) nullable=True pk=False inde
 contact_companies.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
 
 contact_companies.updated_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=CURRENT_TIMESTAMP(6) server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+contact_companies.primary_prospect_id: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=Computed(CASE WHEN is_primary THEN prospect_id END, persisted=False) server_onupdate=Computed(CASE WHEN is_primary THEN prospect_id END, persisted=False) computed=True
 
 CREATE TABLE note_mentions (
 	mention_id VARCHAR(36) NOT NULL, 
@@ -559,6 +574,9 @@ CREATE TABLE contact_field_definitions (
 	sort_order INTEGER, 
 	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
 	object_type VARCHAR(20) NOT NULL DEFAULT 'CONTACT', 
+	is_active BOOL NOT NULL DEFAULT '1', 
+	is_system BOOL NOT NULL DEFAULT '0', 
+	max_length INTEGER, 
 	PRIMARY KEY (field_id), 
 	CONSTRAINT uq_contact_field_key UNIQUE (tenant_id, field_key), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
@@ -585,3 +603,9 @@ contact_field_definitions.sort_order: type=Integer() nullable=True pk=False inde
 contact_field_definitions.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
 
 contact_field_definitions.object_type: type=String(length=20) nullable=False pk=False index=None unique=None autoincrement='auto' default='CONTACT' onupdate=None server_default=CONTACT server_onupdate=None computed=False
+
+contact_field_definitions.is_active: type=Boolean() nullable=False pk=False index=None unique=None autoincrement='auto' default=True onupdate=None server_default=1 server_onupdate=None computed=False
+
+contact_field_definitions.is_system: type=Boolean() nullable=False pk=False index=None unique=None autoincrement='auto' default=False onupdate=None server_default=0 server_onupdate=None computed=False
+
+contact_field_definitions.max_length: type=Integer() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False

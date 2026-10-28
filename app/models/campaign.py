@@ -3,15 +3,16 @@
 Campaign models including state events and prospect enrollments.
 """
 
-import uuid
 from datetime import date, datetime, time
 from typing import Optional
 
-from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Integer, String, Text, Time, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Index, Integer, String, Text, Time, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.models.status_checks import status_check
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class Campaign(Base):
@@ -20,7 +21,7 @@ class Campaign(Base):
     """
     __tablename__ = "campaigns"
 
-    campaign_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    campaign_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
 
     campaign_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -100,6 +101,7 @@ class Campaign(Base):
     inboxes = relationship("SendingInbox", secondary="campaign_inboxes", back_populates="campaigns")
 
     __table_args__ = (
+        status_check("campaigns", "status"),  # D5, 0029_status_checks
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
@@ -113,8 +115,10 @@ class CampaignStateEvent(Base):
     """
     __tablename__ = "campaign_state_events"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     campaign_id: Mapped[str] = mapped_column(String(36), ForeignKey("campaigns.campaign_id"), nullable=False)
+    # The campaign's tenant (D3, 0028_child_tenant_ids); filled from the campaign by app/models/tenant_fill.py
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
 
     from_state: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     to_state: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -126,6 +130,7 @@ class CampaignStateEvent(Base):
     campaign = relationship("Campaign", back_populates="state_events")
 
     __table_args__ = (
+        Index("ix_campaign_state_events_tenant", "tenant_id", "campaign_id", "created_at"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
@@ -140,9 +145,11 @@ class CampaignProspect(Base):
     """
     __tablename__ = "campaign_prospects"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     campaign_id: Mapped[str] = mapped_column(String(36), ForeignKey("campaigns.campaign_id"), nullable=False)
     prospect_id: Mapped[str] = mapped_column(String(36), ForeignKey("prospects.prospect_id"), nullable=False)
+    # The campaign's tenant (D3, 0028_child_tenant_ids); filled from the campaign by app/models/tenant_fill.py
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
 
     current_step: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=1)
     next_scheduled_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
@@ -161,6 +168,8 @@ class CampaignProspect(Base):
     __table_args__ = (
         UniqueConstraint("campaign_id", "prospect_id", name="uq_campaign_prospect"),
         CheckConstraint("current_step BETWEEN 1 AND 7", name="ck_step_range"),
+        Index("ix_campaign_prospects_tenant_prospect", "tenant_id", "prospect_id"),
+        status_check("campaign_prospects", "status"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

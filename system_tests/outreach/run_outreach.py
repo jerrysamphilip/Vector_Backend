@@ -954,9 +954,9 @@ def setup_scheduler_cases():
     out["supp"] = msg(cid, pids["sch-supp"])[0]
     # duplicate: the same step to the same address was already sent by another row
     orig = msg(cid, pids["sch-dup"])[0]
-    sql(f"INSERT INTO email_messages (message_id, campaign_id, prospect_id, sequence_id, inbox_id, from_email, to_email, "
-        f"subject, body_text, status, scheduled_at, sent_at, direction, template_id, max_retries, retry_count) "
-        f"SELECT UUID(), campaign_id, prospect_id, sequence_id, inbox_id, from_email, to_email, subject, body_text, 'SENT', "
+    sql(f"INSERT INTO email_messages (message_id, campaign_id, prospect_id, tenant_id, sequence_id, inbox_id, from_email, "
+        f"to_email, subject, body_text, status, scheduled_at, sent_at, direction, template_id, max_retries, retry_count) "
+        f"SELECT UUID(), campaign_id, prospect_id, tenant_id, sequence_id, inbox_id, from_email, to_email, subject, body_text, 'SENT', "
         f"scheduled_at, UTC_TIMESTAMP(), 'OUTBOUND', template_id, max_retries, 0 FROM email_messages WHERE message_id={q(orig)}")
     out["dup"] = orig
     out["ok"] = msg(cid, pids["sch-ok"])[0]

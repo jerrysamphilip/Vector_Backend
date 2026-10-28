@@ -3,7 +3,6 @@
 User model with role-based access control and authentication.
 """
 
-import uuid
 from datetime import datetime
 from typing import Any, Optional
 
@@ -15,7 +14,9 @@ from sqlalchemy.sql import expression
 
 from app.core.encrypted_type import EncryptedString
 from app.models.base import Base
+from app.models.status_checks import status_check
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 # users.active_email (migration 0019 keeps its own literal copy)
 ACTIVE_EMAIL_EXPRESSION = "CASE WHEN status IN ('ACTIVE','INVITED') THEN email ELSE NULL END"
@@ -34,7 +35,7 @@ class User(Base):
     """
     __tablename__ = "users"
 
-    user_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False, default=new_id)
     # NULL for PLATFORM_ADMIN (lives outside any tenant)
     tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=True)
 
@@ -95,6 +96,7 @@ class User(Base):
     owned_groups = relationship("CampaignGroup", back_populates="owner", lazy="dynamic")
 
     __table_args__ = (
+        status_check("users", "status"),  # D5, 0029_status_checks
         UniqueConstraint("tenant_id", "email", name="uq_user_tenant_email"),
         Index("uq_users_active_email", "active_email", unique=True),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},

@@ -213,9 +213,9 @@ def send_now():
     tpl = scalar(f"SELECT template_id FROM email_templates WHERE campaign_id={q(cid)} LIMIT 1")
     # Unsubscribed contacts: every message is stopped by the send-time guard, so nothing reaches SES
     pids = [mk_contact(OWNER, f"sn{i}", consent_status="UNSUBSCRIBED") for i in range(30)]
-    values = ",".join(f"({q(uuid.uuid4())}, {q(cid)}, {q(p)}, {q(seq)}, {q(tpl)}, 'OUTBOUND', 'QUEUED', "
+    values = ",".join(f"({q(uuid.uuid4())}, {q(cid)}, {q(p)}, {q(W.tenant_id)}, {q(seq)}, {q(tpl)}, 'OUTBOUND', 'QUEUED', "
                       f"{q(f'sn{i}.{rid}@bf-{rid}.example')}, 'BF', UTC_TIMESTAMP())" for i, p in enumerate(pids))
-    sql("INSERT INTO email_messages (message_id, campaign_id, prospect_id, sequence_id, template_id, direction, "
+    sql("INSERT INTO email_messages (message_id, campaign_id, prospect_id, tenant_id, sequence_id, template_id, direction, "
         f"status, to_email, subject, scheduled_at) VALUES {values}")
     sql(f"UPDATE campaigns SET status='ACTIVE' WHERE campaign_id={q(cid)}")
 

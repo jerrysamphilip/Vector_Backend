@@ -3,7 +3,6 @@
 Team invitation model for user onboarding.
 """
 
-import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -11,7 +10,9 @@ from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
+from app.models.status_checks import status_check
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class Invitation(Base):
@@ -21,7 +22,7 @@ class Invitation(Base):
     """
     __tablename__ = "invitations"
 
-    invitation_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    invitation_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     invited_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -32,6 +33,7 @@ class Invitation(Base):
     created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6)
 
     __table_args__ = (
+        status_check("invitations", "status"),  # D5, 0029_status_checks
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

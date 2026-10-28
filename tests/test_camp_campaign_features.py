@@ -258,8 +258,8 @@ def test_camp_enrollment_check_wizard_path(client, camp):
     owner = sql("SELECT user_id FROM users WHERE email = :e", e=camp["email"])
     sql("INSERT INTO prospect_lists (list_id, tenant_id, list_name, source_type, list_type, uploaded_by) "
         "VALUES (:l, :t, :n, 'MANUAL', 'STATIC', :u)", l=lid, t=camp["tenant_id"], n=f"camp {lid[:6]}", u=owner)
-    sql("INSERT INTO prospect_list_members (id, list_id, prospect_id) VALUES (:i, :l, :p)",
-        i=str(uuid.uuid4()), l=lid, p=pid)
+    sql("INSERT INTO prospect_list_members (id, list_id, prospect_id, tenant_id) VALUES (:i, :l, :p, :t)",
+        i=str(uuid.uuid4()), l=lid, p=pid, t=camp["tenant_id"])
     cid = _campaign(client, h, "Wizard check")
     r = client.post(f"/campaigns/{cid}/enrollments/checks", headers=h,
                     json={"path": "wizard", "list_id": lid, "exclude_personal_emails": False})

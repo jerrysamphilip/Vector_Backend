@@ -3,15 +3,15 @@
 AI Prompts, Email Templates, and Version History models.
 """
 
-import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id, short_id
 
 
 class AIPrompt(Base):
@@ -21,7 +21,7 @@ class AIPrompt(Base):
     """
     __tablename__ = "ai_prompts"
 
-    prompt_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    prompt_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     base_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     persona_rules: Mapped[Any] = mapped_column(JSON, nullable=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6)
@@ -34,7 +34,7 @@ class AIPrompt(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<AIPrompt {self.prompt_id[:8]}...>"
+        return f"<AIPrompt {short_id(self.prompt_id)}...>"
 
 
 class EmailTemplate(Base):
@@ -44,8 +44,10 @@ class EmailTemplate(Base):
     """
     __tablename__ = "email_templates"
 
-    template_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    template_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     campaign_id: Mapped[str] = mapped_column(String(36), ForeignKey("campaigns.campaign_id"), nullable=False)
+    # The campaign's tenant (D3, 0028_child_tenant_ids); filled from the campaign by app/models/tenant_fill.py
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
     sequence_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("email_sequences.sequence_id"),
                                                        nullable=True)
 
@@ -88,6 +90,7 @@ class EmailTemplate(Base):
     attachments = relationship("EmailAttachment", back_populates="template", cascade="all, delete-orphan")
 
     __table_args__ = (
+        Index("ix_email_templates_tenant_campaign", "tenant_id", "campaign_id"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
@@ -102,8 +105,10 @@ class EmailTemplateVersion(Base):
     """
     __tablename__ = "email_template_versions"
 
-    version_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    version_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     template_id: Mapped[str] = mapped_column(String(36), ForeignKey("email_templates.template_id"), nullable=False)
+    # The template's tenant (D3, 0028_child_tenant_ids); filled from the template by app/models/tenant_fill.py
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
 
     subject: Mapped[str] = mapped_column(Text, nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
@@ -118,6 +123,7 @@ class EmailTemplateVersion(Base):
     creator = relationship("User", back_populates="template_versions")
 
     __table_args__ = (
+        Index("ix_email_template_versions_tenant", "tenant_id", "template_id"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

@@ -4,7 +4,6 @@ Campaign Draft Model.
 Stores incomplete campaign creation state for resume functionality.
 """
 
-import uuid
 from datetime import datetime
 from typing import Any, Optional
 
@@ -13,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class CampaignDraft(Base):
@@ -22,7 +22,7 @@ class CampaignDraft(Base):
     """
     __tablename__ = "campaign_drafts"
 
-    draft_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    draft_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     user_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
 

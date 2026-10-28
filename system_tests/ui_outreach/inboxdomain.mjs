@@ -9,7 +9,7 @@ const p2 = await mkContact(ws, `lead2@cust${ws.rid}.example`, { first_name: 'Oma
 const mkConv = (pid, subj, unread, text) => {
   const id = crypto.randomUUID();
   sql(`INSERT INTO conversations (id,tenant_id,prospect_id,inbox_id,subject,status,is_unread,last_message_at,created_at,updated_at) VALUES (${q(id)},${q(ws.tenantId)},${q(pid)},${q(ib)},${q(subj)},'OPEN',${unread},NOW(),NOW(),NOW())`);
-  sql(`INSERT INTO email_messages (message_id,conversation_id,prospect_id,inbox_id,direction,status,subject,body_text,to_email,from_email,sent_at,scheduled_at,retry_count,max_retries) VALUES (UUID(),${q(id)},${q(pid)},${q(ib)},'INBOUND','RECEIVED',${q(subj)},${q(text)},'sales@${dom}','lead@cust.example',NOW(),NOW(),0,0)`);
+  sql(`INSERT INTO email_messages (message_id,conversation_id,prospect_id,tenant_id,inbox_id,direction,status,subject,body_text,to_email,from_email,sent_at,scheduled_at,retry_count,max_retries) VALUES (UUID(),${q(id)},${q(pid)},${q(ws.tenantId)},${q(ib)},'INBOUND','RECEIVED',${q(subj)},${q(text)},'sales@${dom}','lead@cust.example',NOW(),NOW(),0,0)`);
   return id;
 };
 const c1 = mkConv(p1, 'Re: Intro ' + ws.rid, 1, 'Sounds interesting, can we talk Tuesday?');

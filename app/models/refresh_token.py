@@ -3,7 +3,6 @@
 Refresh token model for JWT session management.
 """
 
-import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -12,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class RefreshToken(Base):
@@ -27,7 +27,7 @@ class RefreshToken(Base):
     """
     __tablename__ = "refresh_tokens"
 
-    token_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    token_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False, default=new_id)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     device_info: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

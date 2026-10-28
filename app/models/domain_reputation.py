@@ -8,10 +8,10 @@ from datetime import datetime
 from typing import Any, Optional
 from sqlalchemy import String, Integer, Boolean, Float, Text, ForeignKey, JSON, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-import uuid
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 class SendingDomain(Base):
     """
@@ -28,7 +28,7 @@ class SendingDomain(Base):
         Index("ix_sending_domains_domain_name", "domain_name"),
     )
 
-    domain_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), nullable=False)
+    domain_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id, nullable=False)
     tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=True)
     domain_name: Mapped[str] = mapped_column(String(255), nullable=False)
     
@@ -74,7 +74,7 @@ class DomainHealthSnapshot(Base):
     """
     __tablename__ = "domain_health_snapshots"
 
-    snapshot_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), nullable=False)
+    snapshot_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id, nullable=False)
     domain_id: Mapped[str] = mapped_column(String(36), ForeignKey("sending_domains.domain_id", ondelete="CASCADE"),
                        nullable=False, index=True)
     tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=True, index=True)
@@ -104,7 +104,7 @@ class ReputationAlert(Base):
     """
     __tablename__ = "reputation_alerts"
 
-    alert_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), nullable=False)
+    alert_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id, nullable=False)
     domain_id: Mapped[str] = mapped_column(String(36), ForeignKey("sending_domains.domain_id", ondelete="CASCADE"),
                        nullable=False, index=True)
     tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=True, index=True)

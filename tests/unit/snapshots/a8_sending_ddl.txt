@@ -25,6 +25,7 @@ CREATE TABLE users (
 	mfa_enabled_at DATETIME(6), 
 	mfa_last_step BIGINT, 
 	PRIMARY KEY (user_id), 
+	CONSTRAINT ck_users_status CHECK (status IN ('ACTIVE', 'INVITED', 'INACTIVE', 'SUSPENDED')), 
 	CONSTRAINT uq_user_tenant_email UNIQUE (tenant_id, email), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
 	UNIQUE (google_id), 
@@ -105,7 +106,8 @@ CREATE TABLE tenants (
 	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
 	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
 	require_mfa BOOL NOT NULL DEFAULT false, 
-	PRIMARY KEY (tenant_id)
+	PRIMARY KEY (tenant_id), 
+	CONSTRAINT ck_tenants_status CHECK (status IN ('ACTIVE', 'SUSPENDED', 'INACTIVE', 'DELETED'))
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 
 tenants kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
@@ -145,6 +147,7 @@ CREATE TABLE invitations (
 	expires_at DATETIME(6) NOT NULL, 
 	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
 	PRIMARY KEY (invitation_id), 
+	CONSTRAINT ck_invitations_status CHECK (status IN ('PENDING', 'ACCEPTED', 'EXPIRED', 'REVOKED')), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
 	FOREIGN KEY(invited_by) REFERENCES users (user_id), 
 	UNIQUE (token)

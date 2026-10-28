@@ -9,6 +9,7 @@ CREATE TABLE prospect_lists (
 	uploaded_by VARCHAR(36) NOT NULL, 
 	uploaded_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
 	PRIMARY KEY (list_id), 
+	CONSTRAINT uq_prospect_lists_tenant_list UNIQUE (tenant_id, list_id), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
 	FOREIGN KEY(uploaded_by) REFERENCES users (user_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
@@ -35,19 +36,28 @@ CREATE TABLE prospect_list_members (
 	id VARCHAR(36) NOT NULL, 
 	list_id VARCHAR(36) NOT NULL, 
 	prospect_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
 	is_new_prospect BOOL, 
 	added_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
 	notes TEXT, 
 	PRIMARY KEY (id), 
+	CONSTRAINT fk_prospect_list_members_tenant_list FOREIGN KEY(tenant_id, list_id) REFERENCES prospect_lists (tenant_id, list_id), 
+	CONSTRAINT fk_prospect_list_members_tenant_prospect FOREIGN KEY(tenant_id, prospect_id) REFERENCES prospects (tenant_id, prospect_id), 
 	FOREIGN KEY(list_id) REFERENCES prospect_lists (list_id), 
 	FOREIGN KEY(prospect_id) REFERENCES prospects (prospect_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE INDEX ix_prospect_list_members_tenant_list ON prospect_list_members (tenant_id, list_id)
+
+CREATE INDEX ix_prospect_list_members_tenant_prospect ON prospect_list_members (tenant_id, prospect_id)
 
 prospect_list_members.id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
 
 prospect_list_members.list_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
 
 prospect_list_members.prospect_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospect_list_members.tenant_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
 
 prospect_list_members.is_new_prospect: type=Boolean() nullable=True pk=False index=None unique=None autoincrement='auto' default=True onupdate=None server_default=None server_onupdate=None computed=False
 

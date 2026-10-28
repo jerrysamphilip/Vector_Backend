@@ -7,7 +7,6 @@ Google / Microsoft connections for calendar and email sync.
 
 Typed SQLAlchemy 2 declarations (``Mapped[]``); the DDL is pinned by tests/unit/test_a3_model_ddl.py.
 """
-import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Optional
@@ -18,10 +17,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.encrypted_type import EncryptedText
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 def _uuid():
-    return str(uuid.uuid4())
+    return new_id()
 
 
 class Notification(Base):
@@ -171,12 +171,18 @@ class ProposalLine(Base):
     line_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     proposal_id: Mapped[str] = mapped_column(String(36), ForeignKey("proposals.proposal_id"), nullable=False,
                                              index=True)
+    # The proposal's tenant (D3, 0028_child_tenant_ids); filled from the proposal by app/models/tenant_fill.py
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
     product_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("products.product_id"), nullable=True)
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=1)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False, default=0)
     discount_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        Index("ix_proposal_lines_tenant_proposal", "tenant_id", "proposal_id"),
+    )
 
 
 class UserConnection(Base):

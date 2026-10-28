@@ -3,7 +3,6 @@
 Tenant model for multi-tenant architecture.
 """
 
-import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -12,7 +11,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import expression
 
 from app.models.base import Base
+from app.models.status_checks import status_check
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class Tenant(Base):
@@ -22,7 +23,7 @@ class Tenant(Base):
     """
     __tablename__ = "tenants"
 
-    tenant_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False, default=new_id)
     tenant_name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="ACTIVE")  # ACTIVE / SUSPENDED / DELETED
     created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6)
@@ -39,6 +40,7 @@ class Tenant(Base):
     campaign_groups = relationship("CampaignGroup", back_populates="tenant", lazy="dynamic")
 
     __table_args__ = (
+        status_check("tenants", "status"),  # D5, 0029_status_checks
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

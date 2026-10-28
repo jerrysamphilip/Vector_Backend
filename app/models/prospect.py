@@ -4,7 +4,6 @@ Prospect and Global Unsubscribe models.
 GDPR compliant with consent tracking and anonymization support.
 """
 
-import uuid
 from datetime import datetime
 from typing import Any, Optional
 
@@ -13,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 SEARCH_TEXT_SQL = (
@@ -28,7 +28,7 @@ class Prospect(Base):
     """
     __tablename__ = "prospects"
 
-    prospect_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    prospect_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
 
     # Basic Info
@@ -104,7 +104,9 @@ class Prospect(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="prospects")
-    list_memberships = relationship("ProspectListMember", back_populates="prospect", lazy="dynamic")
+    list_memberships = relationship("ProspectListMember", back_populates="prospect", lazy="dynamic",
+                                    foreign_keys="ProspectListMember.prospect_id",
+                                    primaryjoin="Prospect.prospect_id == ProspectListMember.prospect_id")
     campaign_enrollments = relationship("CampaignProspect", back_populates="prospect", lazy="dynamic")
     email_messages = relationship("EmailMessage", back_populates="prospect", lazy="dynamic")
     owner = relationship("User", foreign_keys=[owner_id])
@@ -113,6 +115,8 @@ class Prospect(Base):
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "email", name="uq_tenant_email"),
+        # Target of the (tenant_id, prospect_id) foreign keys of the contact's child rows (C-22, 0028_child_tenant_ids)
+        UniqueConstraint("tenant_id", "prospect_id", name="uq_prospects_tenant_prospect"),
         Index("ix_prospects_owner_id", "owner_id"),
         Index("ix_prospects_account_id", "account_id"),
         Index("ix_prospects_deleted_at", "deleted_at"),
@@ -122,6 +126,9 @@ class Prospect(Base):
         Index("ix_prospects_tenant_live_score", "tenant_id", "deleted_at", "score"),
         Index("ix_prospects_tenant_live_grade", "tenant_id", "deleted_at", "score_grade"),
         Index("ix_prospects_scored_at", "scored_at"),
+        # Contact search pre-filter (D7, 0030): ngram tokens of ngram_token_size (server default 2), built
+        # without stopwords (app.core.database.MYSQL_SESSION_INIT_COMMAND); see app/repositories/contacts.py
+        Index("ft_prospects_search_text", "search_text", mysql_prefix="FULLTEXT", mysql_with_parser="ngram"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

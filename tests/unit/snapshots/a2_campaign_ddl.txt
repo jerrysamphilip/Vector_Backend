@@ -7,7 +7,7 @@ CREATE TABLE ai_prompts (
 	PRIMARY KEY (prompt_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col prompt_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col prompt_id String notnull pk  default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col base_prompt Text notnull   default=None onupdate=None server_default=None server_onupdate=None
 col persona_rules JSON null   default=None onupdate=None server_default=None server_onupdate=None
 col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
@@ -26,7 +26,7 @@ CREATE TABLE campaign_drafts (
 CREATE INDEX ix_campaign_drafts_tenant_id ON campaign_drafts (tenant_id)
 CREATE INDEX ix_campaign_drafts_user_id ON campaign_drafts (user_id)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col draft_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col draft_id String notnull pk  default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col tenant_id String notnull  idx default=None onupdate=None server_default=None server_onupdate=None
 col user_id String notnull  idx default=None onupdate=None server_default=None server_onupdate=None
 col draft_name String null   default=None onupdate=None server_default=None server_onupdate=None
@@ -39,6 +39,7 @@ CREATE TABLE campaign_prospects (
 	id VARCHAR(36) NOT NULL, 
 	campaign_id VARCHAR(36) NOT NULL, 
 	prospect_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
 	current_step INTEGER, 
 	next_scheduled_at DATETIME(6), 
 	status VARCHAR(50), 
@@ -47,13 +48,16 @@ CREATE TABLE campaign_prospects (
 	PRIMARY KEY (id), 
 	CONSTRAINT uq_campaign_prospect UNIQUE (campaign_id, prospect_id), 
 	CONSTRAINT ck_step_range CHECK (current_step BETWEEN 1 AND 7), 
+	CONSTRAINT ck_campaign_prospects_status CHECK (status IN ('ACTIVE', 'OPENED', 'COMPLETED', 'PAUSED', 'RECONNECT_ELIGIBLE', 'BOUNCED', 'REPLIED', 'UNSUBSCRIBED')), 
 	FOREIGN KEY(campaign_id) REFERENCES campaigns (campaign_id), 
 	FOREIGN KEY(prospect_id) REFERENCES prospects (prospect_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_campaign_prospects_tenant_prospect ON campaign_prospects (tenant_id, prospect_id)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col id String notnull pk  default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col campaign_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col prospect_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col current_step Integer null   default='1' onupdate=None server_default=None server_onupdate=None
 col next_scheduled_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
 col status String null   default='ACTIVE' onupdate=None server_default=None server_onupdate=None
@@ -63,6 +67,7 @@ col enrolled_at DateTime null   default=None onupdate=None server_default='CURRE
 CREATE TABLE campaign_state_events (
 	id VARCHAR(36) NOT NULL, 
 	campaign_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
 	from_state VARCHAR(50), 
 	to_state VARCHAR(50) NOT NULL, 
 	reason TEXT, 
@@ -70,9 +75,11 @@ CREATE TABLE campaign_state_events (
 	PRIMARY KEY (id), 
 	FOREIGN KEY(campaign_id) REFERENCES campaigns (campaign_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_campaign_state_events_tenant ON campaign_state_events (tenant_id, campaign_id, created_at)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col id String notnull pk  default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col campaign_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col from_state String null   default=None onupdate=None server_default=None server_onupdate=None
 col to_state String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col reason Text null   default=None onupdate=None server_default=None server_onupdate=None
@@ -109,13 +116,14 @@ CREATE TABLE campaigns (
 	row_version INTEGER NOT NULL DEFAULT '1', 
 	source_campaign_id VARCHAR(36), 
 	PRIMARY KEY (campaign_id), 
+	CONSTRAINT ck_campaigns_status CHECK (status IN ('DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED')), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
 	FOREIGN KEY(created_by) REFERENCES users (user_id), 
 	FOREIGN KEY(source_campaign_id) REFERENCES campaigns (campaign_id) ON DELETE SET NULL
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 CREATE INDEX ix_campaigns_source_campaign_id ON campaigns (source_campaign_id)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col campaign_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col campaign_id String notnull pk  default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col campaign_name String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col campaign_description Text null   default=None onupdate=None server_default=None server_onupdate=None
@@ -148,6 +156,7 @@ col source_campaign_id String null  idx default=None onupdate=None server_defaul
 CREATE TABLE email_sequences (
 	sequence_id VARCHAR(36) NOT NULL, 
 	campaign_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
 	step_number INTEGER NOT NULL, 
 	wait_days INTEGER, 
 	stop_on_reply BOOL, 
@@ -159,9 +168,11 @@ CREATE TABLE email_sequences (
 	CONSTRAINT ck_sequence_step_range CHECK (step_number BETWEEN 1 AND 7), 
 	FOREIGN KEY(campaign_id) REFERENCES campaigns (campaign_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_email_sequences_tenant_campaign ON email_sequences (tenant_id, campaign_id, step_number)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col sequence_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col sequence_id String notnull pk  default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col campaign_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col step_number Integer notnull   default=None onupdate=None server_default=None server_onupdate=None
 col wait_days Integer null   default='0' onupdate=None server_default=None server_onupdate=None
 col stop_on_reply Boolean null   default='True' onupdate=None server_default=None server_onupdate=None
@@ -194,7 +205,7 @@ CREATE TABLE email_subject_variants (
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 CREATE INDEX ix_email_subject_variants_campaign_id ON email_subject_variants (campaign_id)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col variant_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col variant_id String notnull pk  default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col campaign_id String notnull  idx default=None onupdate=None server_default=None server_onupdate=None
 col sequence_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
@@ -211,6 +222,7 @@ col updated_at DateTime null   default=None onupdate='CURRENT_TIMESTAMP(6)' serv
 CREATE TABLE email_template_versions (
 	version_id VARCHAR(36) NOT NULL, 
 	template_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
 	subject TEXT NOT NULL, 
 	body TEXT NOT NULL, 
 	version_number INTEGER NOT NULL, 
@@ -221,9 +233,11 @@ CREATE TABLE email_template_versions (
 	FOREIGN KEY(template_id) REFERENCES email_templates (template_id), 
 	FOREIGN KEY(created_by) REFERENCES users (user_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_email_template_versions_tenant ON email_template_versions (tenant_id, template_id)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col version_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col version_id String notnull pk  default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col template_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col subject Text notnull   default=None onupdate=None server_default=None server_onupdate=None
 col body Text notnull   default=None onupdate=None server_default=None server_onupdate=None
 col version_number Integer notnull   default=None onupdate=None server_default=None server_onupdate=None
@@ -234,6 +248,7 @@ col is_active Boolean null   default='True' onupdate=None server_default=None se
 CREATE TABLE email_templates (
 	template_id VARCHAR(36) NOT NULL, 
 	campaign_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
 	sequence_id VARCHAR(36), 
 	designation VARCHAR(150), 
 	subject TEXT NOT NULL, 
@@ -258,9 +273,11 @@ CREATE TABLE email_templates (
 	FOREIGN KEY(ai_prompt_id) REFERENCES ai_prompts (prompt_id), 
 	FOREIGN KEY(approved_by) REFERENCES users (user_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_email_templates_tenant_campaign ON email_templates (tenant_id, campaign_id)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col template_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col template_id String notnull pk  default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col campaign_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col sequence_id String null   default=None onupdate=None server_default=None server_onupdate=None
 col designation String null   default=None onupdate=None server_default=None server_onupdate=None
 col subject Text notnull   default=None onupdate=None server_default=None server_onupdate=None

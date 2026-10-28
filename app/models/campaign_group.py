@@ -3,12 +3,12 @@
 Campaign Group models for grouping campaigns with shared limits.
 """
 
-from sqlalchemy import Column, String, Integer, ForeignKey
+from sqlalchemy import Column, String, Integer, ForeignKey, Index
 from sqlalchemy.orm import relationship
-import uuid
 
 from app.models import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class CampaignGroup(Base):
@@ -17,7 +17,7 @@ class CampaignGroup(Base):
     """
     __tablename__ = "campaign_groups"
 
-    group_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    group_id = Column(String(36), primary_key=True, default=new_id)
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     
     group_name = Column(String(255), nullable=False)
@@ -48,8 +48,10 @@ class CampaignGroupMember(Base):
     """
     __tablename__ = "campaign_group_members"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String(36), primary_key=True, default=new_id)
     group_id = Column(String(36), ForeignKey("campaign_groups.group_id"), nullable=False)
+    # The group's tenant (D3, 0028_child_tenant_ids); filled from the group by app/models/tenant_fill.py
+    tenant_id = Column(String(36), nullable=False)
     campaign_id = Column(String(36), ForeignKey("campaigns.campaign_id"), nullable=False)
 
     # Relationships
@@ -57,6 +59,7 @@ class CampaignGroupMember(Base):
     campaign = relationship("Campaign", back_populates="group_memberships")
 
     __table_args__ = (
+        Index("ix_campaign_group_members_tenant_group", "tenant_id", "group_id"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

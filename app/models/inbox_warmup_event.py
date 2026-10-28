@@ -4,19 +4,19 @@ Warmup activity event log per inbox.
 
 from datetime import datetime
 from typing import Any, Optional
-import uuid
 
 from sqlalchemy import String, ForeignKey, JSON, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class InboxWarmupEvent(Base):
     __tablename__ = "inbox_warmup_events"
 
-    event_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id, nullable=False)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     inbox_id: Mapped[str] = mapped_column(String(36), ForeignKey("sending_inboxes.inbox_id"), nullable=False)
     peer_inbox_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("sending_inboxes.inbox_id"), nullable=True)

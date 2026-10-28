@@ -5,7 +5,6 @@ prospects.custom_fields, COMPANY values in accounts.custom_fields (C-16, migrati
 both are JSON objects keyed by field_key. Keys are unique per tenant across both object types.
 """
 
-import uuid
 from datetime import datetime
 from typing import Any, Optional
 
@@ -14,15 +13,17 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
-FIELD_TYPES = ("TEXT", "NUMBER", "DATE", "SELECT", "RADIO", "MULTI_CHECKBOX", "PHONE", "URL")
+FIELD_TYPES = ("TEXT", "NUMBER", "DATE", "SELECT", "RADIO", "MULTI_CHECKBOX", "PHONE", "URL",
+               "BOOLEAN", "LONG_TEXT")  # BOOLEAN, LONG_TEXT: C-17
 OBJECT_TYPES = ("CONTACT", "COMPANY")
 
 
 class ContactFieldDefinition(Base):
     __tablename__ = "contact_field_definitions"
 
-    field_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    field_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
 
     field_key: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -37,6 +38,12 @@ class ContactFieldDefinition(Base):
 
     # CONTACT or COMPANY (C-16); rows created before 0024 are CONTACT
     object_type: Mapped[str] = mapped_column(String(20), nullable=False, default="CONTACT", server_default="CONTACT")
+
+    # C-17 (migration 0031_property_safety): deactivate instead of delete (values kept, still exported);
+    # system properties cannot be deactivated; optional character limit for TEXT / LONG_TEXT
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    max_length: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "field_key", name="uq_contact_field_key"),

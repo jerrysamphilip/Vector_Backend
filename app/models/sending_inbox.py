@@ -8,10 +8,10 @@ from typing import Optional
 from sqlalchemy import String, Boolean, Integer, ForeignKey, Float, Text
 from app.core.encrypted_type import EncryptedString, EncryptedText
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-import uuid
 
 from app.models.base import Base
 from app.models.types import UtcDateTime
+from app.core.ids import new_id
 
 
 class SendingInbox(Base):
@@ -21,7 +21,7 @@ class SendingInbox(Base):
     """
     __tablename__ = "sending_inboxes"
 
-    inbox_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), nullable=False)
+    inbox_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id, nullable=False)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     
     email_address: Mapped[str] = mapped_column(String(255), nullable=False)

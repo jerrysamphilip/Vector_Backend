@@ -160,10 +160,12 @@ def test_send_preschedule_without_inbox_never_uses_platform_address(client, tena
         db.add(EmailMessage(campaign_id=cid, prospect_id=pid, sequence_id=None, direction="OUTBOUND",
                             status="CANCELLED", to_email="x@y.example.com"))  # unrelated row
         db.commit()
-    sql("INSERT INTO email_templates (template_id, campaign_id, sequence_id, subject, body) "
-        "VALUES (:t, :c, :s, 'Hi', 'Hello')", t=str(uuid.uuid4()), c=cid, s=seq)
-    sql("INSERT INTO campaign_prospects (id, campaign_id, prospect_id, current_step, status) "
-        "VALUES (:i, :c, :p, 1, 'ACTIVE')", i=str(uuid.uuid4()), c=cid, p=pid)
+    sql("INSERT INTO email_templates (template_id, campaign_id, tenant_id, sequence_id, subject, body) "
+        "SELECT :t, campaign_id, tenant_id, :s, 'Hi', 'Hello' FROM campaigns WHERE campaign_id = :c",
+        t=str(uuid.uuid4()), c=cid, s=seq)
+    sql("INSERT INTO campaign_prospects (id, campaign_id, prospect_id, tenant_id, current_step, status) "
+        "SELECT :i, campaign_id, :p, tenant_id, 1, 'ACTIVE' FROM campaigns WHERE campaign_id = :c",
+        i=str(uuid.uuid4()), c=cid, p=pid)
     with SessionLocal() as db:
         assert CampaignEmailService(db)._preschedule_all_emails(cid) == 1
         db.commit()
@@ -340,8 +342,9 @@ def test_send_step_flags_decide_stop_on_reply(client, tenant_sd, monkeypatch):
     pid = _contact(client, h, "flags")
     keeps_going = _step(cid, 1, stop_on_reply=False)
     stops = _step(cid, 2, stop_on_reply=True)
-    sql("INSERT INTO campaign_prospects (id, campaign_id, prospect_id, current_step, status) "
-        "VALUES (:i, :c, :p, 1, 'REPLIED')", i=str(uuid.uuid4()), c=cid, p=pid)
+    sql("INSERT INTO campaign_prospects (id, campaign_id, prospect_id, tenant_id, current_step, status) "
+        "SELECT :i, campaign_id, :p, tenant_id, 1, 'REPLIED' FROM campaigns WHERE campaign_id = :c",
+        i=str(uuid.uuid4()), c=cid, p=pid)
     m1 = _message(cid, pid, keeps_going, inbox_id=inbox)
     m2 = _message(cid, pid, stops, inbox_id=inbox)
     _run(m1)

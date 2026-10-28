@@ -717,8 +717,8 @@ def _():
     cid, mid = str(uuid.uuid4()), str(uuid.uuid4())
     sql(f"INSERT INTO campaigns (campaign_id, tenant_id, campaign_name, created_by, status, auto_paused, created_at) "
         f"VALUES ('{cid}','{A.tenant_id}','Reply camp {RID}','{U['ag1a']['user_id']}','DRAFT',0,UTC_TIMESTAMP())")
-    sql(f"INSERT INTO email_messages (message_id, prospect_id, to_email, campaign_id, direction, status, subject, body_text, sent_at) "
-        f"VALUES ('{mid}','{c['prospect_id']}','me@sp.example','{cid}','INBOUND','RECEIVED','Re: hello',"
+    sql(f"INSERT INTO email_messages (message_id, prospect_id, tenant_id, to_email, campaign_id, direction, status, subject, "
+        f"body_text, sent_at) VALUES ('{mid}','{c['prospect_id']}','{A.tenant_id}','me@sp.example','{cid}','INBOUND','RECEIVED','Re: hello',"
         f"'Yes, interested - call me next week', UTC_TIMESTAMP())")
     peer = req("POST", "/leads/from-message", {"message_id": mid}, U["ag1b"]["token"])[0]
     s, b = req("POST", "/leads/from-message", {"message_id": mid}, t)
@@ -1063,8 +1063,8 @@ def seed_campaign(creator_key, status="DRAFT"):
     sql(f"INSERT INTO campaigns (campaign_id, tenant_id, campaign_name, created_by, status, auto_paused, campaign_timezone,"
         f" respect_timezone, send_window_start, send_window_end, created_at) VALUES ('{cid}','{A.tenant_id}',"
         f"'DL camp {creator_key} {RID} {cid[:4]}','{U[creator_key]['user_id']}','{status}',0,'UTC',0,'00:00:00','23:59:59',UTC_TIMESTAMP())")
-    sql(f"INSERT INTO email_sequences (sequence_id, campaign_id, step_number, wait_days) VALUES "
-        f"('{s1}','{cid}',1,0),('{s2}','{cid}',2,2)")
+    sql(f"INSERT INTO email_sequences (sequence_id, campaign_id, tenant_id, step_number, wait_days) VALUES "
+        f"('{s1}','{cid}','{A.tenant_id}',1,0),('{s2}','{cid}','{A.tenant_id}',2,2)")
     return cid, s1, s2
 
 
@@ -1079,9 +1079,9 @@ def seed_prospects(owner_key, n, tag):
 
 
 def seed_msgs(prospect_ids, cid, seq, status="SENT", sent="UTC_TIMESTAMP()", extra_cols="", extra_vals=""):
-    rows = ",".join(f"('{uuid.uuid4()}','{p}','x@dl-sp.example','{cid}','{seq}','OUTBOUND','{status}',{sent}{extra_vals})"
-                    for p in prospect_ids)
-    sql("INSERT INTO email_messages (message_id, prospect_id, to_email, campaign_id, sequence_id, direction, status, sent_at"
+    rows = ",".join(f"('{uuid.uuid4()}','{p}','{A.tenant_id}','x@dl-sp.example','{cid}','{seq}','OUTBOUND','{status}',"
+                    f"{sent}{extra_vals})" for p in prospect_ids)
+    sql("INSERT INTO email_messages (message_id, prospect_id, tenant_id, to_email, campaign_id, sequence_id, direction, status, sent_at"
         f"{extra_cols}) VALUES {rows}")
 
 
@@ -1198,8 +1198,9 @@ def _():
     m_new, m_fu = str(uuid.uuid4()), str(uuid.uuid4())
     seed_msgs([fu_p], cid, s1, sent="UTC_TIMESTAMP() - INTERVAL 3 DAY")  # follow-up's first step went out earlier
     for mid, p, seq in ((m_new, new_p, s1), (m_fu, fu_p, s2)):
-        sql(f"INSERT INTO email_messages (message_id, prospect_id, to_email, campaign_id, sequence_id, direction, status, "
-            f"scheduled_at, subject, body_text, max_retries, retry_count) VALUES ('{mid}','{p}','nobody@dl-sp.invalid','{cid}','{seq}',"
+        sql(f"INSERT INTO email_messages (message_id, prospect_id, tenant_id, to_email, campaign_id, sequence_id, direction, status, "
+            f"scheduled_at, subject, body_text, max_retries, retry_count) VALUES ('{mid}','{p}','{A.tenant_id}','nobody@dl-sp.invalid',"
+            f"'{cid}','{seq}',"
             f"'OUTBOUND','QUEUED', UTC_TIMESTAMP() - INTERVAL 1 MINUTE, 'Hi', 'Hello', 0, 0)")
     try:
         row = lambda m: sql(f"SELECT CONCAT_WS('|', status, IFNULL(last_error_code,'-'), IFNULL(DATE(scheduled_at),'-'), "  # noqa: E731

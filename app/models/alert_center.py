@@ -2,7 +2,6 @@
 Models for tenant alert preferences and alert email dispatch history.
 """
 
-import uuid
 from sqlalchemy import (
     Boolean,
     Column,
@@ -14,6 +13,7 @@ from sqlalchemy import (
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class AlertPreference(Base):
@@ -26,7 +26,7 @@ class AlertPreference(Base):
 
     __tablename__ = "alert_preferences"
 
-    preference_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    preference_id = Column(String(36), primary_key=True, default=new_id)
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
 
     scope_type = Column(String(20), nullable=False, default="TENANT")
@@ -59,7 +59,7 @@ class AlertEmailDispatch(Base):
 
     __tablename__ = "alert_email_dispatches"
 
-    dispatch_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    dispatch_id = Column(String(36), primary_key=True, default=new_id)
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     alert_key = Column(String(255), nullable=False)
     recipient_email = Column(String(255), nullable=False)

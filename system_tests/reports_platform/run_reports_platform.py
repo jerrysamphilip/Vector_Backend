@@ -118,13 +118,13 @@ def seed():
     msg_ids = {}
     for i in range(1, 6):
         mid = sql("SELECT UUID()")
-        sql(f"INSERT INTO email_messages (message_id, campaign_id, prospect_id, to_email, direction, status, sent_at) "
-            f"VALUES ('{mid}', '{cid}', '{contacts[f'P{i}']}', 'p{i}-{ws.rid}@acme{i}.example', 'OUTBOUND', 'SENT', NOW())")
+        sql(f"INSERT INTO email_messages (message_id, campaign_id, prospect_id, tenant_id, to_email, direction, status, "
+            f"sent_at) VALUES ('{mid}', '{cid}', '{contacts[f'P{i}']}', '{ws.tenant_id}', 'p{i}-{ws.rid}@acme{i}.example', 'OUTBOUND', 'SENT', NOW())")
     for i in (1, 3):
         mid = sql("SELECT UUID()")
         msg_ids[f"P{i}"] = mid
-        sql(f"INSERT INTO email_messages (message_id, campaign_id, prospect_id, to_email, direction, status, sent_at) "
-            f"VALUES ('{mid}', '{cid}', '{contacts[f'P{i}']}', 'rep@systest.example', 'INBOUND', 'RECEIVED', NOW())")
+        sql(f"INSERT INTO email_messages (message_id, campaign_id, prospect_id, tenant_id, to_email, direction, status, "
+            f"sent_at) VALUES ('{mid}', '{cid}', '{contacts[f'P{i}']}', '{ws.tenant_id}', 'rep@systest.example', 'INBOUND', 'RECEIVED', NOW())")
     CTX["inbound"] = msg_ids
 
     # Leads L1..L7: (contact, owner, source, final stage)
@@ -1160,8 +1160,9 @@ def t_lead_from_reply():
     s, c = req("POST", "/contacts", {"email": f"p8-{CTX['ws'].rid}@acme8.example", "first_name": "Pat8",
                                      "last_name": "Reply", "owner_id": CTX["uid"]["ex3"]}, tok)
     mid = sql("SELECT UUID()")
-    sql(f"INSERT INTO email_messages (message_id, campaign_id, prospect_id, to_email, direction, status, sent_at) VALUES "
-        f"('{mid}', '{CTX['campaign_id']}', '{c['prospect_id']}', 'rep@systest.example', 'INBOUND', 'RECEIVED', NOW())")
+    sql(f"INSERT INTO email_messages (message_id, campaign_id, prospect_id, tenant_id, to_email, direction, status, "
+        f"sent_at) VALUES ('{mid}', '{CTX['campaign_id']}', '{c['prospect_id']}', '{CTX['ws'].tenant_id}', "
+        f"'rep@systest.example', 'INBOUND', 'RECEIVED', NOW())")
     s, lead = req("POST", "/leads/from-message", {"message_id": mid}, tok)
     s2, again = req("POST", "/leads/from-message", {"message_id": mid}, tok)
     R.check("RP-080", "One-click lead from a campaign reply: lead linked to contact, owner and campaign; duplicate refused",

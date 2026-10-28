@@ -8,7 +8,6 @@ Typed SQLAlchemy 2 model (ADR 0009, chunk A1): the DDL is pinned by tests/unit/t
 0024_company_properties); definitions are ContactFieldDefinition rows with object_type COMPANY.
 """
 
-import uuid
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Optional
@@ -18,6 +17,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 class Account(Base):
     __tablename__ = "accounts"
 
-    account_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    account_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False, index=True)
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -65,6 +65,8 @@ class Account(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "name", name="uq_account_tenant_name"),
         UniqueConstraint("tenant_id", "domain", name="uq_account_tenant_domain"),
+        # Target of contact_companies' (tenant_id, account_id) foreign key (C-22, 0028_child_tenant_ids)
+        UniqueConstraint("tenant_id", "account_id", name="uq_accounts_tenant_account"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

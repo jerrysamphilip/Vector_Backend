@@ -15,6 +15,7 @@ in a request, ``SqlAlchemyContactsUnitOfWork(SessionLocal)`` in the worker and s
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Callable, Collection, Iterable, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
@@ -59,7 +60,7 @@ from app.utils import sql_like
 __all__ = [
     "ContactRepository", "ContactStats", "ContactsAccess", "ContactsUnitOfWork", "Session",
     "SqlAlchemyContactRepository", "SqlAlchemyContactsUnitOfWork", "borrow", "apply_scope", "company_condition", "compile_filter", "contacts_uow",
-    "owner_condition", "search_condition", "session_of",
+    "owner_condition", "search_condition", "session_of", "fulltext_query", "FULLTEXT_TOKEN_SIZE",
 ]
 
 # app.repositories.duplicates registers the e-mail history flush listener (C-11) on import
@@ -148,8 +149,60 @@ def search_condition(q: str) -> ColumnElement[bool]:
     return _search_terms_condition(search_terms(q))
 
 
+# Contact search on the FULLTEXT ngram index (D7, migration 0030). MySQL's ngram parser cuts every run of
+# word characters into overlapping tokens of ngram_token_size characters (server default 2, which the index
+# assumes) and treats everything else (spaces, "@", ".", "-", "+", "'", ...) as a separator.
+FULLTEXT_TOKEN_SIZE = 2
+_WORD_CATEGORIES = frozenset({"Lu", "Ll", "Lt", "Lo", "Nd"})
+
+
+def _is_token_char(ch: str) -> bool:
+    """A character the ngram parser certainly indexes. Anything doubtful (marks, symbols, characters
+    outside the BMP) counts as a separator: splitting a term more finely only weakens the pre-filter."""
+    return ch == "_" or (ord(ch) < 0x10000 and unicodedata.category(ch) in _WORD_CATEGORIES)
+
+
+def _fulltext_fragments(term: str) -> list[str]:
+    """The maximal runs of token characters in ``term`` that are at least one token long."""
+    fragments, current = [], []
+    for ch in term + " ":
+        if _is_token_char(ch):
+            current.append(ch)
+            continue
+        if len(current) >= FULLTEXT_TOKEN_SIZE:
+            fragments.append("".join(current))
+        current = []
+    return list(dict.fromkeys(fragments))
+
+
+def fulltext_query(terms: Sequence[str]) -> Optional[str]:
+    """The BOOLEAN MODE query that every row matching ``LIKE '%term%'`` for one of ``terms`` also matches,
+    or None when a term has no fragment of at least FULLTEXT_TOKEN_SIZE characters (the LIKE scan then
+    stays the only condition).
+
+    Each fragment becomes a required quoted phrase (``+"smith"``: its tokens next to each other). A
+    substring match contains every fragment of the term inside one word of the row, so the MATCH never
+    drops a row the LIKE accepts; the LIKE still decides, keeping today's results exactly. Fragments hold
+    word characters only, so the boolean operators (``+ - < > ( ) ~ * " @``) typed by a user never reach
+    the query: they are separators. Several terms (text and phone digits) are alternatives: ``(...) (...)``."""
+    groups = []
+    for term in terms:
+        fragments = _fulltext_fragments(term)
+        if not fragments:
+            return None
+        groups.append(" ".join(f'+"{f}"' for f in fragments))
+    if not groups:
+        return None
+    return groups[0] if len(groups) == 1 else " ".join(f"({g})" for g in groups)
+
+
 def _search_terms_condition(terms: Sequence[str]) -> ColumnElement[bool]:
-    return or_(*[sql_like.like(Prospect.search_text, t) for t in terms])
+    like = or_(*[sql_like.like(Prospect.search_text, t) for t in terms])
+    query = fulltext_query(terms)
+    if query is None:  # shorter than one ngram token (e.g. "a", "j s"): the LIKE scan, as before
+        return like
+    # MATCH narrows the rows through ft_prospects_search_text; LIKE keeps the exact substring semantics
+    return and_(Prospect.search_text.match(query), like)
 
 
 def company_condition(session: Session, account_id: str) -> ColumnElement[bool]:

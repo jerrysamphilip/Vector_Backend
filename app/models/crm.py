@@ -4,15 +4,16 @@ CRM tables added for Phase 1 Contact Management (BRD v2.0, section 5.2):
 property change history, tasks, saved views and import jobs.
 """
 
-import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Computed, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
+from app.models.status_checks import status_check
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 MYSQL_OPTS = {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"}
 
@@ -21,7 +22,7 @@ class PropertyChange(Base):
     """Every change to a contact or company property (BR-CM-11)."""
     __tablename__ = "property_changes"
 
-    change_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    change_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     object_type: Mapped[str] = mapped_column(String(10), nullable=False)  # CONTACT / COMPANY
     object_id: Mapped[str] = mapped_column(String(36), nullable=False)
@@ -40,7 +41,7 @@ class CrmTask(Base):
     """To-dos on contacts and companies (BR-CM-15)."""
     __tablename__ = "crm_tasks"
 
-    task_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    task_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     prospect_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("prospects.prospect_id"), nullable=True, index=True)
     account_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("accounts.account_id"), nullable=True, index=True)
@@ -65,7 +66,7 @@ class SavedView(Base):
     """A saved table view: filters, columns and sort, personal or shared (BR-CM-19)."""
     __tablename__ = "saved_views"
 
-    view_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    view_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     object_type: Mapped[str] = mapped_column(String(10), nullable=False, default="CONTACT")  # CONTACT / COMPANY
     name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -84,7 +85,7 @@ class ImportJob(Base):
     """One CSV/XLSX import with its outcome and rejected rows (BR-CM-25..30)."""
     __tablename__ = "import_jobs"
 
-    import_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    import_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=False)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -116,9 +117,15 @@ class ImportJob(Base):
     claimed_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     __table_args__ = (
+        status_check("import_jobs", "status"),  # D5, 0029_status_checks
         Index("ix_import_jobs_status_heartbeat", "status", "heartbeat_at"),
         MYSQL_OPTS,
     )
+
+
+# The contact on its primary link row, NULL otherwise (C-22). Literal copy in
+# alembic/versions/0028_child_tenant_ids.py: keep the two identical.
+PRIMARY_KEY_SQL = "CASE WHEN is_primary THEN prospect_id END"
 
 
 class ContactCompany(Base):
@@ -129,7 +136,7 @@ class ContactCompany(Base):
     """
     __tablename__ = "contact_companies"
 
-    link_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    link_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     prospect_id: Mapped[str] = mapped_column(String(36), ForeignKey("prospects.prospect_id", ondelete="CASCADE"), nullable=False)
     account_id: Mapped[str] = mapped_column(String(36), ForeignKey("accounts.account_id", ondelete="CASCADE"), nullable=False)
@@ -138,11 +145,23 @@ class ContactCompany(Base):
     created_by: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
     updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, onupdate=NOW6, nullable=True)
+    # Generated (VIRTUAL) key behind ux_contact_companies_one_primary: the contact on its primary row, NULL on
+    # the others, so a contact has at most one primary company (C-22). Never written by the application.
+    primary_prospect_id: Mapped[Optional[str]] = mapped_column(
+        String(36), Computed(PRIMARY_KEY_SQL, persisted=False), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("prospect_id", "account_id", name="uq_contact_companies_contact_account"),
         Index("ix_contact_companies_account", "account_id"),
         Index("ix_contact_companies_tenant", "tenant_id"),
+        # Contact and company of the same tenant as the row (C-22, 0028_child_tenant_ids)
+        Index("ix_contact_companies_tenant_prospect", "tenant_id", "prospect_id"),
+        Index("ix_contact_companies_tenant_account", "tenant_id", "account_id"),
+        ForeignKeyConstraint(["tenant_id", "prospect_id"], ["prospects.tenant_id", "prospects.prospect_id"],
+                             name="fk_contact_companies_tenant_prospect", ondelete="CASCADE"),
+        ForeignKeyConstraint(["tenant_id", "account_id"], ["accounts.tenant_id", "accounts.account_id"],
+                             name="fk_contact_companies_tenant_account", ondelete="CASCADE"),
+        Index("ux_contact_companies_one_primary", "primary_prospect_id", unique=True),
         MYSQL_OPTS,
     )
 
@@ -151,7 +170,7 @@ class NoteMention(Base):
     """A colleague @mentioned in a note (BR-CM-16, CM-033); they get an in-app notification."""
     __tablename__ = "note_mentions"
 
-    mention_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    mention_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     activity_id: Mapped[str] = mapped_column(String(36), ForeignKey("contact_activities.activity_id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)

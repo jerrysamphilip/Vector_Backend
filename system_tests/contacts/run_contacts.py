@@ -492,12 +492,16 @@ def _():
     pid = c["prospect_id"]
     C.email_contact = c
     out_id, in_id = str(uuid.uuid4()), str(uuid.uuid4())
-    sql(f"INSERT INTO email_messages (message_id, prospect_id, to_email, from_email, direction, status, subject, sent_at, body_text) "
-        f"VALUES ('{out_id}','{pid}','{c['email']}','rep@{C.dom}','OUTBOUND','SENT','Hello from systest',NOW() - INTERVAL 2 HOUR,'Hi'),"
-        f"('{in_id}','{pid}','rep@{C.dom}','{c['email']}','INBOUND','RECEIVED','Re: Hello from systest',NOW() - INTERVAL 1 HOUR,'Thanks')")
-    sql(f"INSERT INTO email_events (event_id, message_id, event_type, event_time) VALUES "
-        f"('{uuid.uuid4()}','{out_id}',2,NOW() - INTERVAL 100 MINUTE),('{uuid.uuid4()}','{out_id}',2,NOW() - INTERVAL 99 MINUTE),"
-        f"('{uuid.uuid4()}','{out_id}',3,NOW() - INTERVAL 95 MINUTE)")
+    tenant = f"(SELECT tenant_id FROM prospects WHERE prospect_id='{pid}')"  # 0028: child rows carry tenant_id
+    sql(f"INSERT INTO email_messages (message_id, prospect_id, tenant_id, to_email, from_email, direction, status, subject, sent_at, "
+        f"body_text) VALUES ('{out_id}','{pid}',{tenant},'{c['email']}','rep@{C.dom}','OUTBOUND','SENT','Hello from systest',"
+        f"NOW() - INTERVAL 2 HOUR,'Hi'),"
+        f"('{in_id}','{pid}',{tenant},'rep@{C.dom}','{c['email']}','INBOUND','RECEIVED','Re: Hello from systest',"
+        f"NOW() - INTERVAL 1 HOUR,'Thanks')")
+    sql(f"INSERT INTO email_events (event_id, message_id, tenant_id, event_type, event_time) VALUES "
+        f"('{uuid.uuid4()}','{out_id}',{tenant},2,NOW() - INTERVAL 100 MINUTE),"
+        f"('{uuid.uuid4()}','{out_id}',{tenant},2,NOW() - INTERVAL 99 MINUTE),"
+        f"('{uuid.uuid4()}','{out_id}',{tenant},3,NOW() - INTERVAL 95 MINUTE)")
     C.email_out_id = out_id
     s, t = req("GET", f"/contacts/{pid}/timeline", None, C.owner)
     kinds = [i["kind"] for i in t["items"]]

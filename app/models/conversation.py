@@ -7,10 +7,10 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy import String, Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-import uuid
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id, short_id
 
 
 class Conversation(Base):
@@ -20,7 +20,7 @@ class Conversation(Base):
     """
     __tablename__ = "conversations"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), nullable=False)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id, nullable=False)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     prospect_id: Mapped[str] = mapped_column(String(36), ForeignKey("prospects.prospect_id"), nullable=False)
     inbox_id: Mapped[str] = mapped_column(String(36), ForeignKey("sending_inboxes.inbox_id"), nullable=False)
@@ -49,4 +49,4 @@ class Conversation(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Conversation {self.id[:8]}... status={self.status}>"
+        return f"<Conversation {short_id(self.id)}... status={self.status}>"

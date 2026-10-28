@@ -82,7 +82,7 @@ export async function run(rec, browser) {
   const a = ids('A'), b = ids('B');
   const inList = arr => arr.map(x => `'${x}'`).join(',');
   sql(`UPDATE email_messages SET status='SENT', sent_at=UTC_TIMESTAMP() WHERE message_id IN (${inList([...a.slice(0, MIN_SENDS - 1), ...b.slice(0, MIN_SENDS - 1)])})`);
-  sql(`INSERT INTO email_events (event_id, message_id, event_type, event_time) VALUES ${[...a.slice(0, 10), ...b.slice(0, 4)].map(m => `(UUID(), '${m}', 2, UTC_TIMESTAMP())`).join(',')}`);
+  sql(`INSERT INTO email_events (event_id, message_id, tenant_id, event_type, event_time) VALUES ${[...a.slice(0, 10), ...b.slice(0, 4)].map(m => `(UUID(), '${m}', (SELECT tenant_id FROM email_messages WHERE message_id='${m}'), 2, UTC_TIMESTAMP())`).join(',')}`);
   const card = () => p.getByTestId('variant-stats-step-1');
 
   await tc(rec, 'UIF-AB-05', 'Analytics tab: per-variant stats card; below 30 sends the card says no winner yet and offers no Promote', async () => {

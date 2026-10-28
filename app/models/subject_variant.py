@@ -8,7 +8,6 @@ and is sent with that variant's subject. Once the owner promotes the winner, the
 step's remaining unsent emails switch to the winner's subject.
 """
 
-import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -17,12 +16,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class EmailSubjectVariant(Base):
     __tablename__ = "email_subject_variants"
 
-    variant_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    variant_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     campaign_id: Mapped[str] = mapped_column(String(36), ForeignKey("campaigns.campaign_id", ondelete="CASCADE"),
                                              nullable=False, index=True)

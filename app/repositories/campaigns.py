@@ -39,6 +39,7 @@ from app.models.prospect_list import ProspectListMember
 from app.models.prospect_persona import ProspectPersona
 from app.models.sending_inbox import SendingInbox
 from app.models.subject_variant import EmailSubjectVariant
+from app.models.tenant_fill import fill_for_session
 from app.models.user import User
 from app.repositories.base import SqlAlchemyUnitOfWork, TenantId
 from app.repositories.campaigns_content import CampaignContentRepository
@@ -82,7 +83,8 @@ class CampaignsRepository:
             Campaign.campaign_id == campaign_id)).first() is not None
 
     def add(self, tenant_id: TenantId, entity: object) -> None:
-        if getattr(entity, "tenant_id", tenant_id) != tenant_id:
+        owner = getattr(entity, "tenant_id", None)  # None: a child row, filled from its parent on flush (D3)
+        if owner is not None and owner != tenant_id:
             raise ValueError("entity belongs to another tenant")
         self._s.add(entity)
 
@@ -195,7 +197,9 @@ class CampaignsRepository:
 
     def add_enrolments(self, enrolments: Sequence[CampaignProspect]) -> None:
         if enrolments:
-            self._s.bulk_save_objects(list(enrolments))
+            rows = list(enrolments)
+            fill_for_session(self._s, rows)  # bulk_save_objects skips the flush that fills tenant_id (D3)
+            self._s.bulk_save_objects(rows)
 
     def add_enrolment(self, enrolment: CampaignProspect) -> None:
         self._s.add(enrolment)

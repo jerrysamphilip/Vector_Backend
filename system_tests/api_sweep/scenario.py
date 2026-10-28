@@ -370,8 +370,8 @@ def create_phase(E, t):
         sql(f"INSERT INTO conversations (id,tenant_id,prospect_id,inbox_id,subject,status,is_unread,last_message_at,created_at,updated_at) "
             f"VALUES ({q(cv)},{q(t.tenant_id)},{q(ids['prospect_id'])},{q(ids['inbox_id'])},'Sweep thread','OPEN',1,NOW(),NOW(),NOW())")
         sql(f"UPDATE email_messages SET conversation_id={q(cv)} WHERE message_id={q(ids['message_id'])}")
-        sql(f"INSERT INTO email_messages (message_id,campaign_id,conversation_id,prospect_id,inbox_id,direction,status,subject,body_text,to_email,from_email,sent_at) "
-            f"SELECT {q(str(uuid.uuid4()))},campaign_id,{q(cv)},prospect_id,inbox_id,'INBOUND','SENT','Re: Sweep thread','Interested!',"
+        sql(f"INSERT INTO email_messages (message_id,campaign_id,conversation_id,prospect_id,tenant_id,inbox_id,direction,status,subject,body_text,to_email,from_email,sent_at) "
+            f"SELECT {q(str(uuid.uuid4()))},campaign_id,{q(cv)},prospect_id,tenant_id,inbox_id,'INBOUND','SENT','Re: Sweep thread','Interested!',"
             f"{q('sw1@sw' + mk + '.example.com')},to_email,NOW() FROM email_messages WHERE message_id={q(ids['message_id'])}")
         ids["conversation_id"] = cv
         inbound = sql(f"SELECT message_id FROM email_messages WHERE conversation_id={q(cv)} AND direction='INBOUND' LIMIT 1")

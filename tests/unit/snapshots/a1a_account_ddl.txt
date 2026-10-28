@@ -24,6 +24,7 @@ CREATE TABLE accounts (
 	PRIMARY KEY (account_id), 
 	CONSTRAINT uq_account_tenant_name UNIQUE (tenant_id, name), 
 	CONSTRAINT uq_account_tenant_domain UNIQUE (tenant_id, domain), 
+	CONSTRAINT uq_accounts_tenant_account UNIQUE (tenant_id, account_id), 
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
 	FOREIGN KEY(owner_id) REFERENCES users (user_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci

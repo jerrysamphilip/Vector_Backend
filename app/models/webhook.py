@@ -2,18 +2,19 @@
 Outbound webhooks (BRD v2.0 BR-SF-20): endpoints a workspace admin registers, and the
 delivery outbox the worker sends from (app/services/webhooks.py).
 """
-import uuid
 
 from sqlalchemy import JSON, Boolean, Column, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 
 from app.core.encrypted_type import EncryptedString
 from app.models.base import Base
+from app.models.status_checks import status_check
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 def _uuid():
-    return str(uuid.uuid4())
+    return new_id()
 
 
 class WebhookEndpoint(Base):
@@ -69,6 +70,7 @@ class WebhookDelivery(Base):
     created_at = Column(UtcDateTime, server_default=NOW6)
 
     __table_args__ = (
+        status_check("webhook_deliveries", "status"),  # D5, 0029_status_checks
         Index("ix_webhook_deliveries_due", "status", "next_attempt_at"),
         Index("ix_webhook_deliveries_endpoint", "endpoint_id", "created_at"),
         Index("ix_webhook_deliveries_tenant", "tenant_id", "created_at"),

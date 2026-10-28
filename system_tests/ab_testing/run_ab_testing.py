@@ -133,8 +133,9 @@ def mark_sent(ids):
 
 
 def events(ids, etype):
-    values = ",".join(f"(UUID(), {q(i)}, {etype}, UTC_TIMESTAMP())" for i in ids)
-    sql(f"INSERT INTO email_events (event_id, message_id, event_type, event_time) VALUES {values}")
+    values = ",".join(f"(UUID(), {q(i)}, (SELECT tenant_id FROM email_messages WHERE message_id={q(i)}), {etype}, "
+                      f"UTC_TIMESTAMP())" for i in ids)
+    sql(f"INSERT INTO email_events (event_id, message_id, tenant_id, event_type, event_time) VALUES {values}")
 
 
 mark_sent(a_ids[:MIN_SENDS - 1] + b_ids[:MIN_SENDS - 1])

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import short_id
 
 
 class ImapSyncState(Base):
@@ -33,4 +34,4 @@ class ImapSyncState(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<ImapSyncState {self.inbox_id[:8]} {self.folder} uid={self.last_uid}>"
+        return f"<ImapSyncState {short_id(self.inbox_id)} {self.folder} uid={self.last_uid}>"

@@ -14,7 +14,6 @@ No foreign keys on purpose: the ledger never blocks deleting or purging a compan
 each row still holds what the run wrote before changing it back.
 """
 
-import uuid
 from datetime import datetime
 from typing import Any, Optional
 
@@ -24,6 +23,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db_charset import MYSQL_CHARSET, MYSQL_COLLATION, MYSQL_ENGINE
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 # Explicit (as apply_table_defaults sets them) so the tables are right even before app.models imports this module
 MYSQL_OPTS = {"mysql_engine": MYSQL_ENGINE, "mysql_charset": MYSQL_CHARSET, "mysql_collate": MYSQL_COLLATION}
@@ -35,7 +35,7 @@ ITEM_KINDS = ("ACCOUNT_CREATED", "ACCOUNT_DOMAIN_SET", "CONTACT_LINKED", "CONTAC
 class AccountBackfillRun(Base):
     __tablename__ = "account_backfill_runs"
 
-    run_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    run_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
     started_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     mode: Mapped[str] = mapped_column(String(20), nullable=False, default="RUN", server_default="RUN")
@@ -53,7 +53,7 @@ class AccountBackfillRun(Base):
 class AccountBackfillItem(Base):
     __tablename__ = "account_backfill_items"
 
-    item_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    item_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     run_id: Mapped[str] = mapped_column(String(36), nullable=False)
     tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)

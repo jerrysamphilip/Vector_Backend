@@ -10,7 +10,6 @@ Typed SQLAlchemy 2 declarations (``Mapped[]``). The DDL is pinned by
 tests/unit/test_a3_model_ddl.py. The status vocabularies live in app/domain/sales.py
 and are re-exported here for existing importers.
 """
-import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Optional
@@ -21,14 +20,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.domain.sales import (CLIENT_TYPES, DEFAULT_SALES_STAGES, LEAD_STAGES, OPEN_LEAD_STAGES,
                               PROPOSAL_STATUSES, SQL_CRITERIA)
 from app.models.base import Base
+from app.models.status_checks import status_check
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 __all__ = ["CLIENT_TYPES", "DEFAULT_SALES_STAGES", "LEAD_STAGES", "OPEN_LEAD_STAGES", "PROPOSAL_STATUSES",
            "SQL_CRITERIA", "Lead", "Opportunity", "Proposal", "SalesStage"]
 
 
 def _uuid():
-    return str(uuid.uuid4())
+    return new_id()
 
 
 class Lead(Base):
@@ -61,6 +62,7 @@ class Lead(Base):
     row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     __table_args__ = (
+        status_check("leads", "stage"),  # D5, 0029_status_checks
         Index("ix_leads_tenant_stage", "tenant_id", "stage"),
         Index("ix_leads_owner", "owner_id"),
         Index("ix_leads_prospect", "prospect_id"),
@@ -123,6 +125,7 @@ class Opportunity(Base):
     row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     __table_args__ = (
+        status_check("opportunities", "status"),  # D5, 0029_status_checks
         Index("ix_opps_tenant_status_close", "tenant_id", "status", "close_date"),
         Index("ix_opps_owner", "owner_id"),
         Index("ix_opps_account", "account_id"),
@@ -163,6 +166,8 @@ class Proposal(Base):
     approval_reason: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
 
     __table_args__ = (
+        status_check("proposals", "status"),  # D5, 0029_status_checks
+        status_check("proposals", "approval_status"),
         Index("ix_proposals_tenant_status", "tenant_id", "status"),
         Index("ix_proposals_opp", "opportunity_id"),
         Index("ix_proposals_tenant_approval", "tenant_id", "approval_status"),

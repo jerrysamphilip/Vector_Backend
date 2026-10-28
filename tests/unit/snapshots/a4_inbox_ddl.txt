@@ -16,7 +16,7 @@ CREATE TABLE conversations (
 	FOREIGN KEY(inbox_id) REFERENCES sending_inboxes (inbox_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col id String notnull pk   default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col tenant_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
 col prospect_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
 col inbox_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
@@ -49,7 +49,7 @@ CREATE TABLE domain_health_snapshots (
 CREATE INDEX ix_domain_health_snapshots_domain_id ON domain_health_snapshots (domain_id)
 CREATE INDEX ix_domain_health_snapshots_tenant_id ON domain_health_snapshots (tenant_id)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col snapshot_id String notnull pk   default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col snapshot_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col domain_id String notnull  idx  default=None onupdate=None server_default=None server_onupdate=None
 col tenant_id String null  idx  default=None onupdate=None server_default=None server_onupdate=None
 col domain_name String notnull    default=None onupdate=None server_default=None server_onupdate=None
@@ -76,7 +76,7 @@ CREATE TABLE external_feedback_events (
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 CREATE INDEX ix_ext_events_tenant_domain ON external_feedback_events (tenant_id, domain_name)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col event_id String notnull pk   default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col event_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col tenant_id String null    default=None onupdate=None server_default=None server_onupdate=None
 col provider String notnull    default=None onupdate=None server_default=None server_onupdate=None
 col domain_name String notnull    default=None onupdate=None server_default=None server_onupdate=None
@@ -102,7 +102,7 @@ CREATE TABLE external_ingestion_runs (
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 CREATE INDEX ix_ext_runs_tenant_provider ON external_ingestion_runs (tenant_id, provider, started_at)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col run_id String notnull pk   default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col run_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col tenant_id String null    default=None onupdate=None server_default=None server_onupdate=None
 col provider String notnull    default=None onupdate=None server_default=None server_onupdate=None
 col domain_name String null    default=None onupdate=None server_default=None server_onupdate=None
@@ -132,7 +132,7 @@ CREATE TABLE external_reputation_metrics (
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 CREATE INDEX ix_ext_metrics_tenant_domain ON external_reputation_metrics (tenant_id, domain_name)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col metric_id String notnull pk   default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col metric_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col tenant_id String null    default=None onupdate=None server_default=None server_onupdate=None
 col provider String notnull    default=None onupdate=None server_default=None server_onupdate=None
 col domain_name String notnull    default=None onupdate=None server_default=None server_onupdate=None
@@ -178,7 +178,7 @@ CREATE TABLE inbox_warmup_events (
 	FOREIGN KEY(peer_inbox_id) REFERENCES sending_inboxes (inbox_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col event_id String notnull pk   default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col event_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col tenant_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
 col inbox_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
 col peer_inbox_id String null    default=None onupdate=None server_default=None server_onupdate=None
@@ -214,7 +214,7 @@ CREATE TABLE inbox_warmup_metrics (
 	FOREIGN KEY(inbox_id) REFERENCES sending_inboxes (inbox_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col metric_id String notnull pk   default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col metric_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col tenant_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
 col inbox_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
 col metric_date String notnull    default=None onupdate=None server_default=None server_onupdate=None
@@ -252,7 +252,7 @@ CREATE TABLE reputation_alerts (
 CREATE INDEX ix_reputation_alerts_domain_id ON reputation_alerts (domain_id)
 CREATE INDEX ix_reputation_alerts_tenant_id ON reputation_alerts (tenant_id)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col alert_id String notnull pk   default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col alert_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col domain_id String notnull  idx  default=None onupdate=None server_default=None server_onupdate=None
 col tenant_id String null  idx  default=None onupdate=None server_default=None server_onupdate=None
 col domain_name String notnull    default=None onupdate=None server_default=None server_onupdate=None
@@ -291,7 +291,7 @@ CREATE TABLE sending_domains (
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 CREATE INDEX ix_sending_domains_domain_name ON sending_domains (domain_name)
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col domain_id String notnull pk   default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col domain_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col tenant_id String null    default=None onupdate=None server_default=None server_onupdate=None
 col domain_name String notnull    default=None onupdate=None server_default=None server_onupdate=None
 col spf_status String null    default='UNKNOWN' onupdate=None server_default=None server_onupdate=None
@@ -366,7 +366,7 @@ CREATE TABLE sending_inboxes (
 	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
 kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
-col inbox_id String notnull pk   default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col inbox_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
 col tenant_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
 col email_address String notnull    default=None onupdate=None server_default=None server_onupdate=None
 col provider String null    default=None onupdate=None server_default=None server_onupdate=None

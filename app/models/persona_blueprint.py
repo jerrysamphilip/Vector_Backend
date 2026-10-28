@@ -6,10 +6,10 @@ Stores generation recipes (openers, value angles, CTAs) per persona type.
 
 from sqlalchemy import Column, String, Boolean, JSON
 from sqlalchemy.orm import relationship
-import uuid
 
 from app.models import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class PersonaBlueprint(Base):
@@ -19,7 +19,7 @@ class PersonaBlueprint(Base):
     """
     __tablename__ = "persona_blueprints"
 
-    blueprint_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    blueprint_id = Column(String(36), primary_key=True, default=new_id)
     persona_type = Column(String(100), unique=True, nullable=False)  # "MARKET_ACCESS", "OPERATIONS_PHARMACY"
     
     # Generation Recipe (JSON arrays of options)

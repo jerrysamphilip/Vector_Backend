@@ -3,7 +3,6 @@
 Email Message and Event models for the SMTP sequencing engine.
 """
 
-import uuid
 from datetime import datetime
 from typing import Any, Optional
 
@@ -11,7 +10,9 @@ from sqlalchemy import JSON, Boolean, Computed, Float, ForeignKey, Index, Intege
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.models.status_checks import status_check
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id, short_id
 
 # One email per campaign step per contact (item 19): non-NULL only for campaign OUTBOUND step mail
 # that is not CANCELLED, so inbound rows, manual replies, automation sends (no step) and cancelled
@@ -31,10 +32,12 @@ class EmailMessage(Base):
     """
     __tablename__ = "email_messages"
 
-    message_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    message_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False, default=new_id)
     campaign_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("campaigns.campaign_id"), nullable=True)
     conversation_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("conversations.id"), nullable=True)
     prospect_id: Mapped[str] = mapped_column(String(36), ForeignKey("prospects.prospect_id"), nullable=False)
+    # The contact's tenant (D3, 0028_child_tenant_ids); filled from the prospect by app/models/tenant_fill.py
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
     sequence_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("email_sequences.sequence_id"), nullable=True)
     inbox_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("sending_inboxes.inbox_id"), nullable=True)
     template_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("email_templates.template_id"), nullable=True)  # Link to AI template for performance tracking
@@ -116,11 +119,16 @@ class EmailMessage(Base):
         Index("ux_email_messages_step_key", "step_key", unique=True),
         # Replies still to classify (reply_classification job)
         Index("ix_email_messages_reply_pending", "direction", "reply_classified_at", "sent_at"),
+        # Tenant-wide send history / reports / inbox (D3)
+        Index("ix_email_messages_tenant_sent", "tenant_id", "direction", "sent_at"),
+        Index("ix_email_messages_tenant_prospect", "tenant_id", "prospect_id"),
+        status_check("email_messages", "status"),  # D5, 0029_status_checks
+        status_check("email_messages", "final_status"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
     def __repr__(self) -> str:
-        return f"<EmailMessage {self.message_id[:8]}... ({self.status})>"
+        return f"<EmailMessage {short_id(self.message_id)}... ({self.status})>"
 
 
 class EmailEvent(Base):
@@ -129,8 +137,10 @@ class EmailEvent(Base):
     """
     __tablename__ = "email_events"
 
-    event_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    event_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False, default=new_id)
     message_id: Mapped[str] = mapped_column(String(36), ForeignKey("email_messages.message_id"), nullable=False)
+    # The message's tenant (D3, 0028_child_tenant_ids); filled from the message by app/models/tenant_fill.py
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
 
     # Event Type: 1=SENT, 2=OPEN, 3=CLICK, 4=REPLY, 5=BOUNCE, 6=UNSUBSCRIBE
     event_type: Mapped[int] = mapped_column(SmallInteger, nullable=False)
@@ -141,6 +151,7 @@ class EmailEvent(Base):
     message = relationship("EmailMessage", back_populates="events")
 
     __table_args__ = (
+        Index("ix_email_events_tenant_type_time", "tenant_id", "event_type", "event_time"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

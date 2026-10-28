@@ -72,13 +72,11 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations against the database in settings.DATABASE_URL."""
-    from app.core.database import MYSQL_INIT_COMMAND
-    from app.core.db_charset import MYSQL_CHARSET, MYSQL_COLLATION
+    from app.core.database import mysql_connect_args
 
-    # Same session settings as the app: charset / collation (D1) and time zone UTC (D2)
-    connectable = create_engine(settings.DATABASE_URL, poolclass=pool.NullPool,
-                                connect_args={"charset": MYSQL_CHARSET, "collation": MYSQL_COLLATION,
-                                              "init_command": MYSQL_INIT_COMMAND})
+    # Same session settings as the app: charset / collation (D1), time zone UTC (D2), FULLTEXT indexes
+    # built without stopwords (D7; also when a later ALTER rebuilds prospects) and TLS (D8)
+    connectable = create_engine(settings.DATABASE_URL, poolclass=pool.NullPool, connect_args=mysql_connect_args())
 
     with connectable.connect() as connection:
         _drop_legacy_version(connection)

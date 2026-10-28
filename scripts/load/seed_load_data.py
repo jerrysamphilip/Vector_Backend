@@ -346,7 +346,8 @@ def gen_lists(rng: random.Random, world: World, n: int, now: datetime) -> tuple:
         })
         if not active and ids:
             for pid in rng.sample(ids, min(len(ids), rng.randint(len(ids) // 200 + 1, len(ids) // 50 + 2))):
-                members.append({"id": new_id(rng), "list_id": list_id, "prospect_id": pid, "is_new_prospect": False})
+                members.append({"id": new_id(rng), "list_id": list_id, "prospect_id": pid,
+                                "tenant_id": world.tenant_id, "is_new_prospect": False})
     return lists, members
 
 
@@ -377,8 +378,8 @@ def _message(rng: random.Random, camp: Dict[str, Any], seq: Dict[str, Any], cont
              inbox: str, status: str, when: datetime) -> Dict[str, Any]:
     sent = status in ("SENT", "BOUNCED", "FAILED")
     return {
-        "message_id": new_id(rng), "campaign_id": camp["campaign_id"], "prospect_id": contact["prospect_id"],
-        "sequence_id": seq["sequence_id"], "inbox_id": inbox, "direction": "OUTBOUND", "status": status,
+        "message_id": new_id(rng), "campaign_id": camp["campaign_id"], "tenant_id": camp["tenant_id"],
+        "prospect_id": contact["prospect_id"], "sequence_id": seq["sequence_id"], "inbox_id": inbox, "direction": "OUTBOUND", "status": status,
         "scheduled_at": when, "sent_at": when if status in ("SENT", "BOUNCED") else None,
         "delivered_at": when + timedelta(seconds=20) if status == "SENT" and rng.random() < 0.9 else None,
         "subject": f"{camp['campaign_name']}: step {seq['step_number']} for {contact['first_name']}",
@@ -403,7 +404,8 @@ def _enrol_one(rng: random.Random, world: World, out: CampaignRows, camp: Dict[s
         out.messages.append(msg)
         written += 1
         if status == "BOUNCED":
-            out.events.append({"event_id": new_id(rng), "message_id": msg["message_id"], "event_type": 5,
+            out.events.append({"event_id": new_id(rng), "message_id": msg["message_id"],
+                               "tenant_id": msg["tenant_id"], "event_type": 5,
                                "event_time": when + timedelta(minutes=1)})
             tally["bounced"] += 1
             status_cp = "BOUNCED"
@@ -425,8 +427,8 @@ def _enrol_one(rng: random.Random, world: World, out: CampaignRows, camp: Dict[s
     elif status_cp == "ACTIVE":
         status_cp = "COMPLETED"
     out.enrolments.append({
-        "id": new_id(rng), "campaign_id": camp["campaign_id"], "prospect_id": contact["prospect_id"],
-        "current_step": min(done + (status_cp == "ACTIVE"), len(seqs)), "status": status_cp,
+        "id": new_id(rng), "campaign_id": camp["campaign_id"], "tenant_id": camp["tenant_id"],
+        "prospect_id": contact["prospect_id"], "current_step": min(done + (status_cp == "ACTIVE"), len(seqs)), "status": status_cp,
         "enrolled_at": now - timedelta(days=85),
     })
     return written
@@ -436,11 +438,13 @@ def _engagement(rng: random.Random, out: CampaignRows, msg: Dict[str, Any], when
                 tally: Dict[str, int]) -> None:
     """Open (35 %) and click (15 % of opens) events for a delivered message."""
     if rng.random() < 0.35:
-        out.events.append({"event_id": new_id(rng), "message_id": msg["message_id"], "event_type": 2,
+        out.events.append({"event_id": new_id(rng), "message_id": msg["message_id"],
+                           "tenant_id": msg["tenant_id"], "event_type": 2,
                            "event_time": when + timedelta(hours=rng.randint(1, 48))})
         tally["opened"] += 1
         if rng.random() < 0.15:
-            out.events.append({"event_id": new_id(rng), "message_id": msg["message_id"], "event_type": 3,
+            out.events.append({"event_id": new_id(rng), "message_id": msg["message_id"],
+                               "tenant_id": msg["tenant_id"], "event_type": 3,
                                "event_time": when + timedelta(hours=rng.randint(2, 72))})
 
 
@@ -471,7 +475,8 @@ def _reply(rng: random.Random, world: World, out: CampaignRows, camp: Dict[str, 
                                              "Please remove me from your list.",
                                              "I'm out of office until Monday."))})
     out.messages.append(inbound)
-    out.events.append({"event_id": new_id(rng), "message_id": sent["message_id"], "event_type": 4,
+    out.events.append({"event_id": new_id(rng), "message_id": sent["message_id"],
+                       "tenant_id": sent["tenant_id"], "event_type": 4,
                        "event_time": reply_at})
     tally["replied"] += 1
     return 1
@@ -503,7 +508,8 @@ def gen_campaigns(rng: random.Random, world: World, n: int, target_messages: int
     quota = target_messages // max(1, len(running))
     for camp in camps:
         out.campaigns.append(camp)
-        seqs = [{"sequence_id": new_id(rng), "campaign_id": camp["campaign_id"], "step_number": s,
+        seqs = [{"sequence_id": new_id(rng), "campaign_id": camp["campaign_id"], "tenant_id": camp["tenant_id"],
+                 "step_number": s,
                  "wait_days": 0 if s == 1 else rng.choice((2, 3, 4, 7)), "stop_on_reply": True,
                  "stop_on_bounce": True, "send_start_hour": 9, "send_end_hour": 17, "row_version": 1}
                 for s in range(1, rng.randint(3, 5) + 1)]
@@ -585,9 +591,21 @@ def normalise_keys(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [{k: r.get(k) for k in keys} for r in rows]
 
 
+def missing_tenant(table_name: str, rows: Iterable[Dict[str, Any]]) -> int:
+    """Rows of a child table (alembic 0028: tenant_id NOT NULL) that carry no tenant_id. The ORM's before_flush
+    listener (app/models/tenant_fill.py) never sees a Core insert, so every generator sets it itself."""
+    from app.models.tenant_fill import TENANT_PARENTS
+    if table_name not in TENANT_PARENTS:
+        return 0
+    return sum(1 for r in rows if not r.get("tenant_id"))
+
+
 def bulk_insert(conn, table, rows: List[Dict[str, Any]], batch: int, log: Callable[[str], None]) -> int:
     if not rows:
         return 0
+    missing = missing_tenant(table.name, rows)
+    if missing:
+        raise ValueError(f"{table.name}: {missing} rows without tenant_id (Core inserts bypass tenant_fill)")
     started = time.perf_counter()
     clean = normalise_keys(strip_private(rows))
     for part in chunks(clean, batch):
@@ -600,7 +618,8 @@ def custom_field_rows(rng: random.Random, world: World) -> List[Dict[str, Any]]:
     specs = (("region", "Region", "SELECT", list(REGIONS)), ("tier", "Customer tier", "SELECT", list(TIERS)),
              ("arr", "ARR (USD)", "NUMBER", None), ("renewal_date", "Renewal date", "DATE", None))
     return [{"field_id": new_id(rng), "tenant_id": world.tenant_id, "field_key": key, "label": label,
-             "field_type": ftype, "options": opts, "group_name": "Load test", "required": False, "sort_order": i}
+             "field_type": ftype, "options": opts, "group_name": "Load test", "required": False, "sort_order": i,
+             "is_active": True, "is_system": False, "max_length": None}  # 0031_property_safety columns
             for i, (key, label, ftype, opts) in enumerate(specs)]
 
 

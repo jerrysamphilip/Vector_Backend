@@ -5,10 +5,10 @@ Scoped to a tenant (tenant_id). Legacy rows with NULL tenant_id are hidden.
 """
 
 from sqlalchemy import Column, String, Boolean, Text, ForeignKey
-import uuid
 
 from app.models import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class CompanyProfile(Base):
@@ -18,7 +18,7 @@ class CompanyProfile(Base):
     """
     __tablename__ = "company_profiles"
 
-    profile_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    profile_id = Column(String(36), primary_key=True, default=new_id)
     # Owning tenant. Nullable only for legacy rows created before tenant
     # scoping; those are never returned to any tenant.
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=True, index=True)

@@ -4,7 +4,6 @@ filter, how many rows, in which format and when. Admins read it at GET /exports/
 No personal data: the filter summary describes the view, never the rows.
 """
 
-import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -14,12 +13,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db_charset import MYSQL_CHARSET, MYSQL_COLLATION, MYSQL_ENGINE
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class ExportLog(Base):
     __tablename__ = "export_logs"
 
-    export_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    export_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
     user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     object_type: Mapped[str] = mapped_column(String(20), nullable=False)  # CONTACT / LIST / COMPANY

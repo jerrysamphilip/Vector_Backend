@@ -4,7 +4,6 @@ Activities logged against a single contact: notes, calls and meetings.
 Emails are not stored here; the contact timeline reads them from email_messages.
 """
 
-import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -13,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 ACTIVITY_TYPES = ("NOTE", "CALL", "MEETING", "EMAIL")
 
@@ -20,7 +20,7 @@ ACTIVITY_TYPES = ("NOTE", "CALL", "MEETING", "EMAIL")
 class ContactActivity(Base):
     __tablename__ = "contact_activities"
 
-    activity_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    activity_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     prospect_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("prospects.prospect_id"), nullable=True, index=True)
     # Activity logged on a deal (BR-SF-06); prospect_id is then the deal's contact, if it has one

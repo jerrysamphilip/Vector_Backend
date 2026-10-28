@@ -13,7 +13,6 @@ Contact identity records (migration 0025, gap list C-08 / C-10 / C-11 / C-19).
   choices and what moved. Goes with the surviving contact when it is erased (ON DELETE CASCADE).
 """
 
-import uuid
 from datetime import datetime
 from typing import Any, Optional
 
@@ -23,12 +22,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db_charset import MYSQL_CHARSET, MYSQL_COLLATION, MYSQL_ENGINE
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 _TABLE_OPTIONS = {"mysql_engine": MYSQL_ENGINE, "mysql_charset": MYSQL_CHARSET, "mysql_collate": MYSQL_COLLATION}
 
 
 def _uuid() -> str:
-    return str(uuid.uuid4())
+    return new_id()
 
 
 class ContactIdentifier(Base):
