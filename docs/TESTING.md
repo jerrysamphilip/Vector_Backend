@@ -77,7 +77,7 @@ How a tier reaches the suites: the runner sets `TEST_CASES` (comma-separated cas
 
 #### Parallel runs (`--jobs N`)
 
-`--jobs N` runs up to N parallel-safe suites at once (3-4 suits the UI suites); the run lock still allows one run at a time. The plan is one parallel pool (every parallel-safe suite, in the usual order), then the serial suites one at a time, then `reports_platform`. Each suite keeps its own log (`logs/<suite>.log`) and results files, so nothing collides; console output of pooled suites goes to their logs only.
+`--jobs N` runs up to N parallel-safe suites at once (3-4 suits the UI suites); the run lock still allows one run at a time. The plan is one parallel pool (every parallel-safe suite, the longest estimated first so the long pole, usually e2e, starts at once), then the serial suites one at a time, then `reports_platform`. Each suite keeps its own log (`logs/<suite>.log`) and results files, so nothing collides; console output of pooled suites goes to their logs only.
 
 The parallel-safety rule, recorded per suite under `suites` in `TIERS.json` with its reason:
 

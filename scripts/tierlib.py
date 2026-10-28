@@ -285,12 +285,16 @@ def safety(data, suite_id, entry=None):
     return {"parallel": bool(base["parallel"]), "locks": list(base.get("locks") or []), "reason": base.get("reason", "")}
 
 
-def plan_steps(suites, safe_of, jobs):
+def plan_steps(suites, safe_of, jobs, cost=None):
     """Execution steps. jobs <= 1: every suite alone, in the given order. Otherwise one parallel pool with
-    every parallel-safe suite (in order), then the serial suites one at a time, then the run_last ones."""
+    every parallel-safe suite, then the serial suites one at a time, then the run_last ones. cost(suite) ->
+    estimated seconds: the pool starts the longest suites first (ties keep the given order), so the long pole
+    (e2e) is not left waiting behind short suites for a free slot."""
     if jobs <= 1:
         return [{"parallel": False, "suites": [s]} for s in suites]
     pool = [s for s in suites if safe_of(s)["parallel"] and not s.get("run_last")]
+    if cost is not None:
+        pool.sort(key=lambda s: -float(cost(s) or 0))
     rest = [s for s in suites if s not in pool]
     rest.sort(key=lambda s: 1 if s.get("run_last") else 0)
     steps = [{"parallel": True, "suites": pool}] if pool else []

@@ -1400,7 +1400,7 @@ def build_plan(args):
         die(f"no suites selected for '{args.layer}'")
     timings = load_timings(list(args.timings or []) + default_timing_dirs())
     rows = plan_rows(suites, data, timings)
-    steps = tierlib.plan_steps(suites, lambda s: rows[s["id"]]["safety"], args.jobs)
+    steps = tierlib.plan_steps(suites, lambda s: rows[s["id"]]["safety"], args.jobs, lambda s: rows[s["id"]]["est"])
     plan = {"tier": tierlib.ALIASES.get(args.layer, args.layer) if tier else None, "data": data, "suites": suites,
             "left_out": left_out, "rows": rows, "steps": steps, "all_suites": all_suites, "timings": timings,
             "index": {s["id"]: i for i, s in enumerate(suites, 1)}}
@@ -1471,7 +1471,7 @@ def print_tier_overview(plan, args):
             continue
         suites = skip_suites([dict(s, _tier=sel[s["id"]]) for s in ordered(plan["all_suites"]) if s["id"] in sel], args.skip)
         rows = plan_rows(suites, data, plan["timings"])
-        steps = tierlib.plan_steps(suites, lambda s: rows[s["id"]]["safety"], args.jobs)
+        steps = tierlib.plan_steps(suites, lambda s: rows[s["id"]]["safety"], args.jobs, lambda s: rows[s["id"]]["est"])
         total = estimate_steps(steps, rows, args.jobs)
         n_sel = sum(len(r["selected"]) for r in rows.values())
         n_all = sum(len(r["catalog"]) for r in rows.values())

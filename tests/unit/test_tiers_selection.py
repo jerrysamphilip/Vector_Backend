@@ -175,6 +175,15 @@ def test_plan_steps_serial_and_pool():
         (True, ["unit", "e2e"]), (False, ["contacts"]), (False, ["reports_platform"])]
 
 
+def test_plan_steps_pool_starts_longest_first():
+    safe = {"unit": True, "contacts": False, "e2e": True, "api_sweep": True}
+    suites = [s for s in SUITES if s["id"] in safe]
+    secs = {"unit": 20, "e2e": 900, "api_sweep": 20, "contacts": 1000}
+    steps = tl.plan_steps(suites, lambda s: {"parallel": safe[s["id"]]}, 4, lambda s: secs[s["id"]])
+    assert [s["id"] for s in steps[0]["suites"]] == ["e2e"] + [s["id"] for s in suites if s["id"] in ("unit", "api_sweep")]
+    assert [s["id"] for s in steps[1]["suites"]] == ["contacts"]
+
+
 def test_simulate_respects_slots_and_locks():
     assert tl.simulate([(10, []), (10, []), (10, [])], 3) == 10
     assert tl.simulate([(10, []), (10, []), (10, [])], 2) == 20
