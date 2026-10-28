@@ -18,7 +18,7 @@ import smtplib
 import socket
 import uuid
 from datetime import timedelta
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from app.adapters import providers
 from app.adapters.mail import MailConnector
@@ -26,7 +26,7 @@ from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.errors import BadRequestError, DomainError, NotFoundError, ValidationFailed
 from app.core.tls import tls_error_message
-from app.domain.inbox_mailbox import (InvalidPort, changes_receiving, clean_updates, domain_of_address,
+from app.domain.inbox_mailbox import (InvalidPort, changes_receiving, clean_updates, domain_of_address, effective_imap,
                                       warmup_toggle)
 from app.domain.inbox_sync import header_summary, imap_date
 from app.models.user import User
@@ -69,6 +69,18 @@ def check_mail_host(host: Optional[str]) -> None:
 
 def _is_oauth(inbox: SendingInbox) -> bool:
     return (inbox.auth_type or "PASSWORD") == ms365_oauth.AUTH_TYPE
+
+
+R = TypeVar("R", bound=SendingInboxResponse)
+
+
+def _with_imap(response: R, inbox: SendingInbox) -> R:
+    """``imap_configured`` / ``imap_derived_from_smtp`` (S-26): replies can be read, with saved IMAP settings
+    or ones derived from SMTP."""
+    imap = effective_imap(inbox)
+    response.imap_configured = imap.configured(_is_oauth(inbox))
+    response.imap_derived_from_smtp = imap.imap_host_derived
+    return response
 
 
 def _new_inbox(tenant_id: str, data: SendingInboxCreate) -> SendingInbox:
@@ -132,7 +144,7 @@ class InboxService:
     def _with_status(session: Any, tenant_id: str, inboxes: List[SendingInbox]) -> List[SendingInboxResponse]:
         """Pause reason and today's capacity (F-20) on each mailbox."""
         status = sending_alerts.mailbox_status(session, tenant_id, inboxes)
-        return [SendingInboxResponse.model_validate(i).model_copy(update=status.get(i.inbox_id, {}))
+        return [_with_imap(SendingInboxResponse.model_validate(i), i).model_copy(update=status.get(i.inbox_id, {}))
                 for i in inboxes]
 
     # ── Microsoft 365 (BR-DF-05) ──────────────────────────────────────────
@@ -190,7 +202,7 @@ class InboxService:
             uow.commit()
             uow.inboxes.refresh(inbox)
             verification = self._verify_domain(uow.session, inbox)
-            response = SendingInboxCreatedResponse.model_validate(inbox)
+            response = _with_imap(SendingInboxCreatedResponse.model_validate(inbox), inbox)
         response.domain_verification = verification
         return response
 
@@ -224,7 +236,7 @@ class InboxService:
                 raise NotFoundError(INBOX_NOT_FOUND) from exc
             return self._with_status(uow.session, user.tenant_id, [inbox])[0]
 
-    def update(self, user: User, inbox_id: str, data: SendingInboxUpdate) -> SendingInbox:
+    def update(self, user: User, inbox_id: str, data: SendingInboxUpdate) -> SendingInboxResponse:
         with self.uow as uow:
             inbox = self._get(uow.inboxes, user, inbox_id)
             updates = data.model_dump(exclude_unset=True)
@@ -245,7 +257,7 @@ class InboxService:
                 setattr(inbox, key, value)
             uow.commit()
             uow.inboxes.refresh(inbox)
-            return inbox
+            return _with_imap(SendingInboxResponse.model_validate(inbox), inbox)
 
     def delete(self, user: User, inbox_id: str) -> None:
         with self.uow as uow:
@@ -257,12 +269,13 @@ class InboxService:
         """Sync the last ``days`` days of the mailbox now (MailSyncFailed when the server fails)."""
         with self.uow as uow:
             inbox = self._get(uow.inboxes, user, inbox_id)
-            if not inbox.imap_host or not inbox.imap_password:
+            imap = effective_imap(inbox)  # S-26: derived from SMTP when not saved
+            if not imap.configured(_is_oauth(inbox)):
                 raise BadRequestError(
                     f"IMAP is not configured for {inbox.email_address}. "
                     "Please set imap_host, imap_username, and imap_password in the inbox settings.")
-            check_mail_host(inbox.imap_host)  # saved before the check existed: re-check before connecting
-            email_address, imap_host = inbox.email_address, inbox.imap_host
+            check_mail_host(imap.effective_imap_host)  # saved before the check existed: re-check before connecting
+            email_address, imap_host = inbox.email_address, imap.effective_imap_host
         if self._imap_sync is None or not self._imap_sync().sync_inbox(inbox, days_back=days):
             raise MailSyncFailed(
                 f"IMAP sync failed for {email_address}. "
@@ -281,22 +294,25 @@ class InboxService:
         """Sign in over IMAP and list the latest messages of the last 7 days (diagnoses missing replies)."""
         with self.uow as uow:
             inbox = self._get(uow.inboxes, user, inbox_id)
-            if not inbox.imap_host:
+            imap = effective_imap(inbox)  # S-26: gaps filled from the SMTP settings
+            if not imap.effective_imap_host:
                 return {"status": "not_configured", "inbox": inbox.email_address,
                         "error": "imap_host is not set. Set it to imap.zoho.in (Zoho India) or imap.zoho.com"}
-            if not inbox.imap_password and not _is_oauth(inbox):
+            if not imap.effective_imap_password and not _is_oauth(inbox):
                 return {"status": "not_configured", "inbox": inbox.email_address,
                         "error": "imap_password is not set. For Zoho, use an App Password (not your login password)."}
-            check_mail_host(inbox.imap_host)
+            check_mail_host(imap.effective_imap_host)
             result: Dict[str, Any] = {
-                "inbox": inbox.email_address, "imap_host": inbox.imap_host, "imap_port": inbox.imap_port or 993,
-                "imap_username": inbox.imap_username or inbox.email_address,
+                "inbox": inbox.email_address, "imap_host": imap.effective_imap_host,
+                "imap_port": imap.effective_imap_port, "imap_username": imap.effective_imap_username,
+                "imap_derived_from_smtp": imap.imap_host_derived,
                 "last_sync_at": inbox.last_sync_at.isoformat() if inbox.last_sync_at else None,
                 "status": None, "error": None, "recent_inbox_emails": [],
             }
-            host, port = inbox.imap_host, inbox.imap_port
+            host, port = imap.effective_imap_host, imap.effective_imap_port
             try:
-                secret = ms365_oauth.imap_secret(uow.session, inbox)
+                secret = ms365_oauth.imap_secret(uow.session, inbox) if _is_oauth(inbox) \
+                    else imap.effective_imap_password
             except Exception as e:  # e.g. the Microsoft token cannot be refreshed
                 return self._imap_failure(result, e)
             uow.commit()

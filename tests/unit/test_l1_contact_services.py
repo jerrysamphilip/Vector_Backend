@@ -283,11 +283,12 @@ def test_field_service_create_update_delete(repo, uow):
         svc.create(user(), FieldWrite(label="seats"))
     with pytest.raises(BadRequestError, match="A choice property needs at least one option"):
         svc.create(user(), FieldWrite(label="Colour", field_type="SELECT"))
-    updated = svc.update(user(), definition.field_id, FieldWrite(label="Licences", field_type="TEXT"))
-    assert updated["label"] == "Licences" and updated["field_type"] == "TEXT"
-    assert svc.delete(user(), definition.field_id) == {"status": "deleted", "field_id": definition.field_id}
+    updated = svc.update(user(), definition.field_id, FieldWrite(label="Licences", field_type="NUMBER"))
+    assert updated["label"] == "Licences" and updated["field_type"] == "NUMBER"
+    # C-17: DELETE deactivates (tests/unit/test_tbe_property_services.py)
+    assert svc.delete(user(), definition.field_id) == {"status": "deactivated", "field_id": definition.field_id}
     with pytest.raises(NotFoundError, match="Property not found"):
-        svc.delete(user(), definition.field_id)
+        svc.delete(user(), "missing")
 
 
 def test_field_service_needs_manage_permission(uow):

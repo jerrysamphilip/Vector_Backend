@@ -1628,6 +1628,16 @@
       "title": "Has Smtp Password",
       "type": "boolean"
      },
+     "imap_configured": {
+      "default": false,
+      "title": "Imap Configured",
+      "type": "boolean"
+     },
+     "imap_derived_from_smtp": {
+      "default": false,
+      "title": "Imap Derived From Smtp",
+      "type": "boolean"
+     },
      "imap_host": {
       "anyOf": [
        {
@@ -2163,6 +2173,16 @@
      "has_smtp_password": {
       "default": false,
       "title": "Has Smtp Password",
+      "type": "boolean"
+     },
+     "imap_configured": {
+      "default": false,
+      "title": "Imap Configured",
+      "type": "boolean"
+     },
+     "imap_derived_from_smtp": {
+      "default": false,
+      "title": "Imap Derived From Smtp",
       "type": "boolean"
      },
      "imap_host": {
@@ -3542,7 +3562,7 @@
   },
   "/deliverability/domains/{domain_name}/dns-records": {
    "get": {
-    "description": "DNS records to publish for this workspace domain (guidance only) and its last checked statuses.",
+    "description": "DNS records to publish for this workspace domain and its last checked statuses. With ``live`` (default)\neach record also carries ``status``, ``current_value`` / ``current_values`` (live DNS) and\n``suggested_value`` (what to publish; SPF merged into an existing record), plus ``live_summary``.",
     "operationId": "get_domain_dns_records_deliverability_domains__domain_name__dns_records_get",
     "parameters": [
      {
@@ -3552,6 +3572,18 @@
       "schema": {
        "title": "Domain Name",
        "type": "string"
+      }
+     },
+     {
+      "description": "Compare each record with live DNS (status OK / ADD / UPDATE / UNKNOWN)",
+      "in": "query",
+      "name": "live",
+      "required": false,
+      "schema": {
+       "default": true,
+       "description": "Compare each record with live DNS (status OK / ADD / UPDATE / UNKNOWN)",
+       "title": "Live",
+       "type": "boolean"
       }
      }
     ],

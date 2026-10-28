@@ -106,9 +106,10 @@ def export_accounts(
 
 # Company custom properties (C-16)
 @router.get("/fields", response_model=None)
-def list_company_fields(service: ContactFieldService = Fields,
+def list_company_fields(include_inactive: bool = Query(False, description="Also list deactivated properties"),
+                        service: ContactFieldService = Fields,
                         current_user: Any = Depends(tenant_user)) -> List[dict]:
-    return service.list(current_user)
+    return service.list(current_user, include_inactive)
 
 
 @router.post("/fields", status_code=201, response_model=None)
@@ -126,7 +127,8 @@ def update_company_field(field_id: str, payload: FieldWrite, service: ContactFie
 @router.delete("/fields/{field_id}", response_model=None)
 def delete_company_field(field_id: str, service: ContactFieldService = Fields,
                          current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
-    """Removes the property definition. Stored values stay on companies but are no longer shown."""
+    """Deactivates the property (C-17): hidden from forms and import mapping; values stay on companies and are
+    still exported. Reactivate with PATCH ``is_active: true``. System properties cannot be deactivated."""
     return service.delete(current_user, field_id)
 
 

@@ -34,6 +34,9 @@ class SendingInboxResponse(BaseModel):
     has_imap_password: bool = False
     last_sync_at: Optional[datetime] = None
     imap_last_error: Optional[str] = None
+    # S-26: replies can be read: saved IMAP settings, or ones derived from SMTP (smtp.x -> imap.x, SMTP login)
+    imap_configured: bool = False
+    imap_derived_from_smtp: bool = False
 
     # Sign-in: PASSWORD or OAUTH_MS365 (BR-DF-05)
     auth_type: Optional[str] = "PASSWORD"

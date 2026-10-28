@@ -34,6 +34,7 @@ from app.adapters.mail import ImapConnector
 from app.core.clock import utcnow
 from app.core.observability import record_imap_sync
 from app.domain import inbox_reply_rules
+from app.domain.inbox_mailbox import effective_imap
 from app.domain.inbox_sync import (
     _UNSUB_PHRASES,
     INBOUND,
@@ -69,6 +70,7 @@ from app.utils.conversation_lock import conversation_creation_lock
 from app.utils.email_utils import (extract_latest_message_text, normalize_subject, ses_id_from_message_id,
                                    thread_message_ids)
 from app.utils.reply_classifier import is_out_of_office
+from app.core.ids import short_id
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +115,13 @@ class _Record:
     is_ooo: bool = False
 
 
+def _is_oauth(inbox: SendingInbox) -> bool:
+    return (inbox.auth_type or "PASSWORD") == ms365_oauth.AUTH_TYPE
+
+
 def _imap_configured(inbox: Optional[SendingInbox]) -> bool:
-    oauth = inbox is not None and (inbox.auth_type or "PASSWORD") == ms365_oauth.AUTH_TYPE
-    return bool(inbox and inbox.imap_host and (inbox.imap_password or oauth))
+    """Saved IMAP settings, or ones derived from SMTP (S-26, app/domain/inbox_mailbox.effective_imap)."""
+    return inbox is not None and effective_imap(inbox).configured(_is_oauth(inbox))
 
 
 def header_match_ids(header_val: str) -> List[str]:
@@ -252,9 +258,10 @@ class IMAPSyncService:
     def _login_details(self, inbox: SendingInbox) -> _Login:
         """Host and secret (a refreshed OAuth token for Microsoft 365), committed before connecting (T-1)."""
         with self.uow as uow:
-            login = _Login(host=inbox.imap_host, port=inbox.imap_port,
-                           username=inbox.imap_username or inbox.email_address,
-                           secret=ms365_oauth.imap_secret(uow.session, inbox))
+            imap = effective_imap(inbox)  # S-26: gaps filled from the SMTP settings
+            secret = ms365_oauth.imap_secret(uow.session, inbox) if _is_oauth(inbox) else imap.effective_imap_password
+            login = _Login(host=imap.effective_imap_host or "", port=imap.effective_imap_port,
+                           username=imap.effective_imap_username or "", secret=secret)
             uow.commit()
         return login
 
@@ -451,13 +458,13 @@ class IMAPSyncService:
                 logger.info(f"[IMAP] Matched reply to conv {conv.id} via In-Reply-To/References ({header_val[:60]})")
                 return _Match(found, conv)
         if first is not None:
-            logger.info(f"[IMAP] Matched outbound msg {first.message_id[:8]} via In-Reply-To "
+            logger.info(f"[IMAP] Matched outbound msg {short_id(first.message_id)} via In-Reply-To "
                         f"— no conversation yet, will create")
             return _Match(first, None)
         by_subject = self._outbound_for_subject(repo, prospect, ref, parsed.subject)
         if by_subject is None:
             return _Match()
-        logger.info(f"[IMAP] Matched outbound msg {by_subject.message_id[:8]} via subject")
+        logger.info(f"[IMAP] Matched outbound msg {short_id(by_subject.message_id)} via subject")
         return _Match(by_subject, repo.conversation(prospect.tenant_id, by_subject.conversation_id))
 
     @staticmethod

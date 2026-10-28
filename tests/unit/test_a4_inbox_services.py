@@ -127,7 +127,8 @@ def test_sync_history_runs_outside_the_unit_of_work():
         InboxService(uow, imap_sync=Failing).sync_history(USER, "i1", 5)
     assert exc.value.status_code == 502
     with pytest.raises(BadRequestError, match="IMAP is not configured"):
-        InboxService(FakeUow(inboxes=Mailboxes(_mailbox(imap_password=None))), imap_sync=Sync).sync_history(USER, "i1", 5)
+        InboxService(FakeUow(inboxes=Mailboxes(_mailbox(imap_password=None, smtp_password=None))),  # S-26: no SMTP login
+                     imap_sync=Sync).sync_history(USER, "i1", 5)
 
 
 def test_test_endpoints_report_missing_settings_without_connecting():
@@ -135,7 +136,8 @@ def test_test_endpoints_report_missing_settings_without_connecting():
         def open_imap(self, *a, **k):
             raise AssertionError("not configured: no connection")
         open_smtp = open_imap
-    svc = InboxService(FakeUow(inboxes=Mailboxes(_mailbox(imap_host=None, smtp_password=None))), connector=NoConnect())
+    svc = InboxService(FakeUow(inboxes=Mailboxes(_mailbox(imap_host=None, smtp_host="relay.acme.io", smtp_password=None))),  # S-26: not derivable
+                       connector=NoConnect())
     assert svc.test_imap(USER, "i1")["status"] == "not_configured"
     assert svc.test_smtp(USER, "i1") == {"status": "not_configured", "error": "SMTP password is not set."}
 

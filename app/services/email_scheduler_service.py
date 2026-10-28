@@ -54,6 +54,7 @@ from app.services.email_sender_service import (
 )
 from app.services.metrics_service import MetricsService
 from app.services.notifications import notify
+from app.services.inbox_rotation import inbox_weight
 from app.services.send_guards import NO_INBOX_RETRY_MINUTES, active_inboxes
 from app.services.sequence_stop import stop_pending_steps as stop_pending_steps  # re-exported (one entry point)
 from app.services.sequence_stop import stop_reason, stops_sequence
@@ -89,6 +90,7 @@ class _SendJob:
     sender_name: Optional[str] = None
     from_email: Optional[str] = None
     limit_user: Optional[str] = None
+    window: Optional[Tuple[str, Any, Any]] = None  # (time zone, start, end) once _step_campaign_window ran
 
     @property
     def ctx(self) -> SqlAlchemySendingContextRepository:
@@ -558,12 +560,30 @@ class EmailSchedulerService:
         job.sender_name = campaign.sender_name or f"{user.first_name} {user.last_name}"
         timezone = self._contact_timezone(campaign, job.prospect)
         start, end = campaign.send_window_start or DEFAULT_WINDOW[0], campaign.send_window_end or DEFAULT_WINDOW[1]
-        if not business_calendar.is_within_send_window(current_utc=utcnow(), timezone_str=timezone,
-                                                       send_window_start=start, send_window_end=end):
-            logger.info(f"[Scheduler] Msg {job.msg.message_id} is outside send window for {timezone}. Re-queuing.")
-            requeue(job.msg, at=utcnow() + OUTSIDE_WINDOW_RECHECK)
+        job.window = (timezone, start, end)
+        now = utcnow()
+        if not self._window_open(job.window, now):
+            # S-17: parked at the next window start (business days, the contact's / campaign's time zone)
+            at = self._next_window_open(job.window, now) or now + OUTSIDE_WINDOW_RECHECK
+            logger.info(f"[Scheduler] Msg {job.msg.message_id} is outside send window for {timezone}. "
+                        f"Parked until {at.isoformat()}.")
+            requeue(job.msg, at=at)
             return SKIPPED
         return None
+
+    @staticmethod
+    def _window_open(window: Tuple[str, Any, Any], at: datetime) -> bool:
+        timezone, start, end = window
+        return business_calendar.is_within_send_window(current_utc=at, timezone_str=timezone,
+                                                       send_window_start=start, send_window_end=end)
+
+    @classmethod
+    def _next_window_open(cls, window: Tuple[str, Any, Any], after: datetime) -> Optional[datetime]:
+        """next_send_window_start: the first window start after ``after`` that is open (a business day);
+        None when none is found in the look-ahead."""
+        timezone, start, _ = window
+        starts = rules.window_starts_after(after, timezone, rules.window_time(start, DEFAULT_WINDOW[0]))
+        return rules.first_open_moment(starts, lambda at: cls._window_open(window, at))
 
     @staticmethod
     def _contact_timezone(campaign: Campaign, prospect: Any) -> str:
@@ -587,16 +607,52 @@ class EmailSchedulerService:
         self._roll_inbox_day(inbox)
         limit = email_sender.get_inbox_daily_limit(inbox)
         if (inbox.emails_sent_today or 0) >= limit:
-            logger.info(f"[Scheduler] Inbox {inbox.email_address} hit daily limit ({limit}), "
-                        f"re-queuing message {msg.message_id}")
-            requeue(msg, at=utcnow() + timedelta(hours=inbox.cooling_period_hours))
-            return SKIPPED
+            roomier = self._roomier_inbox(job, inbox)
+            if roomier is None:
+                at = self._capped_until(job, inbox)
+                logger.info(f"[Scheduler] Inbox {inbox.email_address} hit daily limit ({limit}), "
+                            f"message {msg.message_id} parked until {at.isoformat()}")
+                requeue(msg, at=at)
+                return SKIPPED
+            inbox = roomier
         # Not ready yet: give the claim back and leave the email due for a later pass; never
         # sleep here, so no inbox holds up another (send_pacing.py).
         if self.pace_wait(job.db, inbox.inbox_id) > 0:
             requeue(msg)
             return PACED
         return None
+
+    def _capped_until(self, job: _SendJob, inbox: Any) -> datetime:
+        """After the inbox's cooling period, at the first moment the send window is open then (S-17)."""
+        earliest = utcnow() + timedelta(hours=inbox.cooling_period_hours or 24)
+        if job.window is None or self._window_open(job.window, earliest):
+            return earliest
+        return self._next_window_open(job.window, earliest) or earliest
+
+    def _roomier_inbox(self, job: _SendJob, full: Any) -> Any:
+        """S-17: a contact this campaign has never emailed moves to the campaign mailbox with the most room
+        left today (warm-up caps included; ties by rotation weight), with the rest of its sequence. None:
+        stay (the contact has a sticky sender, or no other mailbox has room)."""
+        msg = job.msg
+        if job.campaign is None or job.ctx.previous_sends(msg.campaign_id, msg.prospect_id):
+            return None
+        options = []
+        for candidate in active_inboxes(job.campaign):
+            if candidate.inbox_id == full.inbox_id:
+                continue
+            self._roll_inbox_day(candidate)
+            remaining = email_sender.get_inbox_daily_limit(candidate) - (candidate.emails_sent_today or 0)
+            options.append(rules.InboxRoom(candidate, remaining, inbox_weight(candidate)))
+        chosen = rules.roomiest_inbox(options)
+        if chosen is None:
+            return None
+        msg.inbox_id, msg.from_email = chosen.inbox_id, chosen.email_address
+        job.from_email = chosen.email_address
+        moved = _queue(job.db).rebind_unsent(msg.campaign_id, msg.prospect_id, msg.message_id,
+                                             chosen.inbox_id, chosen.email_address)
+        logger.info(f"[Scheduler] Inbox {full.email_address} is at its daily cap: new contact {msg.prospect_id} "
+                    f"moved to {chosen.email_address} (with {moved} later steps)")
+        return chosen
 
     @staticmethod
     def _roll_inbox_day(inbox: Any) -> None:

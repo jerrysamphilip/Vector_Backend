@@ -11,6 +11,7 @@ sender (email_sender_service.py) share these. No I/O: callers pass the clocks, t
 - ``PacingState`` and the pacing maths (``next_gap`` / ``seconds_until_ready``, BR-DF-01, F021).
 - ``SendAttempt``: the sender's answer for one message, typed.
 - Message transitions (``requeue`` / ``fail`` / retry backoff) and the stuck-SENDING evidence rule (B08).
+- Parking at the next send-window start and the roomiest mailbox for a capped new contact (S-17).
 """
 from __future__ import annotations
 
@@ -18,8 +19,9 @@ import math
 import random
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any, Dict, Iterable, List, Mapping, Optional
+from datetime import datetime, time, timedelta
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 # ── Outcomes of one message pass ────────────────────────────────────────────
 SENT = "sent"
@@ -291,3 +293,69 @@ def provider_accepted(msg: Any, provider_event_ids: Iterable[str]) -> bool:
 INTERRUPTED_ACCEPTED = "Sending was interrupted after the provider accepted the message; recorded as sent."
 INTERRUPTED_UNKNOWN = ("Sending was interrupted and the outcome is unknown; "
                        "not retried so the contact cannot receive it twice.")
+
+
+# ── Daily cap and closed send window (S-17) ─────────────────────────────────
+# A message that cannot go now is parked until the send window next opens instead of being re-checked
+# every half hour; a contact this campaign has never emailed may move to the campaign mailbox with the most
+# room left today when its own mailbox is at its daily cap.
+WINDOW_LOOKAHEAD_DAYS = 14  # weekends + a run of holidays fit well inside
+
+
+def window_time(value: Any, fallback: time) -> time:
+    """A send-window bound as a time (MySQL adapters may hand TIME columns over as timedelta)."""
+    if isinstance(value, time):
+        return value
+    if isinstance(value, timedelta):
+        seconds = int(value.total_seconds()) % 86400
+        return time(seconds // 3600, seconds % 3600 // 60, seconds % 60)
+    return fallback
+
+
+def _zone(name: Optional[str]) -> ZoneInfo:
+    try:
+        return ZoneInfo(name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        return ZoneInfo("UTC")
+
+
+def window_starts_after(moment: datetime, timezone_name: Optional[str], start: time,
+                        days: int = WINDOW_LOOKAHEAD_DAYS) -> List[datetime]:
+    """Naive-UTC times at which the window opens (``start`` local time) after ``moment`` (naive UTC), on each
+    of the next ``days`` days, ascending. Business days are the caller's check."""
+    utc = ZoneInfo("UTC")
+    zone = _zone(timezone_name)
+    local_day = moment.replace(tzinfo=utc).astimezone(zone).date()
+    starts = []
+    for offset in range(days + 1):
+        at = datetime.combine(local_day + timedelta(days=offset), start, tzinfo=zone)
+        at_utc = at.astimezone(utc).replace(tzinfo=None)
+        if at_utc > moment:
+            starts.append(at_utc)
+    return starts[:days]
+
+
+def first_open_moment(candidates: Iterable[datetime], is_open: Callable[[datetime], bool]) -> Optional[datetime]:
+    """The first candidate at which the window is open (None: none in the look-ahead)."""
+    return next((at for at in candidates if is_open(at)), None)
+
+
+@dataclass(frozen=True)
+class InboxRoom:
+    """A campaign mailbox a capped contact could move to: what it can still send today, its rotation weight."""
+
+    inbox: Any
+    remaining: int
+    weight: int = 0
+
+
+def roomiest_inbox(options: Sequence[InboxRoom]) -> Any:
+    """The mailbox with the most room left today (ties: the larger rotation weight, then the first);
+    None when none has room."""
+    best: Optional[InboxRoom] = None
+    for option in options:
+        if option.remaining <= 0:
+            continue
+        if best is None or (option.remaining, option.weight) > (best.remaining, best.weight):
+            best = option
+    return best.inbox if best else None

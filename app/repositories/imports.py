@@ -102,9 +102,11 @@ class SqlAlchemyImportRepository:
 
     # reference data ----------------------------------------------------------
     def field_definitions(self, tenant_id: TenantId) -> list[ContactFieldDefinition]:
-        # Contact properties only: company properties (object_type COMPANY) are never import targets
+        # Active contact properties only: company properties (object_type COMPANY) and deactivated ones
+        # are never import targets
         return self._session.query(ContactFieldDefinition).filter(
-            ContactFieldDefinition.tenant_id == tenant_id, ContactFieldDefinition.object_type == "CONTACT").all()
+            ContactFieldDefinition.tenant_id == tenant_id, ContactFieldDefinition.object_type == "CONTACT",
+            ContactFieldDefinition.is_active.is_(True)).all()
 
     def users(self, tenant_id: TenantId) -> list[User]:
         return self._session.query(User).filter(User.tenant_id == tenant_id).all()

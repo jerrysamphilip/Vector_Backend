@@ -228,3 +228,86 @@ def snapshot_values(current_reputation_score: Optional[int], bounce_rate_24h: Op
     return {"reputation_score": current_reputation_score if current_reputation_score is not None else 100,
             "bounce_rate_24h": bounce_rate_24h or 0.0, "complaint_rate_24h": complaint_rate_24h or 0.0,
             "open_rate_24h": 0.0}
+
+
+# ── Published records vs live DNS (S-25) ──────────────────────────────────────
+# Per record of dns_record_guidance: OK (published as needed), ADD (nothing there), UPDATE (something else is
+# there; for SPF the suggestion merges include:amazonses.com into the existing record), UNKNOWN (the lookup
+# failed, or the expected value is not known yet, e.g. the DKIM tokens).
+RECORD_OK, RECORD_ADD, RECORD_UPDATE, RECORD_UNKNOWN = "OK", "ADD", "UPDATE", "UNKNOWN"
+SES_SPF_INCLUDE = "include:amazonses.com"
+_SPF_ALL_RE = re.compile(r"^[~?+-]?all$", re.IGNORECASE)
+
+
+def _dns_name(value: str) -> str:
+    return value.strip().strip('"').rstrip(".").lower()
+
+
+def merged_spf(existing: str) -> str:
+    """``existing`` SPF record with include:amazonses.com added before its ``all`` / redirect term."""
+    terms = existing.split()
+    if any(t.lower() == SES_SPF_INCLUDE for t in terms):
+        return " ".join(terms)
+    tail = next((i for i, t in enumerate(terms) if _SPF_ALL_RE.match(t) or t.lower().startswith("redirect=")),
+                len(terms))
+    return " ".join(terms[:tail] + [SES_SPF_INCLUDE] + terms[tail:])
+
+
+def _compare_spf(live: List[str]) -> Tuple[str, Optional[str], Optional[str]]:
+    spf = [v for v in live if v.lower().startswith("v=spf1")]
+    if not spf:
+        return RECORD_ADD, None, None
+    current = spf[0]
+    if len(spf) == 1 and SES_SPF_INCLUDE in current.lower().split():
+        return RECORD_OK, current, None
+    # several SPF records are an SPF error (permerror): one merged record replaces them
+    return RECORD_UPDATE, current, merged_spf(current)
+
+
+def _compare_dmarc(live: List[str]) -> Tuple[str, Optional[str], Optional[str]]:
+    dmarc = [v for v in live if v.upper().startswith("V=DMARC1")]
+    if not dmarc:
+        return RECORD_ADD, None, None
+    return (RECORD_OK if len(dmarc) == 1 else RECORD_UPDATE), dmarc[0], None
+
+
+def _compare_value(expected: str, live: List[str], rtype: str) -> Tuple[str, Optional[str], Optional[str]]:
+    if not live:
+        return RECORD_ADD, None, None
+    if rtype == "MX":  # "10 host.": the exchange host decides, the preference does not
+        wanted = _dns_name(expected.split()[-1])
+        found = [v for v in live if _dns_name(v.split()[-1]) == wanted]
+    else:
+        found = [v for v in live if _dns_name(v) == _dns_name(expected)]
+    if found:
+        return RECORD_OK, found[0], None
+    return RECORD_UPDATE, live[0], None
+
+
+def compare_record(record: Dict[str, Any], live: Optional[List[str]]) -> Dict[str, Any]:
+    """The guidance record with ``status``, ``current_value`` (what DNS has now), ``current_values`` and
+    ``suggested_value`` (what to publish: the record's value, or the merged SPF). ``live`` None means the
+    lookup failed."""
+    expected = str(record.get("value") or "")
+    out = dict(record, current_values=list(live or []), current_value=None, suggested_value=expected or None)
+    if live is None or "<" in str(record.get("host", "")):
+        out["status"] = RECORD_UNKNOWN
+        return out
+    if record.get("kind") == "SPF":
+        status, current, suggestion = _compare_spf(live)
+    elif record.get("kind") == "DMARC":
+        status, current, suggestion = _compare_dmarc(live)
+    elif "<" in expected:  # the SES region is not configured: the MX value is not known
+        status, current, suggestion = (RECORD_ADD if not live else RECORD_UNKNOWN), (live[0] if live else None), None
+    else:
+        status, current, suggestion = _compare_value(expected, live, str(record.get("type", "")))
+    out.update(status=status, current_value=current, suggested_value=suggestion or out["suggested_value"])
+    return out
+
+
+def record_summary(records: Iterable[Dict[str, Any]]) -> Dict[str, int]:
+    """How many records are OK / to add / to update / unknown."""
+    counts = {RECORD_OK: 0, RECORD_ADD: 0, RECORD_UPDATE: 0, RECORD_UNKNOWN: 0}
+    for record in records:
+        counts[record["status"]] = counts.get(record["status"], 0) + 1
+    return counts

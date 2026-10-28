@@ -84,6 +84,9 @@ class SendingQueueRepository(Protocol):
 
     def pending_for_resume(self, campaign_id: str) -> List[EmailMessage]: ...
 
+    def rebind_unsent(self, campaign_id: str, prospect_id: str, exclude_message_id: str,
+                      inbox_id: str, from_email: Optional[str]) -> int: ...
+
     def record_sent_event(self, message_id: str, now: datetime, ses_message_id: Optional[str] = ...) -> None: ...
 
     def count_sent_to_inbox(self, inbox_id: str, now: datetime) -> None: ...
@@ -302,6 +305,19 @@ class SqlAlchemySendingQueueRepository:
             EmailMessage.status.in_(list(RESUME_STATUSES)),
             EmailMessage.sent_at.is_(None),
         ).all()
+
+    def rebind_unsent(self, campaign_id: str, prospect_id: str, exclude_message_id: str,
+                      inbox_id: str, from_email: Optional[str]) -> int:
+        """Move this contact's other unsent mail of the campaign to ``inbox_id`` (S-17: a new contact moved off
+        a capped mailbox keeps one sender for the whole sequence)."""
+        return int(self._s.query(EmailMessage).filter(
+            EmailMessage.campaign_id == campaign_id,
+            EmailMessage.prospect_id == prospect_id,
+            EmailMessage.message_id != exclude_message_id,
+            EmailMessage.sent_at.is_(None),
+            EmailMessage.status.in_(list(FOLLOW_UP_STATUSES)),
+        ).update({EmailMessage.inbox_id: inbox_id, EmailMessage.from_email: from_email},
+                 synchronize_session=False))
 
     # ── "Send now" batch (cursor over step number, message id) ──────────────
 

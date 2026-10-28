@@ -83,6 +83,45 @@ def _dmarc(domain_name: str) -> str:
     return status
 
 
+LIVE_DNS_TIMEOUT_SECONDS = 2.0
+DnsLookup = Callable[[str, str], Optional[List[str]]]
+
+
+def _rdata_text(rtype: str, rd: Any) -> str:
+    if rtype == "TXT":  # a long TXT record is several strings: they form one value
+        return b"".join(rd.strings).decode("utf-8", errors="replace")
+    if rtype == "MX":
+        return f"{rd.preference} {rd.exchange.to_text()}"
+    return str(rd.target.to_text()) if rtype == "CNAME" else str(rd.to_text())
+
+
+def live_dns_values(rtype: str, host: str) -> Optional[List[str]]:
+    """What DNS publishes for ``host`` (S-25): [] when the name or record type does not exist, None when the
+    lookup itself failed (timeout, no name servers)."""
+    resolver = dns.resolver.Resolver()
+    resolver.lifetime = LIVE_DNS_TIMEOUT_SECONDS
+    try:
+        return [_rdata_text(rtype, rd) for rd in resolver.resolve(host, rtype)]
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return []
+    except Exception as exc:  # DNS failures are reported as UNKNOWN, never as an error
+        logger.info("Live DNS lookup %s %s failed: %s", rtype, host, exc)
+        return None
+
+
+def compare_with_live_dns(records: List[Dict[str, Any]], lookup: DnsLookup) -> List[Dict[str, Any]]:
+    """Each guidance record with its live status. After one failed lookup (DNS unreachable) the remaining
+    records are UNKNOWN without waiting for more timeouts."""
+    out, reachable = [], True
+    for record in records:
+        live = None
+        if reachable and "<" not in str(record.get("host", "")):
+            live = lookup(str(record["type"]), str(record["host"]))
+            reachable = live is not None
+        out.append(rules.compare_record(record, live))
+    return out
+
+
 def _domain_dict(d: SendingDomain, inbox_emails: List[str], active_campaigns: List[str]) -> Dict[str, Any]:
     out = {field: getattr(d, field) for field in DOMAIN_FIELDS}
     out.update(associated_inboxes=inbox_emails, active_campaigns=active_campaigns)
@@ -356,8 +395,10 @@ class SendingDomainService:
 
     def __init__(self, uow: Any, *, engine: Optional[DeliverabilityService] = None,
                  ingestion: Any = None, alerts: Any = None,
-                 has_domain: Optional[Callable[[Any, str, str], bool]] = None) -> None:
+                 has_domain: Optional[Callable[[Any, str, str], bool]] = None,
+                 dns_lookup: Optional[DnsLookup] = None) -> None:
         self.uow = uow
+        self._dns_lookup = dns_lookup if dns_lookup is not None else live_dns_values
         self._engine = engine
         self._ingestion = ingestion if ingestion is not None else provider_ingestion_service
         self._alerts = alerts if alerts is not None else alert_center_service
@@ -411,21 +452,29 @@ class SendingDomainService:
                 raise BadRequestError(str(exc)) from exc
         return {"status": "updated", "updated": len(items)}
 
-    def dns_records(self, user: Any, domain_name: str) -> Dict[str, Any]:
-        """DNS records to publish for this workspace domain (guidance only) and its last statuses."""
+    def dns_records(self, user: Any, domain_name: str, live: bool = True) -> Dict[str, Any]:
+        """DNS records to publish for this workspace domain and its last statuses; with ``live`` each record
+        is compared with what DNS publishes now (S-25: OK / ADD / UPDATE / UNKNOWN, current value, the
+        value to publish - for SPF merged into the existing record). The lookups run after the unit of work."""
         with self.uow as uow:
             name = self._require_domain(uow, user.tenant_id, domain_name)
             tokens = self.engine.dkim_tokens(name, create=False)
             row = uow.domains.get_domain(user.tenant_id, name)
-            return {
+            records: List[Dict[str, Any]] = rules.dns_record_guidance(name, tokens, settings.AWS_REGION)
+            result: Dict[str, Any] = {
                 "domain_name": name,
-                "dns_records": rules.dns_record_guidance(name, tokens, settings.AWS_REGION),
+                "dns_records": records,
                 "dkim_tokens_available": bool(tokens),
                 "spf_status": row.spf_status if row else "UNKNOWN",
                 "dkim_status": row.dkim_status if row else "UNKNOWN",
                 "dmarc_status": row.dmarc_status if row else "UNKNOWN",
                 "checked_at": row.updated_at if row else None,
             }
+        if live:
+            records = compare_with_live_dns(records, self._dns_lookup)
+            result.update(dns_records=records, live_summary=rules.record_summary(records))
+            result["live_checked_at"] = utcnow()
+        return result
 
     def sent_log(self, user: Any, domain_name: str, limit: int) -> List[Dict[str, Any]]:
         """Recent outbound emails sent from this domain with their send times (did / when a send happen)."""

@@ -1,9 +1,11 @@
 """
-Sending inbox (mailbox) edit rules for the email accounts page (F-20). Pure: no I/O.
+Sending inbox (mailbox) edit rules for the email accounts page (F-20) and the IMAP settings derived from
+SMTP (S-26). Pure: no I/O.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -54,3 +56,72 @@ def domain_of_address(email_address: Optional[str]) -> Optional[str]:
     if not email_address or "@" not in email_address:
         return None
     return email_address.split("@")[-1]
+
+
+# ── IMAP derived from SMTP (S-26) ─────────────────────────────────────────
+# Most mailboxes receive on the server they send through: when no IMAP host is saved, it is derived from the
+# SMTP host (never stored), and blank IMAP credentials reuse the SMTP ones.
+DEFAULT_IMAP_PORT = 993
+KNOWN_IMAP_HOSTS = {
+    "smtp.gmail.com": "imap.gmail.com",
+    "smtp.googlemail.com": "imap.gmail.com",
+    "smtp.office365.com": "outlook.office365.com",
+    "smtp-mail.outlook.com": "outlook.office365.com",
+    "smtp.outlook.com": "outlook.office365.com",
+    "smtp.zoho.com": "imap.zoho.com",
+    "smtp.zoho.in": "imap.zoho.in",
+    "smtp.zoho.eu": "imap.zoho.eu",
+    "smtp.zoho.com.au": "imap.zoho.com.au",
+    "smtppro.zoho.com": "imappro.zoho.com",
+    "smtppro.zoho.in": "imappro.zoho.in",
+    "smtppro.zoho.eu": "imappro.zoho.eu",
+}
+# Relays that only send: their host and credentials say nothing about a mailbox to read
+SEND_ONLY_SUFFIXES = (".amazonaws.com", ".sendgrid.net", ".mailgun.org", ".sparkpostmail.com", ".postmarkapp.com")
+
+
+def _send_only(smtp_host: str) -> bool:
+    return smtp_host.endswith(SEND_ONLY_SUFFIXES)
+
+
+def derived_imap_host(smtp_host: Optional[str]) -> Optional[str]:
+    """The IMAP host of a known provider, else smtp.<domain> -> imap.<domain>; None when it cannot be told."""
+    host = (smtp_host or "").strip().lower().rstrip(".")
+    if not host or _send_only(host):
+        return None
+    if host in KNOWN_IMAP_HOSTS:
+        return KNOWN_IMAP_HOSTS[host]
+    if host.startswith("smtp.") and len(host) > len("smtp."):
+        return "imap." + host[len("smtp."):]
+    return None
+
+
+@dataclass(frozen=True)
+class EffectiveImap:
+    """The IMAP settings a mailbox is read with: the saved ones, gaps filled from SMTP (not stored)."""
+    effective_imap_host: Optional[str]
+    effective_imap_port: int
+    effective_imap_username: Optional[str]
+    effective_imap_password: Optional[str]
+    imap_host_derived: bool
+
+    def configured(self, oauth: bool = False) -> bool:
+        """A host and something to sign in with (a password, or a Microsoft 365 token)."""
+        return bool(self.effective_imap_host and (self.effective_imap_password or oauth))
+
+
+def effective_imap(mailbox: Any) -> EffectiveImap:
+    """For any object with the SendingInbox imap_* / smtp_* / email_address attributes."""
+    saved_host = (getattr(mailbox, "imap_host", None) or "").strip() or None
+    host = saved_host or derived_imap_host(getattr(mailbox, "smtp_host", None))
+    smtp_host = (getattr(mailbox, "smtp_host", None) or "").strip().lower()
+    reuse_smtp = bool(smtp_host) and not _send_only(smtp_host)
+    password = getattr(mailbox, "imap_password", None) or None
+    username = getattr(mailbox, "imap_username", None) or None
+    if not password and reuse_smtp:
+        password = getattr(mailbox, "smtp_password", None) or None
+        username = username or getattr(mailbox, "smtp_username", None) or None
+    port = getattr(mailbox, "imap_port", None) if saved_host else None
+    return EffectiveImap(effective_imap_host=host, effective_imap_port=port or DEFAULT_IMAP_PORT,
+                         effective_imap_username=username or getattr(mailbox, "email_address", None),
+                         effective_imap_password=password, imap_host_derived=host is not None and not saved_host)

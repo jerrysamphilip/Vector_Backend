@@ -161,11 +161,14 @@ def add_domain(
 @router.get("/deliverability/domains/{domain_name}/dns-records")
 def get_domain_dns_records(
     domain_name: str,
+    live: bool = Query(True, description="Compare each record with live DNS (status OK / ADD / UPDATE / UNKNOWN)"),
     service: SendingDomainService = Domains,
     current_user: Any = Depends(require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")),
 ):
-    """DNS records to publish for this workspace domain (guidance only) and its last checked statuses."""
-    return service.dns_records(current_user, domain_name)
+    """DNS records to publish for this workspace domain and its last checked statuses. With ``live`` (default)
+    each record also carries ``status``, ``current_value`` / ``current_values`` (live DNS) and
+    ``suggested_value`` (what to publish; SPF merged into an existing record), plus ``live_summary``."""
+    return service.dns_records(current_user, domain_name, live)
 
 
 @router.get("/deliverability/domains/{domain_name}/sent-log", response_model=List[SentEmailLogEntry])
