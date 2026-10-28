@@ -119,11 +119,13 @@ def run(R):
     nt = _notes(ag[1]["token"])
     R.check("E2E-J6-11", "Assigned agent gets an 'ASSIGNED' notification per lead (agent 2 received 2)", len([n for n in nt if "New lead" in (n.get("title") or "")]) == 2, f"{[n.get('title') for n in nt]}")
     # ── stale deals ──
+    # agent 3 opts out of e-mail BEFORE its overdue deal exists: a sales_jobs pass from anywhere (the worker, another
+    # suite's run_job) between the two calls would otherwise e-mail the alert before the opt-out (J6-15)
+    req("PUT", "/notifications/preferences", {"email": False}, ag[2]["token"])
     d_old = req("POST", "/opportunities", {"name": f"Stale idle {rid}", "owner_id": ag[1]["user_id"], "amount": 1000, "close_date": str(date.today() + timedelta(days=60))}, owner)[1]
     d_late = req("POST", "/opportunities", {"name": f"Stale late {rid}", "owner_id": ag[2]["user_id"], "amount": 2000, "close_date": str(date.today() - timedelta(days=1))}, owner)[1]
     d_ok = req("POST", "/opportunities", {"name": f"Fresh {rid}", "owner_id": ag[2]["user_id"], "amount": 3000, "close_date": str(date.today() + timedelta(days=60))}, owner)[1]
     sql(f"UPDATE opportunities SET updated_at = UTC_TIMESTAMP() - INTERVAL 20 DAY, created_at = UTC_TIMESTAMP() - INTERVAL 20 DAY WHERE opportunity_id={q(d_old['opportunity_id'])}")
-    req("PUT", "/notifications/preferences", {"email": False}, ag[2]["token"])      # agent 3 opts out of e-mail
     ok, out = run_job("sales_jobs")
     sa = [n for n in _notes(ag[1]["token"]) if "Stale deal" in (n.get("title") or "")]
     sb = [n for n in _notes(ag[2]["token"]) if "Stale deal" in (n.get("title") or "")]
