@@ -4420,6 +4420,11 @@
       ],
       "title": "Last Message Final Status"
      },
+     "last_message_is_system": {
+      "type": "boolean",
+      "title": "Last Message Is System",
+      "default": false
+     },
      "campaign_id": {
       "anyOf": [
        {
@@ -7794,6 +7799,11 @@
      "reply_needs_review": {
       "type": "boolean",
       "title": "Reply Needs Review",
+      "default": false
+     },
+     "is_system": {
+      "type": "boolean",
+      "title": "Is System",
       "default": false
      },
      "activity": {
