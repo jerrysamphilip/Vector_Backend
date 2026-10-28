@@ -16,21 +16,21 @@ The pure rules live in app/services/ab_testing.py.
 """
 
 from collections import defaultdict
-from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
-
-from sqlalchemy import func
-from sqlalchemy.orm import Query, Session
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from app.core.clock import utcnow
+from app.core.config import settings
 from app.models.campaign import Campaign
-from app.models.email_message import EmailEvent, EmailMessage
+from app.models.email_message import EmailEvent
 from app.models.email_sequence import EmailSequence
-from app.models.email_template import EmailTemplate
 from app.models.prospect import Prospect
 from app.models.subject_variant import EmailSubjectVariant
+from app.repositories.campaigns import CampaignsUnitOfWork
 from app.services import ab_testing
 from app.services.audit_service import AuditService
-from app.services.campaign_analytics_service import sent_message_filters, unique_prospects_expr
+from app.services.compliance_service import _check_subject_line, calculate_spam_score, check_disallowed_phrases
+from app.services.email_render import RenderContext, substitute_placeholders
+from app.services.sender_identity import campaign_sender_name, get_sender_identity
 
 # Emails that have not left yet and may still change subject (same set as
 # CampaignEmailService.propagate_template_edit). SENDING (claimed) is excluded.
@@ -52,12 +52,6 @@ def check_subject(subject: str) -> Tuple[str, List[str]]:
     Disallowed phrases (compliance_service) are refused with 400; spam-trigger and
     subject-line lint findings are returned as warnings, as for templates.
     """
-    from app.services.compliance_service import (
-        _check_subject_line,
-        calculate_spam_score,
-        check_disallowed_phrases,
-    )
-
     clean = (subject or "").strip()
     if not clean:
         raise SubjectVariantError(422, "Subject must not be empty")
@@ -76,33 +70,34 @@ def check_subject(subject: str) -> Tuple[str, List[str]]:
 
 
 class SubjectVariantService:
-    def __init__(self, db: Session) -> None:
+    """The SQL lives in app/repositories/campaigns_content.py and campaigns_messages.py. Nothing here commits:
+    the caller (the subject-variant routes, the pre-schedule) owns the transaction."""
+
+    def __init__(self, db: Any = None, *, uow: Any = None, audit: Any = None) -> None:
+        self.uow = uow if uow is not None else CampaignsUnitOfWork.for_session(db)
         self.db = db
-        self.audit = AuditService(db)
+        self._audit = audit
+
+    @property
+    def audit(self) -> AuditService:
+        if self._audit is None:
+            self._audit = AuditService(self.uow.session)
+        return self._audit
 
     # ── lookups ─────────────────────────────────────────────────
 
     def get_step(self, campaign_id: str, step_number: int) -> EmailSequence:
-        seq = self.db.query(EmailSequence).filter(
-            EmailSequence.campaign_id == campaign_id,
-            EmailSequence.step_number == step_number,
-        ).first()
+        seq = self.uow.content.step(campaign_id, step_number)
         if not seq:
             raise SubjectVariantError(404, "Sequence step not found")
         return seq
 
     def list_variants(self, sequence_id: str) -> List[EmailSubjectVariant]:
-        rows = self.db.query(EmailSubjectVariant).filter(EmailSubjectVariant.sequence_id == sequence_id).all()
-        return sorted(rows, key=lambda v: ab_testing.VARIANT_LABELS.index(v.label))
+        return sorted(self.uow.content.variants(sequence_id), key=lambda v: ab_testing.VARIANT_LABELS.index(v.label))
 
     def _get_variant(self, sequence_id: str, label: str) -> EmailSubjectVariant:
         norm = ab_testing.normalize_label(label)
-        variant = None
-        if norm:
-            variant = self.db.query(EmailSubjectVariant).filter(
-                EmailSubjectVariant.sequence_id == sequence_id,
-                EmailSubjectVariant.label == norm,
-            ).first()
+        variant = self.uow.content.variant(sequence_id, norm) if norm else None
         if not variant:
             raise SubjectVariantError(404, "Subject variant not found")
         return variant
@@ -111,19 +106,8 @@ class SubjectVariantService:
     def promoted(variants: Iterable[EmailSubjectVariant]) -> Optional[EmailSubjectVariant]:
         return next((v for v in variants if v.is_winner), None)
 
-    def _step_messages(self, sequence_id: str) -> Query:
-        return self.db.query(EmailMessage).filter(
-            EmailMessage.sequence_id == sequence_id,
-            func.coalesce(EmailMessage.direction, "OUTBOUND") != "INBOUND",
-        )
-
     def _sent_counts(self, sequence_id: str) -> Dict[str, int]:
-        rows = self.db.query(EmailMessage.subject_variant, func.count(EmailMessage.message_id)).filter(
-            EmailMessage.sequence_id == sequence_id,
-            EmailMessage.subject_variant.isnot(None),
-            *sent_message_filters(),
-        ).group_by(EmailMessage.subject_variant).all()
-        return {label: count for label, count in rows}
+        return self.uow.messages.variant_sent_counts(sequence_id)
 
     def _ensure_not_promoted(self, variants: List[EmailSubjectVariant]) -> None:
         winner = self.promoted(variants)
@@ -134,16 +118,24 @@ class SubjectVariantService:
     # ── rendering / re-balancing unsent emails ─────────────────
 
     def _renderer(self, campaign: Campaign) -> Callable[..., str]:
-        from app.services.campaign_email_service import CampaignEmailService
-        from app.services.sender_identity import campaign_sender_name
-
-        email_svc = CampaignEmailService(self.db)
-        sender_name = campaign_sender_name(self.db, campaign)
+        ctx = RenderContext(sender_name=campaign_sender_name(self.uow.session, campaign),
+                            sender_title=campaign.sender_title, cta_link=campaign.cta_link,
+                            our_company=get_sender_identity(campaign.tenant_id).company_name,
+                            default_sender_name=settings.SENDER_NAME)
 
         def render(subject: str, prospect: Prospect) -> str:
-            return email_svc.substitute_placeholders(
-                subject or "", prospect, sender_name, campaign.cta_link, campaign.sender_title)
+            return substitute_placeholders(subject or "", prospect, ctx)
         return render
+
+    def _plan(self, seq: EmailSequence, variants: List[EmailSubjectVariant], pending: list) -> Dict[str, Any]:
+        winner = self.promoted(variants)
+        if winner:
+            return {m.message_id: winner.label for m in pending}
+        return ab_testing.rebalance(
+            {m.message_id: m.subject_variant for m in pending},
+            [(v.label, v.weight) for v in variants],
+            self._sent_counts(seq.sequence_id),
+        )
 
     def resync_step(self, campaign: Campaign, seq: EmailSequence, rerender: Optional[Set[str]] = None) -> int:
         """Bring the step's unsent emails in line with its current variants.
@@ -158,52 +150,32 @@ class SubjectVariantService:
         rerender = rerender or set()
         variants = self.list_variants(seq.sequence_id)
         by_label = {v.label: v for v in variants}
-        pending = self._step_messages(seq.sequence_id).filter(
-            EmailMessage.status.in_(PENDING_STATUSES),
-            EmailMessage.sent_at.is_(None),
-        ).all()
+        pending = self.uow.messages.unsent_step_emails(seq.sequence_id)
         if not pending:
             return 0
-
-        winner = self.promoted(variants)
-        if winner:
-            plan = {m.message_id: winner.label for m in pending}
-        else:
-            plan = ab_testing.rebalance(
-                {m.message_id: m.subject_variant for m in pending},
-                [(v.label, v.weight) for v in variants],
-                self._sent_counts(seq.sequence_id),
-            )
-
+        plan = self._plan(seq, variants, pending)
         changed_msgs = [m for m in pending
                         if plan.get(m.message_id) != m.subject_variant
                         or (m.subject_variant and m.subject_variant in rerender)]
         if not changed_msgs:
             return 0
-
-        prospect_ids = {m.prospect_id for m in changed_msgs}
-        prospects = {p.prospect_id: p for p in self.db.query(Prospect).filter(
-            Prospect.prospect_id.in_(prospect_ids)).all()}
-        template_ids = {m.template_id for m in changed_msgs if m.template_id}
-        templates = {t.template_id: t for t in self.db.query(EmailTemplate).filter(
-            EmailTemplate.template_id.in_(template_ids)).all()} if template_ids else {}
+        prospects = self.uow.campaigns.contacts(m.prospect_id for m in changed_msgs)
+        templates = self.uow.content.templates_by_ids(m.template_id for m in changed_msgs if m.template_id)
         render = self._renderer(campaign)
-
         updated = 0
         for msg in changed_msgs:
             prospect = prospects.get(msg.prospect_id)
             if not prospect:
                 continue
             label = plan.get(msg.message_id)
+            template = templates.get(msg.template_id)
             if label:
                 msg.subject = render(by_label[label].subject, prospect)
-            else:
-                template = templates.get(msg.template_id)
-                if template and template.subject:
-                    msg.subject = render(template.subject, prospect)
+            elif template and template.subject:
+                msg.subject = render(template.subject, prospect)
             msg.subject_variant = label
             updated += 1
-        self.db.flush()
+        self.uow.messages.flush()
         return updated
 
     def assignments_for_new_messages(
@@ -218,35 +190,20 @@ class SubjectVariantService:
         """
         if not needed:
             return {}
-        rows = self.db.query(EmailSubjectVariant).filter(
-            EmailSubjectVariant.campaign_id == campaign_id,
-            EmailSubjectVariant.sequence_id.in_(list(needed)),
-        ).all()
         by_seq: Dict[str, List[EmailSubjectVariant]] = defaultdict(list)
-        for v in rows:
+        for v in self.uow.content.variants_of_steps(campaign_id, list(needed)):
             by_seq[v.sequence_id].append(v)
-
         result: Dict[Tuple[str, str], EmailSubjectVariant] = {}
         for sequence_id, prospect_ids in needed.items():
             variants = by_seq.get(sequence_id) or []
-            if not variants:
-                continue
-            by_label = {v.label: v for v in variants}
             winner = self.promoted(variants)
             if winner:
-                for pid in prospect_ids:
-                    result[(pid, sequence_id)] = winner
-                continue
-            if len(variants) < ab_testing.MIN_VARIANTS:
-                continue
-            counts = dict(self.db.query(EmailMessage.subject_variant, func.count(EmailMessage.message_id)).filter(
-                EmailMessage.sequence_id == sequence_id,
-                EmailMessage.subject_variant.isnot(None),
-                EmailMessage.status != "CANCELLED",
-            ).group_by(EmailMessage.subject_variant).all())
-            labels = ab_testing.assign_variants(prospect_ids, [(v.label, v.weight) for v in variants], counts)
-            for pid, label in labels.items():
-                result[(pid, sequence_id)] = by_label[label]
+                result.update({(pid, sequence_id): winner for pid in prospect_ids})
+            elif len(variants) >= ab_testing.MIN_VARIANTS:
+                by_label = {v.label: v for v in variants}
+                counts = self.uow.messages.variant_assignment_counts(sequence_id)
+                labels = ab_testing.assign_variants(prospect_ids, [(v.label, v.weight) for v in variants], counts)
+                result.update({(pid, sequence_id): by_label[label] for pid, label in labels.items()})
         return result
 
     # ── CRUD ────────────────────────────────────────────────────
@@ -265,10 +222,10 @@ class SubjectVariantService:
             tenant_id=campaign.tenant_id, campaign_id=campaign.campaign_id, sequence_id=seq.sequence_id,
             label=label, subject=clean, weight=weight or ab_testing.DEFAULT_WEIGHT, created_by=user_id,
         )
-        self.db.add(variant)
-        self.db.flush()
+        self.uow.content.add(variant)
+        self.uow.content.flush()
         moved = self.resync_step(campaign, seq)
-        self._audit(campaign, user_id, AuditService.ACTION_CREATE)
+        self._audit_action(campaign, user_id, AuditService.ACTION_CREATE)
         return variant, warnings, moved
 
     def update(self, campaign: Campaign, seq: EmailSequence, label: str, subject: Optional[str],
@@ -281,21 +238,25 @@ class SubjectVariantService:
         if subject is not None:
             clean, warnings = check_subject(subject)
             if clean != variant.subject:
-                sent = self._sent_counts(seq.sequence_id).get(variant.label, 0)
-                if sent:
-                    raise SubjectVariantError(
-                        409, f"Variant {variant.label} was already sent {sent} time(s); its subject can no longer "
-                             f"change. Add a new variant instead.")
-                if any(v.subject == clean and v.label != variant.label for v in variants):
-                    raise SubjectVariantError(409, "Another variant of this step already has this subject")
+                self._check_subject_change(variant, variants, clean)
                 variant.subject = clean
                 rerender.add(variant.label)
         if weight is not None:
             variant.weight = weight
-        self.db.flush()
+        self.uow.content.flush()
         moved = self.resync_step(campaign, seq, rerender)
-        self._audit(campaign, user_id, AuditService.ACTION_UPDATE)
+        self._audit_action(campaign, user_id, AuditService.ACTION_UPDATE)
         return variant, warnings, moved
+
+    def _check_subject_change(self, variant: EmailSubjectVariant, variants: List[EmailSubjectVariant],
+                              clean: str) -> None:
+        sent = self._sent_counts(variant.sequence_id).get(variant.label, 0)
+        if sent:
+            raise SubjectVariantError(
+                409, f"Variant {variant.label} was already sent {sent} time(s); its subject can no longer "
+                     f"change. Add a new variant instead.")
+        if any(v.subject == clean and v.label != variant.label for v in variants):
+            raise SubjectVariantError(409, "Another variant of this step already has this subject")
 
     def delete(self, campaign: Campaign, seq: EmailSequence, label: str, user_id: str) -> int:
         variants = self.list_variants(seq.sequence_id)
@@ -305,13 +266,13 @@ class SubjectVariantService:
         if sent:
             raise SubjectVariantError(
                 409, f"Variant {variant.label} was already sent {sent} time(s) and is kept for the results")
-        self.db.delete(variant)
-        self.db.flush()
+        self.uow.content.delete(variant)
+        self.uow.content.flush()
         moved = self.resync_step(campaign, seq)
-        self._audit(campaign, user_id, AuditService.ACTION_DELETE)
+        self._audit_action(campaign, user_id, AuditService.ACTION_DELETE)
         return moved
 
-    def _audit(self, campaign: Campaign, user_id: str, action: str) -> None:
+    def _audit_action(self, campaign: Campaign, user_id: str, action: str) -> None:
         self.audit.log_action(tenant_id=campaign.tenant_id, user_id=user_id, action=action,
                               entity_type=AuditService.ENTITY_SEQUENCE, entity_id=campaign.campaign_id)
 
@@ -320,29 +281,12 @@ class SubjectVariantService:
     def stats(self, seq: EmailSequence) -> Dict:
         variants = self.list_variants(seq.sequence_id)
         sid = seq.sequence_id
-
-        def grouped(query) -> Dict[str, int]:
-            return {label: count for label, count in query.group_by(EmailMessage.subject_variant).all()}
-
+        msgs = self.uow.messages
         sent = self._sent_counts(sid)
-        scheduled = grouped(self.db.query(EmailMessage.subject_variant, func.count(EmailMessage.message_id)).filter(
-            EmailMessage.sequence_id == sid, EmailMessage.subject_variant.isnot(None),
-            EmailMessage.status.in_(PENDING_STATUSES), EmailMessage.sent_at.is_(None)))
-
-        def unique_with(event_type: int) -> Dict[str, int]:
-            return grouped(self.db.query(EmailMessage.subject_variant, unique_prospects_expr()).join(
-                EmailEvent, EmailEvent.message_id == EmailMessage.message_id
-            ).filter(EmailMessage.sequence_id == sid, EmailMessage.subject_variant.isnot(None),
-                     EmailEvent.event_type == event_type))
-
-        opened = unique_with(EmailEvent.EVENT_OPEN)
-        clicked = unique_with(EmailEvent.EVENT_CLICK)
-        replied = grouped(self.db.query(
-            EmailMessage.subject_variant, func.count(func.distinct(EmailEvent.message_id))
-        ).join(EmailEvent, EmailEvent.message_id == EmailMessage.message_id).filter(
-            EmailMessage.sequence_id == sid, EmailMessage.subject_variant.isnot(None),
-            EmailEvent.event_type == EmailEvent.EVENT_REPLY))
-
+        scheduled = msgs.variant_scheduled_counts(sid)
+        opened = msgs.variant_unique_contacts(sid, EmailEvent.EVENT_OPEN)
+        clicked = msgs.variant_unique_contacts(sid, EmailEvent.EVENT_CLICK)
+        replied = msgs.variant_replied(sid)
         rows = []
         for v in variants:
             s, o, c, r = sent.get(v.label, 0), opened.get(v.label, 0), clicked.get(v.label, 0), replied.get(v.label, 0)
@@ -356,14 +300,11 @@ class SubjectVariantService:
         winner_row = self.promoted(variants)
         winner = ab_testing.pick_winner(rows, ab_testing.MIN_SENDS_PER_VARIANT,
                                         winner_row.label if winner_row else None)
-        unassigned_sent = self.db.query(func.count(EmailMessage.message_id)).filter(
-            EmailMessage.sequence_id == sid, EmailMessage.subject_variant.is_(None), *sent_message_filters(),
-        ).scalar() or 0
         return {
             "step": seq.step_number, "sequence_id": sid, "variants": rows, "winner": winner,
             "ab_active": len(variants) >= ab_testing.MIN_VARIANTS,
             "min_sends_per_variant": ab_testing.MIN_SENDS_PER_VARIANT,
-            "unassigned_sent": unassigned_sent,
+            "unassigned_sent": msgs.unassigned_sent(sid),
         }
 
     def promote(self, campaign: Campaign, seq: EmailSequence, label: str, user_id: str) -> Dict:
@@ -376,24 +317,14 @@ class SubjectVariantService:
         variant.is_winner = True
         variant.promoted_at = utcnow()
         variant.promoted_by = user_id
-        self.db.flush()
+        self.uow.content.flush()
         moved = self.resync_step(campaign, seq)
-        self._audit(campaign, user_id, AuditService.ACTION_UPDATE)
+        self._audit_action(campaign, user_id, AuditService.ACTION_UPDATE)
         return {"promoted_label": variant.label, "subject": variant.subject, "updated_messages": moved}
 
     def messages(self, seq: EmailSequence, label: Optional[str], limit: int, offset: int) -> Dict:
         """The step's emails with their variant and subject (sent history first)."""
-        q = self.db.query(EmailMessage, Prospect.first_name, Prospect.last_name).join(
-            Prospect, Prospect.prospect_id == EmailMessage.prospect_id
-        ).filter(
-            EmailMessage.sequence_id == seq.sequence_id,
-            func.coalesce(EmailMessage.direction, "OUTBOUND") != "INBOUND",
-        )
-        if label:
-            q = q.filter(EmailMessage.subject_variant == label)
-        total = q.count()
-        rows = q.order_by(EmailMessage.sent_at.is_(None), EmailMessage.sent_at.desc(),
-                          EmailMessage.scheduled_at.asc(), EmailMessage.message_id).offset(offset).limit(limit).all()
+        total, rows = self.uow.messages.step_page(seq.sequence_id, label, limit, offset)
         return {
             "total": total,
             "items": [{

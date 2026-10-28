@@ -1,0 +1,281 @@
+-- AIPrompt
+CREATE TABLE ai_prompts (
+	prompt_id VARCHAR(36) NOT NULL, 
+	base_prompt TEXT NOT NULL, 
+	persona_rules JSON, 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (prompt_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col prompt_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col base_prompt Text notnull   default=None onupdate=None server_default=None server_onupdate=None
+col persona_rules JSON null   default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- CampaignDraft
+CREATE TABLE campaign_drafts (
+	draft_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	user_id VARCHAR(36) NOT NULL, 
+	draft_name VARCHAR(255), 
+	current_step INTEGER, 
+	draft_data JSON NOT NULL, 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (draft_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_campaign_drafts_tenant_id ON campaign_drafts (tenant_id)
+CREATE INDEX ix_campaign_drafts_user_id ON campaign_drafts (user_id)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col draft_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull  idx default=None onupdate=None server_default=None server_onupdate=None
+col user_id String notnull  idx default=None onupdate=None server_default=None server_onupdate=None
+col draft_name String null   default=None onupdate=None server_default=None server_onupdate=None
+col current_step Integer null   default='1' onupdate=None server_default=None server_onupdate=None
+col draft_data JSON notnull   default='callable:dict' onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col updated_at DateTime null   default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- CampaignProspect
+CREATE TABLE campaign_prospects (
+	id VARCHAR(36) NOT NULL, 
+	campaign_id VARCHAR(36) NOT NULL, 
+	prospect_id VARCHAR(36) NOT NULL, 
+	current_step INTEGER, 
+	next_scheduled_at DATETIME(6), 
+	status VARCHAR(50), 
+	stopped_reason VARCHAR(100), 
+	enrolled_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (id), 
+	CONSTRAINT uq_campaign_prospect UNIQUE (campaign_id, prospect_id), 
+	CONSTRAINT ck_step_range CHECK (current_step BETWEEN 1 AND 7), 
+	FOREIGN KEY(campaign_id) REFERENCES campaigns (campaign_id), 
+	FOREIGN KEY(prospect_id) REFERENCES prospects (prospect_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col campaign_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col prospect_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col current_step Integer null   default='1' onupdate=None server_default=None server_onupdate=None
+col next_scheduled_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col status String null   default='ACTIVE' onupdate=None server_default=None server_onupdate=None
+col stopped_reason String null   default=None onupdate=None server_default=None server_onupdate=None
+col enrolled_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- CampaignStateEvent
+CREATE TABLE campaign_state_events (
+	id VARCHAR(36) NOT NULL, 
+	campaign_id VARCHAR(36) NOT NULL, 
+	from_state VARCHAR(50), 
+	to_state VARCHAR(50) NOT NULL, 
+	reason TEXT, 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(campaign_id) REFERENCES campaigns (campaign_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col campaign_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col from_state String null   default=None onupdate=None server_default=None server_onupdate=None
+col to_state String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col reason Text null   default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- Campaign
+CREATE TABLE campaigns (
+	campaign_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	campaign_name VARCHAR(255) NOT NULL, 
+	campaign_description TEXT, 
+	status VARCHAR(50), 
+	paused_reason TEXT, 
+	paused_at DATETIME(6), 
+	auto_paused BOOL, 
+	health_baseline_at DATETIME(6), 
+	created_by VARCHAR(36) NOT NULL, 
+	sender_name VARCHAR(100), 
+	sender_title VARCHAR(150), 
+	cta_link VARCHAR(500), 
+	unsubscribe_mode VARCHAR(10), 
+	send_window_start TIME, 
+	send_window_end TIME, 
+	respect_timezone BOOL, 
+	campaign_timezone VARCHAR(50), 
+	sending_mode VARCHAR(20), 
+	min_gap_minutes INTEGER, 
+	batch_size INTEGER, 
+	batch_gap_minutes INTEGER, 
+	daily_batch_size INTEGER, 
+	start_date DATE, 
+	end_date DATE, 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	row_version INTEGER NOT NULL DEFAULT '1', 
+	source_campaign_id VARCHAR(36), 
+	PRIMARY KEY (campaign_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(created_by) REFERENCES users (user_id), 
+	FOREIGN KEY(source_campaign_id) REFERENCES campaigns (campaign_id) ON DELETE SET NULL
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_campaigns_source_campaign_id ON campaigns (source_campaign_id)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col campaign_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col campaign_name String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col campaign_description Text null   default=None onupdate=None server_default=None server_onupdate=None
+col status String null   default='DRAFT' onupdate=None server_default=None server_onupdate=None
+col paused_reason Text null   default=None onupdate=None server_default=None server_onupdate=None
+col paused_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col auto_paused Boolean null   default='False' onupdate=None server_default=None server_onupdate=None
+col health_baseline_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col created_by String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col sender_name String null   default=None onupdate=None server_default=None server_onupdate=None
+col sender_title String null   default=None onupdate=None server_default=None server_onupdate=None
+col cta_link String null   default=None onupdate=None server_default=None server_onupdate=None
+col unsubscribe_mode String null   default='plain' onupdate=None server_default=None server_onupdate=None
+col send_window_start Time null   default=None onupdate=None server_default=None server_onupdate=None
+col send_window_end Time null   default=None onupdate=None server_default=None server_onupdate=None
+col respect_timezone Boolean null   default='True' onupdate=None server_default=None server_onupdate=None
+col campaign_timezone String null   default='UTC' onupdate=None server_default=None server_onupdate=None
+col sending_mode String null   default='spread' onupdate=None server_default=None server_onupdate=None
+col min_gap_minutes Integer null   default='2' onupdate=None server_default=None server_onupdate=None
+col batch_size Integer null   default=None onupdate=None server_default=None server_onupdate=None
+col batch_gap_minutes Integer null   default='30' onupdate=None server_default=None server_onupdate=None
+col daily_batch_size Integer null   default=None onupdate=None server_default=None server_onupdate=None
+col start_date Date null   default=None onupdate=None server_default=None server_onupdate=None
+col end_date Date null   default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col updated_at DateTime null   default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col row_version Integer notnull   default='1' onupdate=None server_default='1' server_onupdate=None
+col source_campaign_id String null  idx default=None onupdate=None server_default=None server_onupdate=None
+-- EmailSequence
+CREATE TABLE email_sequences (
+	sequence_id VARCHAR(36) NOT NULL, 
+	campaign_id VARCHAR(36) NOT NULL, 
+	step_number INTEGER NOT NULL, 
+	wait_days INTEGER, 
+	stop_on_reply BOOL, 
+	stop_on_bounce BOOL, 
+	send_start_hour INTEGER, 
+	send_end_hour INTEGER, 
+	row_version INTEGER NOT NULL DEFAULT '1', 
+	PRIMARY KEY (sequence_id), 
+	CONSTRAINT ck_sequence_step_range CHECK (step_number BETWEEN 1 AND 7), 
+	FOREIGN KEY(campaign_id) REFERENCES campaigns (campaign_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col sequence_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col campaign_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col step_number Integer notnull   default=None onupdate=None server_default=None server_onupdate=None
+col wait_days Integer null   default='0' onupdate=None server_default=None server_onupdate=None
+col stop_on_reply Boolean null   default='True' onupdate=None server_default=None server_onupdate=None
+col stop_on_bounce Boolean null   default='True' onupdate=None server_default=None server_onupdate=None
+col send_start_hour Integer null   default=None onupdate=None server_default=None server_onupdate=None
+col send_end_hour Integer null   default=None onupdate=None server_default=None server_onupdate=None
+col row_version Integer notnull   default='1' onupdate=None server_default='1' server_onupdate=None
+-- EmailSubjectVariant
+CREATE TABLE email_subject_variants (
+	variant_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	campaign_id VARCHAR(36) NOT NULL, 
+	sequence_id VARCHAR(36) NOT NULL, 
+	label VARCHAR(1) NOT NULL, 
+	subject VARCHAR(500) NOT NULL, 
+	weight INTEGER NOT NULL, 
+	is_winner BOOL NOT NULL, 
+	promoted_at DATETIME(6), 
+	promoted_by VARCHAR(36), 
+	created_by VARCHAR(36), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (variant_id), 
+	CONSTRAINT uq_subject_variants_sequence_label UNIQUE (sequence_id, label), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(campaign_id) REFERENCES campaigns (campaign_id) ON DELETE CASCADE, 
+	FOREIGN KEY(sequence_id) REFERENCES email_sequences (sequence_id) ON DELETE CASCADE, 
+	FOREIGN KEY(promoted_by) REFERENCES users (user_id), 
+	FOREIGN KEY(created_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_email_subject_variants_campaign_id ON email_subject_variants (campaign_id)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col variant_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col campaign_id String notnull  idx default=None onupdate=None server_default=None server_onupdate=None
+col sequence_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col label String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col subject String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col weight Integer notnull   default='1' onupdate=None server_default=None server_onupdate=None
+col is_winner Boolean notnull   default='False' onupdate=None server_default=None server_onupdate=None
+col promoted_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col promoted_by String null   default=None onupdate=None server_default=None server_onupdate=None
+col created_by String null   default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col updated_at DateTime null   default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- EmailTemplateVersion
+CREATE TABLE email_template_versions (
+	version_id VARCHAR(36) NOT NULL, 
+	template_id VARCHAR(36) NOT NULL, 
+	subject TEXT NOT NULL, 
+	body TEXT NOT NULL, 
+	version_number INTEGER NOT NULL, 
+	created_by VARCHAR(36) NOT NULL, 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	is_active BOOL, 
+	PRIMARY KEY (version_id), 
+	FOREIGN KEY(template_id) REFERENCES email_templates (template_id), 
+	FOREIGN KEY(created_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col version_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col template_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col subject Text notnull   default=None onupdate=None server_default=None server_onupdate=None
+col body Text notnull   default=None onupdate=None server_default=None server_onupdate=None
+col version_number Integer notnull   default=None onupdate=None server_default=None server_onupdate=None
+col created_by String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col is_active Boolean null   default='True' onupdate=None server_default=None server_onupdate=None
+-- EmailTemplate
+CREATE TABLE email_templates (
+	template_id VARCHAR(36) NOT NULL, 
+	campaign_id VARCHAR(36) NOT NULL, 
+	sequence_id VARCHAR(36), 
+	designation VARCHAR(150), 
+	subject TEXT NOT NULL, 
+	body TEXT NOT NULL, 
+	tone VARCHAR(50), 
+	ai_model VARCHAR(100), 
+	is_ai_generated BOOL, 
+	ai_prompt_id VARCHAR(36), 
+	content_fingerprint VARCHAR(64), 
+	model_settings JSON, 
+	generated_at DATETIME(6), 
+	cta_text VARCHAR(255), 
+	cta_link TEXT, 
+	personalization_tokens JSON, 
+	approved_by VARCHAR(36), 
+	approved_at DATETIME(6), 
+	expires_at DATETIME(6), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (template_id), 
+	FOREIGN KEY(campaign_id) REFERENCES campaigns (campaign_id), 
+	FOREIGN KEY(sequence_id) REFERENCES email_sequences (sequence_id), 
+	FOREIGN KEY(ai_prompt_id) REFERENCES ai_prompts (prompt_id), 
+	FOREIGN KEY(approved_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col template_id String notnull pk  default='callable:<lambda>' onupdate=None server_default=None server_onupdate=None
+col campaign_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col sequence_id String null   default=None onupdate=None server_default=None server_onupdate=None
+col designation String null   default=None onupdate=None server_default=None server_onupdate=None
+col subject Text notnull   default=None onupdate=None server_default=None server_onupdate=None
+col body Text notnull   default=None onupdate=None server_default=None server_onupdate=None
+col tone String null   default=None onupdate=None server_default=None server_onupdate=None
+col ai_model String null   default=None onupdate=None server_default=None server_onupdate=None
+col is_ai_generated Boolean null   default='False' onupdate=None server_default=None server_onupdate=None
+col ai_prompt_id String null   default=None onupdate=None server_default=None server_onupdate=None
+col content_fingerprint String null   default=None onupdate=None server_default=None server_onupdate=None
+col model_settings JSON null   default=None onupdate=None server_default=None server_onupdate=None
+col generated_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col cta_text String null   default=None onupdate=None server_default=None server_onupdate=None
+col cta_link Text null   default=None onupdate=None server_default=None server_onupdate=None
+col personalization_tokens JSON null   default=None onupdate=None server_default=None server_onupdate=None
+col approved_by String null   default=None onupdate=None server_default=None server_onupdate=None
+col approved_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col expires_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None

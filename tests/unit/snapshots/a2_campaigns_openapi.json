@@ -1,0 +1,6797 @@
+{
+ "paths": {
+  "/campaign-drafts/": {
+   "delete": {
+    "description": "Clear all drafts for current user (called after successful campaign launch).",
+    "operationId": "clear_all_drafts_campaign_drafts__delete",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Clear All Drafts",
+    "tags": [
+     "Campaign Drafts"
+    ]
+   },
+   "get": {
+    "description": "Get all drafts for current user.",
+    "operationId": "list_drafts_campaign_drafts__get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/DraftResponse"
+         },
+         "title": "Response List Drafts Campaign Drafts  Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List Drafts",
+    "tags": [
+     "Campaign Drafts"
+    ]
+   },
+   "post": {
+    "description": "Save or update campaign draft.\nUpserts based on user_id (one active draft per user).\nAuto-save friendly - called frequently during wizard.",
+    "operationId": "save_draft_campaign_drafts__post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SaveDraftRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DraftResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Save Draft",
+    "tags": [
+     "Campaign Drafts"
+    ]
+   }
+  },
+  "/campaign-drafts/current": {
+   "get": {
+    "description": "Get the most recent draft for current user (used on wizard load).",
+    "operationId": "get_current_draft_campaign_drafts_current_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "anyOf": [
+          {
+           "$ref": "#/components/schemas/DraftResponse"
+          },
+          {
+           "type": "null"
+          }
+         ],
+         "title": "Response Get Current Draft Campaign Drafts Current Get"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Current Draft",
+    "tags": [
+     "Campaign Drafts"
+    ]
+   }
+  },
+  "/campaign-drafts/{draft_id}": {
+   "delete": {
+    "description": "Delete a specific draft.",
+    "operationId": "delete_draft_campaign_drafts__draft_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "draft_id",
+      "required": true,
+      "schema": {
+       "title": "Draft Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Delete Draft",
+    "tags": [
+     "Campaign Drafts"
+    ]
+   },
+   "get": {
+    "description": "Get specific draft by ID.",
+    "operationId": "get_draft_campaign_drafts__draft_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "draft_id",
+      "required": true,
+      "schema": {
+       "title": "Draft Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DraftResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Draft",
+    "tags": [
+     "Campaign Drafts"
+    ]
+   }
+  },
+  "/campaign-wizard/update-template": {
+   "post": {
+    "description": "Manually update a template's subject or body after user edit.\nPropagates the change to ALL persona variants of the same sequence step\nso that every prospect in the campaign receives the edited content.",
+    "operationId": "update_template_manual_campaign_wizard_update_template_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SaveTemplateRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Update Template Manual",
+    "tags": [
+     "Campaign Wizard"
+    ]
+   }
+  },
+  "/campaigns": {
+   "get": {
+    "description": "List campaigns with filtering and pagination.\n\nSupports filtering by:\n- **status**: DRAFT, ACTIVE, PAUSED, COMPLETED\n- **created_by**: User ID\n- **campaign_name**: Partial name match",
+    "operationId": "list_campaigns_campaigns_get",
+    "parameters": [
+     {
+      "description": "Filter by status",
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/CampaignStatus"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Filter by status",
+       "title": "Status"
+      }
+     },
+     {
+      "description": "Filter by creator user ID",
+      "in": "query",
+      "name": "created_by",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Filter by creator user ID",
+       "title": "Created By"
+      }
+     },
+     {
+      "description": "Search by name (partial match)",
+      "in": "query",
+      "name": "campaign_name",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Search by name (partial match)",
+       "title": "Campaign Name"
+      }
+     },
+     {
+      "description": "Page number",
+      "in": "query",
+      "name": "page",
+      "required": false,
+      "schema": {
+       "default": 1,
+       "description": "Page number",
+       "minimum": 1,
+       "title": "Page",
+       "type": "integer"
+      }
+     },
+     {
+      "description": "Items per page",
+      "in": "query",
+      "name": "page_size",
+      "required": false,
+      "schema": {
+       "default": 20,
+       "description": "Items per page",
+       "maximum": 100,
+       "minimum": 1,
+       "title": "Page Size",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CampaignListResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List Campaigns",
+    "tags": [
+     "Campaigns"
+    ]
+   },
+   "post": {
+    "description": "Create a new campaign.\n\nCreates a campaign in DRAFT status. Use `/campaigns/{id}/launch` to activate.",
+    "operationId": "create_campaign_campaigns_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CampaignCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CampaignResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Create Campaign",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/bounced-prospects/revalidation-candidates": {
+   "get": {
+    "description": "ADMIN-ONLY. List all prospects who hard-bounced and are candidates for\nre-validation (i.e., their email can be updated and suppression cleared).\n\nVoluntary unsubscribes are NEVER included in this list.",
+    "operationId": "list_bounced_revalidation_candidates_campaigns_bounced_prospects_revalidation_candidates_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List Bounced Revalidation Candidates",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/lists": {
+   "get": {
+    "description": "Get all prospect lists available for campaign creation.",
+    "operationId": "get_available_lists_campaigns_lists_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Available Lists",
+    "tags": [
+     "Campaign Wizard"
+    ]
+   }
+  },
+  "/campaigns/prospects/{prospect_id}/revalidate": {
+   "patch": {
+    "description": "ADMIN-ONLY. Re-validate a bounced prospect by updating their email address.\n\nThis will:\n- Update the prospect's email in the database.\n- Clear the hard-bounce auto-suppression from GlobalUnsubscribes.\n- Reset BOUNCED CampaignProspect rows to RECONNECT_ELIGIBLE.\n\nSTRICTLY PROHIBITED: This endpoint cannot clear voluntary unsubscribes.\nProspects who unsubscribed have a 180-day minimum lockout that\ncannot be overridden by anyone, including Admins.",
+    "operationId": "revalidate_bounced_prospect_campaigns_prospects__prospect_id__revalidate_patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "prospect_id",
+      "required": true,
+      "schema": {
+       "title": "Prospect Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RevalidateProspectRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Revalidate Bounced Prospect",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/schedules/previews": {
+   "post": {
+    "description": "Calculate timezone-aware schedule dates for sequence steps.\n\nUses the business calendar logic to:\n- Schedule at 9 AM in the prospect's local timezone\n- Skip weekends (Saturday, Sunday)\n- Skip US federal holidays\n- Add jitter for anti-spam\n\nReturns formatted dates the frontend can display directly.",
+    "operationId": "get_schedule_preview_campaigns_schedules_previews_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SchedulePreviewRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Schedule Preview",
+    "tags": [
+     "Campaign Wizard"
+    ]
+   }
+  },
+  "/campaigns/sequences/{sequence_id}": {
+   "delete": {
+    "description": "Delete a sequence step.",
+    "operationId": "delete_sequence_step_campaigns_sequences__sequence_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "sequence_id",
+      "required": true,
+      "schema": {
+       "title": "Sequence Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Delete Sequence Step",
+    "tags": [
+     "Campaigns"
+    ]
+   },
+   "put": {
+    "description": "Update a sequence step.\n\nCannot change step_number. To reorder, delete and recreate.\nSend the step's row_version as expected_version or If-Match (T-3); stale -> 409.",
+    "operationId": "update_sequence_step_campaigns_sequences__sequence_id__put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "sequence_id",
+      "required": true,
+      "schema": {
+       "title": "Sequence Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "If-Match",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "If-Match"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SequenceStepUpdate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SequenceStepResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Update Sequence Step",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/wizard-creations": {
+   "post": {
+    "description": "Step 1: Create a new campaign with basic settings.",
+    "operationId": "create_campaign_campaigns_wizard_creations_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CreateCampaignRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Create Campaign",
+    "tags": [
+     "Campaign Wizard"
+    ]
+   }
+  },
+  "/campaigns/wizard-executions": {
+   "post": {
+    "description": "Run the complete campaign wizard in one step.\nCreates campaign, segments, enrolls, and prepares for activation.",
+    "operationId": "run_complete_wizard_campaigns_wizard_executions_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/WizardRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Run Complete Wizard",
+    "tags": [
+     "Campaign Wizard"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}": {
+   "delete": {
+    "description": "Delete a campaign.\n\nThis permanently removes the campaign and all associated data.",
+    "operationId": "delete_campaign_campaigns__campaign_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Delete Campaign",
+    "tags": [
+     "Campaigns"
+    ]
+   },
+   "get": {
+    "description": "Get campaign details including metrics.",
+    "operationId": "get_campaign_campaigns__campaign_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CampaignResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Campaign",
+    "tags": [
+     "Campaigns"
+    ]
+   },
+   "put": {
+    "description": "Update campaign settings.\n\nOnly updates provided fields. Cannot change status directly - use pause/resume/launch.\nSend the row_version you loaded as expected_version or If-Match (T-3); stale -> 409.",
+    "operationId": "update_campaign_campaigns__campaign_id__put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "If-Match",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "If-Match"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CampaignUpdate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CampaignResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Update Campaign",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/activations": {
+   "post": {
+    "description": "Step 6: Activate the campaign. Send its row_version as expected_version or If-Match (T-3).",
+    "operationId": "activate_campaign_campaigns__campaign_id__activations_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "If-Match",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "If-Match"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ActivateRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Activate Campaign",
+    "tags": [
+     "Campaign Wizard"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/analytics": {
+   "get": {
+    "description": "Get detailed analytics for a campaign.\n\nReturns daily bar chart data, per-sequence step metrics, and lead status breakdown.",
+    "operationId": "get_campaign_analytics_campaigns__campaign_id__analytics_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "description": "Number of days for bar chart",
+      "in": "query",
+      "name": "days",
+      "required": false,
+      "schema": {
+       "default": 7,
+       "description": "Number of days for bar chart",
+       "maximum": 365,
+       "minimum": 1,
+       "title": "Days",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CampaignAnalyticsResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Campaign Analytics",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/audit": {
+   "get": {
+    "description": "Get audit trail for a campaign.\n\nShows who created, updated, paused, resumed, or launched the campaign.",
+    "operationId": "get_campaign_audit_trail_campaigns__campaign_id__audit_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "description": "Maximum records",
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 20,
+       "description": "Maximum records",
+       "maximum": 100,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Campaign Audit Trail",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/content/stub": {
+   "post": {
+    "description": "Stage 4 Stub: Generate placeholder templates.\nrequired for Stage 6 validation.",
+    "operationId": "generate_stub_content_campaigns__campaign_id__content_stub_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Generate Stub Content",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/duplicates": {
+   "post": {
+    "description": "Duplicate a campaign as a new DRAFT (S-12): settings, steps, every persona's templates, subject\nvariants, attachment metadata and automation rules. Optional overrides (name, dates, send window,\ntimezone, mailboxes) and contacts to enrol (list_ids / prospect_ids; by default skipping contacts\nalready in the source). Returns the copy, what was copied, and personas without templates.",
+    "operationId": "duplicate_campaign_campaigns__campaign_id__duplicates_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CampaignDuplicateRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CampaignDuplicateResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Duplicate Campaign",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/enrollments": {
+   "post": {
+    "description": "Step 4 & 5: Bulk enroll prospects after safety checks.",
+    "operationId": "enroll_prospects_campaigns__campaign_id__enrollments_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EnrollRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Enroll Prospects",
+    "tags": [
+     "Campaign Wizard"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/enrollments/checks": {
+   "post": {
+    "description": "Enrolment dry run (S-20): who would be enrolled and, for everyone else, the reason, using the same\nrules as the real enrolment of ``path`` (``campaign``: POST /campaigns/{id}/prospects; ``wizard``:\nPOST /campaigns/{id}/enrollments). Nothing is written.",
+    "operationId": "check_enrollment_campaigns__campaign_id__enrollments_checks_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EnrollmentCheckRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Check Enrollment",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/generations": {
+   "post": {
+    "description": "Auto-classify all prospects in a list and generate email templates per persona.\n\nThis endpoint:\n1. Classifies each prospect by persona type (using AI)\n2. Groups prospects by detected persona\n3. Generates one email template per persona using LLM\n4. Returns persona breakdown with generated templates",
+    "operationId": "process_list_auto_campaigns__campaign_id__generations_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProcessListRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Process List Auto",
+    "tags": [
+     "Campaign Wizard"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/launch": {
+   "post": {
+    "description": "Launch a draft campaign.\n\nChanges status from DRAFT to ACTIVE and starts the email sending process.",
+    "operationId": "launch_campaign_campaigns__campaign_id__launch_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "If-Match",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "If-Match"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/CampaignVersionedAction"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Payload"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CampaignStateChange"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Launch Campaign",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/messages/{message_id}/mark-replied": {
+   "post": {
+    "description": "Mark a specific message as replied.\n\nAlternative to prospect-based endpoint when you know the exact message ID.",
+    "operationId": "mark_message_replied_campaigns__campaign_id__messages__message_id__mark_replied_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "message_id",
+      "required": true,
+      "schema": {
+       "title": "Message Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Mark Message Replied",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/messages/{message_id}/reschedule": {
+   "patch": {
+    "description": "Update the scheduled_at date/time of a QUEUED or SCHEDULED email message.\n\n- Cannot reschedule messages that are already SENT or FAILED.\n- Accepts a UTC datetime for new_scheduled_at.\n- Returns the updated schedule info.",
+    "operationId": "reschedule_message_campaigns__campaign_id__messages__message_id__reschedule_patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "message_id",
+      "required": true,
+      "schema": {
+       "title": "Message Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RescheduleRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Reschedule Message",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/metrics": {
+   "get": {
+    "description": "Get real-time campaign metrics.\n\nReturns: sent_count, opened_count, replied_count, bounced_count, and rates.",
+    "operationId": "get_campaign_metrics_campaigns__campaign_id__metrics_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Campaign Metrics",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/pause": {
+   "post": {
+    "description": "Pause an active campaign.\n\nStops sending emails until resumed. Currently queued emails are not affected.",
+    "operationId": "pause_campaign_campaigns__campaign_id__pause_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "description": "Reason for pausing",
+      "in": "query",
+      "name": "reason",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Reason for pausing",
+       "title": "Reason"
+      }
+     },
+     {
+      "in": "header",
+      "name": "If-Match",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "If-Match"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/CampaignVersionedAction"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Payload"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CampaignStateChange"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Pause Campaign",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/personas/{persona_type}/generations": {
+   "post": {
+    "description": "Generate (or on-demand regenerate) a single persona's email template.\n\nUnlike POST /campaigns/{campaign_id}/generations (which only generates for\npersonas actually detected in the list), this generates for ANY of the\ncanonical personas \u2014 including ones with 0 classified prospects so far \u2014\nso the campaign wizard can let a user preview/prepare content for a persona\nbefore any matching prospect has been uploaded/classified.",
+    "operationId": "generate_persona_template_campaigns__campaign_id__personas__persona_type__generations_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "persona_type",
+      "required": true,
+      "schema": {
+       "title": "Persona Type",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GeneratePersonaTemplateRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Generate Persona Template",
+    "tags": [
+     "Campaign Wizard"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/prospects": {
+   "get": {
+    "description": "Get all prospects enrolled in a campaign.",
+    "operationId": "get_enrolled_prospects_campaigns__campaign_id__prospects_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "description": "Also list contacts removed from the campaign",
+      "in": "query",
+      "name": "include_removed",
+      "required": false,
+      "schema": {
+       "default": false,
+       "description": "Also list contacts removed from the campaign",
+       "title": "Include Removed",
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Enrolled Prospects",
+    "tags": [
+     "Campaigns"
+    ]
+   },
+   "post": {
+    "description": "Enroll prospects into the campaign.\n\nChecks for:\n- Global unsubscribe\n- Valid email\n- Consent status (must be OPT_IN)\n\nReturns the count of newly enrolled prospects and a reason for each one not enrolled.",
+    "operationId": "enroll_prospects_campaigns__campaign_id__prospects_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CampaignEnrollmentRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Enroll Prospects",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/prospects/{prospect_id}": {
+   "delete": {
+    "description": "Remove a prospect from the campaign.\n\nWorks after the campaign has been scheduled: cancels any not-yet-sent\nemails for this prospect and stops the sequence for them. Already-sent\nemails are left untouched.",
+    "operationId": "remove_prospect_campaigns__campaign_id__prospects__prospect_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "prospect_id",
+      "required": true,
+      "schema": {
+       "title": "Prospect Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Remove Prospect",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/prospects/{prospect_id}/mark-opened": {
+   "post": {
+    "description": "Manually mark a prospect as having opened the email.\n\nCreates an OPEN event for the most recent sent message to this prospect.",
+    "operationId": "mark_prospect_opened_campaigns__campaign_id__prospects__prospect_id__mark_opened_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "prospect_id",
+      "required": true,
+      "schema": {
+       "title": "Prospect Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Mark Prospect Opened",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/prospects/{prospect_id}/mark-replied": {
+   "post": {
+    "description": "Manually mark a prospect as replied.\n\nCreates a REPLY event for the most recent sent message to this prospect.\nUpdates campaign prospect status to REPLIED.",
+    "operationId": "mark_prospect_replied_campaigns__campaign_id__prospects__prospect_id__mark_replied_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "prospect_id",
+      "required": true,
+      "schema": {
+       "title": "Prospect Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Mark Prospect Replied",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/resume": {
+   "post": {
+    "description": "Resume a paused campaign.\n\nContinues sending emails from where it was paused.",
+    "operationId": "resume_campaign_campaigns__campaign_id__resume_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "If-Match",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "If-Match"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/CampaignVersionedAction"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Payload"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CampaignStateChange"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Resume Campaign",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/schedule": {
+   "get": {
+    "description": "Get schedule timeline for a campaign.",
+    "operationId": "get_campaign_schedule_campaigns__campaign_id__schedule_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CampaignScheduleResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Campaign Schedule",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/schedule/reschedule-date": {
+   "post": {
+    "description": "Bulk-reschedule all QUEUED/SCHEDULED messages for a campaign that fall on\nthe given date AND belong to the given sequence step.\n\nRules applied (in campaign timezone):\n  - Before window open  \u2192 snap to window-open time today\n  - Inside window       \u2192 keep user's exact time\n  - After window close  \u2192 push to next business day at window-open\n  - Weekend / Holiday   \u2192 push to next business day at window-open\nAdds per-message random jitter (0-5 min) so emails don't all queue together.",
+    "operationId": "reschedule_date_campaigns__campaign_id__schedule_reschedule_date_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RescheduleDateRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Reschedule Date",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/send-now": {
+   "post": {
+    "description": "Immediately send this campaign's queued emails that are due in sequence order,\nat most `limit` per request so a big queue never times out one HTTP request.\nThe response says how many remain (`remaining`, `has_more`); to continue the same\nrun, call again with the returned `cursor` and `since` (= the first call's\n`started_at`). Within a run, follow-ups that only became sendable because their\nprevious step went out during the run are left to the scheduler.",
+    "operationId": "send_campaign_now_campaigns__campaign_id__send_now_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 25,
+       "maximum": 100,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 100,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "since",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Since"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Send Campaign Now",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/sequences": {
+   "get": {
+    "description": "Get all sequence steps for a campaign.\n\nReturns steps ordered by step_number with template info if attached.",
+    "operationId": "get_campaign_sequences_campaigns__campaign_id__sequences_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SequenceResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Campaign Sequences",
+    "tags": [
+     "Campaigns"
+    ]
+   },
+   "post": {
+    "description": "Add a sequence step to a campaign.\n\nMaximum 7 steps allowed per campaign.",
+    "operationId": "add_sequence_step_campaigns__campaign_id__sequences_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SequenceStepCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SequenceStepResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Add Sequence Step",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/sequences/{step}/emails": {
+   "get": {
+    "description": "Get the email template and any related prospect replies for a specific sequence step.",
+    "operationId": "get_sequence_step_emails_campaigns__campaign_id__sequences__step__emails_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "step",
+      "required": true,
+      "schema": {
+       "title": "Step",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Sequence Step Emails",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/templates": {
+   "get": {
+    "description": "Get all templates for a campaign.",
+    "operationId": "get_campaign_templates_campaigns__campaign_id__templates_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CampaignTemplatesResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Campaign Templates",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/templates/approve-all": {
+   "post": {
+    "description": "Approve all templates for a campaign at once.",
+    "operationId": "approve_all_templates_campaigns__campaign_id__templates_approve_all_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ApproveAllResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Approve All Templates",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/templates/{template_id}/approve": {
+   "post": {
+    "description": "Approve a template for use in campaigns.",
+    "operationId": "approve_template_campaigns__campaign_id__templates__template_id__approve_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "template_id",
+      "required": true,
+      "schema": {
+       "title": "Template Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ApproveResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Approve Template",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/campaigns/{campaign_id}/templates/{template_id}/regenerate": {
+   "post": {
+    "description": "Regenerate template content using AI.",
+    "operationId": "regenerate_template_campaigns__campaign_id__templates__template_id__regenerate_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "campaign_id",
+      "required": true,
+      "schema": {
+       "title": "Campaign Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "template_id",
+      "required": true,
+      "schema": {
+       "title": "Template Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/app__routers__campaign_router__RegenerateRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RegenerateResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Regenerate Template",
+    "tags": [
+     "Campaigns"
+    ]
+   }
+  },
+  "/prospect-lists/{list_id}/segmentations/previews": {
+   "post": {
+    "description": "Step 2 & 3: Preview prospect count after segmentation rules.",
+    "operationId": "preview_segmentation_prospect_lists__list_id__segmentations_previews_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "list_id",
+      "required": true,
+      "schema": {
+       "title": "List Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SegmentationRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Preview Segmentation",
+    "tags": [
+     "Campaign Wizard"
+    ]
+   }
+  },
+  "/templates": {
+   "post": {
+    "description": "Create an email template.\n\nSupports personalization tokens like {{first_name}}, {{company_name}}.",
+    "operationId": "create_template_templates_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EmailTemplateCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EmailTemplateResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Create Template",
+    "tags": [
+     "Email Templates"
+    ]
+   }
+  },
+  "/templates/{template_id}": {
+   "delete": {
+    "description": "Delete a template and its versions.",
+    "operationId": "delete_template_templates__template_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "template_id",
+      "required": true,
+      "schema": {
+       "title": "Template Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Delete Template",
+    "tags": [
+     "Email Templates"
+    ]
+   },
+   "get": {
+    "description": "Get template details.",
+    "operationId": "get_template_templates__template_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "template_id",
+      "required": true,
+      "schema": {
+       "title": "Template Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EmailTemplateResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Template",
+    "tags": [
+     "Email Templates"
+    ]
+   },
+   "put": {
+    "description": "Update a template.\n\nCreates a new version in history. Clears approval status.",
+    "operationId": "update_template_templates__template_id__put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "template_id",
+      "required": true,
+      "schema": {
+       "title": "Template Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EmailTemplateUpdate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EmailTemplateResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Update Template",
+    "tags": [
+     "Email Templates"
+    ]
+   }
+  },
+  "/templates/{template_id}/approve": {
+   "post": {
+    "description": "Approve a template for sending.\n\nOnly approved templates can be used in campaigns.",
+    "operationId": "approve_template_templates__template_id__approve_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "template_id",
+      "required": true,
+      "schema": {
+       "title": "Template Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/EmailTemplateApprove"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Data"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EmailTemplateResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Approve Template",
+    "tags": [
+     "Email Templates"
+    ]
+   }
+  },
+  "/templates/{template_id}/attachments": {
+   "get": {
+    "description": "List attachments for a template.",
+    "operationId": "list_attachments_templates__template_id__attachments_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "template_id",
+      "required": true,
+      "schema": {
+       "title": "Template Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/EmailAttachmentResponse"
+         },
+         "title": "Response List Attachments Templates  Template Id  Attachments Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List Attachments",
+    "tags": [
+     "Email Templates"
+    ]
+   },
+   "post": {
+    "description": "Upload a file attachment for an email template (Gmail-style compose attachment).",
+    "operationId": "upload_attachment_templates__template_id__attachments_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "template_id",
+      "required": true,
+      "schema": {
+       "title": "Template Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_upload_attachment_templates__template_id__attachments_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EmailAttachmentResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Upload Attachment",
+    "tags": [
+     "Email Templates"
+    ]
+   }
+  },
+  "/templates/{template_id}/attachments/{attachment_id}": {
+   "delete": {
+    "description": "Remove an attachment from a template.",
+    "operationId": "delete_attachment_templates__template_id__attachments__attachment_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "template_id",
+      "required": true,
+      "schema": {
+       "title": "Template Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "attachment_id",
+      "required": true,
+      "schema": {
+       "title": "Attachment Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Delete Attachment",
+    "tags": [
+     "Email Templates"
+    ]
+   }
+  },
+  "/templates/{template_id}/attachments/{attachment_id}/download": {
+   "get": {
+    "description": "Download/preview an attachment's original file.",
+    "operationId": "download_attachment_templates__template_id__attachments__attachment_id__download_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "template_id",
+      "required": true,
+      "schema": {
+       "title": "Template Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "attachment_id",
+      "required": true,
+      "schema": {
+       "title": "Attachment Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Download Attachment",
+    "tags": [
+     "Email Templates"
+    ]
+   }
+  },
+  "/templates/{template_id}/regenerations": {
+   "post": {
+    "description": "Regenerate a specific email field (subject or body) using LLM.",
+    "operationId": "regenerate_email_part_templates__template_id__regenerations_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "template_id",
+      "required": true,
+      "schema": {
+       "title": "Template Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/app__routers__campaign_wizard_router__RegenerateRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Regenerate Email Part",
+    "tags": [
+     "Campaign Wizard"
+    ]
+   }
+  },
+  "/templates/{template_id}/versions": {
+   "get": {
+    "description": "Get version history for a template.",
+    "operationId": "get_template_versions_templates__template_id__versions_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "template_id",
+      "required": true,
+      "schema": {
+       "title": "Template Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/TemplateVersionResponse"
+         },
+         "title": "Response Get Template Versions Templates  Template Id  Versions Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Template Versions",
+    "tags": [
+     "Email Templates"
+    ]
+   }
+  }
+ },
+ "schemas": {
+  "ActivateRequest": {
+   "properties": {
+    "campaign_id": {
+     "title": "Campaign Id",
+     "type": "string"
+    },
+    "expected_version": {
+     "anyOf": [
+      {
+       "minimum": 1.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Expected Version"
+    }
+   },
+   "required": [
+    "campaign_id"
+   ],
+   "title": "ActivateRequest",
+   "type": "object"
+  },
+  "ApproveAllResponse": {
+   "properties": {
+    "approved_count": {
+     "title": "Approved Count",
+     "type": "integer"
+    },
+    "template_ids": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Template Ids",
+     "type": "array"
+    }
+   },
+   "required": [
+    "approved_count",
+    "template_ids"
+   ],
+   "title": "ApproveAllResponse",
+   "type": "object"
+  },
+  "ApproveResponse": {
+   "properties": {
+    "approved_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Approved At"
+    },
+    "is_approved": {
+     "title": "Is Approved",
+     "type": "boolean"
+    },
+    "template_id": {
+     "title": "Template Id",
+     "type": "string"
+    }
+   },
+   "required": [
+    "template_id",
+    "is_approved"
+   ],
+   "title": "ApproveResponse",
+   "type": "object"
+  },
+  "Body_upload_attachment_templates__template_id__attachments_post": {
+   "properties": {
+    "file": {
+     "contentMediaType": "application/octet-stream",
+     "title": "File",
+     "type": "string"
+    }
+   },
+   "required": [
+    "file"
+   ],
+   "title": "Body_upload_attachment_templates__template_id__attachments_post",
+   "type": "object"
+  },
+  "CampaignAnalyticsResponse": {
+   "properties": {
+    "bar_data": {
+     "items": {
+      "$ref": "#/components/schemas/DailyMetrics"
+     },
+     "title": "Bar Data",
+     "type": "array"
+    },
+    "campaign_id": {
+     "title": "Campaign Id",
+     "type": "string"
+    },
+    "lead_stats": {
+     "$ref": "#/components/schemas/LeadStats"
+    },
+    "metrics": {
+     "additionalProperties": true,
+     "title": "Metrics",
+     "type": "object"
+    },
+    "sequences": {
+     "items": {
+      "$ref": "#/components/schemas/SequenceMetrics"
+     },
+     "title": "Sequences",
+     "type": "array"
+    },
+    "total_messages_sent": {
+     "title": "Total Messages Sent",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "campaign_id",
+    "bar_data",
+    "sequences",
+    "lead_stats",
+    "total_messages_sent",
+    "metrics"
+   ],
+   "title": "CampaignAnalyticsResponse",
+   "type": "object"
+  },
+  "CampaignCreate": {
+   "description": "Schema for creating a new campaign.",
+   "example": {
+    "campaign_name": "Winter Promo 2025",
+    "end_date": "2025-02-15",
+    "inbox_ids": [
+     "i001",
+     "i002"
+    ],
+    "respect_timezone": true,
+    "send_window_end": "17:00:00",
+    "send_window_start": "09:00:00",
+    "start_date": "2025-01-15"
+   },
+   "properties": {
+    "batch_gap_minutes": {
+     "default": 30,
+     "description": "Minutes between batch starts (batch mode)",
+     "maximum": 10080.0,
+     "minimum": 1.0,
+     "title": "Batch Gap Minutes",
+     "type": "integer"
+    },
+    "batch_size": {
+     "anyOf": [
+      {
+       "maximum": 100000.0,
+       "minimum": 1.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Emails per batch (batch mode)",
+     "title": "Batch Size"
+    },
+    "campaign_name": {
+     "description": "Campaign name",
+     "maxLength": 255,
+     "minLength": 1,
+     "title": "Campaign Name",
+     "type": "string"
+    },
+    "campaign_timezone": {
+     "default": "UTC",
+     "description": "Campaign timezone",
+     "title": "Campaign Timezone",
+     "type": "string"
+    },
+    "cta_link": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Calendly or booking URL for emails",
+     "title": "Cta Link"
+    },
+    "daily_batch_size": {
+     "anyOf": [
+      {
+       "maximum": 1000000.0,
+       "minimum": 1.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Max new prospects to email per day (e.g. 100 \u2192 day 1: 1-100, day 2: 101-200)",
+     "title": "Daily Batch Size"
+    },
+    "end_date": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Campaign end date",
+     "title": "End Date"
+    },
+    "inbox_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "List of Sending Inbox IDs to rotate",
+     "title": "Inbox Ids"
+    },
+    "min_gap_minutes": {
+     "default": 2,
+     "description": "Min gap between emails (random mode)",
+     "maximum": 10080.0,
+     "minimum": 0.0,
+     "title": "Min Gap Minutes",
+     "type": "integer"
+    },
+    "respect_timezone": {
+     "default": true,
+     "description": "Respect prospect's timezone",
+     "title": "Respect Timezone",
+     "type": "boolean"
+    },
+    "send_window_end": {
+     "anyOf": [
+      {
+       "format": "time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "End time for sending emails",
+     "title": "Send Window End"
+    },
+    "send_window_start": {
+     "anyOf": [
+      {
+       "format": "time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Start time for sending emails",
+     "title": "Send Window Start"
+    },
+    "sender_name": {
+     "anyOf": [
+      {
+       "maxLength": 100,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Name to use for email sign-off",
+     "title": "Sender Name"
+    },
+    "sender_title": {
+     "anyOf": [
+      {
+       "maxLength": 150,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Sender's title/role, shown in the email signature",
+     "title": "Sender Title"
+    },
+    "sending_mode": {
+     "default": "spread",
+     "description": "spread | random | batch",
+     "title": "Sending Mode",
+     "type": "string"
+    },
+    "start_date": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Campaign start date",
+     "title": "Start Date"
+    }
+   },
+   "required": [
+    "campaign_name"
+   ],
+   "title": "CampaignCreate",
+   "type": "object"
+  },
+  "CampaignDuplicateRequest": {
+   "description": "POST /campaigns/{id}/duplicates: optional overrides for the copy (S-12). Unset = the source's value.",
+   "properties": {
+    "campaign_name": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Name of the copy (default 'Copy of <source>')",
+     "title": "Campaign Name"
+    },
+    "campaign_timezone": {
+     "anyOf": [
+      {
+       "maxLength": 50,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Campaign Timezone"
+    },
+    "copy_attachments": {
+     "default": true,
+     "title": "Copy Attachments",
+     "type": "boolean"
+    },
+    "copy_automation_rules": {
+     "default": true,
+     "title": "Copy Automation Rules",
+     "type": "boolean"
+    },
+    "end_date": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "End Date"
+    },
+    "inbox_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Mailboxes of the copy (default: the source's usable ones)",
+     "title": "Inbox Ids"
+    },
+    "list_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Lists to enrol into the copy",
+     "title": "List Ids"
+    },
+    "prospect_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Contacts to enrol into the copy",
+     "title": "Prospect Ids"
+    },
+    "send_window_end": {
+     "anyOf": [
+      {
+       "format": "time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Send Window End"
+    },
+    "send_window_start": {
+     "anyOf": [
+      {
+       "format": "time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Send Window Start"
+    },
+    "skip_source_prospects": {
+     "default": true,
+     "description": "Do not enrol contacts already in the source campaign",
+     "title": "Skip Source Prospects",
+     "type": "boolean"
+    },
+    "start_date": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Start Date"
+    }
+   },
+   "title": "CampaignDuplicateRequest",
+   "type": "object"
+  },
+  "CampaignDuplicateResponse": {
+   "properties": {
+    "campaign": {
+     "$ref": "#/components/schemas/CampaignResponse"
+    },
+    "copied": {
+     "additionalProperties": {
+      "type": "integer"
+     },
+     "title": "Copied",
+     "type": "object"
+    },
+    "enrollment": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Enrollment"
+    },
+    "persona_gaps": {
+     "default": [],
+     "items": {
+      "$ref": "#/components/schemas/PersonaGap"
+     },
+     "title": "Persona Gaps",
+     "type": "array"
+    },
+    "skipped_inboxes": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Skipped Inboxes",
+     "type": "array"
+    },
+    "source_campaign_id": {
+     "title": "Source Campaign Id",
+     "type": "string"
+    }
+   },
+   "required": [
+    "campaign",
+    "source_campaign_id",
+    "copied"
+   ],
+   "title": "CampaignDuplicateResponse",
+   "type": "object"
+  },
+  "CampaignEnrollmentRequest": {
+   "description": "Schema for enrolling prospects into a campaign.",
+   "example": {
+    "list_ids": [
+     "l0000000-0000-0000-0000-000000000001"
+    ],
+    "prospect_ids": []
+   },
+   "properties": {
+    "list_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "List of Prospect List IDs to enroll",
+     "title": "List Ids"
+    },
+    "prospect_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "List of specific Prospect IDs to enroll",
+     "title": "Prospect Ids"
+    }
+   },
+   "title": "CampaignEnrollmentRequest",
+   "type": "object"
+  },
+  "CampaignListItem": {
+   "description": "Simplified campaign for list display.",
+   "properties": {
+    "bounced_count": {
+     "default": 0,
+     "title": "Bounced Count",
+     "type": "integer"
+    },
+    "campaign_id": {
+     "title": "Campaign Id",
+     "type": "string"
+    },
+    "campaign_name": {
+     "title": "Campaign Name",
+     "type": "string"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "created_by": {
+     "title": "Created By",
+     "type": "string"
+    },
+    "creator_name": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Creator Name"
+    },
+    "cta_link": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Cta Link"
+    },
+    "in_progress_count": {
+     "default": 0,
+     "title": "In Progress Count",
+     "type": "integer"
+    },
+    "ooo_count": {
+     "default": 0,
+     "title": "Ooo Count",
+     "type": "integer"
+    },
+    "opened_count": {
+     "default": 0,
+     "title": "Opened Count",
+     "type": "integer"
+    },
+    "positive_replied_count": {
+     "default": 0,
+     "title": "Positive Replied Count",
+     "type": "integer"
+    },
+    "prospect_count": {
+     "default": 0,
+     "title": "Prospect Count",
+     "type": "integer"
+    },
+    "replied_count": {
+     "default": 0,
+     "title": "Replied Count",
+     "type": "integer"
+    },
+    "row_version": {
+     "default": 1,
+     "title": "Row Version",
+     "type": "integer"
+    },
+    "sender_bounced_count": {
+     "default": 0,
+     "title": "Sender Bounced Count",
+     "type": "integer"
+    },
+    "sent_count": {
+     "default": 0,
+     "title": "Sent Count",
+     "type": "integer"
+    },
+    "status": {
+     "$ref": "#/components/schemas/CampaignStatus"
+    },
+    "unsubscribed_count": {
+     "default": 0,
+     "title": "Unsubscribed Count",
+     "type": "integer"
+    },
+    "updated_at": {
+     "format": "date-time",
+     "title": "Updated At",
+     "type": "string"
+    }
+   },
+   "required": [
+    "campaign_id",
+    "campaign_name",
+    "status",
+    "created_by",
+    "created_at",
+    "updated_at"
+   ],
+   "title": "CampaignListItem",
+   "type": "object"
+  },
+  "CampaignListResponse": {
+   "description": "Paginated list of campaigns.",
+   "properties": {
+    "items": {
+     "items": {
+      "$ref": "#/components/schemas/CampaignListItem"
+     },
+     "title": "Items",
+     "type": "array"
+    },
+    "page": {
+     "title": "Page",
+     "type": "integer"
+    },
+    "page_size": {
+     "title": "Page Size",
+     "type": "integer"
+    },
+    "total": {
+     "title": "Total",
+     "type": "integer"
+    },
+    "total_pages": {
+     "title": "Total Pages",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "items",
+    "total",
+    "page",
+    "page_size",
+    "total_pages"
+   ],
+   "title": "CampaignListResponse",
+   "type": "object"
+  },
+  "CampaignMetrics": {
+   "description": "Campaign metrics for dashboard display.",
+   "properties": {
+    "bounced_count": {
+     "default": 0,
+     "title": "Bounced Count",
+     "type": "integer"
+    },
+    "ooo_count": {
+     "default": 0,
+     "title": "Ooo Count",
+     "type": "integer"
+    },
+    "opened_count": {
+     "default": 0,
+     "title": "Opened Count",
+     "type": "integer"
+    },
+    "positive_replied_count": {
+     "default": 0,
+     "title": "Positive Replied Count",
+     "type": "integer"
+    },
+    "replied_count": {
+     "default": 0,
+     "title": "Replied Count",
+     "type": "integer"
+    },
+    "sender_bounced_count": {
+     "default": 0,
+     "title": "Sender Bounced Count",
+     "type": "integer"
+    },
+    "sent_count": {
+     "default": 0,
+     "title": "Sent Count",
+     "type": "integer"
+    },
+    "unsubscribed_count": {
+     "default": 0,
+     "title": "Unsubscribed Count",
+     "type": "integer"
+    }
+   },
+   "title": "CampaignMetrics",
+   "type": "object"
+  },
+  "CampaignResponse": {
+   "description": "Full campaign response with metrics.",
+   "properties": {
+    "auto_paused": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": false,
+     "title": "Auto Paused"
+    },
+    "batch_gap_minutes": {
+     "default": 30,
+     "title": "Batch Gap Minutes",
+     "type": "integer"
+    },
+    "batch_size": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Batch Size"
+    },
+    "campaign_id": {
+     "title": "Campaign Id",
+     "type": "string"
+    },
+    "campaign_name": {
+     "title": "Campaign Name",
+     "type": "string"
+    },
+    "campaign_timezone": {
+     "default": "UTC",
+     "title": "Campaign Timezone",
+     "type": "string"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "created_by": {
+     "title": "Created By",
+     "type": "string"
+    },
+    "creator_name": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Creator Name"
+    },
+    "cta_link": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Cta Link"
+    },
+    "daily_batch_size": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Daily Batch Size"
+    },
+    "end_date": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "End Date"
+    },
+    "metrics": {
+     "anyOf": [
+      {
+       "$ref": "#/components/schemas/CampaignMetrics"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "min_gap_minutes": {
+     "default": 2,
+     "title": "Min Gap Minutes",
+     "type": "integer"
+    },
+    "paused_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Paused At"
+    },
+    "paused_reason": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Paused Reason"
+    },
+    "prospect_count": {
+     "default": 0,
+     "title": "Prospect Count",
+     "type": "integer"
+    },
+    "respect_timezone": {
+     "default": true,
+     "title": "Respect Timezone",
+     "type": "boolean"
+    },
+    "row_version": {
+     "default": 1,
+     "title": "Row Version",
+     "type": "integer"
+    },
+    "send_window_end": {
+     "anyOf": [
+      {
+       "format": "time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Send Window End"
+    },
+    "send_window_start": {
+     "anyOf": [
+      {
+       "format": "time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Send Window Start"
+    },
+    "sender_name": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Sender Name"
+    },
+    "sender_title": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Sender Title"
+    },
+    "sending_inboxes": {
+     "default": [],
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "title": "Sending Inboxes",
+     "type": "array"
+    },
+    "sending_mode": {
+     "default": "spread",
+     "title": "Sending Mode",
+     "type": "string"
+    },
+    "sequence_count": {
+     "default": 0,
+     "title": "Sequence Count",
+     "type": "integer"
+    },
+    "source_campaign_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Source Campaign Id"
+    },
+    "start_date": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Start Date"
+    },
+    "status": {
+     "$ref": "#/components/schemas/CampaignStatus"
+    },
+    "tenant_id": {
+     "title": "Tenant Id",
+     "type": "string"
+    },
+    "unsubscribe_mode": {
+     "default": "plain",
+     "title": "Unsubscribe Mode",
+     "type": "string"
+    },
+    "updated_at": {
+     "format": "date-time",
+     "title": "Updated At",
+     "type": "string"
+    }
+   },
+   "required": [
+    "campaign_id",
+    "tenant_id",
+    "campaign_name",
+    "status",
+    "created_by",
+    "created_at",
+    "updated_at"
+   ],
+   "title": "CampaignResponse",
+   "type": "object"
+  },
+  "CampaignScheduleResponse": {
+   "properties": {
+    "campaign_id": {
+     "title": "Campaign Id",
+     "type": "string"
+    },
+    "schedule": {
+     "items": {
+      "$ref": "#/components/schemas/ScheduleItem"
+     },
+     "title": "Schedule",
+     "type": "array"
+    },
+    "total_scheduled": {
+     "title": "Total Scheduled",
+     "type": "integer"
+    },
+    "total_sent": {
+     "title": "Total Sent",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "campaign_id",
+    "schedule",
+    "total_scheduled",
+    "total_sent"
+   ],
+   "title": "CampaignScheduleResponse",
+   "type": "object"
+  },
+  "CampaignStateChange": {
+   "description": "Response for pause/resume operations.",
+   "properties": {
+    "campaign_id": {
+     "title": "Campaign Id",
+     "type": "string"
+    },
+    "changed_at": {
+     "format": "date-time",
+     "title": "Changed At",
+     "type": "string"
+    },
+    "new_status": {
+     "$ref": "#/components/schemas/CampaignStatus"
+    },
+    "previous_status": {
+     "$ref": "#/components/schemas/CampaignStatus"
+    },
+    "reason": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Reason"
+    },
+    "row_version": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Row Version"
+    }
+   },
+   "required": [
+    "campaign_id",
+    "previous_status",
+    "new_status",
+    "changed_at"
+   ],
+   "title": "CampaignStateChange",
+   "type": "object"
+  },
+  "CampaignStatus": {
+   "description": "Campaign status enum.",
+   "enum": [
+    "DRAFT",
+    "ACTIVE",
+    "PAUSED",
+    "COMPLETED"
+   ],
+   "title": "CampaignStatus",
+   "type": "string"
+  },
+  "CampaignTemplatesResponse": {
+   "properties": {
+    "campaign_id": {
+     "title": "Campaign Id",
+     "type": "string"
+    },
+    "templates": {
+     "items": {
+      "$ref": "#/components/schemas/TemplateInfo"
+     },
+     "title": "Templates",
+     "type": "array"
+    },
+    "total": {
+     "title": "Total",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "campaign_id",
+    "templates",
+    "total"
+   ],
+   "title": "CampaignTemplatesResponse",
+   "type": "object"
+  },
+  "CampaignUpdate": {
+   "description": "Schema for updating an existing campaign.",
+   "properties": {
+    "batch_gap_minutes": {
+     "anyOf": [
+      {
+       "maximum": 10080.0,
+       "minimum": 1.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Batch Gap Minutes"
+    },
+    "batch_size": {
+     "anyOf": [
+      {
+       "maximum": 100000.0,
+       "minimum": 1.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Batch Size"
+    },
+    "campaign_name": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Campaign Name"
+    },
+    "campaign_timezone": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Campaign Timezone"
+    },
+    "cta_link": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Cta Link"
+    },
+    "daily_batch_size": {
+     "anyOf": [
+      {
+       "maximum": 1000000.0,
+       "minimum": 1.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Max new prospects to email per day",
+     "title": "Daily Batch Size"
+    },
+    "end_date": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "End Date"
+    },
+    "expected_version": {
+     "anyOf": [
+      {
+       "minimum": 1.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "row_version the client loaded (T-3)",
+     "title": "Expected Version"
+    },
+    "inbox_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Update list of Sending Inboxes",
+     "title": "Inbox Ids"
+    },
+    "min_gap_minutes": {
+     "anyOf": [
+      {
+       "maximum": 10080.0,
+       "minimum": 0.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Min Gap Minutes"
+    },
+    "respect_timezone": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Respect Timezone"
+    },
+    "send_window_end": {
+     "anyOf": [
+      {
+       "format": "time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Send Window End"
+    },
+    "send_window_start": {
+     "anyOf": [
+      {
+       "format": "time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Send Window Start"
+    },
+    "sender_name": {
+     "anyOf": [
+      {
+       "maxLength": 100,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Sender Name"
+    },
+    "sender_title": {
+     "anyOf": [
+      {
+       "maxLength": 150,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Sender Title"
+    },
+    "sending_mode": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Sending Mode"
+    },
+    "start_date": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Start Date"
+    },
+    "unsubscribe_mode": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "'plain' or 'html' \u2014 controls unsubscribe footer style",
+     "title": "Unsubscribe Mode"
+    }
+   },
+   "title": "CampaignUpdate",
+   "type": "object"
+  },
+  "CampaignVersionedAction": {
+   "description": "Optional body of launch / pause / resume: the row_version the client loaded (T-3).",
+   "properties": {
+    "expected_version": {
+     "anyOf": [
+      {
+       "minimum": 1.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Expected Version"
+    }
+   },
+   "title": "CampaignVersionedAction",
+   "type": "object"
+  },
+  "CreateCampaignRequest": {
+   "properties": {
+    "campaign_name": {
+     "title": "Campaign Name",
+     "type": "string"
+    },
+    "cta_link": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Cta Link"
+    },
+    "inbox_ids": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Inbox Ids",
+     "type": "array"
+    },
+    "send_end_hour": {
+     "default": 17,
+     "maximum": 23.0,
+     "minimum": 0.0,
+     "title": "Send End Hour",
+     "type": "integer"
+    },
+    "send_start_hour": {
+     "default": 9,
+     "maximum": 23.0,
+     "minimum": 0.0,
+     "title": "Send Start Hour",
+     "type": "integer"
+    },
+    "timezone": {
+     "default": "Asia/Kolkata",
+     "title": "Timezone",
+     "type": "string"
+    }
+   },
+   "required": [
+    "campaign_name"
+   ],
+   "title": "CreateCampaignRequest",
+   "type": "object"
+  },
+  "DailyMetrics": {
+   "properties": {
+    "bounced": {
+     "default": 0,
+     "title": "Bounced",
+     "type": "integer"
+    },
+    "date": {
+     "title": "Date",
+     "type": "string"
+    },
+    "ooo": {
+     "default": 0,
+     "title": "Ooo",
+     "type": "integer"
+    },
+    "opened": {
+     "default": 0,
+     "title": "Opened",
+     "type": "integer"
+    },
+    "positive_replied": {
+     "default": 0,
+     "title": "Positive Replied",
+     "type": "integer"
+    },
+    "replied": {
+     "default": 0,
+     "title": "Replied",
+     "type": "integer"
+    },
+    "sender_bounced": {
+     "default": 0,
+     "title": "Sender Bounced",
+     "type": "integer"
+    },
+    "sent": {
+     "default": 0,
+     "title": "Sent",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "date"
+   ],
+   "title": "DailyMetrics",
+   "type": "object"
+  },
+  "DraftResponse": {
+   "description": "Response for single draft.",
+   "properties": {
+    "created_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Created At"
+    },
+    "current_step": {
+     "title": "Current Step",
+     "type": "integer"
+    },
+    "draft_data": {
+     "additionalProperties": true,
+     "title": "Draft Data",
+     "type": "object"
+    },
+    "draft_id": {
+     "title": "Draft Id",
+     "type": "string"
+    },
+    "draft_name": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Draft Name"
+    },
+    "updated_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Updated At"
+    }
+   },
+   "required": [
+    "draft_id",
+    "draft_name",
+    "current_step",
+    "draft_data"
+   ],
+   "title": "DraftResponse",
+   "type": "object"
+  },
+  "EmailAttachmentResponse": {
+   "description": "Attachment metadata attached to a template.",
+   "properties": {
+    "attachment_id": {
+     "title": "Attachment Id",
+     "type": "string"
+    },
+    "content_type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Content Type"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "filename": {
+     "title": "Filename",
+     "type": "string"
+    },
+    "size_bytes": {
+     "title": "Size Bytes",
+     "type": "integer"
+    },
+    "template_id": {
+     "title": "Template Id",
+     "type": "string"
+    }
+   },
+   "required": [
+    "attachment_id",
+    "template_id",
+    "filename",
+    "size_bytes",
+    "created_at"
+   ],
+   "title": "EmailAttachmentResponse",
+   "type": "object"
+  },
+  "EmailTemplateApprove": {
+   "description": "Schema for approving a template.",
+   "example": {
+    "approved_by": "user-uuid-here"
+   },
+   "properties": {
+    "approved_by": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Ignored: the approver is always the signed-in user",
+     "title": "Approved By"
+    }
+   },
+   "title": "EmailTemplateApprove",
+   "type": "object"
+  },
+  "EmailTemplateCreate": {
+   "description": "Schema for creating an email template.",
+   "example": {
+    "body": "Hi {{first_name}},\n\nI noticed {{company_name}} is growing...",
+    "campaign_id": "uuid-here",
+    "is_ai_generated": false,
+    "subject": "Question about {{company_name}}",
+    "tone": "professional"
+   },
+   "properties": {
+    "ai_prompt_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "AI prompt used for generation",
+     "title": "Ai Prompt Id"
+    },
+    "body": {
+     "description": "Email body content",
+     "minLength": 1,
+     "title": "Body",
+     "type": "string"
+    },
+    "campaign_id": {
+     "description": "Campaign this template belongs to",
+     "title": "Campaign Id",
+     "type": "string"
+    },
+    "cta_link": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Call-to-action link",
+     "title": "Cta Link"
+    },
+    "designation": {
+     "anyOf": [
+      {
+       "maxLength": 150,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Target designation for personalization",
+     "title": "Designation"
+    },
+    "is_ai_generated": {
+     "default": false,
+     "description": "Whether content was AI-generated",
+     "title": "Is Ai Generated",
+     "type": "boolean"
+    },
+    "sequence_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Sequence step this template is for",
+     "title": "Sequence Id"
+    },
+    "subject": {
+     "description": "Email subject line",
+     "maxLength": 500,
+     "minLength": 1,
+     "title": "Subject",
+     "type": "string"
+    },
+    "tone": {
+     "anyOf": [
+      {
+       "$ref": "#/components/schemas/TemplateTone"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Email tone"
+    }
+   },
+   "required": [
+    "campaign_id",
+    "subject",
+    "body"
+   ],
+   "title": "EmailTemplateCreate",
+   "type": "object"
+  },
+  "EmailTemplateResponse": {
+   "description": "Full template response.",
+   "properties": {
+    "ai_model": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Ai Model"
+    },
+    "ai_prompt_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Ai Prompt Id"
+    },
+    "approved_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Approved At"
+    },
+    "approved_by": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Approved By"
+    },
+    "attachments": {
+     "default": [],
+     "items": {
+      "$ref": "#/components/schemas/EmailAttachmentResponse"
+     },
+     "title": "Attachments",
+     "type": "array"
+    },
+    "body": {
+     "title": "Body",
+     "type": "string"
+    },
+    "campaign_id": {
+     "title": "Campaign Id",
+     "type": "string"
+    },
+    "content_fingerprint": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Content Fingerprint"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "cta_link": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Cta Link"
+    },
+    "designation": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Designation"
+    },
+    "is_ai_generated": {
+     "default": false,
+     "title": "Is Ai Generated",
+     "type": "boolean"
+    },
+    "is_approved": {
+     "default": false,
+     "title": "Is Approved",
+     "type": "boolean"
+    },
+    "sequence_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Sequence Id"
+    },
+    "subject": {
+     "title": "Subject",
+     "type": "string"
+    },
+    "template_id": {
+     "title": "Template Id",
+     "type": "string"
+    },
+    "tone": {
+     "anyOf": [
+      {
+       "$ref": "#/components/schemas/TemplateTone"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "version_count": {
+     "default": 0,
+     "title": "Version Count",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "template_id",
+    "campaign_id",
+    "subject",
+    "body",
+    "created_at"
+   ],
+   "title": "EmailTemplateResponse",
+   "type": "object"
+  },
+  "EmailTemplateUpdate": {
+   "description": "Schema for updating an email template.",
+   "properties": {
+    "body": {
+     "anyOf": [
+      {
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Body"
+    },
+    "cta_link": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Cta Link"
+    },
+    "designation": {
+     "anyOf": [
+      {
+       "maxLength": 150,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Designation"
+    },
+    "subject": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Subject"
+    },
+    "tone": {
+     "anyOf": [
+      {
+       "$ref": "#/components/schemas/TemplateTone"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "title": "EmailTemplateUpdate",
+   "type": "object"
+  },
+  "EnrollRequest": {
+   "properties": {
+    "campaign_id": {
+     "title": "Campaign Id",
+     "type": "string"
+    },
+    "cool_off_days": {
+     "default": 7,
+     "maximum": 3650.0,
+     "minimum": 0.0,
+     "title": "Cool Off Days",
+     "type": "integer"
+    },
+    "exclude_personal_emails": {
+     "default": true,
+     "title": "Exclude Personal Emails",
+     "type": "boolean"
+    },
+    "excluded_prospect_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Excluded Prospect Ids"
+    },
+    "list_id": {
+     "title": "List Id",
+     "type": "string"
+    },
+    "persona_types": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Persona Types"
+    }
+   },
+   "required": [
+    "campaign_id",
+    "list_id"
+   ],
+   "title": "EnrollRequest",
+   "type": "object"
+  },
+  "EnrollmentCheckRequest": {
+   "description": "POST /campaigns/{id}/enrollments/checks: who would be enrolled and why the others would not,\nwithout enrolling anyone (S-20). ``path`` picks the rules: ``campaign`` = POST /campaigns/{id}/prospects\n(list_ids / prospect_ids, 24h cool-off), ``wizard`` = POST /campaigns/{id}/enrollments (list_id +\nsegmentation, cool_off_days).",
+   "properties": {
+    "cool_off_days": {
+     "default": 7,
+     "maximum": 3650.0,
+     "minimum": 0.0,
+     "title": "Cool Off Days",
+     "type": "integer"
+    },
+    "exclude_personal_emails": {
+     "default": true,
+     "title": "Exclude Personal Emails",
+     "type": "boolean"
+    },
+    "excluded_prospect_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Excluded Prospect Ids"
+    },
+    "list_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "List Id"
+    },
+    "list_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "List Ids"
+    },
+    "path": {
+     "default": "campaign",
+     "enum": [
+      "campaign",
+      "wizard"
+     ],
+     "title": "Path",
+     "type": "string"
+    },
+    "persona_types": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Persona Types"
+    },
+    "prospect_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Prospect Ids"
+    }
+   },
+   "title": "EnrollmentCheckRequest",
+   "type": "object"
+  },
+  "GeneratePersonaTemplateRequest": {
+   "description": "Request to generate (or on-demand regenerate) a single persona's template.",
+   "properties": {
+    "campaign_description": {
+     "default": "",
+     "title": "Campaign Description",
+     "type": "string"
+    },
+    "company_name": {
+     "default": "your company",
+     "title": "Company Name",
+     "type": "string"
+    },
+    "creative_email": {
+     "default": false,
+     "title": "Creative Email",
+     "type": "boolean"
+    },
+    "excluded_prospect_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Excluded Prospect Ids"
+    },
+    "include_first_name_in_subject": {
+     "default": false,
+     "title": "Include First Name In Subject",
+     "type": "boolean"
+    },
+    "list_id": {
+     "title": "List Id",
+     "type": "string"
+    },
+    "product_name": {
+     "default": "your solution",
+     "title": "Product Name",
+     "type": "string"
+    },
+    "sequence_steps": {
+     "anyOf": [
+      {
+       "items": {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Sequence Steps"
+    }
+   },
+   "required": [
+    "list_id"
+   ],
+   "title": "GeneratePersonaTemplateRequest",
+   "type": "object"
+  },
+  "HTTPValidationError": {
+   "properties": {
+    "detail": {
+     "items": {
+      "$ref": "#/components/schemas/ValidationError"
+     },
+     "title": "Detail",
+     "type": "array"
+    }
+   },
+   "title": "HTTPValidationError",
+   "type": "object"
+  },
+  "LeadStats": {
+   "properties": {
+    "data": {
+     "items": {
+      "$ref": "#/components/schemas/LeadStatsItem"
+     },
+     "title": "Data",
+     "type": "array"
+    },
+    "total": {
+     "title": "Total",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "total",
+    "data"
+   ],
+   "title": "LeadStats",
+   "type": "object"
+  },
+  "LeadStatsItem": {
+   "properties": {
+    "name": {
+     "title": "Name",
+     "type": "string"
+    },
+    "value": {
+     "title": "Value",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "name",
+    "value"
+   ],
+   "title": "LeadStatsItem",
+   "type": "object"
+  },
+  "PersonaGap": {
+   "description": "A persona of the enrolled contacts with no template (own or generic) for some steps.",
+   "properties": {
+    "missing_steps": {
+     "items": {
+      "type": "integer"
+     },
+     "title": "Missing Steps",
+     "type": "array"
+    },
+    "persona_type": {
+     "title": "Persona Type",
+     "type": "string"
+    },
+    "prospect_count": {
+     "title": "Prospect Count",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "persona_type",
+    "prospect_count",
+    "missing_steps"
+   ],
+   "title": "PersonaGap",
+   "type": "object"
+  },
+  "ProcessListRequest": {
+   "description": "Request to auto-classify prospects and generate templates.",
+   "properties": {
+    "campaign_description": {
+     "default": "",
+     "title": "Campaign Description",
+     "type": "string"
+    },
+    "campaign_id": {
+     "title": "Campaign Id",
+     "type": "string"
+    },
+    "company_name": {
+     "default": "your company",
+     "title": "Company Name",
+     "type": "string"
+    },
+    "creative_email": {
+     "default": false,
+     "title": "Creative Email",
+     "type": "boolean"
+    },
+    "excluded_prospect_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Excluded Prospect Ids"
+    },
+    "include_first_name_in_subject": {
+     "default": false,
+     "title": "Include First Name In Subject",
+     "type": "boolean"
+    },
+    "list_id": {
+     "title": "List Id",
+     "type": "string"
+    },
+    "product_name": {
+     "default": "your solution",
+     "title": "Product Name",
+     "type": "string"
+    },
+    "sequence_steps": {
+     "anyOf": [
+      {
+       "items": {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Sequence Steps"
+    }
+   },
+   "required": [
+    "campaign_id",
+    "list_id"
+   ],
+   "title": "ProcessListRequest",
+   "type": "object"
+  },
+  "RegenerateResponse": {
+   "properties": {
+    "ai_model": {
+     "title": "Ai Model",
+     "type": "string"
+    },
+    "body": {
+     "title": "Body",
+     "type": "string"
+    },
+    "regenerated_at": {
+     "format": "date-time",
+     "title": "Regenerated At",
+     "type": "string"
+    },
+    "subject": {
+     "title": "Subject",
+     "type": "string"
+    },
+    "template_id": {
+     "title": "Template Id",
+     "type": "string"
+    }
+   },
+   "required": [
+    "template_id",
+    "subject",
+    "body",
+    "ai_model",
+    "regenerated_at"
+   ],
+   "title": "RegenerateResponse",
+   "type": "object"
+  },
+  "RescheduleDateRequest": {
+   "description": "Bulk-reschedule all QUEUED messages on a given date + sequence step.\ndate            : ISO date string 'YYYY-MM-DD'\nstep_number     : sequence step to target\nnew_scheduled_at: user's desired UTC datetime (treated as local campaign-TZ wall-clock)",
+   "properties": {
+    "date": {
+     "title": "Date",
+     "type": "string"
+    },
+    "new_scheduled_at": {
+     "format": "date-time",
+     "title": "New Scheduled At",
+     "type": "string"
+    },
+    "reason": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Reason"
+    },
+    "step_number": {
+     "title": "Step Number",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "date",
+    "step_number",
+    "new_scheduled_at"
+   ],
+   "title": "RescheduleDateRequest",
+   "type": "object"
+  },
+  "RescheduleRequest": {
+   "description": "Request body for rescheduling a queued/scheduled email message.\nnew_scheduled_at should be a UTC datetime string, e.g. '2026-03-15T09:00:00'.",
+   "properties": {
+    "new_scheduled_at": {
+     "format": "date-time",
+     "title": "New Scheduled At",
+     "type": "string"
+    },
+    "reason": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Reason"
+    }
+   },
+   "required": [
+    "new_scheduled_at"
+   ],
+   "title": "RescheduleRequest",
+   "type": "object"
+  },
+  "RevalidateProspectRequest": {
+   "properties": {
+    "new_email": {
+     "description": "The prospect's updated, valid email address",
+     "title": "New Email",
+     "type": "string"
+    },
+    "reason": {
+     "description": "Why was the email changed? (audit trail)",
+     "minLength": 5,
+     "title": "Reason",
+     "type": "string"
+    }
+   },
+   "required": [
+    "new_email",
+    "reason"
+   ],
+   "title": "RevalidateProspectRequest",
+   "type": "object"
+  },
+  "SaveDraftRequest": {
+   "description": "Request to save campaign draft state.",
+   "properties": {
+    "current_step": {
+     "default": 1,
+     "title": "Current Step",
+     "type": "integer"
+    },
+    "draft_data": {
+     "additionalProperties": true,
+     "title": "Draft Data",
+     "type": "object"
+    },
+    "draft_name": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Draft Name"
+    }
+   },
+   "required": [
+    "draft_data"
+   ],
+   "title": "SaveDraftRequest",
+   "type": "object"
+  },
+  "SaveTemplateRequest": {
+   "description": "Request to manually update a template's subject or body.",
+   "properties": {
+    "body": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Body"
+    },
+    "subject": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Subject"
+    },
+    "template_id": {
+     "title": "Template Id",
+     "type": "string"
+    }
+   },
+   "required": [
+    "template_id"
+   ],
+   "title": "SaveTemplateRequest",
+   "type": "object"
+  },
+  "ScheduleItem": {
+   "properties": {
+    "date": {
+     "title": "Date",
+     "type": "string"
+    },
+    "prospect_count": {
+     "title": "Prospect Count",
+     "type": "integer"
+    },
+    "prospects": {
+     "default": [],
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "title": "Prospects",
+     "type": "array"
+    },
+    "status": {
+     "title": "Status",
+     "type": "string"
+    },
+    "step_number": {
+     "title": "Step Number",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "date",
+    "status",
+    "prospect_count",
+    "step_number"
+   ],
+   "title": "ScheduleItem",
+   "type": "object"
+  },
+  "SchedulePreviewRequest": {
+   "description": "Request to preview schedule dates for sequence steps.",
+   "properties": {
+    "sequence_steps": {
+     "items": {
+      "$ref": "#/components/schemas/SequenceStepInput"
+     },
+     "title": "Sequence Steps",
+     "type": "array"
+    },
+    "state": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": "NY",
+     "title": "State"
+    }
+   },
+   "required": [
+    "sequence_steps"
+   ],
+   "title": "SchedulePreviewRequest",
+   "type": "object"
+  },
+  "SegmentationRequest": {
+   "properties": {
+    "email_types": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": [
+      "BUSINESS"
+     ],
+     "title": "Email Types"
+    },
+    "exclude_personal_emails": {
+     "default": true,
+     "title": "Exclude Personal Emails",
+     "type": "boolean"
+    },
+    "industries": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Industries"
+    },
+    "list_id": {
+     "title": "List Id",
+     "type": "string"
+    },
+    "min_confidence": {
+     "default": 0.0,
+     "title": "Min Confidence",
+     "type": "number"
+    },
+    "persona_types": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Persona Types"
+    }
+   },
+   "required": [
+    "list_id"
+   ],
+   "title": "SegmentationRequest",
+   "type": "object"
+  },
+  "SequenceMetrics": {
+   "properties": {
+    "bounce_rate": {
+     "default": 0.0,
+     "title": "Bounce Rate",
+     "type": "number"
+    },
+    "bounced_count": {
+     "default": 0,
+     "title": "Bounced Count",
+     "type": "integer"
+    },
+    "click_rate": {
+     "default": 0.0,
+     "title": "Click Rate",
+     "type": "number"
+    },
+    "ooo_count": {
+     "default": 0,
+     "title": "Ooo Count",
+     "type": "integer"
+    },
+    "open_rate": {
+     "default": 0.0,
+     "title": "Open Rate",
+     "type": "number"
+    },
+    "opened_count": {
+     "default": 0,
+     "title": "Opened Count",
+     "type": "integer"
+    },
+    "positive_replied_count": {
+     "default": 0,
+     "title": "Positive Replied Count",
+     "type": "integer"
+    },
+    "replied_count": {
+     "default": 0,
+     "title": "Replied Count",
+     "type": "integer"
+    },
+    "reply_rate": {
+     "default": 0.0,
+     "title": "Reply Rate",
+     "type": "number"
+    },
+    "sender_bounced_count": {
+     "default": 0,
+     "title": "Sender Bounced Count",
+     "type": "integer"
+    },
+    "sent": {
+     "default": 0,
+     "title": "Sent",
+     "type": "integer"
+    },
+    "step": {
+     "title": "Step",
+     "type": "integer"
+    },
+    "type": {
+     "default": "Email",
+     "title": "Type",
+     "type": "string"
+    }
+   },
+   "required": [
+    "step"
+   ],
+   "title": "SequenceMetrics",
+   "type": "object"
+  },
+  "SequenceResponse": {
+   "description": "Full sequence with all steps.",
+   "properties": {
+    "campaign_id": {
+     "title": "Campaign Id",
+     "type": "string"
+    },
+    "steps": {
+     "items": {
+      "$ref": "#/components/schemas/SequenceStepResponse"
+     },
+     "title": "Steps",
+     "type": "array"
+    },
+    "total_steps": {
+     "title": "Total Steps",
+     "type": "integer"
+    },
+    "total_wait_days": {
+     "title": "Total Wait Days",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "campaign_id",
+    "steps",
+    "total_steps",
+    "total_wait_days"
+   ],
+   "title": "SequenceResponse",
+   "type": "object"
+  },
+  "SequenceStepCreate": {
+   "description": "Schema for creating a sequence step.",
+   "example": {
+    "send_end_hour": 17,
+    "send_start_hour": 9,
+    "step_number": 1,
+    "stop_on_bounce": true,
+    "stop_on_reply": true,
+    "wait_days": 0
+   },
+   "properties": {
+    "send_end_hour": {
+     "anyOf": [
+      {
+       "maximum": 23.0,
+       "minimum": 0.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Send End Hour"
+    },
+    "send_start_hour": {
+     "anyOf": [
+      {
+       "maximum": 23.0,
+       "minimum": 0.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Send Start Hour"
+    },
+    "step_number": {
+     "description": "Step number (1-7)",
+     "maximum": 7.0,
+     "minimum": 1.0,
+     "title": "Step Number",
+     "type": "integer"
+    },
+    "stop_on_bounce": {
+     "default": true,
+     "description": "Stop sequence if email bounces",
+     "title": "Stop On Bounce",
+     "type": "boolean"
+    },
+    "stop_on_reply": {
+     "default": true,
+     "description": "Stop sequence if prospect replies",
+     "title": "Stop On Reply",
+     "type": "boolean"
+    },
+    "template_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Email template ID",
+     "title": "Template Id"
+    },
+    "wait_days": {
+     "default": 0,
+     "description": "Days to wait before this step",
+     "maximum": 30.0,
+     "minimum": 0.0,
+     "title": "Wait Days",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "step_number"
+   ],
+   "title": "SequenceStepCreate",
+   "type": "object"
+  },
+  "SequenceStepInput": {
+   "description": "Single sequence step for schedule preview.",
+   "properties": {
+    "step_number": {
+     "title": "Step Number",
+     "type": "integer"
+    },
+    "wait_days": {
+     "title": "Wait Days",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "step_number",
+    "wait_days"
+   ],
+   "title": "SequenceStepInput",
+   "type": "object"
+  },
+  "SequenceStepResponse": {
+   "description": "Response schema for a sequence step.",
+   "properties": {
+    "campaign_id": {
+     "title": "Campaign Id",
+     "type": "string"
+    },
+    "row_version": {
+     "default": 1,
+     "title": "Row Version",
+     "type": "integer"
+    },
+    "send_end_hour": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Send End Hour"
+    },
+    "send_start_hour": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Send Start Hour"
+    },
+    "sequence_id": {
+     "title": "Sequence Id",
+     "type": "string"
+    },
+    "step_number": {
+     "title": "Step Number",
+     "type": "integer"
+    },
+    "stop_on_bounce": {
+     "title": "Stop On Bounce",
+     "type": "boolean"
+    },
+    "stop_on_reply": {
+     "title": "Stop On Reply",
+     "type": "boolean"
+    },
+    "template_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Template Id"
+    },
+    "template_subject": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Template Subject"
+    },
+    "wait_days": {
+     "title": "Wait Days",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "sequence_id",
+    "campaign_id",
+    "step_number",
+    "wait_days",
+    "stop_on_reply",
+    "stop_on_bounce"
+   ],
+   "title": "SequenceStepResponse",
+   "type": "object"
+  },
+  "SequenceStepUpdate": {
+   "description": "Schema for updating a sequence step.",
+   "properties": {
+    "expected_version": {
+     "anyOf": [
+      {
+       "minimum": 1.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "row_version the client loaded (T-3)",
+     "title": "Expected Version"
+    },
+    "send_end_hour": {
+     "anyOf": [
+      {
+       "maximum": 23.0,
+       "minimum": 0.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Send End Hour"
+    },
+    "send_start_hour": {
+     "anyOf": [
+      {
+       "maximum": 23.0,
+       "minimum": 0.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Send Start Hour"
+    },
+    "stop_on_bounce": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Stop On Bounce"
+    },
+    "stop_on_reply": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Stop On Reply"
+    },
+    "template_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Template Id"
+    },
+    "wait_days": {
+     "anyOf": [
+      {
+       "maximum": 30.0,
+       "minimum": 0.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Wait Days"
+    }
+   },
+   "title": "SequenceStepUpdate",
+   "type": "object"
+  },
+  "TemplateInfo": {
+   "properties": {
+    "ai_model": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Ai Model"
+    },
+    "approved_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Approved At"
+    },
+    "body": {
+     "title": "Body",
+     "type": "string"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "designation": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Designation"
+    },
+    "is_ai_generated": {
+     "default": false,
+     "title": "Is Ai Generated",
+     "type": "boolean"
+    },
+    "is_approved": {
+     "default": false,
+     "title": "Is Approved",
+     "type": "boolean"
+    },
+    "sequence_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Sequence Id"
+    },
+    "step_number": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Step Number"
+    },
+    "subject": {
+     "title": "Subject",
+     "type": "string"
+    },
+    "template_id": {
+     "title": "Template Id",
+     "type": "string"
+    },
+    "tone": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Tone"
+    }
+   },
+   "required": [
+    "template_id",
+    "subject",
+    "body",
+    "created_at"
+   ],
+   "title": "TemplateInfo",
+   "type": "object"
+  },
+  "TemplateTone": {
+   "description": "Email tone options.",
+   "enum": [
+    "professional",
+    "casual",
+    "formal",
+    "friendly"
+   ],
+   "title": "TemplateTone",
+   "type": "string"
+  },
+  "TemplateVersionResponse": {
+   "description": "Template version history item.",
+   "properties": {
+    "body": {
+     "title": "Body",
+     "type": "string"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "created_by": {
+     "title": "Created By",
+     "type": "string"
+    },
+    "is_active": {
+     "title": "Is Active",
+     "type": "boolean"
+    },
+    "subject": {
+     "title": "Subject",
+     "type": "string"
+    },
+    "template_id": {
+     "title": "Template Id",
+     "type": "string"
+    },
+    "version_id": {
+     "title": "Version Id",
+     "type": "string"
+    },
+    "version_number": {
+     "title": "Version Number",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "version_id",
+    "template_id",
+    "subject",
+    "body",
+    "version_number",
+    "created_by",
+    "created_at",
+    "is_active"
+   ],
+   "title": "TemplateVersionResponse",
+   "type": "object"
+  },
+  "ValidationError": {
+   "properties": {
+    "ctx": {
+     "title": "Context",
+     "type": "object"
+    },
+    "input": {
+     "title": "Input"
+    },
+    "loc": {
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "integer"
+       }
+      ]
+     },
+     "title": "Location",
+     "type": "array"
+    },
+    "msg": {
+     "title": "Message",
+     "type": "string"
+    },
+    "type": {
+     "title": "Error Type",
+     "type": "string"
+    }
+   },
+   "required": [
+    "loc",
+    "msg",
+    "type"
+   ],
+   "title": "ValidationError",
+   "type": "object"
+  },
+  "WizardRequest": {
+   "properties": {
+    "campaign_name": {
+     "title": "Campaign Name",
+     "type": "string"
+    },
+    "cool_off_days": {
+     "default": 7,
+     "maximum": 3650.0,
+     "minimum": 0.0,
+     "title": "Cool Off Days",
+     "type": "integer"
+    },
+    "exclude_personal_emails": {
+     "default": true,
+     "title": "Exclude Personal Emails",
+     "type": "boolean"
+    },
+    "list_id": {
+     "title": "List Id",
+     "type": "string"
+    },
+    "persona_types": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Persona Types"
+    }
+   },
+   "required": [
+    "campaign_name",
+    "list_id"
+   ],
+   "title": "WizardRequest",
+   "type": "object"
+  },
+  "app__routers__campaign_router__RegenerateRequest": {
+   "properties": {
+    "creative_email": {
+     "default": false,
+     "title": "Creative Email",
+     "type": "boolean"
+    },
+    "custom_instruction": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Custom Instruction"
+    },
+    "regenerate_body": {
+     "default": true,
+     "title": "Regenerate Body",
+     "type": "boolean"
+    },
+    "regenerate_subject": {
+     "default": true,
+     "title": "Regenerate Subject",
+     "type": "boolean"
+    },
+    "tone": {
+     "anyOf": [
+      {
+       "maxLength": 50,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": "professional",
+     "description": "Tone: professional, casual, formal",
+     "title": "Tone"
+    }
+   },
+   "title": "RegenerateRequest",
+   "type": "object"
+  },
+  "app__routers__campaign_wizard_router__RegenerateRequest": {
+   "description": "Request to regenerate a specific email field (subject or body).",
+   "properties": {
+    "campaign_description": {
+     "default": "",
+     "title": "Campaign Description",
+     "type": "string"
+    },
+    "creative_email": {
+     "default": false,
+     "title": "Creative Email",
+     "type": "boolean"
+    },
+    "cta_link": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Cta Link"
+    },
+    "custom_instruction": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Custom Instruction"
+    },
+    "field": {
+     "title": "Field",
+     "type": "string"
+    },
+    "persona_type": {
+     "default": "",
+     "title": "Persona Type",
+     "type": "string"
+    },
+    "product_name": {
+     "default": "your solution",
+     "title": "Product Name",
+     "type": "string"
+    },
+    "step_number": {
+     "default": 1,
+     "title": "Step Number",
+     "type": "integer"
+    },
+    "template_id": {
+     "title": "Template Id",
+     "type": "string"
+    }
+   },
+   "required": [
+    "template_id",
+    "field"
+   ],
+   "title": "RegenerateRequest",
+   "type": "object"
+  }
+ }
+}

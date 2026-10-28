@@ -12,13 +12,10 @@ from datetime import date as date_type, datetime, time as time_type, timedelta
 from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import func
-from sqlalchemy.orm import Session
-
 from app.core.errors import BadRequestError, NotFoundError
 from app.models.campaign import Campaign
-from app.models.email_message import EmailMessage
-from app.models.email_sequence import EmailSequence
+from app.repositories.campaigns import CampaignsUnitOfWork
+from app.services.campaign_common import require_campaign
 from app.utils.business_calendar import get_next_business_day, is_business_day
 
 logger = logging.getLogger(__name__)
@@ -100,25 +97,40 @@ def describe_adjustment(snapped_local: datetime, tz_str: str) -> str:
 # ──────────────────────────────────────────────────────────────────────────────
 
 class CampaignScheduleService:
-    def __init__(self, db: Session) -> None:
+    """Each public method is one unit of work (SQL in app/repositories/campaigns_messages.py)."""
+
+    def __init__(self, db: Any = None, *, uow: Any = None) -> None:
+        self.uow = uow if uow is not None else CampaignsUnitOfWork.for_session(db)
         self.db = db
+
+    @classmethod
+    def for_session(cls, db: Any) -> "CampaignScheduleService":
+        return cls(db)
+
+    def reschedule_message_for(self, user: Any, campaign_id: str, message_id: str, new_scheduled_at: datetime,
+                               reason: Optional[str]) -> Dict[str, Any]:
+        require_campaign(self.uow.campaigns, user.tenant_id, campaign_id)
+        return self.reschedule_message(campaign_id, message_id, new_scheduled_at, reason)
+
+    def reschedule_date_for(self, user: Any, campaign_id: str, date: str, step_number: int,
+                            new_scheduled_at: datetime, reason: Optional[str]) -> Dict[str, Any]:
+        campaign = require_campaign(self.uow.campaigns, user.tenant_id, campaign_id)
+        return self.reschedule_date(campaign, date=date, step_number=step_number,
+                                    new_scheduled_at=new_scheduled_at, reason=reason)
 
     def reschedule_message(
         self, campaign_id: str, message_id: str, new_scheduled_at: datetime, reason: Optional[str]
     ) -> Dict[str, Any]:
         """Move one queued/scheduled message to an exact time (no window snapping)."""
-        message = self.db.query(EmailMessage).filter(
-            EmailMessage.message_id == message_id,
-            EmailMessage.campaign_id == campaign_id
-        ).first()
-        if not message:
-            raise NotFoundError("Email message not found")
-        if message.status in UNRESCHEDULABLE_STATUSES:
-            raise BadRequestError(f"Cannot reschedule a message with status '{message.status}'")
-
-        old_scheduled_at = message.scheduled_at
-        message.scheduled_at = new_scheduled_at
-        self.db.commit()
+        with self.uow as uow:
+            message = uow.messages.get(campaign_id, message_id)
+            if not message:
+                raise NotFoundError("Email message not found")
+            if message.status in UNRESCHEDULABLE_STATUSES:
+                raise BadRequestError(f"Cannot reschedule a message with status '{message.status}'")
+            old_scheduled_at = message.scheduled_at
+            message.scheduled_at = new_scheduled_at
+            uow.commit()
 
         logger.info(
             f"[Reschedule] Message {message_id} rescheduled from {old_scheduled_at} "
@@ -155,33 +167,23 @@ class CampaignScheduleService:
         win_end = campaign.send_window_end or DEFAULT_WINDOW_END
         snapped = snap_to_send_window(new_scheduled_at, campaign_zone(tz_str), win_start, win_end)
 
-        step_sequence_ids = [
-            s.sequence_id for s in self.db.query(EmailSequence).filter(
-                EmailSequence.campaign_id == campaign_id,
-                EmailSequence.step_number == step_number
-            ).all()
-        ]
-        if not step_sequence_ids:
-            raise NotFoundError(f"No sequence found for step {step_number} in this campaign.")
-
-        messages = self.db.query(EmailMessage).filter(
-            EmailMessage.campaign_id == campaign_id,
-            EmailMessage.sequence_id.in_(step_sequence_ids),
-            EmailMessage.status.in_(BULK_RESCHEDULABLE_STATUSES),
-            func.date(EmailMessage.scheduled_at) == target_date
-        ).all()
-        if not messages:
-            return {
-                "status": "no_messages",
-                "message": f"No queued messages found for date {date} and step {step_number}.",
-                "updated_count": 0,
-            }
-
-        updated_ids = []
-        for msg in messages:
-            msg.scheduled_at = jittered(snapped.utc_naive, random.randint(0, MAX_JITTER_MINUTES), random.randint(0, 59))
-            updated_ids.append(msg.message_id)
-        self.db.commit()
+        with self.uow as uow:
+            step_sequence_ids = [s.sequence_id for s in uow.content.steps(campaign_id) if s.step_number == step_number]
+            if not step_sequence_ids:
+                raise NotFoundError(f"No sequence found for step {step_number} in this campaign.")
+            messages = uow.messages.step_day(campaign_id, step_sequence_ids, target_date)
+            if not messages:
+                return {
+                    "status": "no_messages",
+                    "message": f"No queued messages found for date {date} and step {step_number}.",
+                    "updated_count": 0,
+                }
+            updated_ids = []
+            for msg in messages:
+                msg.scheduled_at = jittered(snapped.utc_naive, random.randint(0, MAX_JITTER_MINUTES),
+                                            random.randint(0, 59))
+                updated_ids.append(msg.message_id)
+            uow.commit()
 
         logger.info(
             f"[RescheduleDate] {len(updated_ids)} messages rescheduled to "

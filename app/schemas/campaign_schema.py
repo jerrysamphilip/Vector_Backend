@@ -34,6 +34,7 @@ class CampaignCreate(BaseModel):
     send_window_end: Optional[time] = Field(None, description="End time for sending emails")
     respect_timezone: bool = Field(True, description="Respect prospect's timezone")
     campaign_timezone: str = Field("UTC", description="Campaign timezone")
+    wait_business_days: bool = Field(False, description="Wait days between steps count business days (F-04)")
 
     # Sending Schedule
     sending_mode: str = Field("spread", description="spread | random | batch")
@@ -79,6 +80,7 @@ class CampaignUpdate(BaseModel):
     send_window_end: Optional[time] = None
     respect_timezone: Optional[bool] = None
     campaign_timezone: Optional[str] = None
+    wait_business_days: Optional[bool] = Field(None, description="Wait days count business days (F-04)")
     sending_mode: Optional[str] = None
     min_gap_minutes: Optional[int] = Field(None, ge=0, le=10080)
     batch_size: Optional[int] = Field(None, ge=1, le=100000)
@@ -277,6 +279,7 @@ class CampaignResponse(BaseModel):
     send_window_end: Optional[time] = None
     respect_timezone: bool = True
     campaign_timezone: str = "UTC"
+    wait_business_days: bool = False  # wait days count business days (F-04)
     sending_mode: str = "spread"
     min_gap_minutes: int = 2
     batch_size: Optional[int] = None
@@ -372,3 +375,5 @@ class CampaignStateChange(BaseModel):
     reason: Optional[str] = None
     changed_at: datetime
     row_version: Optional[int] = None  # the campaign's new row_version (T-3)
+    # Launch only: the planned volume exceeds what the mailboxes can send in the window (F-04)
+    pacing_warning: Optional[Dict[str, Any]] = None

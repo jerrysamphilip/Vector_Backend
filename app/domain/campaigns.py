@@ -181,3 +181,19 @@ def persona_gaps(
         if missing:
             gaps.append(PersonaGap(persona, count, tuple(missing)))
     return gaps
+
+
+# ── Campaign list (GET /campaigns) ───────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True, slots=True)
+class CampaignListFilter:
+    """Raw list filters; every one optional. ``campaign_name`` is a case-insensitive partial match."""
+
+    status: Optional[str] = None
+    created_by: Optional[str] = None
+    campaign_name: Optional[str] = None
+
+
+def total_pages(total: int, page_size: int) -> int:
+    """Pages of the campaign list (0 when there is nothing to list, as the API always answered)."""
+    return (total + page_size - 1) // page_size

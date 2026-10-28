@@ -10,7 +10,6 @@ Prompts are loaded from: app/prompts/
 """
 
 from typing import Any, Dict, List, Optional
-from sqlalchemy.orm import Session
 import json
 import random
 import re
@@ -19,8 +18,10 @@ import logging
 from openai import OpenAI
 
 from app.core.config import settings
-from app.models import PersonaBlueprint, Prospect
+from app.models import PersonaBlueprint
+from app.repositories.campaigns import CampaignsUnitOfWork
 from app.services.ai_email_service import classify_prospect, openai_client
+from app.services.sender_identity import bind_tenant
 from app.prompts.llm_system_prompts import get_sequence_generation_system_prompt
 from app.prompts.email_examples import (
     get_few_shot_examples_block,
@@ -703,9 +704,11 @@ def builtin_sequence_emails(num_emails: int, cta_enabled: bool = False,
 
 
 class SequenceGeneratorService:
-    def __init__(self, db: Session) -> None:
+    """SQL in app/repositories/campaigns*.py (the prospect and the persona blueprints)."""
+
+    def __init__(self, db: Any = None, *, uow: Any = None) -> None:
+        self.uow = uow if uow is not None else CampaignsUnitOfWork.for_session(db)
         self.db = db
-        pass
 
     def generate_email_sequence(
         self,
@@ -729,11 +732,10 @@ class SequenceGeneratorService:
         Returns:
             Dict with email_1, email_2, email_3, and metadata
         """
-        prospect = self.db.query(Prospect).filter(Prospect.prospect_id == prospect_id).first()
+        prospect = self.uow.campaigns.contacts([prospect_id]).get(prospect_id)
         if not prospect:
             raise ValueError(f"Prospect {prospect_id} not found")
-        from app.services.sender_identity import bind_tenant
-        bind_tenant(prospect.tenant_id, self.db)
+        bind_tenant(prospect.tenant_id, self.uow.session)
 
         # Classify prospect
         persona_type, confidence = classify_prospect(
@@ -742,16 +744,8 @@ class SequenceGeneratorService:
         )
         
         # Get blueprint
-        blueprint = self.db.query(PersonaBlueprint).filter(
-            PersonaBlueprint.persona_type == persona_type,
-            PersonaBlueprint.is_active == True
-        ).first()
-        
-        if not blueprint:
-            blueprint = self.db.query(PersonaBlueprint).filter(
-                PersonaBlueprint.persona_type == "OTHER",
-                PersonaBlueprint.is_active == True
-            ).first()
+        blueprint = (self.uow.content.blueprint(persona_type, active_only=True)
+                     or self.uow.content.blueprint("OTHER", active_only=True))
         
         if not blueprint:
             return {"error": "No blueprint found"}

@@ -1,31 +1,23 @@
 # app/services/campaign_query_service.py
 """
 Read-side campaign queries used by the campaign API: tenant-scoped lookups, the analytics
-dashboard, the template list, per-step emails and the schedule timeline.
+dashboard, the template list, per-step emails and the schedule timeline (SQL in
+app/repositories/campaigns_reads.py).
 
-Everything here is tenant-agnostic except the ``*_for_tenant`` lookups; callers scope the
-campaign first (``get_campaign_for_tenant``) and then ask for its data.
+The ``*_for`` route methods scope the campaign to the caller's tenant first; the other methods take a
+campaign the caller already scoped.
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
-from sqlalchemy import func
-from sqlalchemy.orm import Session
-
 from app.core.clock import utcnow
 from app.core.errors import NotFoundError
-from app.models.campaign import Campaign, CampaignProspect
-from app.models.email_message import EmailEvent, EmailMessage
+from app.models.campaign import Campaign
+from app.models.email_message import EmailEvent
 from app.models.email_sequence import EmailSequence
-from app.models.email_template import EmailTemplate
-from app.models.prospect import Prospect
-from app.services.campaign_analytics_service import (
-    sent_message_filters,
-    unique_clickers_expr,
-    unique_openers_expr,
-)
+from app.repositories.campaigns import CampaignsUnitOfWork
 
 CAMPAIGN_NOT_FOUND = "Campaign not found"
 SEQUENCE_STEP_NOT_FOUND = "Sequence step not found"
@@ -146,42 +138,55 @@ def build_schedule(messages: Iterable[Any], step_by_sequence: Dict[str, int]) ->
 class CampaignQueryService:
     """Tenant-scoped lookups and read models for one campaign."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Any = None, *, uow: Any = None) -> None:
+        self.uow = uow if uow is not None else CampaignsUnitOfWork.for_session(db)
         self.db = db
+
+    @classmethod
+    def for_session(cls, db: Any) -> "CampaignQueryService":
+        return cls(db)
 
     # ── Scoping ──────────────────────────────────────────────────────────────
 
     def get_campaign_for_tenant(self, campaign_id: str, tenant_id: str) -> Campaign:
         """The campaign if it belongs to the tenant; NotFoundError for missing and cross-tenant alike."""
-        campaign = self.db.query(Campaign).filter(Campaign.campaign_id == campaign_id).first()
-        if not campaign or campaign.tenant_id != tenant_id:
+        campaign = self.uow.campaigns.get(tenant_id, campaign_id)
+        if not campaign:
             raise NotFoundError(CAMPAIGN_NOT_FOUND)
         return campaign
 
     def require_sequence_step_for_tenant(self, sequence_id: str, tenant_id: str) -> EmailSequence:
         """The sequence step if its campaign belongs to the tenant; NotFoundError otherwise."""
-        step = (
-            self.db.query(EmailSequence)
-            .join(Campaign, Campaign.campaign_id == EmailSequence.campaign_id)
-            .filter(EmailSequence.sequence_id == sequence_id, Campaign.tenant_id == tenant_id)
-            .first()
-        )
+        step = self.uow.content.step_for_tenant(tenant_id, sequence_id)
         if not step:
             raise NotFoundError(SEQUENCE_STEP_NOT_FOUND)
         return step
 
+    # ── Routes (scoped to the caller's tenant) ───────────────────────────────
+
+    def analytics_for(self, user: Any, campaign_id: str, days: int) -> Dict[str, Any]:
+        self.get_campaign_for_tenant(campaign_id, user.tenant_id)
+        return self.get_analytics(campaign_id, days)
+
+    def templates_for(self, user: Any, campaign_id: str) -> List[Dict[str, Any]]:
+        self.get_campaign_for_tenant(campaign_id, user.tenant_id)
+        return self.list_templates(campaign_id)
+
+    def step_emails_for(self, user: Any, campaign_id: str, step: int) -> Dict[str, Any]:
+        self.get_campaign_for_tenant(campaign_id, user.tenant_id)
+        return self.get_step_emails(campaign_id, step)
+
+    def schedule_for(self, user: Any, campaign_id: str) -> Dict[str, Any]:
+        self.get_campaign_for_tenant(campaign_id, user.tenant_id)
+        return self.get_schedule(campaign_id)
+
     # ── Small counts ─────────────────────────────────────────────────────────
 
     def _prospects_with_status(self, campaign_id: str, statuses: List[str]) -> int:
-        return self.db.query(func.count(CampaignProspect.id)).filter(
-            CampaignProspect.campaign_id == campaign_id,
-            CampaignProspect.status.in_(statuses),
-        ).scalar() or 0
+        return self.uow.reads.contacts_with_status(campaign_id, statuses)
 
     def _step_numbers(self, campaign_id: str) -> Dict[str, int]:
-        return {s.sequence_id: s.step_number for s in self.db.query(EmailSequence).filter(
-            EmailSequence.campaign_id == campaign_id
-        ).all()}
+        return self.uow.content.step_numbers(campaign_id)
 
     # ── Analytics ────────────────────────────────────────────────────────────
 
@@ -189,59 +194,26 @@ class CampaignQueryService:
         """Daily bar chart, per-step metrics, lead status breakdown and lifetime totals."""
         end_date = today or utcnow().date()
         start_date = end_date - timedelta(days=days - 1)
-        bar_data = self._daily_metrics(campaign_id, start_date, end_date)
-        sequences = self._sequence_metrics(campaign_id)
-        lead_stats = self._lead_stats(campaign_id)
         metrics = self._lifetime_metrics(campaign_id)
         return {
             "campaign_id": campaign_id,
-            "bar_data": bar_data,
-            "sequences": sequences,
-            "lead_stats": lead_stats,
+            "bar_data": self._daily_metrics(campaign_id, start_date, end_date),
+            "sequences": self._sequence_metrics(campaign_id),
+            "lead_stats": self._lead_stats(campaign_id),
             "total_messages_sent": metrics["sent_count"],
             "metrics": metrics,
         }
 
     def _daily_metrics(self, campaign_id: str, start_date: date, end_date: date) -> List[Dict[str, Any]]:
-        db = self.db
-        sent_map = {row.date: row.count for row in db.query(
-            func.date(EmailMessage.sent_at).label('date'),
-            func.count(EmailMessage.message_id).label('count')
-        ).filter(
-            EmailMessage.campaign_id == campaign_id,
-            EmailMessage.sent_at >= start_date,
-            *sent_message_filters(),
-        ).group_by(func.date(EmailMessage.sent_at)).all()}
-
-        event_results = db.query(
-            func.date(EmailEvent.event_time).label('date'),
-            EmailEvent.event_type.label('type'),
-            func.count(EmailEvent.event_id).label('count')
-        ).join(
-            EmailMessage, EmailMessage.message_id == EmailEvent.message_id
-        ).filter(
-            EmailMessage.campaign_id == campaign_id,
-            EmailEvent.event_time >= start_date,
-            EmailEvent.event_type.in_(_ANALYTICS_EVENT_TYPES)
-        ).group_by(func.date(EmailEvent.event_time), EmailEvent.event_type).all()
-
+        reads = self.uow.reads
+        sent_map = reads.sent_per_day(campaign_id, start_date)
         # Opens per day = unique prospects who opened that day
-        open_map = {row.date: row.count for row in db.query(
-            func.date(EmailEvent.event_time).label('date'),
-            unique_openers_expr().label('count')
-        ).join(
-            EmailMessage, EmailMessage.message_id == EmailEvent.message_id
-        ).filter(
-            EmailMessage.campaign_id == campaign_id,
-            EmailEvent.event_time >= start_date,
-            EmailEvent.event_type == EmailEvent.EVENT_OPEN,
-        ).group_by(func.date(EmailEvent.event_time)).all()}
-
+        open_map = reads.openers_per_day(campaign_id, start_date)
         by_field: Dict[str, Dict[Any, int]] = {f: {} for f in _DAILY_FIELD_BY_EVENT.values()}
-        for row in event_results:
-            field = _DAILY_FIELD_BY_EVENT.get(row.type)
-            if field:
-                by_field[field][row.date] = row.count
+        for day, event_type, count in reads.events_per_day(campaign_id, start_date, _ANALYTICS_EVENT_TYPES):
+            name = _DAILY_FIELD_BY_EVENT.get(event_type)
+            if name:
+                by_field[name][day] = count
 
         bar_data = []
         current_date = start_date
@@ -266,47 +238,14 @@ class CampaignQueryService:
         return bar_data
 
     def _sequence_metrics(self, campaign_id: str) -> List[Dict[str, Any]]:
-        db = self.db
-        sequences = db.query(EmailSequence).filter(
-            EmailSequence.campaign_id == campaign_id
-        ).order_by(EmailSequence.step_number).all()
+        reads = self.uow.reads
+        sequences = self.uow.content.steps(campaign_id)
         sequence_ids = [s.sequence_id for s in sequences]
-
-        seq_sent_map = {row[0]: row[1] for row in db.query(
-            EmailMessage.sequence_id,
-            func.count(EmailMessage.message_id)
-        ).filter(
-            EmailMessage.campaign_id == campaign_id,
-            *sent_message_filters(),
-            EmailMessage.sequence_id.in_(sequence_ids)
-        ).group_by(EmailMessage.sequence_id).all()}
-
-        def unique_per_step(expr: Any, event_type: str) -> Dict[str, int]:
-            return dict(db.query(EmailMessage.sequence_id, expr).join(
-                EmailEvent, EmailEvent.message_id == EmailMessage.message_id
-            ).filter(
-                EmailMessage.campaign_id == campaign_id,
-                EmailMessage.sequence_id.in_(sequence_ids),
-                EmailEvent.event_type == event_type
-            ).group_by(EmailMessage.sequence_id).all())
-
-        seq_openers_map = unique_per_step(unique_openers_expr(), EmailEvent.EVENT_OPEN)
-        seq_clickers_map = unique_per_step(unique_clickers_expr(), EmailEvent.EVENT_CLICK)
-
-        event_counts = db.query(
-            EmailMessage.sequence_id,
-            EmailEvent.event_type,
-            func.count(func.distinct(EmailEvent.message_id))
-        ).join(
-            EmailEvent, EmailEvent.message_id == EmailMessage.message_id
-        ).filter(
-            EmailMessage.campaign_id == campaign_id,
-            EmailMessage.sequence_id.in_(sequence_ids),
-            EmailEvent.event_type.in_(_ANALYTICS_EVENT_TYPES)
-        ).group_by(EmailMessage.sequence_id, EmailEvent.event_type).all()
-
-        event_map: Dict[str, Dict[str, int]] = {}
-        for seq_id, e_type, count in event_counts:
+        seq_sent_map = reads.sent_per_step(campaign_id, sequence_ids)
+        seq_openers_map = reads.unique_contacts_per_step(campaign_id, sequence_ids, EmailEvent.EVENT_OPEN)
+        seq_clickers_map = reads.unique_contacts_per_step(campaign_id, sequence_ids, EmailEvent.EVENT_CLICK)
+        event_map: Dict[str, Dict[int, int]] = {}
+        for seq_id, e_type, count in reads.event_messages_per_step(campaign_id, sequence_ids, _ANALYTICS_EVENT_TYPES):
             event_map.setdefault(seq_id, {})[e_type] = count
 
         # Orphaned sent messages (manual/other) are ignored so no "Email 0 - Manual/Other" step shows.
@@ -321,7 +260,6 @@ class CampaignQueryService:
             bounced_count = e_counts.get(EmailEvent.EVENT_BOUNCE, 0)
             if seq.step_number == 1:
                 replied_count = max(replied_count, self._prospects_with_status(campaign_id, ["REPLIED"]))
-
             result.append({
                 "step": seq.step_number,
                 "type": step_label(seq.step_number),
@@ -337,64 +275,33 @@ class CampaignQueryService:
                 "ooo_count": e_counts.get(EmailEvent.EVENT_REPLY_OOO, 0),
                 "sender_bounced_count": e_counts.get(EmailEvent.EVENT_SENDER_BOUNCE, 0),
             })
-
         result.sort(key=lambda x: (x["step"] if x["step"] > 0 else 99))
         return result
 
     def _lead_stats(self, campaign_id: str) -> Dict[str, Any]:
-        total_prospects = self.db.query(func.count(CampaignProspect.id)).filter(
-            CampaignProspect.campaign_id == campaign_id
-        ).scalar() or 0
-        status_map = {row[0]: row[1] for row in self.db.query(
-            CampaignProspect.status,
-            func.count(CampaignProspect.id)
-        ).filter(
-            CampaignProspect.campaign_id == campaign_id,
-            CampaignProspect.status.in_(LEAD_STATUSES)
-        ).group_by(CampaignProspect.status).all()}
-        return build_lead_stats(total_prospects, status_map)
+        reads = self.uow.reads
+        return build_lead_stats(reads.enrolment_count(campaign_id), reads.status_counts(campaign_id, LEAD_STATUSES))
 
     def _lifetime_metrics(self, campaign_id: str) -> Dict[str, Any]:
-        db = self.db
-        total_sent = db.query(func.count(EmailMessage.message_id)).filter(
-            EmailMessage.campaign_id == campaign_id,
-            *sent_message_filters(),
-        ).scalar() or 0
-
-        all_msg_ids = db.query(EmailMessage.message_id).filter(EmailMessage.campaign_id == campaign_id)
-
-        def unique_prospects(expr: Any, event_type: str) -> int:
-            return db.query(expr).join(
-                EmailEvent, EmailEvent.message_id == EmailMessage.message_id
-            ).filter(
-                EmailMessage.campaign_id == campaign_id,
-                EmailEvent.event_type == event_type
-            ).scalar() or 0
-
-        def messages_with(event_type: str) -> int:
-            return db.query(func.count(func.distinct(EmailEvent.message_id))).filter(
-                EmailEvent.message_id.in_(all_msg_ids),
-                EmailEvent.event_type == event_type
-            ).scalar() or 0
-
-        total_opened = max(unique_prospects(unique_openers_expr(), EmailEvent.EVENT_OPEN),
+        reads = self.uow.reads
+        total_sent = reads.sent_total(campaign_id)
+        total_opened = max(reads.unique_contacts(campaign_id, EmailEvent.EVENT_OPEN),
                            self._prospects_with_status(campaign_id, ["OPENED", "REPLIED"]))
-        total_replied = max(messages_with(EmailEvent.EVENT_REPLY),
+        total_replied = max(reads.messages_with_event(campaign_id, EmailEvent.EVENT_REPLY),
                             self._prospects_with_status(campaign_id, ["REPLIED"]))
-        total_bounced = messages_with(EmailEvent.EVENT_BOUNCE)
+        total_bounced = reads.messages_with_event(campaign_id, EmailEvent.EVENT_BOUNCE)
         # Clicked = unique prospects with a click event (shared definition).
-        total_clicked = unique_prospects(unique_clickers_expr(), EmailEvent.EVENT_CLICK)
-
+        total_clicked = reads.unique_contacts(campaign_id, EmailEvent.EVENT_CLICK)
         return {
             "sent_count": total_sent,
             "opened_count": total_opened,
             "clicked_count": total_clicked,
             "replied_count": total_replied,
-            "positive_replied_count": messages_with(EmailEvent.EVENT_POSITIVE_REPLY),
-            "ooo_count": messages_with(EmailEvent.EVENT_REPLY_OOO),
+            "positive_replied_count": reads.messages_with_event(campaign_id, EmailEvent.EVENT_POSITIVE_REPLY),
+            "ooo_count": reads.messages_with_event(campaign_id, EmailEvent.EVENT_REPLY_OOO),
             "bounced_count": total_bounced,
-            "sender_bounced_count": messages_with(EmailEvent.EVENT_SENDER_BOUNCE),
-            "unsubscribed_count": messages_with(EmailEvent.EVENT_UNSUBSCRIBE),
+            "sender_bounced_count": reads.messages_with_event(campaign_id, EmailEvent.EVENT_SENDER_BOUNCE),
+            "unsubscribed_count": reads.messages_with_event(campaign_id, EmailEvent.EVENT_UNSUBSCRIBE),
             "open_rate": pct(total_opened, total_sent),
             "click_rate": pct(total_clicked, total_opened),
             "reply_rate": pct(total_replied, total_sent),
@@ -410,7 +317,7 @@ class CampaignQueryService:
             {
                 "template_id": tmpl.template_id,
                 "sequence_id": tmpl.sequence_id,
-                "step_number": step_by_sequence.get(tmpl.sequence_id),
+                "step_number": step_by_sequence.get(tmpl.sequence_id or ""),
                 "designation": tmpl.designation,
                 "subject": tmpl.subject,
                 "body": tmpl.body,
@@ -421,38 +328,19 @@ class CampaignQueryService:
                 "approved_at": tmpl.approved_at,
                 "created_at": tmpl.created_at,
             }
-            for tmpl in self.db.query(EmailTemplate).filter(EmailTemplate.campaign_id == campaign_id).all()
+            for tmpl in self.uow.content.templates(campaign_id)
         ]
         templates.sort(key=lambda x: (x["step_number"] or 0, x["designation"] or ""))
         return templates
 
     def get_step_emails(self, campaign_id: str, step: int) -> Dict[str, Any]:
         """A step's template plus the latest inbound replies to messages sent from that step."""
-        db = self.db
-        seq = db.query(EmailSequence).filter(
-            EmailSequence.campaign_id == campaign_id,
-            EmailSequence.step_number == step
-        ).first()
+        seq = self.uow.content.step(campaign_id, step)
         if not seq:
             raise NotFoundError("Sequence not found")
-
-        template = db.query(EmailTemplate).filter(
-            EmailTemplate.campaign_id == campaign_id,
-            EmailTemplate.sequence_id == seq.sequence_id
-        ).first()
-
-        # Inbound messages in the same conversation as an outbound message of this step
-        sent_conversations = db.query(EmailMessage.conversation_id).filter(
-            EmailMessage.sequence_id == seq.sequence_id,
-            EmailMessage.direction == "OUTBOUND",
-            EmailMessage.conversation_id.isnot(None)
-        )
-        replies = db.query(EmailMessage).filter(
-            EmailMessage.campaign_id == campaign_id,
-            EmailMessage.direction == "INBOUND",
-            EmailMessage.conversation_id.in_(sent_conversations)
-        ).order_by(EmailMessage.sent_at.desc()).limit(STEP_REPLIES_LIMIT).all()
-
+        template = next((t for t in self.uow.content.templates(campaign_id) if t.sequence_id == seq.sequence_id),
+                        None)
+        replies = self.uow.reads.recent_step_replies(campaign_id, seq.sequence_id, STEP_REPLIES_LIMIT)
         return {
             "step": step,
             "template": {
@@ -469,20 +357,4 @@ class CampaignQueryService:
 
     def get_schedule(self, campaign_id: str) -> Dict[str, Any]:
         """Schedule timeline: messages bucketed by day, step and sent/queued."""
-        messages = self.db.query(
-            EmailMessage.message_id,
-            EmailMessage.scheduled_at,
-            EmailMessage.sent_at,
-            EmailMessage.status,
-            EmailMessage.sequence_id,
-            EmailMessage.prospect_id,
-            EmailMessage.subject_variant,
-            Prospect.first_name,
-            Prospect.last_name,
-            Prospect.email
-        ).join(
-            Prospect, Prospect.prospect_id == EmailMessage.prospect_id
-        ).filter(
-            EmailMessage.campaign_id == campaign_id
-        ).all()
-        return build_schedule(messages, self._step_numbers(campaign_id))
+        return build_schedule(self.uow.reads.schedule_rows(campaign_id), self._step_numbers(campaign_id))
