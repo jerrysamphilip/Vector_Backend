@@ -7,204 +7,101 @@ Contact lists for the CRM (BR-CM-22/23/24).
   used as a campaign audience, so it is always current.
 
 Upload lists from the Prospects page are static lists too. Deleting a list here never
-deletes contacts (unlike the Prospects page's upload-list delete).
+deletes contacts (unlike the Prospects page's upload-list delete). List names are unique per
+workspace (409 on a clash, C-21). GET /lists pages when ``page`` / ``page_size`` are sent.
+
+Layered (ADR 0009, chunk A1): each handler builds domain objects and makes one ListService call.
 """
 
-from typing import Any, List, Optional
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 
-from app.core.clock import utcnow
 from app.core.auth import require_role
 from app.core.database import get_db
-from app.models.prospect import Prospect
-from app.models.prospect_list import ProspectList, ProspectListMember
-from app.models.user import User
-from app.services import crm
-from app.services.contact_service import can_manage_contacts, clean_str, scope
-from app.utils.sql_like import ilike
+from app.domain.lists import ListFilter
+from app.domain.paging import Paging
+from app.schemas.list_schema import FilterPreview, ListWrite, Members
+from app.services.list_service import ListService
+from app.utils.http_files import content_disposition
 
 router = APIRouter(prefix="/lists", tags=["Lists"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
 
 
-class ListWrite(BaseModel):
-    list_name: Optional[str] = Field(None, max_length=255)
-    list_type: Optional[str] = None  # STATIC / ACTIVE (create only)
-    filters: Optional[Any] = None
-    description: Optional[str] = Field(None, max_length=2000)
+def list_service(db=Depends(get_db)) -> ListService:
+    return ListService.for_session(db)
 
 
-class Members(BaseModel):
-    prospect_ids: List[str] = Field(..., min_length=1, max_length=10000)
+Lists = Depends(list_service)
 
 
-class FilterPreview(BaseModel):
-    filters: Any = None
-
-
-def _require_manager(user: User):
-    if not can_manage_contacts(user):
-        raise HTTPException(status_code=403, detail="Your account does not have the 'manage_prospects' permission.")
-
-
-def _get_list(db: Session, user: User, list_id: str) -> ProspectList:
-    plist = db.query(ProspectList).filter(ProspectList.list_id == list_id,
-                                          ProspectList.tenant_id == user.tenant_id).first()
-    if not plist:
-        raise HTTPException(status_code=404, detail="List not found")
-    return plist
-
-
-def _count(db: Session, user: User, plist: ProspectList) -> int:
-    try:
-        member_ids = crm.list_member_ids(db, plist, user)
-    except crm.FilterError:
-        return 0
-    query = db.query(func.count(Prospect.prospect_id)).filter(
-        Prospect.prospect_id.in_(member_ids), Prospect.deleted_at.is_(None))
-    return scope(query, db, user, Prospect.owner_id).scalar() or 0
-
-
-def _list_dict(db: Session, user: User, plist: ProspectList, owners: dict = None) -> dict:
-    owners = owners or {}
-    return {
-        "list_id": plist.list_id, "list_name": plist.list_name, "list_type": plist.list_type or "STATIC",
-        "source_type": plist.source_type, "filters": plist.filters, "description": plist.description,
-        "created_by": plist.uploaded_by, "created_by_name": owners.get(plist.uploaded_by),
-        "created_at": plist.uploaded_at, "member_count": _count(db, user, plist),
-    }
-
-
-def _validate_filters(db: Session, user: User, filters):
-    if not filters or not isinstance(filters, dict) or not filters.get("conditions"):
-        raise HTTPException(status_code=400, detail="An active list needs at least one filter condition")
-    try:
-        crm.filter_clause(db, filters, user)
-    except crm.FilterError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@router.get("")
+@router.get("", response_model=None)
 def list_lists(
     list_type: Optional[str] = Query(None, pattern="^(STATIC|ACTIVE)$"),
     q: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(tenant_user),
-):
-    query = db.query(ProspectList).filter(ProspectList.tenant_id == current_user.tenant_id)
-    if list_type:
-        query = query.filter(ProspectList.list_type == list_type)
-    if q and q.strip():
-        query = query.filter(ilike(ProspectList.list_name, q.strip()))
-    rows = query.order_by(ProspectList.uploaded_at.desc()).limit(500).all()
-    owners = {u.user_id: f"{u.first_name} {u.last_name}".strip()
-              for u in db.query(User).filter(User.user_id.in_({r.uploaded_by for r in rows}))}
-    return {"items": [_list_dict(db, current_user, r, owners) for r in rows]}
+    page: Optional[int] = Query(None, ge=1, description="Send page / page_size for a paged response"),
+    page_size: Optional[int] = Query(None, ge=1, le=200),
+    service: ListService = Lists,
+    current_user: Any = Depends(tenant_user),
+) -> Dict[str, Any]:
+    paging = Paging(page or 1, page_size or 50) if page is not None or page_size is not None else None
+    return service.list(current_user, ListFilter(list_type=list_type, q=q), paging)
 
 
-@router.post("/preview")
-def preview_filters(payload: FilterPreview, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+@router.post("/preview", response_model=None)
+def preview_filters(payload: FilterPreview, service: ListService = Lists,
+                    current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
     """How many contacts a filter matches right now (for building active lists)."""
-    try:
-        clause = crm.filter_clause(db, payload.filters, current_user)
-    except crm.FilterError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    query = db.query(Prospect).filter(Prospect.tenant_id == current_user.tenant_id, Prospect.deleted_at.is_(None))
-    query = scope(query, db, current_user, Prospect.owner_id)
-    if clause is not None:
-        query = query.filter(clause)
-    sample = query.order_by(Prospect.created_at.desc()).limit(5).all()
-    return {"count": query.count(), "sample": [{"prospect_id": p.prospect_id, "full_name": p.full_name,
-                                                "email": p.email} for p in sample]}
+    return service.preview(current_user, payload.filters)
 
 
-@router.post("", status_code=201)
-def create_list(payload: ListWrite, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
-    _require_manager(current_user)
-    name = clean_str(payload.list_name)
-    if not name:
-        raise HTTPException(status_code=400, detail="Give the list a name")
-    list_type = (payload.list_type or "STATIC").upper()
-    if list_type not in ("STATIC", "ACTIVE"):
-        raise HTTPException(status_code=400, detail="list_type must be STATIC or ACTIVE")
-    if list_type == "ACTIVE":
-        _validate_filters(db, current_user, payload.filters)
-    plist = ProspectList(tenant_id=current_user.tenant_id, list_name=name, list_type=list_type,
-                         source_type="MANUAL", filters=payload.filters if list_type == "ACTIVE" else None,
-                         description=clean_str(payload.description), uploaded_by=current_user.user_id)
-    db.add(plist)
-    db.commit()
-    return _list_dict(db, current_user, plist)
+@router.post("", status_code=201, response_model=None)
+def create_list(payload: ListWrite, service: ListService = Lists,
+                current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    return service.create(current_user, payload.list_name, payload.list_type, payload.filters, payload.description)
 
 
-@router.get("/{list_id}")
-def get_list(list_id: str, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
-    return _list_dict(db, current_user, _get_list(db, current_user, list_id))
+@router.get("/{list_id}", response_model=None)
+def get_list(list_id: str, service: ListService = Lists, current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    return service.get(current_user, list_id)
 
 
-@router.patch("/{list_id}")
-def update_list(list_id: str, payload: ListWrite, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
-    _require_manager(current_user)
-    plist = _get_list(db, current_user, list_id)
-    data = payload.model_dump(exclude_unset=True)
-    if "list_name" in data:
-        if not clean_str(data["list_name"]):
-            raise HTTPException(status_code=400, detail="Give the list a name")
-        plist.list_name = clean_str(data["list_name"])
-    if "description" in data:
-        plist.description = clean_str(data["description"])
-    if "filters" in data:
-        if plist.list_type != "ACTIVE":
-            raise HTTPException(status_code=400, detail="Only active lists have filters")
-        _validate_filters(db, current_user, data["filters"])
-        plist.filters = data["filters"]
-    db.commit()
-    return _list_dict(db, current_user, plist)
+@router.patch("/{list_id}", response_model=None)
+def update_list(list_id: str, payload: ListWrite, service: ListService = Lists,
+                current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    return service.update(current_user, list_id, payload.model_dump(exclude_unset=True))
 
 
-@router.delete("/{list_id}")
-def delete_list(list_id: str, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
+@router.delete("/{list_id}", response_model=None)
+def delete_list(list_id: str, service: ListService = Lists,
+                current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
     """Delete the list only; its contacts are kept."""
-    _require_manager(current_user)
-    plist = _get_list(db, current_user, list_id)
-    db.query(ProspectListMember).filter(ProspectListMember.list_id == list_id).delete(synchronize_session=False)
-    db.delete(plist)
-    db.commit()
-    return {"status": "deleted", "list_id": list_id}
+    return service.delete(current_user, list_id)
 
 
-@router.post("/{list_id}/members")
-def add_members(list_id: str, payload: Members, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
-    _require_manager(current_user)
-    plist = _get_list(db, current_user, list_id)
-    if plist.list_type != "STATIC":
-        raise HTTPException(status_code=400, detail="Active lists update automatically from their filters")
-    valid = {r[0] for r in db.query(Prospect.prospect_id).filter(
-        Prospect.tenant_id == current_user.tenant_id, Prospect.prospect_id.in_(payload.prospect_ids),
-        Prospect.deleted_at.is_(None))}
-    existing = {r[0] for r in db.query(ProspectListMember.prospect_id).filter(
-        ProspectListMember.list_id == list_id, ProspectListMember.prospect_id.in_(valid))}
-    added = [pid for pid in payload.prospect_ids if pid in valid and pid not in existing]
-    now = utcnow()
-    for pid in dict.fromkeys(added):
-        db.add(ProspectListMember(list_id=list_id, prospect_id=pid, is_new_prospect=False, added_at=now))
-    db.commit()
-    return {"added": len(set(added)), "already_in_list": len(existing),
-            "not_found": len(set(payload.prospect_ids) - valid)}
+@router.post("/{list_id}/members", response_model=None)
+def add_members(list_id: str, payload: Members, service: ListService = Lists,
+                current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    return service.add_members(current_user, list_id, payload.prospect_ids)
 
 
-@router.post("/{list_id}/members/remove")
-def remove_members(list_id: str, payload: Members, db: Session = Depends(get_db), current_user: User = Depends(tenant_user)):
-    _require_manager(current_user)
-    plist = _get_list(db, current_user, list_id)
-    if plist.list_type != "STATIC":
-        raise HTTPException(status_code=400, detail="Active lists update automatically from their filters")
-    removed = db.query(ProspectListMember).filter(
-        ProspectListMember.list_id == list_id, ProspectListMember.prospect_id.in_(payload.prospect_ids)
-    ).delete(synchronize_session=False)
-    db.commit()
-    return {"removed": removed}
+@router.post("/{list_id}/members/remove", response_model=None)
+def remove_members(list_id: str, payload: Members, service: ListService = Lists,
+                   current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    return service.remove_members(current_user, list_id, payload.prospect_ids)
+
+
+@router.get("/{list_id}/export")
+def export_list(
+    list_id: str,
+    format: str = Query("csv", pattern="^(csv|xlsx)$"),
+    columns: Optional[str] = Query(None, description="Comma-separated column keys"),
+    service: ListService = Lists,
+    current_user: Any = Depends(tenant_user),
+) -> StreamingResponse:
+    """The list's contacts as CSV / XLSX (admins and managers, like the contacts export); logged (C-07)."""
+    export = service.export(current_user, list_id, format, columns)
+    return StreamingResponse(iter([export.content]), media_type=export.media_type,
+                             headers={"Content-Disposition": content_disposition(export.filename)})

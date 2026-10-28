@@ -9,13 +9,17 @@ modules that still pass a session (they build the repository on it). The caller 
 """
 
 import json
-from typing import Any, Dict, Iterable, List, Optional, Set
+from collections.abc import Collection
+from datetime import datetime
+from typing import Any, Dict, Iterable, List, Optional, Protocol, Set, runtime_checkable
 
 from app.core.auth import _DEFAULT_PERMS
-from app.core.errors import PermissionDenied
+from app.core.clock import utcnow
+from app.core.errors import ConflictError, PermissionDenied
 from app.domain.contacts import VisibilityScope, phone_digits, team_ids
 from app.models.account import Account
 from app.models.contact_activity import ContactActivity
+from app.models.contact_identity import MergeLog
 from app.models.prospect import Prospect
 from app.models.user import User
 from app.repositories.contacts import (
@@ -26,13 +30,14 @@ from app.repositories.contacts import (
     owner_condition,
     session_of,
 )
+from app.repositories.duplicates import DuplicateRepository
 from app.services.contact_companies import move_links
 
 __all__ = [
-    "MERGE_CHOOSABLE", "NO_MANAGE_PERMISSION", "SALES_LEVELS", "backfill_accounts", "can_access_contact",
+    "MERGE_CHOOSABLE", "MERGE_REFUSED", "NO_MANAGE_PERMISSION", "SALES_LEVELS", "backfill_accounts", "can_access_contact",
     "can_see_account",
     "can_manage_contacts", "can_see_owner", "clean_str", "delete_contacts", "get_or_create_account",
-    "merge_contacts", "normalize_tags", "owner_clause", "phone_digits", "require_manager", "scope",
+    "merge_contacts", "merge_refusal", "normalize_tags", "record_snapshot", "owner_clause", "phone_digits", "require_manager", "scope",
     "sees_everything", "team_user_ids", "visibility_scope", "visible_user_ids",
 ]
 
@@ -326,6 +331,23 @@ class _MergeState:
         self.labels.append(f"{dup.full_name} <{dup.email}>")
 
 
+def _fold_duplicates(repo: ContactRepository, state: _MergeState, duplicates: list) -> None:
+    """Move every duplicate's records to the primary and fill its blanks; tags and custom values merged."""
+    primary = state.primary
+    for dup in duplicates:
+        state.take_lists(dup)
+        state.take_campaigns(dup)
+        emails, activities = repo.reassign_children(dup.prospect_id, primary.prospect_id)
+        state.moved["emails"] += emails
+        state.moved["activities"] += activities
+        move_links(repo, dup, primary)
+        repo.repoint_merged(dup.prospect_id, primary.prospect_id)
+        state.take_persona(dup)
+        state.take_values(dup)
+    primary.tags = normalize_tags(state.tags) or None
+    primary.custom_fields = state.custom or None
+
+
 def merge_contacts(db: Session, primary: Prospect, duplicates: list, merged_by: Optional[str],
                    choices: Optional[dict] = None) -> dict:
     """
@@ -339,29 +361,27 @@ def merge_contacts(db: Session, primary: Prospect, duplicates: list, merged_by: 
 
 def merge_into(repo: ContactRepository, primary: Prospect, duplicates: list, merged_by: Optional[str],
                choices: Optional[dict] = None) -> dict:
-    """``merge_contacts`` on a repository (the service's unit of work commits)."""
+    """``merge_contacts`` on a repository (the service's unit of work commits).
+
+    With the identity store (the SQL repository; C-10 / C-11 / C-19): every involved contact is locked
+    (SELECT ... FOR UPDATE) and the merge is refused (409) when one was deleted or merged meanwhile; the
+    records are snapshotted into ``merge_logs`` with the choices and what moved; the duplicates' addresses
+    stay in the e-mail history pointing at the survivor; their open duplicate pairs become MERGED."""
     choices = {f: pid for f, pid in (choices or {}).items() if f in MERGE_CHOOSABLE}
     by_id = {d.prospect_id: d for d in duplicates}
     chosen_values = {f: getattr(by_id[pid], f) for f, pid in choices.items() if pid in by_id}
+    store = repo.duplicates if isinstance(repo, IdentityAware) else None
+    snapshot = _lock_and_snapshot(store, primary, duplicates) if store is not None else None
     state = _MergeState(repo, primary)
-
-    for dup in duplicates:
-        state.take_lists(dup)
-        state.take_campaigns(dup)
-        emails, activities = repo.reassign_children(dup.prospect_id, primary.prospect_id)
-        state.moved["emails"] += emails
-        state.moved["activities"] += activities
-        move_links(repo, dup, primary)
-        repo.repoint_merged(dup.prospect_id, primary.prospect_id)
-        state.take_persona(dup)
-        state.take_values(dup)
-
-    primary.tags = normalize_tags(state.tags) or None
-    primary.custom_fields = state.custom or None
+    _fold_duplicates(repo, state, duplicates)
     for field, value in chosen_values.items():
         if field != "email":
             setattr(primary, field, value)
 
+    if store is not None:
+        store.carry_identities(primary.tenant_id, primary.prospect_id,
+                               [(d.prospect_id, d.email) for d in duplicates],
+                               chosen_values.get("email") or primary.email)
     repo.flush()
     repo.delete_rows([d.prospect_id for d in duplicates])
     if "email" in chosen_values and chosen_values["email"]:
@@ -376,7 +396,66 @@ def merge_into(repo: ContactRepository, primary: Prospect, duplicates: list, mer
         body="Merged into this contact: " + "; ".join(state.labels),
         created_by=merged_by,
     ))
+    if store is not None and snapshot is not None:
+        _log_merge(store, primary, duplicates, merged_by, choices, state.moved, snapshot)
     return state.moved
+
+
+# ── Merge safety and history (C-10, C-19) ─────────────────────────
+
+@runtime_checkable
+class IdentityAware(Protocol):
+    """A contact repository that also reaches the identity store (pairs, merge logs, e-mail history)."""
+
+    @property
+    def duplicates(self) -> DuplicateRepository: ...
+
+
+# What a merge log keeps of each record (enough to rebuild it by hand)
+SNAPSHOT_FIELDS = MERGE_CHOOSABLE + (
+    "tags", "custom_fields", "consent_status", "consent_source", "email_type", "is_valid_email",
+    "score", "score_grade", "created_at", "updated_at",
+)
+MERGE_CONFLICT = "{who} was deleted or merged while you were merging. Reload and try again."
+MERGE_REFUSED = "{who} is in Recently deleted or was already merged, so it cannot be merged."
+
+
+def record_snapshot(p: Prospect) -> dict:
+    """A JSON-safe copy of a contact's properties for the merge log."""
+    out: Dict[str, Any] = {"prospect_id": p.prospect_id}
+    for field in SNAPSHOT_FIELDS:
+        value = getattr(p, field, None)
+        out[field] = value.isoformat() if isinstance(value, datetime) else value
+    return out
+
+
+def merge_refusal(prospects: Iterable[Prospect], expected: Collection[str],
+                  template: str = MERGE_CONFLICT) -> Optional[str]:
+    """Why a merge cannot go ahead: a contact missing, in the recycle bin or already merged; None if fine."""
+    found = {p.prospect_id: p for p in prospects}
+    for pid in expected:
+        p = found.get(pid)
+        if p is None or p.deleted_at is not None or p.merged_into_id:
+            label = f"{p.full_name} <{p.email}>" if p is not None else "A contact"
+            return template.format(who=label)
+    return None
+
+
+def _lock_and_snapshot(store: DuplicateRepository, primary: Prospect, duplicates: list) -> dict:
+    ids = [primary.prospect_id] + [d.prospect_id for d in duplicates]
+    refusal = merge_refusal(store.lock_contacts(primary.tenant_id, ids), ids)
+    if refusal:
+        raise ConflictError(refusal)
+    return {"survivor": record_snapshot(primary), "merged": [record_snapshot(d) for d in duplicates]}
+
+
+def _log_merge(store: DuplicateRepository, primary: Prospect, duplicates: list, merged_by: Optional[str],
+               choices: dict, moved: dict, snapshot: dict) -> None:
+    merged_ids = [d.prospect_id for d in duplicates]
+    store.add_merge_log(MergeLog(tenant_id=primary.tenant_id, survivor_id=primary.prospect_id,
+                                 merged_ids=merged_ids, snapshot=snapshot, choices=choices or None,
+                                 moved=dict(moved), merged_by=merged_by))
+    store.resolve_pairs(primary.tenant_id, merged_ids, merged_by, utcnow())
 
 
 def can_see_account(db: Session, user: User, account: Account) -> bool:

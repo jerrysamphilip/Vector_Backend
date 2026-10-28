@@ -12,6 +12,7 @@ serves the routes: each method is one unit of work that it commits; errors are d
 import uuid
 from typing import Any, Callable, Collection, Dict, List, Optional, Sequence, Tuple
 
+from app.repositories.lists import free_list_name
 from app.core.clock import utcnow
 from app.core.concurrency import claim_version, resolve_expected
 from app.core.errors import BadRequestError, ConflictError, DomainError, NotFoundError, PermissionDenied
@@ -393,7 +394,7 @@ def _bulk_set_property(b: _Bulk) -> None:
 def _bulk_target_list(b: _Bulk) -> ProspectList:
     user, payload = b.user, b.payload
     if payload.new_list_name and payload.action == "add_to_list":
-        plist = ProspectList(tenant_id=user.tenant_id, list_name=payload.new_list_name.strip(),
+        plist = ProspectList(tenant_id=user.tenant_id, list_name=free_list_name(b.db, user.tenant_id, payload.new_list_name),
                              source_type="MANUAL", list_type="STATIC", uploaded_by=user.user_id)
         b.repo.add(user.tenant_id, plist)
         b.repo.flush()

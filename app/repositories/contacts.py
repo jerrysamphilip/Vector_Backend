@@ -53,6 +53,7 @@ from app.models.sales_extra import Notification
 from app.models.user import User
 from app.models.webhook import WebhookDelivery
 from app.repositories.base import SqlAlchemyRepository, SqlAlchemyUnitOfWork, TenantId
+from app.repositories.duplicates import DuplicateRepository, SqlAlchemyDuplicateRepository
 from app.utils import sql_like
 
 __all__ = [
@@ -60,6 +61,8 @@ __all__ = [
     "SqlAlchemyContactRepository", "SqlAlchemyContactsUnitOfWork", "borrow", "apply_scope", "company_condition", "compile_filter", "contacts_uow",
     "owner_condition", "search_condition", "session_of",
 ]
+
+# app.repositories.duplicates registers the e-mail history flush listener (C-11) on import
 
 SORT_COLUMNS = {
     "name": (Prospect.first_name, Prospect.last_name),
@@ -292,7 +295,6 @@ class ContactRepository(Protocol):
     def export_chunk(self, criteria: ContactCriteria, offset: int, limit: int) -> list[Prospect]: ...
     def distinct_values(self, tenant_id: TenantId, scope: VisibilityScope, column: str) -> list[Any]: ...
     def tag_lists(self, tenant_id: TenantId, scope: VisibilityScope) -> list[Any]: ...
-    def duplicate_rows(self, tenant_id: TenantId, scope: VisibilityScope) -> list[Any]: ...
     def prospects_by_ids(self, tenant_id: TenantId, ids: Collection[str]) -> list[Prospect]: ...
     def deleted_page(self, tenant_id: TenantId, scope: VisibilityScope, cutoff: datetime, q: Optional[str],
                      paging: Paging) -> Page[Prospect]: ...
@@ -329,6 +331,7 @@ class ContactRepository(Protocol):
     def live_account(self, tenant_id: TenantId, account_id: str) -> Optional[Account]: ...
     def account(self, tenant_id: TenantId, account_id: str) -> Optional[Account]: ...
     def by_email(self, tenant_id: TenantId, email: str) -> Optional[Prospect]: ...
+    def resolve_contact_by_email(self, tenant_id: TenantId, email: str) -> Optional[Prospect]: ...
     def email_taken(self, tenant_id: TenantId, email: str, except_id: str) -> bool: ...
     def is_unsubscribed(self, tenant_id: TenantId, email: str) -> bool: ...
     def retarget_unsent(self, prospect_id: str, email: str, statuses: Collection[str]) -> int: ...
@@ -350,6 +353,8 @@ class ContactRepository(Protocol):
     def has_visible_contact_at(self, account_id: str, owner_ids: Collection[str]) -> bool: ...
 
     # merge and erasure
+    @property
+    def duplicates(self) -> DuplicateRepository: ...
     def memberships(self, prospect_id: str) -> list[ProspectListMember]: ...
     def enrollment_rows(self, prospect_id: str) -> list[CampaignProspect]: ...
     def reassign_children(self, source_id: str, target_id: str) -> tuple[int, int]: ...
@@ -537,12 +542,6 @@ class SqlAlchemyContactRepository(SqlAlchemyRepository[Prospect, str]):
         return [t for (t,) in self._visible(tenant_id, scope).with_entities(Prospect.tags).filter(
             Prospect.tags.isnot(None))]
 
-    def duplicate_rows(self, tenant_id: TenantId, scope: VisibilityScope) -> list[Any]:
-        return self._visible(tenant_id, scope).with_entities(
-            Prospect.prospect_id, Prospect.first_name, Prospect.last_name, Prospect.company_name,
-            Prospect.account_id, Prospect.phone, Prospect.mobile_phone, Prospect.email,
-        ).all()
-
     def prospects_by_ids(self, tenant_id: TenantId, ids: Collection[str]) -> list[Prospect]:
         if not ids:
             return []
@@ -727,7 +726,13 @@ class SqlAlchemyContactRepository(SqlAlchemyRepository[Prospect, str]):
                                                    Account.tenant_id == tenant_id).first()
 
     def by_email(self, tenant_id: TenantId, email: str) -> Optional[Prospect]:
-        return self._session.query(Prospect).filter(Prospect.tenant_id == tenant_id, Prospect.email == email).first()
+        """The contact with this address, or the one a retired / merged address now belongs to (C-11)."""
+        return self.resolve_contact_by_email(tenant_id, email)
+
+    def resolve_contact_by_email(self, tenant_id: TenantId, email: str) -> Optional[Prospect]:
+        """Current address first (live or in the recycle bin), then e-mail history: a retired address
+        resolves to its contact, a merged one to the surviving contact."""
+        return self.duplicates.resolve_contact_by_email(tenant_id, email)
 
     def email_taken(self, tenant_id: TenantId, email: str, except_id: str) -> bool:
         return self._session.query(Prospect.prospect_id).filter(
@@ -825,6 +830,11 @@ class SqlAlchemyContactRepository(SqlAlchemyRepository[Prospect, str]):
             Prospect.owner_id.in_(owner_ids)).first() is not None
 
     # merge and erasure -------------------------------------------------------
+    @property
+    def duplicates(self) -> SqlAlchemyDuplicateRepository:
+        """Stored duplicate pairs, merge logs and e-mail identifiers on the same session."""
+        return SqlAlchemyDuplicateRepository(self._session)
+
     def memberships(self, prospect_id: str) -> list[ProspectListMember]:
         return self._session.query(ProspectListMember).filter(ProspectListMember.prospect_id == prospect_id).all()
 

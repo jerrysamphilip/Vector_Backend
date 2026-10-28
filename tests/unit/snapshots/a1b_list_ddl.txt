@@ -1,0 +1,56 @@
+CREATE TABLE prospect_lists (
+	list_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	list_name VARCHAR(255) NOT NULL, 
+	source_type VARCHAR(50) NOT NULL, 
+	list_type VARCHAR(10) NOT NULL DEFAULT 'STATIC', 
+	filters JSON, 
+	description TEXT, 
+	uploaded_by VARCHAR(36) NOT NULL, 
+	uploaded_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (list_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(uploaded_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+prospect_lists.list_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+prospect_lists.tenant_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospect_lists.list_name: type=String(length=255) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospect_lists.source_type: type=String(length=50) nullable=False pk=False index=None unique=None autoincrement='auto' default='CSV' onupdate=None server_default=None server_onupdate=None computed=False
+
+prospect_lists.list_type: type=String(length=10) nullable=False pk=False index=None unique=None autoincrement='auto' default='STATIC' onupdate=None server_default=STATIC server_onupdate=None computed=False
+
+prospect_lists.filters: type=JSON() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospect_lists.description: type=Text() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospect_lists.uploaded_by: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospect_lists.uploaded_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+CREATE TABLE prospect_list_members (
+	id VARCHAR(36) NOT NULL, 
+	list_id VARCHAR(36) NOT NULL, 
+	prospect_id VARCHAR(36) NOT NULL, 
+	is_new_prospect BOOL, 
+	added_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	notes TEXT, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(list_id) REFERENCES prospect_lists (list_id), 
+	FOREIGN KEY(prospect_id) REFERENCES prospects (prospect_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+prospect_list_members.id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+prospect_list_members.list_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospect_list_members.prospect_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+prospect_list_members.is_new_prospect: type=Boolean() nullable=True pk=False index=None unique=None autoincrement='auto' default=True onupdate=None server_default=None server_onupdate=None computed=False
+
+prospect_list_members.added_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+prospect_list_members.notes: type=Text() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False

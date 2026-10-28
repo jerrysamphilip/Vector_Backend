@@ -8,6 +8,7 @@ from datetime import timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import case, func
 from sqlalchemy.exc import DataError, IntegrityError
+from app.repositories.lists import free_list_name
 from app.core.clock import utcnow
 from app.core.errors import ConflictError
 
@@ -598,7 +599,7 @@ def _split_unsubscribed(db: Session, tenant_id: str, records: List[dict]) -> Tup
 
 def _add_list(db: Session, upload_id: str, title: str, uploaded_by: str, tenant_id: str,
               saved: List[Tuple[dict, Tuple[str, bool]]]) -> None:
-    db.add(ProspectList(list_id=upload_id, tenant_id=tenant_id, list_name=title,
+    db.add(ProspectList(list_id=upload_id, tenant_id=tenant_id, list_name=free_list_name(db, tenant_id, title),
                         source_type="UPLOAD", uploaded_by=uploaded_by))
     base_added_at = utcnow()
     for idx, (_, (prospect_id, is_new)) in enumerate(saved):

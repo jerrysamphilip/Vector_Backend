@@ -16,6 +16,7 @@ import csv
 import io
 import re
 from dataclasses import dataclass
+from dataclasses import fields as dataclass_fields
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
@@ -45,7 +46,9 @@ from app.repositories.contacts import (
 )
 from app.repositories.contacts import search_condition as search_condition
 from app.services import contact_companies, crm, mentions
+from app.services import duplicate_scan as duplicate_scan  # noqa: PLC0414  (explicit submodule import for mypy)
 from app.services.contact_field_service import definitions_in_order, label_map
+from app.services.export_log import record_export
 from app.services.contact_service import (
     MERGE_CHOOSABLE,
     can_access_contact,
@@ -384,14 +387,32 @@ def export_columns(columns: Optional[str]) -> List[str]:
     return [c for c in (columns or "").split(",") if c in COLUMNS] or list(COLUMNS)
 
 
-def export_contacts(ctx: ContactsAccess, user: User, fmt: str, columns: Optional[str], f: ContactFilter) -> ExportFile:
-    """A view as CSV / XLSX. Admins and managers only."""
+def export_summary(f: ContactFilter, keys: Sequence[str], list_name: Optional[str] = None) -> str:
+    """What was exported, for the export log (C-07): the filters that were set and the columns."""
+    parts = [f"list={list_name}" if name == "list_id" and list_name else f"{name}={value}"
+             for name, value in ((fld.name, getattr(f, fld.name)) for fld in dataclass_fields(f))
+             if value not in (None, "")]
+    return "; ".join(parts or ["all contacts"]) + f" | columns: {', '.join(keys)}"
+
+
+def check_export_size(total: int) -> None:
+    """Refuse an export larger than EXPORT_ROW_LIMIT instead of silently cutting it (C-07)."""
+    if total > EXPORT_ROW_LIMIT:
+        raise BadRequestError(
+            f"This view has {total:,} contacts, more than the {EXPORT_ROW_LIMIT:,} an export can hold. "
+            "Narrow it with a filter (owner, list, lifecycle stage, ...) and export it in parts.")
+
+
+def export_contacts(ctx: ContactsAccess, user: User, fmt: str, columns: Optional[str], f: ContactFilter,
+                    object_type: str = "CONTACT", list_name: Optional[str] = None) -> ExportFile:
+    """A view as CSV / XLSX. Admins and managers only. Logged in export_logs (C-07); the caller commits."""
     if not can_export(user):
         raise PermissionDenied("Only admins and managers can export contacts")
     keys = export_columns(columns)
     repo = ctx.contacts
     field_defs = definitions_in_order(repo, user.tenant_id)
     criteria = contact_criteria(ctx, user, f)
+    check_export_size(repo.search(criteria, Sort("created_at"), Paging(1, 1)).total)
 
     header = [COLUMNS[k] for k in keys] + [d.label for d in field_defs]
     rows = []
@@ -405,6 +426,7 @@ def export_contacts(ctx: ContactsAccess, user: User, fmt: str, columns: Optional
                 v = s["custom_fields"].get(d.field_key)
                 values.append("; ".join(v) if isinstance(v, list) else v)
             rows.append(crm.csv_safe_row(values))  # no formula injection in Excel / Sheets
+    record_export(ctx, user.tenant_id, user.user_id, object_type, export_summary(f, keys, list_name), len(rows), fmt)
 
     stamp = utcnow().strftime("%Y%m%d-%H%M")
     if fmt == "xlsx":
@@ -721,7 +743,9 @@ class ContactQueryService:
 
     def export(self, user: User, fmt: str, columns: Optional[str], f: ContactFilter) -> ExportFile:
         with self.uow as uow:
-            return export_contacts(uow, user, fmt, columns, f)
+            export = export_contacts(uow, user, fmt, columns, f)
+            uow.commit()  # the export-log row (C-07)
+            return export
 
     def deleted_page(self, user: User, q: Optional[str], paging: Paging) -> dict:
         """Recently deleted (BR-CM-35): the user's team's contacts still inside the restore window."""
@@ -739,22 +763,20 @@ class ContactQueryService:
             return {"items": items, "total": page.total, "page": paging.page, "page_size": paging.page_size}
 
     def duplicates(self, user: User, limit: int) -> dict:
-        """Groups of likely duplicates: same email (Gmail-style), similar name at a company, same phone."""
+        """Stored OPEN duplicate pairs (C-08), strongest first, each as a group of two contacts with its
+        reasons, score and confidence (the shape the Find duplicates modal reads). A workspace that was
+        never scanned is scanned first."""
         require_manager(user)
         with self.uow as uow:
-            repo = uow.contacts
-            groups = duplicate_groups(repo.duplicate_rows(user.tenant_id, visibility_scope(uow.session, user)), limit)
-            all_ids = {i for g in groups for i in g["ids"]}
-            by_summary = {s["prospect_id"]: s for s in contact_summaries(repo, repo.prospects_by_ids(user.tenant_id, all_ids))}
-        return {
-            "groups": [{
-                "reasons": sorted(g["reasons"]),
-                "contacts": sorted((by_summary[i] for i in g["ids"] if i in by_summary),
-                                   key=lambda s: s["created_at"] or datetime.min),
-            } for g in groups],
-            "total_groups": len(groups),
-            "mergeable_properties": list(MERGE_CHOOSABLE),
-        }
+            repo, store = uow.contacts, uow.contacts.duplicates
+            if not store.has_pairs(user.tenant_id):
+                duplicate_scan.scan_tenant(store, user.tenant_id, utcnow())
+                uow.commit()
+            page = store.pair_page(user.tenant_id, visibility_scope(uow.session, user), "OPEN", None, Paging(1, limit))
+            ids = {i for pair in page.items for i in (pair.contact_a_id, pair.contact_b_id)}
+            by_summary = {s["prospect_id"]: s for s in contact_summaries(repo, repo.prospects_by_ids(user.tenant_id, ids))}
+            groups = [duplicate_scan.pair_group(pair, by_summary) for pair in page.items]
+        return {"groups": groups, "total_groups": page.total, "mergeable_properties": list(MERGE_CHOOSABLE)}
 
     def detail(self, user: User, prospect_id: str) -> dict:
         with self.uow as uow:
