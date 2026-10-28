@@ -133,7 +133,7 @@ def test_sec_login_and_forgot_password_pick_the_live_account(client, ws_b, monke
     assert r.status_code == 401, r.text
 
     sent = []
-    monkeypatch.setattr("app.routers.auth_router._send_password_reset_email",
+    monkeypatch.setattr("app.services.password_reset_email.send_password_reset_email",
                         lambda to, link: sent.append((to, link)))
     monkeypatch.setattr(settings, "RESET_PASSWORD_URL", "https://app.example.com/reset-password")
     r = client.post("/api/auth/forgot-password", json={"email": live["email"]},
@@ -150,7 +150,7 @@ def test_sec_login_and_forgot_password_pick_the_live_account(client, ws_b, monke
 
 def test_sec_reset_link_keeps_a_legit_local_origin(client, ws_a, monkeypatch):
     sent = []
-    monkeypatch.setattr("app.routers.auth_router._send_password_reset_email",
+    monkeypatch.setattr("app.services.password_reset_email.send_password_reset_email",
                         lambda to, link: sent.append(link))
     r = client.post("/api/auth/forgot-password", json={"email": ws_a["email"]},
                     headers={"Origin": "http://localhost:5173"})

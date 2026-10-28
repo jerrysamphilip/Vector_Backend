@@ -6,31 +6,41 @@ from then on instead of staying valid until it expires. Only that one token is r
 other sessions / devices are untouched. Rows are only needed until the token's own expiry; expired
 rows are pruned whenever a token is revoked.
 
-Table created by alembic 0013_revoked_access_tokens.
+Table created by alembic 0013_revoked_access_tokens; SQL in app/repositories/identity_tokens.py.
+``is_revoked`` / ``revoke`` take a session (app.core.auth, legacy callers); services use
+``revoke_payload`` with their unit of work's token repository.
 """
 from datetime import datetime, timezone
-
-from sqlalchemy import text
-from sqlalchemy.orm import Session
+from typing import Any
 
 from app.core.clock import utcnow
+from app.repositories.identity_tokens import SqlAlchemyTokenRepository, TokenRepository
 
 
-def is_revoked(db: Session, jti: str | None) -> bool:
-    if not jti:
-        return False  # tokens issued before jti existed: they expire on their own
-    return db.execute(text("SELECT 1 FROM revoked_access_tokens WHERE jti = :j"), {"j": jti}).first() is not None
+def expiry_of(payload: dict) -> datetime:
+    """The token's own expiry (naive UTC), now when the payload carries none."""
+    exp = payload.get("exp")
+    return (datetime.fromtimestamp(exp, tz=timezone.utc).replace(tzinfo=None)
+            if isinstance(exp, (int, float)) else utcnow())
 
 
-def revoke(db: Session, payload: dict) -> None:
-    """Revoke the access token whose decoded payload is given (no-op without jti). Commits."""
+def revoke_payload(tokens: TokenRepository, payload: dict) -> bool:
+    """Stage the revocation of the access token whose decoded payload is given; False without jti
+    (tokens issued before jti existed expire on their own). Does not commit."""
     jti = payload.get("jti")
     if not jti:
-        return
-    exp = payload.get("exp")
-    expires_at = (datetime.fromtimestamp(exp, tz=timezone.utc).replace(tzinfo=None)
-                  if isinstance(exp, (int, float)) else utcnow())
-    db.execute(text("DELETE FROM revoked_access_tokens WHERE expires_at < :now"), {"now": utcnow()})
-    db.execute(text("INSERT IGNORE INTO revoked_access_tokens (jti, user_id, expires_at) VALUES (:j, :u, :e)"),
-               {"j": jti, "u": payload.get("sub"), "e": expires_at})
-    db.commit()
+        return False
+    tokens.revoke_access_token(jti, payload.get("sub"), expiry_of(payload), utcnow())
+    return True
+
+
+def is_revoked(db: Any, jti: str | None) -> bool:
+    if not jti:
+        return False  # tokens issued before jti existed: they expire on their own
+    return SqlAlchemyTokenRepository(db).access_token_revoked(jti)
+
+
+def revoke(db: Any, payload: dict) -> None:
+    """Revoke the access token whose decoded payload is given (no-op without jti). Commits."""
+    if revoke_payload(SqlAlchemyTokenRepository(db), payload):
+        db.commit()

@@ -18,19 +18,19 @@ The limits are checked when the access token is renewed, so they bite within one
 lifetime (ACCESS_TOKEN_EXPIRE_MINUTES): an idle browser keeps its current access token until it expires.
 
 The decision functions are pure (unit tested in tests/unit/test_session_limits.py); ``begin_refresh``
-applies them to the database.
+applies them through the identity unit of work (SQL in app/repositories/identity_tokens.py).
 """
 import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-
-from sqlalchemy.orm import Session
+from typing import Any, NoReturn, Protocol
 
 from app.core.clock import utcnow
 from app.core.config import settings
 from app.models.refresh_token import RefreshToken
+from app.repositories.identity_tokens import SqlAlchemyTokenRepository, TokenRepository
 
 logger = logging.getLogger(__name__)
 
@@ -152,22 +152,54 @@ def refresh_ttl() -> timedelta:
     return timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
 
-# ── Database ──
+# ── Database (through the identity unit of work, app/repositories/identity_tokens.py) ──
+
+class RefreshAccess(Protocol):
+    """What ``begin_refresh`` needs: the token repository and the transaction (an identity unit of work)."""
+
+    @property
+    def tokens(self) -> TokenRepository: ...
+
+    def commit(self) -> None: ...
+
+    def rollback(self) -> None: ...
+
 
 def new_lineage(now: datetime) -> SessionLineage:
     """A fresh sign-in: a new family, started and last active now."""
     return SessionLineage(session_id=str(uuid.uuid4()), session_started_at=now, last_activity_at=now)
 
 
-def revoke_family(db: Session, session_id: str, now: datetime, reason: str) -> int:
+def revoke_family(db: Any, session_id: str, now: datetime, reason: str) -> int:
     """Revoke every still-active token of a session. Does not commit."""
-    return db.query(RefreshToken).filter(
-        RefreshToken.session_id == session_id,
-        RefreshToken.revoked_at.is_(None),
-    ).update({RefreshToken.revoked_at: now, RefreshToken.revoked_reason: reason}, synchronize_session=False)
+    return SqlAlchemyTokenRepository(db).revoke_session(session_id, now, reason)
 
 
-def begin_refresh(db: Session, token_hash: str, activity_header: str | None,
+def _refuse_revoked(uow: RefreshAccess, rt: RefreshToken, session_id: str, now: datetime) -> NoReturn:
+    """The presented token was already rotated or revoked: a benign two-tab race, or reuse."""
+    presented = classify_presented(revoked_at=rt.revoked_at, revoked_reason=rt.revoked_reason,
+                                   now=now, grace=reuse_grace())
+    if presented is Presented.RACE:
+        uow.rollback()  # release the row lock
+        raise SessionRefused(CODE_SUPERSEDED, "Refresh token already exchanged", clear_cookies=False)
+    revoked = uow.tokens.revoke_session(session_id, now, REASON_REUSE)
+    uow.commit()
+    logger.warning("Refresh token reuse: user=%s session=%s token=%s (revoked at %s, reason=%s); "
+                   "%d active token(s) of the session revoked", rt.user_id, session_id, rt.token_id,
+                   rt.revoked_at, rt.revoked_reason, revoked)
+    raise SessionRefused(CODE_REUSED, "Session revoked, please sign in again")
+
+
+def _end_session(uow: RefreshAccess, rt: RefreshToken, now: datetime, reason: str) -> NoReturn:
+    rt.revoked_at = now
+    rt.revoked_reason = reason
+    uow.commit()
+    if reason == REASON_IDLE:
+        raise SessionRefused(CODE_IDLE, idle_message(idle_limit()))
+    raise SessionRefused(CODE_ABSOLUTE, "Session expired, please sign in again")
+
+
+def begin_refresh(uow: RefreshAccess, token_hash: str, activity_header: str | None,
                   now: datetime | None = None) -> tuple[RefreshToken, SessionLineage]:
     """Validate a presented refresh token against reuse, expiry and the session limits.
 
@@ -175,23 +207,13 @@ def begin_refresh(db: Session, token_hash: str, activity_header: str | None,
     calls ``mark_rotated`` and issues the new pair. Raises SessionRefused (after committing any
     revocation it made) otherwise."""
     now = now or utcnow()
-    rt = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).with_for_update().first()
+    rt = uow.tokens.refresh_for_update(token_hash)
     if rt is None:
         raise SessionRefused(CODE_INVALID, "Invalid or expired refresh token")
 
     session_id = rt.session_id or rt.token_id
-    presented = classify_presented(revoked_at=rt.revoked_at, revoked_reason=rt.revoked_reason,
-                                   now=now, grace=reuse_grace())
-    if presented is Presented.RACE:
-        db.rollback()  # release the row lock
-        raise SessionRefused(CODE_SUPERSEDED, "Refresh token already exchanged", clear_cookies=False)
-    if presented is Presented.REUSE:
-        revoked = revoke_family(db, session_id, now, REASON_REUSE)
-        db.commit()
-        logger.warning("Refresh token reuse: user=%s session=%s token=%s (revoked at %s, reason=%s); "
-                       "%d active token(s) of the session revoked", rt.user_id, session_id, rt.token_id,
-                       rt.revoked_at, rt.revoked_reason, revoked)
-        raise SessionRefused(CODE_REUSED, "Session revoked, please sign in again")
+    if rt.revoked_at is not None:
+        _refuse_revoked(uow, rt, session_id, now)
 
     started = rt.session_started_at or rt.created_at or now
     stored_activity = rt.last_activity_at or rt.created_at or now
@@ -199,15 +221,10 @@ def begin_refresh(db: Session, token_hash: str, activity_header: str | None,
     reason = limit_exceeded(now=now, session_started_at=started, last_activity_at=last_activity,
                             absolute=absolute_limit(), idle=idle_limit())
     if reason is not None:
-        rt.revoked_at = now
-        rt.revoked_reason = reason
-        db.commit()
-        if reason == REASON_IDLE:
-            raise SessionRefused(CODE_IDLE, idle_message(idle_limit()))
-        raise SessionRefused(CODE_ABSOLUTE, "Session expired, please sign in again")
+        _end_session(uow, rt, now, reason)
 
     if rt.expires_at < now:
-        db.rollback()
+        uow.rollback()
         raise SessionRefused(CODE_INVALID, "Invalid or expired refresh token")
 
     return rt, SessionLineage(session_id=session_id, session_started_at=started, last_activity_at=last_activity)

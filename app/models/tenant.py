@@ -3,12 +3,15 @@
 Tenant model for multi-tenant architecture.
 """
 
-from sqlalchemy import Boolean, Column, String
-from sqlalchemy.sql import expression
-from sqlalchemy.orm import relationship
 import uuid
+from datetime import datetime
+from typing import Optional
 
-from app.models import Base
+from sqlalchemy import Boolean, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import expression
+
+from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
 
 
@@ -19,13 +22,13 @@ class Tenant(Base):
     """
     __tablename__ = "tenants"
 
-    tenant_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_name = Column(String(255), nullable=False)
-    status = Column(String(50), default="ACTIVE")  # ACTIVE / SUSPENDED / DELETED
-    created_at = Column(UtcDateTime, server_default=NOW6)
-    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
+    tenant_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    tenant_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="ACTIVE")  # ACTIVE / SUSPENDED / DELETED
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6, onupdate=NOW6)
     # Every user must sign in with two-factor (set by a SUPER_ADMIN, PUT /api/auth/mfa/tenant-policy)
-    require_mfa = Column(Boolean, nullable=False, default=False, server_default=expression.false())
+    require_mfa: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=expression.false())
 
     # Relationships
     users = relationship("User", back_populates="tenant", lazy="dynamic")

@@ -2,13 +2,13 @@
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy import Column, Date, Integer, MetaData, String, Table
 
 from app.core.config import settings
+from app.core.errors import ConflictError
 from app.domain.reports import FieldKind, ReportInputError, check_filter
 from app.repositories.reports_custom import filter_condition, value_kind
-from app.routers import auth_router
+from app.services import auth_service
 
 _t = Table("unit_report", MetaData(), Column("name", String(20)), Column("seats", Integer), Column("day", Date))
 COLS = {"name": _t.c.name, "seats": _t.c.seats, "day": _t.c.day}
@@ -86,17 +86,17 @@ def _user(**kw):
 
 def test_link_refused_without_allowed_domain(monkeypatch):
     monkeypatch.setattr(settings, "SSO_LINK_ALLOWED_DOMAINS", "")
-    with pytest.raises(HTTPException) as exc:
-        auth_router._link_google_account(None, _user(), "g1", "pat@acme.example")
+    with pytest.raises(ConflictError) as exc:
+        auth_service.link_google_account(None, _user(), "g1", "pat@acme.example")
     assert exc.value.status_code == 409 and "password" in exc.value.detail
 
 
 def test_link_allowed_for_listed_domain_is_audited(monkeypatch):
     monkeypatch.setattr(settings, "SSO_LINK_ALLOWED_DOMAINS", " Acme.example ,@other.example")
-    monkeypatch.setattr(auth_router, "AuditService", _Audit)
+    monkeypatch.setattr(auth_service, "AuditService", _Audit)
     _Audit.calls = []
     user = _user()
-    auth_router._link_google_account(None, user, "g1", "pat@ACME.example")
+    auth_service.link_google_account(None, user, "g1", "pat@ACME.example")
     assert (user.google_id, user.auth_provider) == ("g1", "google")
     assert _Audit.calls == [("t1", "u1", "LINK", "google_sso", "u1")]
     assert settings.sso_link_allowed_domains == frozenset({"acme.example", "other.example"})
@@ -104,5 +104,5 @@ def test_link_allowed_for_listed_domain_is_audited(monkeypatch):
 
 def test_account_linked_to_another_google_identity_is_never_relinked(monkeypatch):
     monkeypatch.setattr(settings, "SSO_LINK_ALLOWED_DOMAINS", "acme.example")
-    with pytest.raises(HTTPException):
-        auth_router._link_google_account(None, _user(google_id="g-old"), "g-new", "pat@acme.example")
+    with pytest.raises(ConflictError):
+        auth_service.link_google_account(None, _user(google_id="g-old"), "g-new", "pat@acme.example")

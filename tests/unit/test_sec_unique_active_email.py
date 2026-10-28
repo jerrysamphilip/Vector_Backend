@@ -82,14 +82,39 @@ def test_sec_require_no_other_live_account():
     invitation_service.require_no_other_live_account(_Db([]), "x@example.com", "a")
 
 
-def test_sec_reactivate_refused_when_email_live_elsewhere(monkeypatch):
+class _Users:
+    def __init__(self, target, live):
+        self.target, self.live = target, live
+
+    def member(self, tenant_id, user_id):
+        return self.target
+
+    def live_with_email(self, email, exclude_user_id=None):
+        return self.live
+
+
+class _Uow:
+    def __init__(self, users):
+        self.users = users
+        self.commits = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return None
+
+    def commit_account(self):
+        self.commits += 1
+
+
+def test_sec_reactivate_refused_when_email_live_elsewhere():
     target = SimpleNamespace(user_id="t", email="x@example.com", status="INACTIVE", role="AGENT")
-    actor = SimpleNamespace(user_id="me", role="SUPER_ADMIN", email="boss@example.com")
-    monkeypatch.setattr(user_admin_service, "get_member", lambda db, a, uid: target)
-    db = _Db([_u("other", "ACTIVE")])
+    actor = SimpleNamespace(user_id="me", tenant_id="w", role="SUPER_ADMIN", email="boss@example.com")
+    uow = _Uow(_Users(target, _u("other", "ACTIVE")))
     with pytest.raises(ConflictError):
-        user_admin_service.reactivate(db, actor, "t")
-    assert target.status == "INACTIVE"
+        user_admin_service.TeamService(uow).reactivate(actor, "t")
+    assert target.status == "INACTIVE" and uow.commits == 0
 
 
 def _load_migration():

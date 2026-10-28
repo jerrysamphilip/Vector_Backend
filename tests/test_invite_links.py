@@ -190,7 +190,7 @@ def tenant_mail(monkeypatch):
         sent.append({"to_email": to_email, "magic_login_link": magic_login_link})
         return {"sent": True, "ses_message_id": "m", "error": None}
 
-    monkeypatch.setattr("app.routers.platform_admin_router._send_tenant_invite_email", fake_send)
+    monkeypatch.setattr("app.services.platform_admin_service.send_tenant_invite_email", fake_send)
     return sent
 
 
@@ -214,7 +214,7 @@ def test_inl_08_platform_tenant_admin_gets_link_not_password(client, padmin, ten
 
 
 def test_inl_09_platform_show_once_only_in_local_dev(client, padmin, monkeypatch):
-    monkeypatch.setattr("app.routers.platform_admin_router._send_tenant_invite_email",
+    monkeypatch.setattr("app.services.platform_admin_service.send_tenant_invite_email",
                         lambda **kw: {"sent": False, "ses_message_id": None, "error": "no SES"})
     monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
     monkeypatch.setattr(settings, "ENVIRONMENT", "development")
