@@ -23,10 +23,10 @@ from datetime import timedelta
 from typing import Optional
 from urllib.parse import urlencode
 
-import httpx
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
+from app.adapters import providers
 from app.core.clock import utcnow
 from app.core import tokens
 from app.core.config import settings
@@ -93,7 +93,7 @@ def authorize_url(inbox: SendingInbox, state: str) -> str:
 def _token_request(data: dict) -> dict:
     data = {"client_id": settings.MS365_CLIENT_ID, "client_secret": settings.MS365_CLIENT_SECRET,
             "scope": SCOPES, **data}
-    resp = httpx.post(_endpoint("token"), data=data, timeout=20)
+    resp = providers.oauth_http().post_form(_endpoint("token"), data, timeout=20)
     body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
     if resp.status_code != 200 or "access_token" not in body:
         raise OAuthError(body.get("error_description") or body.get("error") or f"Token request failed ({resp.status_code})")

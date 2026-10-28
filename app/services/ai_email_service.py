@@ -7,15 +7,15 @@ Implements 3-layer hybrid architecture:
   Layer 3: LLM-powered micro-variation (OpenAI GPT-4o-mini)
 """
 
-from typing import Optional, Dict, List, Tuple
+from typing import Any, Optional, Dict, List, Tuple
 from sqlalchemy.orm import Session
 import random
 import json
 import logging
 import re
 
-from openai import OpenAI
-
+from app.adapters import providers
+from app.adapters.openai_chat import ChatCompletionsView
 from app.core.config import settings
 from app.models import Prospect, ProspectPersona, PersonaBlueprint
 from app.prompts import get_system_prompt, get_email_generation_prompt, get_few_shot_examples_block, is_healthcare_pharma, build_persona_intelligence_block, get_capability_pool_block, get_step_tone_block
@@ -30,18 +30,29 @@ from app.utils.email_utils import (
     normalize_paragraph_spacing,
     finalize_email_body,
 )
+from app.services.sender_identity import branded_openai_client
 from app.utils.retry_utils import retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
-# Initialize OpenAI client
-openai_client = None
-if settings.OPENAI_API_KEY:
-    # Every prompt names the sender company as SENDER_COMPANY_TOKEN; the wrapper
-    # fills in the bound tenant's own company name before the call (no tenant
-    # ever gets another company's identity in its emails).
-    from app.services.sender_identity import branded_openai_client
-    openai_client = branded_openai_client(OpenAI(api_key=settings.OPENAI_API_KEY))
+
+def llm_client() -> Optional[Any]:
+    """
+    The generation ChatClient (app.adapters.providers.generation_chat_client) in the OpenAI SDK's
+    ``.chat.completions.create(...)`` shape, or None when no key is configured (callers fall back to
+    the blueprint rules). Every prompt names the sender company as SENDER_COMPANY_TOKEN; the
+    branded wrapper fills in the bound tenant's own company name before the call (no tenant ever
+    gets another company's identity in its emails) and charges / settles each call against the
+    daily LLM budget (app/services/llm_budget.py).
+    """
+    client = providers.generation_chat_client()
+    if client is None:
+        return None
+    return branded_openai_client(ChatCompletionsView(client))
+
+
+# Legacy module attribute: app/services/sequence_generator.py and the campaign wizard import it
+openai_client = llm_client()
 
 
 # ============================================================
@@ -409,6 +420,7 @@ def generate_email_with_llm(
     Returns:
         Dict with subject, body, etc. or None if LLM unavailable
     """
+    openai_client = llm_client()
     if not openai_client:
         return None
 
@@ -958,7 +970,7 @@ def generate_email_hybrid(
         return {"error": "No blueprint found"}
     
     # Try LLM generation first
-    if use_llm and openai_client:
+    if use_llm and llm_client():
         prospect_data = {
             "first_name": prospect.first_name,
             "designation": prospect.designation,
