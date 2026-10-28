@@ -61,6 +61,7 @@ Generated from the automated suite `run_outreach.py` (each case is automated; pr
 | OUT-062 | Re-enrolling an enrolled contact is rejected (already_enrolled) and adds no emails | System | PASS |
 | OUT-063 | Contact in two enrolled lists is enrolled once (one email per step) | System | PASS |
 | OUT-064 | Enrolling a new contact after launch adds only that contact's emails | System | PASS |
+| OUT-065 | Database refuses a second email row for an already-sent step of the same contact (step_key) | System | PASS |
 | OUT-070 | 4 hard bounces in the first sends (below the 5-bounce limit) do not pause the campaign | Integration | PASS |
 | OUT-071 | 5th hard bounce auto-pauses the campaign within 1 minute, with the reason, queue frozen | Integration | PASS |
 | OUT-072 | Two spam complaints auto-pause the campaign within 1 minute | Integration | PASS |

@@ -57,6 +57,14 @@ def scalar(query):
     return out.splitlines()[0] if out else None
 
 
+def sql_error(query):
+    """Run a statement that the database is expected to refuse; returns MySQL's error text ('' if it ran).
+    common.sql drops stderr, which is where a refused statement's reason (e.g. a duplicate key) goes."""
+    out = subprocess.run(["docker", "exec", common.MYSQL_CONTAINER, "mysql", "-uvector", "-pvector", common.DB, "-N",
+                          "-e", query], capture_output=True, text=True)
+    return "\n".join(line for line in out.stderr.splitlines() if "password on the command line" not in line).strip()
+
+
 def upload_csv(token, filename, text):
     """POST /uploads/validations with a real text/csv part (common.req sends octet-stream)."""
     import urllib.request

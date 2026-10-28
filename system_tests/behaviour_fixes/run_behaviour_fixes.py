@@ -75,6 +75,17 @@ def mk_campaign(name, steps=1, **kw):
     return cid
 
 
+def mk_inbox(local, domain):
+    """Connect a sending mailbox through POST /inboxes, as the "connect mailbox" screen does. A campaign
+    needs an ACTIVE one to launch or Send Now (app/services/send_guards.py). Its SMTP host is
+    smtp.invalid (RFC 2606, never resolves), so no mail can leave even if a send were attempted."""
+    s, b = req("POST", "/inboxes", {"email_address": f"{local}-{rid}@{domain}", "smtp_host": "smtp.invalid",
+                                    "smtp_username": local, "smtp_password": f"Smtp-{rid}", "warmup_enabled": False,
+                                    "daily_limit": 500, "max_emails_per_day": 500}, OWNER)
+    assert s == 201 and b.get("status") == "ACTIVE", ("inbox", s, b)
+    return b["inbox_id"]
+
+
 def safe(fn):
     try:
         fn()
@@ -125,11 +136,7 @@ def autopause():
     admin = W.add_user("ADMIN", "Ada")
     agent = W.add_user("AGENT", "Abe")
     dom = f"bf-cmp-{rid}.example"
-    s, b = req("POST", "/inboxes", {"email_address": f"cmp-{rid}@{dom}", "smtp_host": "smtp.invalid",
-                                    "smtp_username": "cmp", "smtp_password": f"Smtp-{rid}", "warmup_enabled": False,
-                                    "daily_limit": 500, "max_emails_per_day": 500}, OWNER)
-    assert s == 201, ("inbox", s, b)
-    cid = mk_campaign("BF complaints", inbox_ids=[b["inbox_id"]], send_window_start="09:00:00",
+    cid = mk_campaign("BF complaints", inbox_ids=[mk_inbox("cmp", dom)], send_window_start="09:00:00",
                       send_window_end="17:00:00")
     pids = [mk_contact(OWNER, f"cmp{i}") for i in range(3)]
     s, b = req("POST", f"/campaigns/{cid}/prospects", {"prospect_ids": pids}, OWNER)
@@ -207,7 +214,8 @@ def reinvite():
 # ── BF-013..015 Send Now batches ─────────────────────────────
 
 def send_now():
-    cid = mk_campaign("BF send now")
+    W.set_sender_identity()
+    cid = mk_campaign("BF send now", inbox_ids=[mk_inbox("sn", f"bf-sn-{rid}.example")])
     assert req("POST", f"/campaigns/{cid}/content/stub", None, OWNER)[0] == 200
     seq = scalar(f"SELECT sequence_id FROM email_sequences WHERE campaign_id={q(cid)} AND step_number=1")
     tpl = scalar(f"SELECT template_id FROM email_templates WHERE campaign_id={q(cid)} LIMIT 1")
