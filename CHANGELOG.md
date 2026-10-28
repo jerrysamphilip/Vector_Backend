@@ -147,6 +147,9 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
   `tests/test_final_contact_search.py`.
 - Sign-in returned 500 when recording `last_login_at` hit a MySQL deadlock (1213) or lock wait timeout
   (1205): the login unit of work (session row, refresh token, `last_login_at`) now retries up to 3 times.
+- "Send now" returned 500 for the rest of a batch when one message hit a MySQL deadlock: the error handler
+  read the expired message before rolling the session back. It now rolls back first, retries the message once
+  while it is still QUEUED, and otherwise marks it FAILED and carries on.
 - Regression V1: contact merge / erasure / purge deadlocked with imports (full-table `merged_into_id`
   update across tenants): tenant-first index (0033), tenant-scoped update by key, retry on 1213/1205.
   `POST /uploads/{id}/confirmations` and `/revalidations` use the path id (400 on a mismatching body id, 404

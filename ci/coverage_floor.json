@@ -16,20 +16,20 @@
   "layers": {
     "unit": {
       "app": {
-        "line": 66.11,
-        "branch": 45.79
+        "line": 66.32,
+        "branch": 45.83
       },
       "app.core": {
-        "line": 80.06,
-        "branch": 60.52
+        "line": 80.76,
+        "branch": 62.26
       },
       "app.routers": {
         "line": 81.28,
         "branch": 65.11
       },
       "app.services": {
-        "line": 56.09,
-        "branch": 37.98
+        "line": 56.19,
+        "branch": 38.0
       },
       "app.utils": {
         "line": 86.22,
@@ -40,8 +40,8 @@
         "branch": 100.0
       },
       "app.repositories": {
-        "line": 48.64,
-        "branch": 7.21
+        "line": 48.36,
+        "branch": 5.56
       }
     },
     "functional": {
@@ -183,6 +183,24 @@
       "from": 66.83,
       "to": 66.17,
       "reason": "Round 4: new pure rules (custom properties, DNS compare, SES events, sending window) and MySQL TLS/UUIDv7 option branches are covered by unit tests (app.domain unit 100%); the API layer does not reach their error branches"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "unit",
+      "key": "app.repositories",
+      "metric": "line",
+      "from": 48.64,
+      "to": 48.36,
+      "reason": "0034 removed the FULLTEXT search helpers from app/repositories/contacts.py, which were fully unit-covered (29 statements, 14 branches); nothing else changed"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "unit",
+      "key": "app.repositories",
+      "metric": "branch",
+      "from": 7.21,
+      "to": 5.56,
+      "reason": "0034 removed the FULLTEXT search helpers from app/repositories/contacts.py, which were fully unit-covered (29 statements, 14 branches); nothing else changed"
     }
   ]
 }

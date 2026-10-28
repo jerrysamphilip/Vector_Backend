@@ -97,9 +97,13 @@ export async function run(rec, browser) {
   await tc(rec, 'UIC-RD-02', 'Search, select-all restore and single restore update DB and the Contacts list', async () => {
     await go(B, 'recently-deleted');
     await q.getByPlaceholder('Search deleted contacts…').fill('Seed1'); await settle(B, 800);
+    // The list is debounced: wait until every row matches the search before selecting all
+    await q.locator('tbody tr').filter({ hasNotText: 'Seed1' }).first().waitFor({ state: 'detached', timeout: 15000 });
     await q.getByLabel('Select all on page').check();
     const n = await q.locator('tbody tr').count();
-    await q.getByRole('button', { name: new RegExp(`Restore ${n}`) }).click(); await settle(B, 900);
+    await q.getByRole('button', { name: new RegExp(`Restore ${n}`) }).click();
+    // Wait for the restore to finish (the notice) rather than a fixed pause
+    await q.getByText(`Restored ${n} contact`).waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
     ok(await q.getByText(`Restored ${n} contact`).isVisible(), 'notice');
     eq(dbn(`SELECT COUNT(*) FROM prospects WHERE tenant_id='${r.tenantId}' AND deleted_at IS NULL`), n, 'restored in DB');
     await q.getByPlaceholder('Search deleted contacts…').fill(''); await settle(B, 800);
