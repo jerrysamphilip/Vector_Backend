@@ -26,6 +26,7 @@ be public (development / test also allow private ranges and http://), and the co
 the checked address (no second lookup, no redirects), with a 10 s timeout.
 """
 import http.client
+import json
 import logging
 import socket
 import ssl
@@ -33,14 +34,24 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from typing import Dict, Iterable, List, Optional, Tuple
-
-from sqlalchemy.orm import Session
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.core.clock import utcnow
 from app.core.config import settings
+from app.core.errors import ConflictError, NotFoundError, ValidationFailed
+from app.domain.webhooks import DeliveryFilter, WebhookInputError, clean_description
+from app.models.user import User
 from app.models.webhook import WebhookDelivery, WebhookEndpoint
+from app.repositories.webhooks import (
+    Session,
+    WebhookRepository,
+    WebhooksUnitOfWork,
+    borrow,
+    webhooks_uow,
+)
+from app.services.notifications import notify
 from app.utils import webhooks as wh
+from app.utils.property_format import fmt_value as _fmt
 
 logger = logging.getLogger(__name__)
 
@@ -69,9 +80,7 @@ def _subscribers(db: Session, tenant_id: Optional[str]) -> List[Tuple[str, froze
     hit = cache.get(tenant_id)
     if hit and hit[0] > time.monotonic():
         return hit[1]
-    rows = db.query(WebhookEndpoint.endpoint_id, WebhookEndpoint.event_types).filter(
-        WebhookEndpoint.tenant_id == tenant_id, WebhookEndpoint.active.is_(True)).all()
-    subs = [(eid, frozenset(types or [])) for eid, types in rows]
+    subs = [(eid, frozenset(types or [])) for eid, types in borrow(db).webhooks.subscribers(tenant_id)]
     cache[tenant_id] = (time.monotonic() + _SUBSCRIBER_CACHE_SECONDS, subs)
     return subs
 
@@ -103,9 +112,10 @@ def emit_event(db: Session, tenant_id: Optional[str], event_type: str, data: dic
         now = utcnow()
         body = wh.build_body(event_id, event_type, now, tenant_id, data).decode()  # type: ignore[arg-type]  # platform events carry no workspace
         queued = 0
+        repo = borrow(db).webhooks
         for endpoint_id, types in _subscribers(db, tenant_id):
             if event_type in types:
-                db.add(WebhookDelivery(tenant_id=tenant_id, endpoint_id=endpoint_id, event_id=event_id,
+                repo.add(WebhookDelivery(tenant_id=tenant_id, endpoint_id=endpoint_id, event_id=event_id,
                                        event_type=event_type, payload=body, status="PENDING",
                                        attempts=0,
                                        # whole seconds: never later than the job's own now
@@ -128,8 +138,7 @@ def contact_data(p) -> dict:
 
 
 def lead_data(db: Session, lead) -> dict:
-    from app.models.prospect import Prospect
-    p = db.get(Prospect, lead.prospect_id) if lead.prospect_id else None
+    p = borrow(db).webhooks.prospect(lead.prospect_id)
     return {"lead_id": lead.lead_id, "contact_id": lead.prospect_id, "account_id": lead.account_id,
             "owner_id": lead.owner_id, "stage": lead.stage, "source": lead.source,
             "campaign_id": lead.campaign_id, "opportunity_id": lead.opportunity_id,
@@ -139,8 +148,7 @@ def lead_data(db: Session, lead) -> dict:
 
 
 def deal_data(db: Session, opp) -> dict:
-    from app.models.sales import SalesStage
-    stage = db.get(SalesStage, opp.stage_id) if opp.stage_id else None
+    stage = borrow(db).webhooks.stage(opp.stage_id)
     return {"deal_id": opp.opportunity_id, "name": opp.name, "amount": opp.amount, "status": opp.status,
             "stage_id": opp.stage_id, "stage": stage.name if stage else None, "close_date": opp.close_date,
             "closed_reason": opp.closed_reason, "client_type": opp.client_type, "owner_id": opp.owner_id,
@@ -149,7 +157,6 @@ def deal_data(db: Session, opp) -> dict:
 
 
 def _diff(before: dict, after: dict) -> Dict[str, dict]:
-    from app.services.crm import _fmt
     changes = {}
     for field, old in before.items():
         new = after.get(field)
@@ -181,39 +188,44 @@ def on_record_changes(db: Session, tenant_id: str, object_type: str, object_id: 
         changes = _diff(before, after)
         if not changes:
             return
-        if object_type == "CONTACT":
-            from app.models.prospect import Prospect
-            p = db.get(Prospect, object_id)
-            if p is not None and "created" not in changes:
-                emit_event(db, tenant_id, "contact.updated", {**contact_data(p), "changes": changes})
-        elif object_type == "LEAD":
-            from app.models.sales import Lead
-            lead = db.get(Lead, object_id)
-            if lead is None:
-                return
-            if "created" in changes:
-                emit_event(db, tenant_id, "lead.created", lead_data(db, lead))
-            if (changes.get("stage") or {}).get("to") == "SQL":
-                emit_event(db, tenant_id, "lead.qualified", {**lead_data(db, lead), "changes": changes})
-        else:
-            from app.models.sales import Opportunity
-            opp = db.get(Opportunity, object_id)
-            if opp is None:
-                return
-            data = deal_data(db, opp)
-            if "created" in changes:
-                emit_event(db, tenant_id, "deal.created", data)
-            elif "stage_id" in changes:
-                emit_event(db, tenant_id, "deal.stage_changed",
-                           {**data, "previous_stage": changes["stage_id"]["from"], "changes": changes})
-            else:
-                return
-            if opp.status == "WON":
-                emit_event(db, tenant_id, "deal.won", data)
-            elif opp.status == "LOST":
-                emit_event(db, tenant_id, "deal.lost", data)
+        handler = {"CONTACT": _contact_events, "LEAD": _lead_events}.get(object_type, _deal_events)
+        handler(db, tenant_id, object_id, changes)
     except Exception as exc:
         logger.warning("[Webhooks] %s %s event skipped: %s", object_type, object_id, exc)
+
+
+def _contact_events(db: Session, tenant_id: str, object_id: str, changes: Dict[str, dict]) -> None:
+    p = borrow(db).webhooks.prospect(object_id)
+    if p is not None and "created" not in changes:
+        emit_event(db, tenant_id, "contact.updated", {**contact_data(p), "changes": changes})
+
+
+def _lead_events(db: Session, tenant_id: str, object_id: str, changes: Dict[str, dict]) -> None:
+    lead = borrow(db).webhooks.lead(object_id)
+    if lead is None:
+        return
+    if "created" in changes:
+        emit_event(db, tenant_id, "lead.created", lead_data(db, lead))
+    if (changes.get("stage") or {}).get("to") == "SQL":
+        emit_event(db, tenant_id, "lead.qualified", {**lead_data(db, lead), "changes": changes})
+
+
+def _deal_events(db: Session, tenant_id: str, object_id: str, changes: Dict[str, dict]) -> None:
+    opp = borrow(db).webhooks.opportunity(object_id)
+    if opp is None:
+        return
+    data = deal_data(db, opp)
+    if "created" in changes:
+        emit_event(db, tenant_id, "deal.created", data)
+    elif "stage_id" in changes:
+        emit_event(db, tenant_id, "deal.stage_changed",
+                   {**data, "previous_stage": changes["stage_id"]["from"], "changes": changes})
+    else:
+        return
+    if opp.status == "WON":
+        emit_event(db, tenant_id, "deal.won", data)
+    elif opp.status == "LOST":
+        emit_event(db, tenant_id, "deal.lost", data)
 
 
 def contacts_deleted(db: Session, prospects: Iterable, user_id: Optional[str]) -> None:
@@ -246,8 +258,7 @@ def campaign_state_changed(db: Session, campaign_id: str, from_state: Optional[s
     event_type = {"PAUSED": "campaign.paused"}.get(to_state)
     if not event_type or from_state == to_state:
         return
-    from app.models.campaign import Campaign
-    campaign = db.get(Campaign, campaign_id)
+    campaign = borrow(db).webhooks.campaign(campaign_id)
     if campaign is None:
         return
     emit_event(db, campaign.tenant_id, event_type, {
@@ -318,16 +329,11 @@ def _job(d: WebhookDelivery, ep: WebhookEndpoint) -> dict:
 
 
 def _admin_ids(db: Session, tenant_id: str) -> List[str]:
-    from app.models.user import User
-    return [u for (u,) in db.query(User.user_id).filter(
-        User.tenant_id == tenant_id, User.role.in_(("SUPER_ADMIN", "ADMIN")), User.status == "ACTIVE")]
+    return borrow(db).webhooks.active_admin_ids(tenant_id)
 
 
 def cancel_pending(db: Session, endpoint_id: str, reason: str) -> int:
-    return db.query(WebhookDelivery).filter(
-        WebhookDelivery.endpoint_id == endpoint_id, WebhookDelivery.status == "PENDING"
-    ).update({WebhookDelivery.status: "CANCELLED", WebhookDelivery.last_error: reason[:500],
-              WebhookDelivery.next_attempt_at: None}, synchronize_session=False)
+    return borrow(db).webhooks.cancel_pending(endpoint_id, reason)
 
 
 def disable_endpoint(db: Session, ep: WebhookEndpoint, reason: str, notify_admins: bool) -> None:
@@ -337,7 +343,6 @@ def disable_endpoint(db: Session, ep: WebhookEndpoint, reason: str, notify_admin
     cancel_pending(db, ep.endpoint_id, "Endpoint disabled")
     forget_subscribers(db, ep.tenant_id)
     if notify_admins:
-        from app.services.notifications import notify
         notify(db, ep.tenant_id, _admin_ids(db, ep.tenant_id), "WEBHOOK_DISABLED",
                "A webhook endpoint was switched off",
                f"{ep.url[:200]} failed {ep.consecutive_failures} times in a row and no longer receives events. "
@@ -388,11 +393,7 @@ def deliver_due(session_factory, now: Optional[datetime] = None, limit: int = BA
     """Send due PENDING deliveries of active endpoints (runs under the job's named lock). Returns attempts."""
     now = now or utcnow()
     with session_factory() as db:
-        rows = db.query(WebhookDelivery, WebhookEndpoint).join(
-            WebhookEndpoint, WebhookEndpoint.endpoint_id == WebhookDelivery.endpoint_id
-        ).filter(WebhookDelivery.status == "PENDING", WebhookDelivery.next_attempt_at <= now,
-                 WebhookEndpoint.active.is_(True)
-                 ).order_by(WebhookDelivery.next_attempt_at, WebhookDelivery.created_at).limit(limit * 3).all()
+        rows = borrow(db).webhooks.due(now, limit * 3)
         per_endpoint: Dict[str, int] = {}
         jobs: list = []
         for d, ep in rows:
@@ -405,11 +406,12 @@ def deliver_due(session_factory, now: Optional[datetime] = None, limit: int = BA
     with ThreadPoolExecutor(max_workers=min(SEND_THREADS, len(jobs)), thread_name_prefix="webhook") as pool:
         results = list(pool.map(_send, jobs))
     with session_factory() as db:
+        repo = borrow(db).webhooks
         for result in results:
-            d = db.get(WebhookDelivery, result["delivery_id"])
+            d = repo.delivery_by_id(result["delivery_id"])
             if d is None or d.status != "PENDING":
                 continue  # endpoint deleted or disabled meanwhile
-            ep = db.get(WebhookEndpoint, d.endpoint_id)
+            ep = repo.endpoint_by_id(d.endpoint_id)
             if ep is None:
                 continue
             record_result(db, d, ep, result)
@@ -419,8 +421,201 @@ def deliver_due(session_factory, now: Optional[datetime] = None, limit: int = BA
 
 def purge_old(db: Session, days: int = RETENTION_DAYS) -> int:
     """Delivery log retention: rows older than `days` that are no longer pending. Commits."""
-    cutoff = utcnow() - timedelta(days=days)
-    n = db.query(WebhookDelivery).filter(WebhookDelivery.created_at < cutoff,
-                                         WebhookDelivery.status != "PENDING").delete(synchronize_session=False)
+    n = borrow(db).webhooks.purge_before(utcnow() - timedelta(days=days))
     db.commit()
     return n
+
+
+# ── Endpoints API (workspace admins) ───────────────────────────────
+
+def endpoint_dict(ep: WebhookEndpoint, secret: Optional[str] = None) -> dict:
+    out = {"endpoint_id": ep.endpoint_id, "url": ep.url, "description": ep.description,
+           "event_types": ep.event_types or [], "active": bool(ep.active),
+           "secret_hint": wh.secret_hint(ep.secret), "consecutive_failures": ep.consecutive_failures or 0,
+           "disabled_reason": ep.disabled_reason, "disabled_at": ep.disabled_at,
+           "last_success_at": ep.last_success_at, "last_failure_at": ep.last_failure_at,
+           "created_at": ep.created_at, "updated_at": ep.updated_at}
+    if secret is not None:
+        out["secret"] = secret  # only on create / rotate
+    return out
+
+
+def delivery_dict(d: WebhookDelivery, payload: bool = False) -> dict:
+    out = {"delivery_id": d.delivery_id, "endpoint_id": d.endpoint_id, "event_id": d.event_id,
+           "event_type": d.event_type, "status": d.status, "attempts": d.attempts or 0,
+           "max_attempts": 1 if d.is_test else wh.MAX_ATTEMPTS, "response_code": d.response_code,
+           "last_error": d.last_error, "next_attempt_at": d.next_attempt_at, "last_attempt_at": d.last_attempt_at,
+           "delivered_at": d.delivered_at, "duration_ms": d.duration_ms, "is_test": bool(d.is_test),
+           "redelivery_of": d.redelivery_of, "created_at": d.created_at}
+    if payload:
+        try:
+            out["payload"] = json.loads(d.payload)
+        except ValueError:
+            out["payload"] = d.payload
+    return out
+
+
+def _checked_url(url: str) -> str:
+    try:
+        check_url(url)
+    except wh.WebhookUrlError as exc:
+        raise ValidationFailed(str(exc)) from exc
+    return url.strip()
+
+
+def _checked_types(values: List[str]) -> List[str]:
+    try:
+        types = wh.clean_event_types(values)
+    except ValueError as exc:
+        raise ValidationFailed(str(exc)) from exc
+    if not types:
+        raise ValidationFailed("Choose at least one event")
+    return types
+
+
+class WebhookService:
+    """The /integrations/webhooks routes (admins); each method is one unit of work."""
+
+    def __init__(self, uow: WebhooksUnitOfWork) -> None:
+        self.uow = uow
+
+    @classmethod
+    def for_session(cls, db: Session) -> "WebhookService":
+        return cls(webhooks_uow(db))
+
+    @staticmethod
+    def event_types() -> List[dict]:
+        return [{"type": t, "label": label, "description": desc} for t, (label, desc) in wh.EVENT_TYPES.items()]
+
+    @staticmethod
+    def _endpoint(repo: WebhookRepository, user: User, endpoint_id: str) -> WebhookEndpoint:
+        ep = repo.endpoint(user.tenant_id, endpoint_id)
+        if not ep:
+            raise NotFoundError("Webhook endpoint not found")
+        return ep
+
+    @staticmethod
+    def _delivery(repo: WebhookRepository, user: User, ep: WebhookEndpoint, delivery_id: str) -> WebhookDelivery:
+        d = repo.delivery(user.tenant_id, ep.endpoint_id, delivery_id)
+        if not d:
+            raise NotFoundError("Delivery not found")
+        return d
+
+    def list(self, user: User) -> dict:
+        with self.uow as uow:
+            rows = uow.webhooks.endpoints(user.tenant_id)
+            return {"items": [endpoint_dict(ep) for ep in rows], "max_endpoints": wh.MAX_ENDPOINTS_PER_TENANT,
+                    "signature_header": wh.SIGNATURE_HEADER, "max_attempts": wh.MAX_ATTEMPTS,
+                    "disable_after_failures": wh.DISABLE_AFTER_FAILURES}
+
+    def create(self, user: User, url: str, description: Optional[str], event_types: List[str], active: bool) -> dict:
+        with self.uow as uow:
+            if uow.webhooks.count_endpoints(user.tenant_id) >= wh.MAX_ENDPOINTS_PER_TENANT:
+                raise ConflictError(f"A workspace can have up to {wh.MAX_ENDPOINTS_PER_TENANT} webhook endpoints")
+            checked = _checked_url(url)
+            secret = wh.new_secret()
+            ep = uow.webhooks.add(WebhookEndpoint(
+                endpoint_id=str(uuid.uuid4()), tenant_id=user.tenant_id, url=checked,
+                description=clean_description(description), secret=secret, event_types=_checked_types(event_types),
+                active=active, consecutive_failures=0, created_by=user.user_id))
+            uow.commit()
+            uow.webhooks.refresh(ep)
+            forget_subscribers(uow.session, user.tenant_id)
+            return endpoint_dict(ep, secret=secret)
+
+    def get(self, user: User, endpoint_id: str) -> dict:
+        with self.uow as uow:
+            return endpoint_dict(self._endpoint(uow.webhooks, user, endpoint_id))
+
+    def update(self, user: User, endpoint_id: str, data: Dict[str, Any]) -> dict:
+        """PATCH: only the fields sent (``data`` is model_dump(exclude_unset=True))."""
+        with self.uow as uow:
+            ep = self._endpoint(uow.webhooks, user, endpoint_id)
+            if data.get("url") is not None:
+                ep.url = _checked_url(data["url"])
+            if "description" in data:
+                ep.description = clean_description(data["description"])
+            if data.get("event_types") is not None:
+                ep.event_types = _checked_types(data["event_types"])
+            if data.get("active") is not None and bool(data["active"]) != bool(ep.active):
+                self._switch(uow.session, ep, bool(data["active"]), user)
+            uow.commit()
+            uow.webhooks.refresh(ep)
+            forget_subscribers(uow.session, user.tenant_id)
+            return endpoint_dict(ep)
+
+    @staticmethod
+    def _switch(db: Session, ep: WebhookEndpoint, on: bool, user: User) -> None:
+        if on:
+            # Back on: a clean slate (failure count, auto-disable reason)
+            ep.active, ep.consecutive_failures, ep.disabled_reason, ep.disabled_at = True, 0, None, None
+        else:
+            disable_endpoint(db, ep, f"Switched off by {user.email}"[:255], notify_admins=False)
+
+    def delete(self, user: User, endpoint_id: str) -> dict:
+        with self.uow as uow:
+            ep = self._endpoint(uow.webhooks, user, endpoint_id)
+            uow.webhooks.delete_deliveries(ep.endpoint_id)
+            uow.webhooks.delete(ep)
+            uow.commit()
+            forget_subscribers(uow.session, user.tenant_id)
+            return {"status": "deleted", "endpoint_id": endpoint_id}
+
+    def rotate_secret(self, user: User, endpoint_id: str) -> dict:
+        with self.uow as uow:
+            ep = self._endpoint(uow.webhooks, user, endpoint_id)
+            secret = wh.new_secret()
+            ep.secret = secret
+            uow.commit()
+            uow.webhooks.refresh(ep)
+            return endpoint_dict(ep, secret=secret)
+
+    def send_test(self, user: User, endpoint_id: str) -> dict:
+        """Send a webhook.test event now (one attempt, does not count toward auto-disable)."""
+        with self.uow as uow:
+            ep = self._endpoint(uow.webhooks, user, endpoint_id)
+            event_id = str(uuid.uuid4())
+            body = wh.build_body(event_id, wh.TEST_EVENT, utcnow(), user.tenant_id, {
+                "endpoint_id": ep.endpoint_id, "message": "Test event from Outreach 360", "sent_by": user.email})
+            d = uow.webhooks.add(WebhookDelivery(
+                delivery_id=str(uuid.uuid4()), tenant_id=user.tenant_id, endpoint_id=ep.endpoint_id,
+                event_id=event_id, event_type=wh.TEST_EVENT, payload=body.decode(), status="PENDING",
+                attempts=0, next_attempt_at=None, is_test=True))
+            deliver_now(uow.session, d, ep)  # commits
+            uow.webhooks.refresh(d)
+            return delivery_dict(d, payload=True)
+
+    def deliveries(self, user: User, endpoint_id: str, status: Optional[str], event_type: Optional[str],
+                   limit: int, offset: int) -> dict:
+        try:
+            criteria = DeliveryFilter.parse(status, event_type, limit, offset)
+        except WebhookInputError as exc:
+            raise ValidationFailed(str(exc)) from exc
+        with self.uow as uow:
+            ep = self._endpoint(uow.webhooks, user, endpoint_id)
+            rows, total = uow.webhooks.deliveries(user.tenant_id, ep.endpoint_id, criteria)
+            return {"items": [delivery_dict(d) for d in rows], "total": total, "limit": limit, "offset": offset}
+
+    def delivery(self, user: User, endpoint_id: str, delivery_id: str) -> dict:
+        with self.uow as uow:
+            ep = self._endpoint(uow.webhooks, user, endpoint_id)
+            return delivery_dict(self._delivery(uow.webhooks, user, ep, delivery_id), payload=True)
+
+    def redeliver(self, user: User, endpoint_id: str, delivery_id: str) -> dict:
+        """Queue the same event (same id and body) again as a new delivery; the worker sends it."""
+        with self.uow as uow:
+            ep = self._endpoint(uow.webhooks, user, endpoint_id)
+            original = self._delivery(uow.webhooks, user, ep, delivery_id)
+            if not ep.active:
+                raise ConflictError("Turn the endpoint on before redelivering")
+            if original.status == "PENDING":
+                raise ConflictError("This delivery is still being retried")
+            copy = uow.webhooks.add(WebhookDelivery(
+                delivery_id=str(uuid.uuid4()), tenant_id=ep.tenant_id, endpoint_id=ep.endpoint_id,
+                event_id=original.event_id, event_type=original.event_type, payload=original.payload,
+                status="PENDING", attempts=0,
+                next_attempt_at=utcnow().replace(microsecond=0),  # never later than the job's now
+                is_test=False, redelivery_of=original.delivery_id))
+            uow.commit()
+            uow.webhooks.refresh(copy)
+            return delivery_dict(copy)

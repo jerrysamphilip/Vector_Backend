@@ -11,16 +11,11 @@ user sees how many were held (status_for / GET /sales-reports/daily-limit).
 from datetime import date, datetime, time, timedelta
 from typing import Dict, Optional, Tuple
 
-from sqlalchemy import ColumnElement, func
-from sqlalchemy.orm import Session
-
 from app.core.clock import utcnow
 from app.core.config import settings
-from app.models.campaign import Campaign
 from app.models.email_message import EmailMessage
-from app.models.email_sequence import EmailSequence
-from app.models.prospect import Prospect
 from app.models.user import User
+from app.repositories.daily_limit import Session, daily_limit_repo
 
 HELD_CODE = "DAILY_NEW_CONTACT_LIMIT"
 
@@ -30,27 +25,13 @@ def _day_bounds(day: date) -> Tuple[datetime, datetime]:
     return start, start + timedelta(days=1)
 
 
-def _attributed_user() -> ColumnElement[str]:
-    return func.coalesce(Prospect.owner_id, Campaign.created_by)
-
-
 def sent_today(db: Session, user_id: str, day: Optional[date] = None) -> int:
     start, end = _day_bounds(day or utcnow().date())
-    return db.query(func.count(EmailMessage.message_id)) \
-        .join(EmailSequence, EmailSequence.sequence_id == EmailMessage.sequence_id) \
-        .join(Prospect, Prospect.prospect_id == EmailMessage.prospect_id) \
-        .join(Campaign, Campaign.campaign_id == EmailMessage.campaign_id) \
-        .filter(EmailSequence.step_number == 1, EmailMessage.direction == "OUTBOUND",
-                EmailMessage.sent_at >= start, EmailMessage.sent_at < end,
-                _attributed_user() == user_id).scalar() or 0
+    return daily_limit_repo(db).first_steps_sent(user_id, start, end)
 
 
 def held_count(db: Session, user_id: str) -> int:
-    return db.query(func.count(EmailMessage.message_id)) \
-        .join(Prospect, Prospect.prospect_id == EmailMessage.prospect_id) \
-        .join(Campaign, Campaign.campaign_id == EmailMessage.campaign_id) \
-        .filter(EmailMessage.status.in_(("QUEUED", "SCHEDULED")), EmailMessage.last_error_code == HELD_CODE,
-                _attributed_user() == user_id).scalar() or 0
+    return daily_limit_repo(db).held(user_id, HELD_CODE)
 
 
 def status_for(db: Session, user: User) -> dict:
@@ -96,8 +77,7 @@ class DailyLimiter:
 def is_first_step(db: Session, email_msg: EmailMessage) -> bool:
     if not email_msg.sequence_id:
         return False
-    return db.query(EmailSequence.step_number).filter(
-        EmailSequence.sequence_id == email_msg.sequence_id).scalar() == 1
+    return daily_limit_repo(db).step_number(email_msg.sequence_id) == 1
 
 
 def enrollment_notice(db: Session, user: User, enrolled: int, prospect_ids=None, rejections=None,
@@ -115,11 +95,10 @@ def enrollment_notice(db: Session, user: User, enrolled: int, prospect_ids=None,
                 f"the other {enrolled - st['remaining']} will go out on the following day(s). Follow-ups are not limited.")
     rejected = {r.get("prospect_id") for r in (rejections or [])}
     ids = [pid for pid in prospect_ids if pid not in rejected]
-    creator = None
-    if campaign_id:
-        creator = db.query(Campaign.created_by).filter(Campaign.campaign_id == campaign_id).scalar()
+    repo = daily_limit_repo(db)
+    creator = repo.campaign_creator(campaign_id) if campaign_id else None
     per_owner: Dict[str, int] = {}
-    for (owner,) in db.query(Prospect.owner_id).filter(Prospect.prospect_id.in_(ids)).all() if ids else []:
+    for owner in repo.owners(ids):
         key = owner or creator or user.user_id
         per_owner[key] = per_owner.get(key, 0) + 1
     limit = settings.DAILY_NEW_CONTACT_LIMIT
@@ -128,8 +107,7 @@ def enrollment_notice(db: Session, user: User, enrolled: int, prospect_ids=None,
         remaining = max(limit - sent_today(db, owner_id), 0)
         if n > remaining:
             who = "you" if owner_id == user.user_id else (
-                " ".join(filter(None, db.query(User.first_name, User.last_name)
-                                .filter(User.user_id == owner_id).first() or ())) or "the contact owner")
+                " ".join(filter(None, repo.user_name_parts(owner_id))) or "the contact owner")
             waiting.append((who, remaining, n - remaining))
     if not waiting:
         return None

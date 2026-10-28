@@ -34,6 +34,9 @@ class SendingInboxResponse(BaseModel):
     has_imap_password: bool = False
     last_sync_at: Optional[datetime] = None
     imap_last_error: Optional[str] = None
+    # S-26: replies can be read: saved IMAP settings, or ones derived from SMTP (smtp.x -> imap.x, SMTP login)
+    imap_configured: bool = False
+    imap_derived_from_smtp: bool = False
 
     # Sign-in: PASSWORD or OAUTH_MS365 (BR-DF-05)
     auth_type: Optional[str] = "PASSWORD"
@@ -64,6 +67,14 @@ class SendingInboxResponse(BaseModel):
     warmup_today_opened: Optional[int] = 0
     warmup_today_replied: Optional[int] = 0
     warmup_today_saved: Optional[int] = 0
+
+    # Paused mailbox and capacity (F-20), filled by the router from app/services/sending_alerts.py:
+    # why / since when it is paused, emails it can send per day (limit capped by pacing), sent and left today
+    paused_reason: Optional[str] = None
+    paused_at: Optional[datetime] = None
+    daily_capacity: Optional[int] = None
+    sent_today: Optional[int] = None
+    remaining_today: Optional[int] = None
 
     class Config:
         from_attributes = True

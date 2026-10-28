@@ -9,11 +9,13 @@ import logging
 import re
 from typing import Any, Dict, Optional, Tuple
 
-from sqlalchemy.orm import Session
-
+from app.core.config import settings
 from app.core.errors import BadRequestError, DomainError, ExternalServiceUnavailable, NotFoundError, OperationFailed
-from app.models import Campaign, EmailTemplate
+from app.models.email_template import EmailTemplate
 from app.prompts.regeneration_prompts import REGENERATABLE_FIELDS, SYSTEM_PROMPT, build_regeneration_prompt
+from app.repositories.campaigns import CampaignsUnitOfWork
+from app.services import sequence_generator
+from app.services.sender_identity import bind_tenant
 from app.utils.email_utils import finalize_email_body, has_effective_cta_link, strip_cta_content_no_link
 from app.utils.retry_utils import retry_with_backoff
 
@@ -55,16 +57,19 @@ def prepare_regenerated_body(content: str, cta_link: Optional[str]) -> Tuple[str
 # ──────────────────────────────────────────────────────────────────────────────
 
 class CampaignWizardTemplateService:
-    def __init__(self, db: Session) -> None:
+    """Each public method is one unit of work (SQL in app/repositories/campaigns_content.py); no transaction is
+    held open during the LLM call (T-1)."""
+
+    def __init__(self, db: Any = None, *, uow: Any = None) -> None:
+        self.uow = uow if uow is not None else CampaignsUnitOfWork.for_session(db)
         self.db = db
 
+    @classmethod
+    def for_session(cls, db: Any) -> "CampaignWizardTemplateService":
+        return cls(db)
+
     def get_template_for_tenant(self, template_id: str, tenant_id: str) -> EmailTemplate:
-        template = self.db.query(EmailTemplate).join(
-            Campaign, Campaign.campaign_id == EmailTemplate.campaign_id
-        ).filter(
-            EmailTemplate.template_id == template_id,
-            Campaign.tenant_id == tenant_id,
-        ).first()
+        template = self.uow.content.template_for_tenant(tenant_id, template_id)
         if not template:
             raise NotFoundError("Template not found")
         return template
@@ -84,36 +89,32 @@ class CampaignWizardTemplateService:
         step_number: int,
     ) -> Dict[str, Any]:
         """Ask the LLM for a new subject or body, store it and return the new content."""
-        from app.services.sender_identity import bind_tenant
-        bind_tenant(tenant_id, self.db)
-        # Looked up at call time so the configured (or test-patched) client is used
-        from app.services.sequence_generator import openai_client
-        from app.core.config import settings
-
-        template = self.get_template_for_tenant(template_id, tenant_id)
-        if field not in REGENERATABLE_FIELDS:
-            raise BadRequestError("Field must be 'subject' or 'body'")
-
-        prompt = build_regeneration_prompt(
-            field=field,
-            current_subject=template.subject,
-            campaign_description=campaign_description,
-            persona_type=persona_type,
-            product_name=product_name,
-            cta_link=cta_link,
-            custom_instruction=custom_instruction,
-            creative_email=creative_email,
-            step_number=step_number,
-        )
-
-        if openai_client is None:
-            # No OpenAI key configured: a clear 503 instead of retrying and failing with a 500
-            raise ExternalServiceUnavailable("AI generation is not configured on this server.")
-        # Only reads so far: end the transaction so none is held during the LLM call (T-1)
-        self.db.rollback()
+        with self.uow as uow:
+            bind_tenant(tenant_id, uow.session)
+            template = self.get_template_for_tenant(template_id, tenant_id)
+            if field not in REGENERATABLE_FIELDS:
+                raise BadRequestError("Field must be 'subject' or 'body'")
+            prompt = build_regeneration_prompt(
+                field=field,
+                current_subject=template.subject,
+                campaign_description=campaign_description,
+                persona_type=persona_type,
+                product_name=product_name,
+                cta_link=cta_link,
+                custom_instruction=custom_instruction,
+                creative_email=creative_email,
+                step_number=step_number,
+            )
+            # Looked up at call time so the configured (or test-patched) client is used
+            client = sequence_generator.openai_client
+            if client is None:
+                # No OpenAI key configured: a clear 503 instead of retrying and failing with a 500
+                raise ExternalServiceUnavailable("AI generation is not configured on this server.")
+            # Only reads so far: end the transaction so none is held during the LLM call (T-1)
+            uow.rollback()
 
         def _call_openai() -> Any:
-            return openai_client.chat.completions.create(
+            return client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
@@ -129,15 +130,24 @@ class CampaignWizardTemplateService:
                 logger.error("[regenerate_email_part] All retry attempts exhausted.")
                 raise ExternalServiceUnavailable(
                     "AI service is temporarily unavailable. Please try again in a few moments.")
-
             new_content = response.choices[0].message.content.strip()
-            # Short write transaction: re-read the template (it may have been deleted meanwhile)
+            return self._store_regenerated(tenant_id, template_id, field, new_content, cta_link)
+        except DomainError:
+            raise
+        except Exception as e:  # safety net around the LLM call: surfaced as the API's 500 message
+            logger.error("[regenerate_email_part] Unexpected error: %s", e)
+            raise OperationFailed(f"Failed to regenerate: {str(e)}") from e
+
+    def _store_regenerated(self, tenant_id: str, template_id: str, field: str, new_content: str,
+                           cta_link: Optional[str]) -> Dict[str, Any]:
+        """Short write transaction: re-read the template (it may have been deleted meanwhile)."""
+        with self.uow as uow:
             template = self.get_template_for_tenant(template_id, tenant_id)
             if field == 'subject':
                 template.subject = new_content
             else:
                 new_content, template.body = prepare_regenerated_body(new_content, cta_link)
-            self.db.commit()
+            uow.commit()
             return {
                 "template_id": template.template_id,
                 "field": field,
@@ -145,11 +155,6 @@ class CampaignWizardTemplateService:
                 "subject": template.subject,
                 "body": template.body,
             }
-        except DomainError:
-            raise
-        except Exception as e:  # safety net around the LLM call: surfaced as the API's 500 message
-            logger.error("[regenerate_email_part] Unexpected error: %s", e)
-            raise OperationFailed(f"Failed to regenerate: {str(e)}") from e
 
     def save_manual_edit(
         self, tenant_id: str, template_id: str, subject: Optional[str], body: Optional[str]
@@ -159,23 +164,18 @@ class CampaignWizardTemplateService:
         shows only one, so the edit is copied to every other template of the same campaign step;
         otherwise the other personas would silently keep stale content.
         """
-        template = self.get_template_for_tenant(template_id, tenant_id)
-        if subject is not None:
-            template.subject = subject
-        if body is not None:
-            template.body = finalize_email_body(body)
-
-        if template.sequence_id:
-            siblings = self.db.query(EmailTemplate).filter(
-                EmailTemplate.campaign_id == template.campaign_id,
-                EmailTemplate.sequence_id == template.sequence_id,
-                EmailTemplate.template_id != template.template_id,
-            ).all()
-            for sibling in siblings:
-                if subject is not None:
-                    sibling.subject = subject
-                if body is not None:
-                    sibling.body = template.body
-
-        self.db.commit()
-        return template
+        with self.uow as uow:
+            template = self.get_template_for_tenant(template_id, tenant_id)
+            if subject is not None:
+                template.subject = subject
+            if body is not None:
+                template.body = finalize_email_body(body)
+            if template.sequence_id:
+                for sibling in uow.content.step_siblings(template.campaign_id, template.sequence_id,
+                                                         template.template_id):
+                    if subject is not None:
+                        sibling.subject = subject
+                    if body is not None:
+                        sibling.body = template.body
+            uow.commit()
+            return template

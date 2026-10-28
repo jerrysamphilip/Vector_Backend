@@ -3,12 +3,15 @@
 AI Prompts, Email Templates, and Version History models.
 """
 
-from sqlalchemy import Column, String, Boolean, Integer, Text, ForeignKey, JSON
-from sqlalchemy.orm import relationship
-import uuid
+from datetime import datetime
+from typing import Any, Optional
+
+from sqlalchemy import JSON, Boolean, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id, short_id
 
 
 class AIPrompt(Base):
@@ -18,10 +21,10 @@ class AIPrompt(Base):
     """
     __tablename__ = "ai_prompts"
 
-    prompt_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    base_prompt = Column(Text, nullable=False)
-    persona_rules = Column(JSON, nullable=True)
-    created_at = Column(UtcDateTime, server_default=NOW6)
+    prompt_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    base_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    persona_rules: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6)
 
     # Relationships
     templates = relationship("EmailTemplate", back_populates="ai_prompt", lazy="dynamic")
@@ -31,7 +34,7 @@ class AIPrompt(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<AIPrompt {self.prompt_id[:8]}...>"
+        return f"<AIPrompt {short_id(self.prompt_id)}...>"
 
 
 class EmailTemplate(Base):
@@ -41,37 +44,42 @@ class EmailTemplate(Base):
     """
     __tablename__ = "email_templates"
 
-    template_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    campaign_id = Column(String(36), ForeignKey("campaigns.campaign_id"), nullable=False)
-    sequence_id = Column(String(36), ForeignKey("email_sequences.sequence_id"), nullable=True)
+    template_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    campaign_id: Mapped[str] = mapped_column(String(36), ForeignKey("campaigns.campaign_id"), nullable=False)
+    # The campaign's tenant (D3, 0028_child_tenant_ids); filled from the campaign by app/models/tenant_fill.py
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    sequence_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("email_sequences.sequence_id"),
+                                                       nullable=True)
 
     # Template Content
-    designation = Column(String(150), nullable=True)  # Target designation for personalization
-    subject = Column(Text, nullable=False)
-    body = Column(Text, nullable=False)
+    designation: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)  # Target designation for personalization
+    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
 
     # AI Generation Details
-    tone = Column(String(50), nullable=True)  # professional / casual / formal
-    ai_model = Column(String(100), nullable=True)
-    is_ai_generated = Column(Boolean, default=False)
-    ai_prompt_id = Column(String(36), ForeignKey("ai_prompts.prompt_id"), nullable=True)
-    content_fingerprint = Column(String(64), nullable=True)  # SHA256 hash for duplicate detection
-    
+    tone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # professional / casual / formal
+    ai_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    is_ai_generated: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
+    ai_prompt_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("ai_prompts.prompt_id"), nullable=True)
+    # SHA256 hash for duplicate detection
+    content_fingerprint: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
     # Enhanced AI Generation Metadata
-    model_settings = Column(JSON, nullable=True)  # {"temperature": 0.7, "max_tokens": 500}
-    generated_at = Column(UtcDateTime, nullable=True)  # When AI generated this content
-    cta_text = Column(String(255), nullable=True)  # Call-to-action text
-    cta_link = Column(Text, nullable=True)  # Call-to-action URL/Link
-    personalization_tokens = Column(JSON, nullable=True)  # ["{{first_name}}", "{{company}}"]
+    model_settings: Mapped[Any] = mapped_column(JSON, nullable=True)  # {"temperature": 0.7, "max_tokens": 500}
+    generated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)  # When AI generated this content
+    cta_text: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # Call-to-action text
+    cta_link: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Call-to-action URL/Link
+    personalization_tokens: Mapped[Any] = mapped_column(JSON, nullable=True)  # ["{{first_name}}", "{{company}}"]
 
     # Approval Workflow
-    approved_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    approved_at = Column(UtcDateTime, nullable=True)
-    
+    approved_by: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+
     # Retention
-    expires_at = Column(UtcDateTime, nullable=True)  # 12 months from creation for retention policy
-    
-    created_at = Column(UtcDateTime, server_default=NOW6)
+    # 12 months from creation for retention policy
+    expires_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6)
 
     # Relationships
     campaign = relationship("Campaign", back_populates="templates")
@@ -82,6 +90,7 @@ class EmailTemplate(Base):
     attachments = relationship("EmailAttachment", back_populates="template", cascade="all, delete-orphan")
 
     __table_args__ = (
+        Index("ix_email_templates_tenant_campaign", "tenant_id", "campaign_id"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
@@ -96,22 +105,25 @@ class EmailTemplateVersion(Base):
     """
     __tablename__ = "email_template_versions"
 
-    version_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    template_id = Column(String(36), ForeignKey("email_templates.template_id"), nullable=False)
-    
-    subject = Column(Text, nullable=False)
-    body = Column(Text, nullable=False)
-    version_number = Column(Integer, nullable=False)
-    
-    created_by = Column(String(36), ForeignKey("users.user_id"), nullable=False)
-    created_at = Column(UtcDateTime, server_default=NOW6)
-    is_active = Column(Boolean, default=True)
+    version_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    template_id: Mapped[str] = mapped_column(String(36), ForeignKey("email_templates.template_id"), nullable=False)
+    # The template's tenant (D3, 0028_child_tenant_ids); filled from the template by app/models/tenant_fill.py
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
+
+    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=False)
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6)
+    is_active: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=True)
 
     # Relationships
     template = relationship("EmailTemplate", back_populates="versions")
     creator = relationship("User", back_populates="template_versions")
 
     __table_args__ = (
+        Index("ix_email_template_versions_tenant", "tenant_id", "template_id"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

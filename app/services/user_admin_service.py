@@ -2,254 +2,183 @@
 """
 Team management: roles, feature permissions, deactivate / reactivate and permanent delete.
 
-Role defaults come from app/core/auth.py (ROLE_DEFAULT_PERMISSIONS), which enforces them. Errors are domain errors (app/core/errors.py).
+``TeamService`` serves app/routers/user_router.py: one unit of work per call over the identity repositories
+(app/repositories/identity.py). The rules (who may change, deactivate, reactivate or delete whom; role
+defaults from ROLE_DEFAULT_PERMISSIONS) are pure functions in app/domain/identity.py; this module applies
+them and reports refusals as domain errors (app/core/errors.py). The module-level rule helpers below are
+kept for existing callers.
 """
+
+from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
 from app.core.clock import utcnow
-from app.core.auth import ROLE_DEFAULT_PERMISSIONS
-from app.core.errors import BadRequestError, ConflictError, NotFoundError, PermissionDenied
-from app.models.audit import AuditLog
-from app.models.campaign import Campaign
-from app.models.campaign_group import CampaignGroup
-from app.models.email_template import EmailTemplate, EmailTemplateVersion
-from app.models.invitation import Invitation
-from app.models.magic_login_token import MagicLoginToken
-from app.models.password_reset_token import PasswordResetToken
-from app.models.prospect_list import ProspectList
-from app.models.refresh_token import RefreshToken
+from app.core.errors import ConflictError, NotFoundError
+from app.domain import identity as rules
+from app.domain.identity import (
+    ALL_PERMISSIONS,
+    BLOCKING_RECORD_MESSAGES,
+    DEFAULT_PERMISSIONS,
+    TENANT_ROLES,
+    UserStatus,
+    default_permissions,
+    unknown_permissions,
+)
 from app.models.user import User
-from app.services.user_lookup import LIVE_ACCOUNT_CONFLICT, live_account_conflict
+from app.repositories.identity import DuplicateAccount, IdentityAccess, IdentityUnitOfWork, Session, identity_uow
+from app.services.identity_common import identity_rules
+from app.services.user_lookup import LIVE_ACCOUNT_CONFLICT, other_live_account
+
+__all__ = ["ALL_PERMISSIONS", "DEFAULT_PERMISSIONS", "TeamService", "VALID_ROLES", "default_permissions",
+           "effective_permissions", "require_can_grant_role", "revoke_pending_invitations", "unknown_permissions",
+           "validate_role"]
 
 logger = logging.getLogger(__name__)
 
-VALID_ROLES = {"SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT"}
-
-# All available feature permission keys
-ALL_PERMISSIONS = {
-    "manage_campaigns",   # Create / edit / delete campaigns
-    "manage_templates",   # Create / edit email templates
-    "manage_inboxes",     # Connect and configure email inboxes
-    "manage_prospects",   # Import and manage prospect lists
-    "view_analytics",     # View reports and analytics dashboard
-    "export_data",        # Export campaigns, contacts and reports
-    "manage_team",        # Invite and manage team members
-}
-
-# Default permissions granted when no custom override is set
-DEFAULT_PERMISSIONS: dict[str, list[str]] = {
-    role: list(perms) for role, perms in ROLE_DEFAULT_PERMISSIONS.items()
-}
-
-# Records that keep a non-nullable reference to their creator: a user who has any of them
-# cannot be deleted permanently (model, owner column, message)
-_BLOCKING_RECORDS = (
-    (Campaign, Campaign.created_by,
-     "Cannot permanently delete user: they have created campaigns. Remove or reassign those campaigns first."),
-    (ProspectList, ProspectList.uploaded_by,
-     "Cannot permanently delete user: they have uploaded prospect lists. Remove those lists first."),
-    (CampaignGroup, CampaignGroup.owner_id,
-     "Cannot permanently delete user: they own campaign groups. Remove those groups first."),
-    (EmailTemplateVersion, EmailTemplateVersion.created_by,
-     "Cannot permanently delete user: they have created email templates. Remove those templates first."),
-)
+VALID_ROLES = set(TENANT_ROLES)
 
 
-# ── Pure rules ─────────────────────────────────────────────────────
+# ── Rule helpers (domain errors) ───────────────────────────────────
 
-def default_permissions(role: Optional[str]) -> List[str]:
-    return DEFAULT_PERMISSIONS.get(role, []) if role is not None else []
-
-
-def effective_permissions(user: User) -> List[str]:
+def effective_permissions(user: Any) -> List[str]:
     """Custom permissions when set, else the role's defaults."""
-    return user.custom_permissions if user.custom_permissions is not None else default_permissions(user.role)
+    return rules.effective_permissions(user.role, user.custom_permissions)
 
 
 def validate_role(role: str) -> None:
-    if role not in VALID_ROLES:
-        raise BadRequestError(f"Invalid role. Must be one of: {', '.join(sorted(VALID_ROLES))}")
+    with identity_rules():
+        rules.check_role(role)
 
 
-def require_can_grant_role(actor: User, role: Optional[str]) -> None:
+def require_can_grant_role(actor: Any, role: Optional[str]) -> None:
     """Only a Super Admin can invite (or re-invite) another Super Admin."""
-    if role == "SUPER_ADMIN" and actor.role != "SUPER_ADMIN":
-        raise PermissionDenied("Only a Super Admin can invite another Super Admin")
+    with identity_rules():
+        rules.check_can_grant_role(actor.role, role)
 
 
-def unknown_permissions(permissions: List[str]) -> set:
-    return set(permissions) - ALL_PERMISSIONS
+def _not_self(actor: Any, user_id: str, message: str) -> None:
+    with identity_rules():
+        rules.check_not_self(actor.user_id, user_id, message)
 
 
-# ── Lookups ────────────────────────────────────────────────────────
+def revoke_pending_invitations(access: IdentityAccess, user: Any) -> None:
+    """The invited account is deactivated (or re-invited): close its open invitation and unused sign-in links."""
+    access.invitations.revoke_pending(user.tenant_id, user.email)
+    access.tokens.spend_magic_links(user.user_id, utcnow())
 
-def get_member(db: Session, actor: User, user_id: str) -> User:
+
+def get_member(access: IdentityAccess, actor: Any, user_id: str) -> User:
     """A user of the actor's tenant, else NotFoundError."""
-    target = db.query(User).filter(User.user_id == user_id, User.tenant_id == actor.tenant_id).first()
+    target = access.users.member(actor.tenant_id, user_id)
     if not target:
         raise NotFoundError("User not found")
     return target
 
 
-def list_members(db: Session, actor: User) -> List[User]:
-    """Team members of the tenant (not platform admins), newest first."""
-    return db.query(User).filter(
-        User.tenant_id == actor.tenant_id,
-        User.role != "PLATFORM_ADMIN",
-    ).order_by(User.created_at.desc()).all()
-
-
-def spend_magic_links(db: Session, user_id: str) -> None:
-    """Mark the user's unused one-click sign-in links as used."""
-    db.query(MagicLoginToken).filter(
-        MagicLoginToken.user_id == user_id, MagicLoginToken.used_at.is_(None)
-    ).update({MagicLoginToken.used_at: utcnow()}, synchronize_session=False)
-
-
-def revoke_pending_invitations(db: Session, user: User) -> None:
-    """The invited account is deactivated: close its open invitation and unused sign-in links."""
-    db.query(Invitation).filter(
-        Invitation.tenant_id == user.tenant_id,
-        Invitation.email == user.email,
-        Invitation.status == "PENDING",
-    ).update({Invitation.status: "REVOKED"}, synchronize_session=False)
-    spend_magic_links(db, user.user_id)
-
-
 # ── Endpoint operations ────────────────────────────────────────────
 
-def change_role(db: Session, actor: User, user_id: str, role: str) -> None:
-    validate_role(role)
-    if user_id == actor.user_id:
-        raise BadRequestError("Cannot change your own role")
-    target = get_member(db, actor, user_id)
-    if target.role == "SUPER_ADMIN":
-        raise BadRequestError("Cannot change the Super Admin's role")
-    old_role = target.role
-    target.role = role
-    db.commit()
-    logger.info("Role changed: %s %s → %s by %s", target.email, old_role, role, actor.email)
+class TeamService:
+    def __init__(self, uow: IdentityUnitOfWork) -> None:
+        self.uow = uow
 
+    @classmethod
+    def for_session(cls, db: Session) -> TeamService:
+        return cls(identity_uow(db))
 
-def deactivate(db: Session, actor: User, user_id: str) -> None:
-    """Set a member INACTIVE; an invited member's pending invitation and links are revoked."""
-    if user_id == actor.user_id:
-        raise BadRequestError("Cannot deactivate yourself")
-    target = get_member(db, actor, user_id)
-    if target.role == "SUPER_ADMIN":
-        raise BadRequestError("Cannot deactivate the workspace Super Admin")
-    # ADMIN can only deactivate MANAGERs, not other ADMINs
-    if actor.role == "ADMIN" and target.role == "ADMIN":
-        raise PermissionDenied("Admins cannot deactivate other admins")
-    if target.status == "INACTIVE":
-        # Already deactivated: a repeated DELETE finds nothing to delete
-        raise NotFoundError("User not found")
+    def list_members(self, actor: Any) -> List[User]:
+        """Team members of the tenant (not platform admins), newest first."""
+        with self.uow as uow:
+            return uow.users.members(actor.tenant_id)
 
-    prev_status = target.status
-    target.status = "INACTIVE"
-    if prev_status == "INVITED":
-        revoke_pending_invitations(db, target)
-    db.commit()
-    action = "revoked invite for" if prev_status == "INVITED" else "deactivated"
-    logger.info("User %s: %s by %s", action, target.email, actor.email)
+    def change_role(self, actor: Any, user_id: str, role: str) -> None:
+        validate_role(role)
+        _not_self(actor, user_id, "Cannot change your own role")
+        with self.uow as uow:
+            target = get_member(uow, actor, user_id)
+            with identity_rules():
+                rules.check_role_change(target)
+            old_role = target.role
+            target.role = role
+            uow.commit()
+            logger.info("Role changed: %s %s → %s by %s", target.email, old_role, role, actor.email)
 
+    def deactivate(self, actor: Any, user_id: str) -> None:
+        """Set a member INACTIVE; an invited member's pending invitation and links are revoked."""
+        _not_self(actor, user_id, "Cannot deactivate yourself")
+        with self.uow as uow:
+            target = get_member(uow, actor, user_id)
+            with identity_rules():
+                rules.check_deactivate(actor, target)
+            prev_status = target.status
+            target.status = UserStatus.INACTIVE
+            if prev_status == UserStatus.INVITED:
+                revoke_pending_invitations(uow, target)
+            uow.commit()
+            action = "revoked invite for" if prev_status == UserStatus.INVITED else "deactivated"
+            logger.info("User %s: %s by %s", action, target.email, actor.email)
 
-def reactivate(db: Session, actor: User, user_id: str) -> None:
-    if user_id == actor.user_id:
-        raise BadRequestError("Cannot reactivate yourself")
-    target = get_member(db, actor, user_id)
-    if target.status == "ACTIVE":
-        raise BadRequestError("User is already active")
-    if target.status == "INVITED":
-        # Activating an invited user would bypass the invitation (and leave its links live)
-        raise BadRequestError("User has a pending invitation; resend the invitation instead")
-    if target.role == "SUPER_ADMIN" and actor.role != "SUPER_ADMIN":
-        raise PermissionDenied("Only a Super Admin can reactivate a Super Admin")
-    if actor.role == "ADMIN" and target.role == "ADMIN":
-        raise PermissionDenied("Admins cannot reactivate other admins")
-    # One live account per email across workspaces (F017)
-    if live_account_conflict(db, target.email, target.user_id):
-        raise ConflictError(LIVE_ACCOUNT_CONFLICT)
-    target.status = "ACTIVE"
-    try:
-        db.commit()
-    except IntegrityError as exc:  # a concurrent invite / reactivation won the unique users.active_email
-        db.rollback()
-        raise ConflictError(LIVE_ACCOUNT_CONFLICT) from exc
-    logger.info("User reactivated: %s by %s", target.email, actor.email)
+    def reactivate(self, actor: Any, user_id: str) -> None:
+        _not_self(actor, user_id, "Cannot reactivate yourself")
+        with self.uow as uow:
+            target = get_member(uow, actor, user_id)
+            with identity_rules():
+                rules.check_reactivate(actor, target)
+            # One live account per email across workspaces (F017)
+            if other_live_account(uow.users, target.email, target.user_id):
+                raise ConflictError(LIVE_ACCOUNT_CONFLICT)
+            target.status = UserStatus.ACTIVE
+            try:
+                uow.commit_account()
+            except DuplicateAccount as exc:  # a concurrent invite / reactivation won users.active_email
+                raise ConflictError(LIVE_ACCOUNT_CONFLICT) from exc
+            logger.info("User reactivated: %s by %s", target.email, actor.email)
 
+    def delete_permanently(self, actor: Any, user_id: str) -> None:
+        """Delete a deactivated member who owns no business data; the audit trail is kept."""
+        _not_self(actor, user_id, "Cannot delete yourself")
+        with self.uow as uow:
+            target = get_member(uow, actor, user_id)
+            with identity_rules():
+                rules.check_permanent_delete(target)
+            # Block deletion if user has created business data (non-nullable FK constraints)
+            blocking = uow.users.blocking_record(user_id)
+            if blocking:
+                raise ConflictError(BLOCKING_RECORD_MESSAGES[blocking])
+            email = target.email
+            uow.users.purge(target)
+            uow.commit()
+            logger.info("User permanently deleted: %s by %s", email, actor.email)
 
-def delete_permanently(db: Session, actor: User, user_id: str) -> None:
-    """Delete a deactivated member who owns no business data; the audit trail is kept."""
-    if user_id == actor.user_id:
-        raise BadRequestError("Cannot delete yourself")
-    target = get_member(db, actor, user_id)
-    if target.role == "SUPER_ADMIN":
-        raise BadRequestError("Cannot delete the workspace Super Admin")
-    if target.status != "INACTIVE":
-        raise BadRequestError("User must be deactivated before permanent deletion")
+    def permissions_view(self, actor: Any, user_id: str) -> Dict[str, Any]:
+        with self.uow as uow:
+            target = get_member(uow, actor, user_id)
+            return {
+                "user_id": user_id,
+                "role": target.role,
+                "permissions": effective_permissions(target),
+                "is_custom": target.custom_permissions is not None,
+                "defaults": default_permissions(target.role),
+            }
 
-    # Block deletion if user has created business data (non-nullable FK constraints)
-    for model, owner_column, message in _BLOCKING_RECORDS:
-        if db.query(model).filter(owner_column == user_id).first():
-            raise ConflictError(message)
+    def update_permissions(self, actor: Any, user_id: str, permissions: List[str]) -> List[str]:
+        """Set custom permissions; returns what was stored."""
+        _not_self(actor, user_id, "Cannot change your own permissions")
+        with self.uow as uow:
+            target = get_member(uow, actor, user_id)
+            with identity_rules():
+                rules.check_permission_update(target, permissions)
+            target.custom_permissions = list(set(permissions))
+            uow.commit()
+            logger.info("Permissions updated for %s by %s: %s", target.email, actor.email, target.custom_permissions)
+            return target.custom_permissions
 
-    email = target.email
-    # Token/session records first (safe to always delete)
-    for model in (MagicLoginToken, RefreshToken, PasswordResetToken):
-        db.query(model).filter(model.user_id == user_id).delete(synchronize_session=False)
-    # Invitations this user sent (invited_by is NOT NULL so can't null it out)
-    db.query(Invitation).filter(Invitation.invited_by == user_id).delete(synchronize_session=False)
-    # Keep the audit trail (SEC-16): detach it from the deleted user instead of deleting it
-    db.query(AuditLog).filter(AuditLog.user_id == user_id).update(
-        {AuditLog.user_id: None}, synchronize_session=False)
-    # Nullable references: template approvals and users this person invited
-    db.query(EmailTemplate).filter(EmailTemplate.approved_by == user_id).update(
-        {EmailTemplate.approved_by: None}, synchronize_session=False)
-    db.query(User).filter(User.invited_by == user_id).update(
-        {User.invited_by: None}, synchronize_session=False)
-
-    db.delete(target)
-    db.commit()
-    logger.info("User permanently deleted: %s by %s", email, actor.email)
-
-
-def permissions_view(db: Session, actor: User, user_id: str) -> Dict[str, Any]:
-    target = get_member(db, actor, user_id)
-    return {
-        "user_id": user_id,
-        "role": target.role,
-        "permissions": effective_permissions(target),
-        "is_custom": target.custom_permissions is not None,
-        "defaults": default_permissions(target.role),
-    }
-
-
-def update_permissions(db: Session, actor: User, user_id: str, permissions: List[str]) -> List[str]:
-    """Set custom permissions; returns what was stored."""
-    if user_id == actor.user_id:
-        raise BadRequestError("Cannot change your own permissions")
-    target = get_member(db, actor, user_id)
-    if target.role == "SUPER_ADMIN":
-        raise BadRequestError("Cannot restrict Super Admin permissions")
-    invalid = unknown_permissions(permissions)
-    if invalid:
-        raise BadRequestError(f"Unknown permission keys: {', '.join(invalid)}")
-    target.custom_permissions = list(set(permissions))
-    db.commit()
-    logger.info("Permissions updated for %s by %s: %s", target.email, actor.email, target.custom_permissions)
-    return target.custom_permissions
-
-
-def reset_permissions(db: Session, actor: User, user_id: str) -> List[str]:
-    """Back to the role's defaults; returns them."""
-    target = get_member(db, actor, user_id)
-    target.custom_permissions = None
-    db.commit()
-    logger.info("Permissions reset to defaults for %s by %s", target.email, actor.email)
-    return default_permissions(target.role)
+    def reset_permissions(self, actor: Any, user_id: str) -> List[str]:
+        """Back to the role's defaults; returns them."""
+        with self.uow as uow:
+            target = get_member(uow, actor, user_id)
+            target.custom_permissions = None
+            uow.commit()
+            logger.info("Permissions reset to defaults for %s by %s", target.email, actor.email)
+            return default_permissions(target.role)

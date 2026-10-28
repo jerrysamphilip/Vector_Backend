@@ -1,101 +1,61 @@
 """
 Leads, opportunities and proposals: shared rules (BRD v2.0 5.6, 5.7).
-"""
-from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
-from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import func
-from sqlalchemy.orm import Query, Session
+``SalesRules`` holds the business rules of the sales aggregate over the repositories
+(app/repositories/sales*.py) and the collaborating services (app/services/sales_collaborators.py):
+stage transitions, forecast categories, win/loss reasons, owner assignment, conversion, the API
+dictionaries. It never commits; the calling service owns the unit of work.
+
+The module-level functions taking ``db`` keep the signatures other modules (reports, tasks,
+contacts, seed scripts) call; each binds ``SalesRules`` to that session.
+"""
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple
+from uuid import UUID
 
 from app.core.clock import utcnow
-from app.core.errors import BadRequestError, NotFoundError, PermissionDenied
 from app.core.config import settings
-from app.models.account import Account
-from app.models.prospect import Prospect
-from app.models.sales import (DEFAULT_SALES_STAGES, LEAD_STAGES, OPEN_LEAD_STAGES, SQL_CRITERIA, Lead,
-                              Opportunity, SalesStage)
-from app.models.user import User
+from app.core.errors import BadRequestError, NotFoundError, PermissionDenied
+from app.domain import sales as rules
+from app.domain.sales import (DEFAULT_SALES_STAGES, FORECAST_CATEGORIES, LEAD_FIELDS, LEAD_STAGES, OPEN_LEAD_STAGES,
+                              OPP_FIELDS, category_for, missing_criteria, stage_change_message,
+                              stage_change_recipients, stage_status)
+from app.models.sales import Opportunity, SalesStage
+from app.repositories.sales import SalesRepositories, SqlAlchemySalesUnitOfWork, SqlSession
 from app.services import crm
-from app.services.contact_service import can_see_owner, clean_str, scope
+from app.services.contact_service import clean_str
+from app.services.sales_collaborators import SalesCollaborators, ServiceCollaborators
+from app.services.sales_settings import load_settings, store_settings
 
-LEAD_FIELDS = ("owner_id", "stage", "source", "next_step", "next_step_at", "disqualified_reason", "recycle_at")
-OPP_FIELDS = ("name", "owner_id", "stage_id", "amount", "close_date", "client_type", "closed_reason",
-              "next_step", "description", "account_id", "prospect_id", "forecast_category")
+__all__ = ["FORECAST_CATEGORIES", "LEAD_FIELDS", "OPP_FIELDS", "SalesRules", "as_float", "category_for",
+           "criteria_met", "money", "settings", "stage_change_message", "stage_change_recipients", "stage_status"]
 
-FORECAST_CATEGORIES = {"PIPELINE": "Pipeline", "BEST_CASE": "Best case", "COMMIT": "Commit",
-                       "CLOSED": "Closed", "OMITTED": "Omitted"}
-
-
-def category_for(stage) -> str:
-    """Default forecast category from the stage (BR-SF-08)."""
-    if stage.is_won:
-        return "CLOSED"
-    if stage.is_lost:
-        return "OMITTED"
-    if stage.probability >= 70:
-        return "COMMIT"
-    if stage.probability >= 40:
-        return "BEST_CASE"
-    return "PIPELINE"
+Commit = Callable[[], None]
 
 
-# ── Stages ───────────────────────────────────────────────────
-
-def stages(db: Session, tenant_id: str, include_inactive: bool = False) -> List[SalesStage]:
-    """The workspace's sales stages in order, seeding the defaults the first time (BR-SP-01)."""
-    query = db.query(SalesStage).filter(SalesStage.tenant_id == tenant_id)
-    if not query.first():
-        for i, (name, prob, won, lost) in enumerate(DEFAULT_SALES_STAGES):
-            db.add(SalesStage(tenant_id=tenant_id, name=name, probability=prob, sort_order=i, is_won=won, is_lost=lost))
-        db.commit()
-    if not include_inactive:
-        query = query.filter(SalesStage.active.is_(True))
-    return query.order_by(SalesStage.sort_order, SalesStage.name).all()
-
-
-def stage_status(stage: SalesStage) -> str:
-    return "WON" if stage.is_won else "LOST" if stage.is_lost else "OPEN"
-
-
-def stage_dict(s: SalesStage) -> dict:
+def stage_dict(s: Any) -> dict:
     return {"stage_id": s.stage_id, "name": s.name, "probability": s.probability, "sort_order": s.sort_order,
             "is_won": s.is_won, "is_lost": s.is_lost, "active": s.active, "status": stage_status(s)}
 
 
-# ── Helpers ──────────────────────────────────────────────────
+# ── Pure helpers ─────────────────────────────────────────────
 
 def money(value) -> Optional[Decimal]:
-    if value in (None, ""):
-        return None
     try:
-        amount = Decimal(str(value).replace(",", "").strip())
-    except InvalidOperation:
-        raise BadRequestError("Amount must be a number")
-    if amount < 0:
-        raise BadRequestError("Amount cannot be negative")
-    return amount.quantize(Decimal("0.01"))
+        return rules.parse_amount(value)
+    except ValueError as exc:
+        raise BadRequestError(str(exc)) from None
 
 
 def as_float(value) -> float:
     return float(value) if value is not None else 0.0
 
 
-def user_names(db: Session, ids) -> Dict[str, str]:
-    ids = {i for i in ids if i}
-    if not ids:
-        return {}
-    return {u.user_id: f"{u.first_name} {u.last_name}".strip()
-            for u in db.query(User.user_id, User.first_name, User.last_name).filter(User.user_id.in_(ids))}
-
-
-def check_assignable(db: Session, user: User, owner_id: str) -> None:
-    """Records can be assigned to a workspace user the current user can see (BR-SH-02)."""
-    if not owner_id or not db.query(User.user_id).filter(User.user_id == owner_id,
-                                                         User.tenant_id == user.tenant_id).first():
-        raise BadRequestError("Owner must be a user in your workspace")
-    if not can_see_owner(db, user, owner_id):
-        raise PermissionDenied("You can only assign records to yourself or your team")
+def criteria_met(qualification: Optional[dict]) -> List[str]:
+    return missing_criteria(qualification)
 
 
 def fiscal_year_of(d: date) -> int:
@@ -122,370 +82,402 @@ def fiscal_year_bounds(fy: int) -> Tuple[date, date]:
     return start, end
 
 
-# ── Leads ────────────────────────────────────────────────────
-
-def visible_leads(db: Session, user: User) -> Query:
-    query = db.query(Lead).filter(Lead.tenant_id == user.tenant_id)
-    return scope(query, db, user, Lead.owner_id)
+def idle_days(opp: Any, last_touch: Optional[datetime]) -> int:
+    return rules.idle_days(opp.updated_at or opp.created_at, last_touch, utcnow())
 
 
-def get_lead(db: Session, user: User, lead_id: str) -> Lead:
-    lead = visible_leads(db, user).filter(Lead.lead_id == lead_id).first()
-    if not lead:
-        raise NotFoundError("Lead not found")
-    return lead
+def _age(now: datetime, since: Optional[datetime]) -> int:
+    # clock skew between writers can put a timestamp a moment in the future; ages never go below 0
+    return max(0, (now - since).days) if since else 0
 
 
-def criteria_met(qualification: Optional[dict]) -> List[str]:
-    q = qualification or {}
-    return [label for key, label in SQL_CRITERIA.items() if not q.get(key)]
+def _lead_dict(lead: Any, contact: Any, company: Optional[str], owner_name: Optional[str], now: datetime) -> dict:
+    p = contact
+    return {
+        "lead_id": lead.lead_id, "row_version": lead.row_version, "prospect_id": lead.prospect_id,
+        "account_id": lead.account_id,
+        "contact_name": p.full_name if p else None, "contact_email": p.email if p else None,
+        "contact_title": p.designation if p else None,
+        "company_name": company or (p.company_name if p else None),
+        "owner_id": lead.owner_id, "owner_name": owner_name, "source": lead.source,
+        "stage": lead.stage, "stage_label": LEAD_STAGES.get(lead.stage, (lead.stage,))[0],
+        "qualification": lead.qualification or {}, "missing_criteria": missing_criteria(lead.qualification),
+        "next_step": lead.next_step, "next_step_at": lead.next_step_at,
+        "next_step_overdue": bool(lead.next_step_at and lead.next_step_at < now and lead.stage in OPEN_LEAD_STAGES),
+        "disqualified_reason": lead.disqualified_reason, "recycle_at": lead.recycle_at,
+        "opportunity_id": lead.opportunity_id,
+        "campaign_id": lead.campaign_id, "created_at": lead.created_at, "stage_changed_at": lead.stage_changed_at,
+        "qualified_at": lead.qualified_at, "converted_at": lead.converted_at,
+        "age_days": _age(now, lead.created_at),
+        "days_in_stage": _age(now, lead.stage_changed_at),
+        "sql_age_days": max(0, (now - lead.qualified_at).days) if lead.qualified_at else None,
+    }
 
 
-def sync_contact_lifecycle(db: Session, prospect: Optional[Prospect], lifecycle: Optional[str], user_id: Optional[str]) -> None:
-    """Move the contact's lifecycle stage forward to match the lead (never backward)."""
-    if not prospect or not lifecycle:
-        return
-    order = list(crm.LIFECYCLE_STAGES)
-    current = prospect.lifecycle_stage
-    if current in order and lifecycle in order and order.index(lifecycle) <= order.index(current):
-        return
-    before = {"lifecycle_stage": current}
-    prospect.lifecycle_stage = lifecycle
-    crm.record_changes(db, prospect.tenant_id, "CONTACT", prospect.prospect_id, before,
-                       {"lifecycle_stage": lifecycle}, user_id, "SYSTEM")
+@dataclass
+class _OppContext:
+    names: Dict[str, str]
+    stages: Dict[str, Any]
+    accounts: Dict[str, str]
+    contacts: Dict[str, Any]
+    campaigns: Dict[str, str]
+    last_touch: Dict[str, datetime]
+    stale_days: int
+    today: date
 
 
-def set_lead_stage(db: Session, lead: Lead, stage: str, user: User) -> None:
-    if stage not in LEAD_STAGES:
-        raise BadRequestError(f"stage must be one of {list(LEAD_STAGES)}")
-    if stage == lead.stage:
-        return
-    if lead.stage == "CONVERTED":
-        raise BadRequestError("This lead is already converted; work the opportunity instead")
-    if stage == "CONVERTED":
-        raise BadRequestError("Use Convert to create the opportunity")
-    if stage == "SQL":
-        missing = criteria_met(lead.qualification)
-        if missing:
-            raise BadRequestError("To mark as SQL, confirm: " + ", ".join(missing))
-        lead.qualified_at = lead.qualified_at or utcnow()
-    if stage == "DISQUALIFIED" and not clean_str(lead.disqualified_reason):
-        raise BadRequestError("Give a reason for disqualifying the lead")
-    lead.stage = stage
-    lead.stage_changed_at = utcnow()
-    prospect = db.query(Prospect).filter(Prospect.prospect_id == lead.prospect_id).first()
-    sync_contact_lifecycle(db, prospect, LEAD_STAGES[stage][1], user.user_id)
+def _opp_dict(o: Any, ctx: _OppContext) -> dict:
+    s = ctx.stages.get(o.stage_id)
+    prob = s.probability if s else 0
+    amount = as_float(o.amount)
+    p = ctx.contacts.get(o.prospect_id)
+    idle = idle_days(o, ctx.last_touch.get(o.opportunity_id))
+    overdue = bool(o.status == "OPEN" and o.close_date and o.close_date < ctx.today)
+    return {
+        "opportunity_id": o.opportunity_id, "row_version": o.row_version, "name": o.name, "account_id": o.account_id,
+        "company_name": ctx.accounts.get(o.account_id), "prospect_id": o.prospect_id,
+        "contact_name": p.full_name if p else None, "contact_email": p.email if p else None,
+        "lead_id": o.lead_id, "owner_id": o.owner_id, "owner_name": ctx.names.get(o.owner_id),
+        "stage_id": o.stage_id, "stage_name": s.name if s else None, "probability": prob,
+        "amount": amount if o.amount is not None else None, "weighted_amount": round(amount * prob / 100, 2),
+        "close_date": o.close_date, "client_type": o.client_type, "status": o.status,
+        "closed_reason": o.closed_reason, "next_step": o.next_step, "description": o.description,
+        "closed_at": o.closed_at, "created_at": o.created_at, "updated_at": o.updated_at,
+        "overdue": overdue,
+        "forecast_category": o.forecast_category or (category_for(s) if s else "PIPELINE"),
+        "forecast_category_manual": bool(o.forecast_category_manual),
+        "campaign_id": o.campaign_id, "campaign_name": ctx.campaigns.get(o.campaign_id),
+        "days_idle": idle,
+        "stale": bool(o.status == "OPEN" and (idle >= ctx.stale_days or (o.close_date and o.close_date < ctx.today))),
+    }
 
 
-def lead_dicts(db: Session, leads: List[Lead]) -> List[dict]:
-    if not leads:
-        return []
-    names = user_names(db, [l.owner_id for l in leads])
-    contacts = {p.prospect_id: p for p in db.query(Prospect).filter(
-        Prospect.prospect_id.in_({l.prospect_id for l in leads}))}
-    accounts = {a.account_id: a.name for a in db.query(Account.account_id, Account.name).filter(
-        Account.account_id.in_({l.account_id for l in leads if l.account_id}))}
-    now = utcnow()
-    out = []
-    for l in leads:
-        p = contacts.get(l.prospect_id)
-        out.append({
-            "lead_id": l.lead_id, "row_version": l.row_version, "prospect_id": l.prospect_id, "account_id": l.account_id,
-            "contact_name": p.full_name if p else None, "contact_email": p.email if p else None,
-            "contact_title": p.designation if p else None,
-            "company_name": accounts.get(l.account_id) or (p.company_name if p else None),
-            "owner_id": l.owner_id, "owner_name": names.get(l.owner_id), "source": l.source,
-            "stage": l.stage, "stage_label": LEAD_STAGES.get(l.stage, (l.stage,))[0],
-            "qualification": l.qualification or {}, "missing_criteria": criteria_met(l.qualification),
-            "next_step": l.next_step, "next_step_at": l.next_step_at,
-            "next_step_overdue": bool(l.next_step_at and l.next_step_at < now and l.stage in OPEN_LEAD_STAGES),
-            "disqualified_reason": l.disqualified_reason, "recycle_at": l.recycle_at, "opportunity_id": l.opportunity_id,
-            "campaign_id": l.campaign_id, "created_at": l.created_at, "stage_changed_at": l.stage_changed_at,
-            "qualified_at": l.qualified_at, "converted_at": l.converted_at,
-            "age_days": max(0, (now - l.created_at).days) if l.created_at else 0,
-            "days_in_stage": max(0, (now - l.stage_changed_at).days) if l.stage_changed_at else 0,
-            # clock skew between writers can put a timestamp a moment in the future; ages never go below 0
-            "sql_age_days": max(0, (now - l.qualified_at).days) if l.qualified_at else None,
-        })
-    return out
+class SalesRules:
+    """The sales aggregate's rules over its repositories and collaborators (no commits here)."""
+
+    def __init__(self, repos: Any, collab: SalesCollaborators) -> None:
+        self.repos = repos
+        self.collab = collab
+
+    @classmethod
+    def for_session(cls, db: SqlSession) -> "SalesRules":
+        return cls(SalesRepositories(db), ServiceCollaborators(db))
+
+    # ── settings ────────────────────────────────────────────
+    def settings(self, tenant_id: str) -> dict:
+        return load_settings(self.repos.settings, tenant_id)
+
+    # ── stages ──────────────────────────────────────────────
+    def stages(self, tenant_id: str, include_inactive: bool = False, commit: Optional[Commit] = None) -> List[Any]:
+        """The workspace's sales stages in order, seeding the defaults the first time (BR-SP-01)."""
+        if not self.repos.stages.exists(tenant_id):
+            for i, (name, prob, won, lost) in enumerate(DEFAULT_SALES_STAGES):
+                self.repos.stages.add(SalesStage(tenant_id=tenant_id, name=name, probability=prob, sort_order=i,
+                                                is_won=won, is_lost=lost))
+            if commit is not None:
+                commit()
+        return self.repos.stages.list(tenant_id, include_inactive)
+
+    # ── users ───────────────────────────────────────────────
+    def user_names(self, ids: Iterable[Optional[str]]) -> Dict[str, str]:
+        return self.repos.lookups.user_names(ids)
+
+    def check_assignable(self, user: Any, owner_id: Optional[str]) -> None:
+        """Records can be assigned to a workspace user the current user can see (BR-SH-02)."""
+        if not owner_id or not self.repos.lookups.user_exists(user.tenant_id, owner_id):
+            raise BadRequestError("Owner must be a user in your workspace")
+        if not self.collab.can_see_owner(user, owner_id):
+            raise PermissionDenied("You can only assign records to yourself or your team")
+
+    # ── leads ───────────────────────────────────────────────
+    def get_lead(self, user: Any, lead_id: str) -> Any:
+        lead = self.repos.leads.get_visible(user.tenant_id, self.collab.owner_scope(user), lead_id)
+        if not lead:
+            raise NotFoundError("Lead not found")
+        return lead
+
+    def sync_contact_lifecycle(self, prospect: Any, lifecycle: Optional[str], user_id: Optional[str]) -> None:
+        """Move the contact's lifecycle stage forward to match the lead (never backward)."""
+        if not prospect or not lifecycle:
+            return
+        current = prospect.lifecycle_stage
+        if not rules.lifecycle_moves_forward(list(crm.LIFECYCLE_STAGES), current, lifecycle):
+            return
+        prospect.lifecycle_stage = lifecycle
+        self.collab.record_changes(prospect.tenant_id, "CONTACT", prospect.prospect_id,
+                                   {"lifecycle_stage": current}, {"lifecycle_stage": lifecycle}, user_id, "SYSTEM")
+
+    def set_lead_stage(self, lead: Any, stage: str, user: Any) -> None:
+        error = rules.lead_stage_error(lead.stage, stage, lead.qualification, clean_str(lead.disqualified_reason))
+        if error:
+            raise BadRequestError(error)
+        if stage == lead.stage:
+            return
+        if stage == "SQL":
+            lead.qualified_at = lead.qualified_at or utcnow()
+        lead.stage = stage
+        lead.stage_changed_at = utcnow()
+        prospect = self.repos.lookups.prospect(lead.prospect_id)
+        self.sync_contact_lifecycle(prospect, LEAD_STAGES[stage][1], user.user_id)
+
+    def lead_dicts(self, leads: List[Any]) -> List[dict]:
+        if not leads:
+            return []
+        names = self.user_names([lead.owner_id for lead in leads])
+        contacts = self.repos.lookups.prospects({lead.prospect_id for lead in leads})
+        accounts = self.repos.lookups.account_names({lead.account_id for lead in leads if lead.account_id})
+        now = utcnow()
+        return [_lead_dict(lead, contacts.get(lead.prospect_id), accounts.get(lead.account_id),
+                           names.get(lead.owner_id), now) for lead in leads]
+
+    def auto_owner(self, tenant_id: str, prospect: Any) -> Optional[str]:
+        """Owner for an unowned lead from the workspace's assignment rule (BR-SF-03): region, else round robin."""
+        rule = self.settings(tenant_id)["lead_assignment"]
+        mode = rule.get("mode") or "off"
+        if mode == "off":
+            return None
+        active = self.repos.lookups.active_user_ids(tenant_id)
+        if mode == "region" and prospect is not None:
+            for r in rule.get("regions") or []:
+                field = "poc_country" if r.get("field") == "country" else "poc_state"
+                value = (getattr(prospect, field, None) or "").strip().lower()
+                if value and value == (r.get("value") or "").strip().lower() and r.get("user_id") in active:
+                    return r["user_id"]
+        pool = [u for u in (rule.get("users") or []) if u in active]
+        if not pool:
+            return None
+        index = int(rule.get("next_index") or 0) % len(pool)
+        store_settings(self.repos.settings, tenant_id, {"lead_assignment": {"next_index": index + 1}})
+        return pool[index]
+
+    # ── opportunities ───────────────────────────────────────
+    def get_opp(self, user: Any, opportunity_id: str) -> Any:
+        opp = self.repos.opportunities.get_visible(user.tenant_id, self.collab.owner_scope(user), opportunity_id)
+        if not opp:
+            raise NotFoundError("Opportunity not found")
+        return opp
+
+    def default_client_type(self, tenant_id: str, account_id: Optional[str]) -> str:
+        """EXISTING when the company has already won a deal with us (BR-SP-04)."""
+        if account_id and self.repos.opportunities.won_exists_for_account(tenant_id, account_id):
+            return "EXISTING"
+        return "NEW"
+
+    def apply_stage(self, opp: Any, stage_id: str) -> Any:
+        stage = self.repos.stages.get(opp.tenant_id, stage_id)
+        if not stage:
+            raise BadRequestError("Unknown sales stage")
+        status = stage_status(stage)
+        # A brand-new deal has no status yet (the column default applies on insert): treat it as open
+        if status != "OPEN" and opp.status in (None, "OPEN"):
+            opp.closed_at = utcnow()
+            if not opp.close_date:
+                opp.close_date = date.today()
+        elif status == "OPEN":
+            opp.closed_at = None
+        opp.stage_id, opp.status = stage.stage_id, status
+        # Closed deals always take the closed category; open ones follow the stage unless set by hand
+        if status != "OPEN" or not opp.forecast_category_manual:
+            opp.forecast_category = category_for(stage)
+            if status != "OPEN":
+                opp.forecast_category_manual = False
+        return stage
+
+    def notify_stage_change(self, opp: Any, stage: Any, actor: Any, previous_stage: Optional[str] = None) -> int:
+        """In-app notification (and email, per preference) when a deal is won, lost or changes stage."""
+        recipients = stage_change_recipients(opp.owner_id, self.collab.manager_of(opp.owner_id), actor.user_id)
+        if not recipients:
+            return 0
+        actor_name = getattr(actor, "full_name", None) or actor.email
+        kind, title, body = stage_change_message(opp.name, stage.name, stage_status(stage), actor_name,
+                                                 previous_stage, clean_str(opp.closed_reason))
+        return self.collab.notify(opp.tenant_id, recipients, kind, title, body, f"/app/deals/{opp.opportunity_id}")
+
+    def require_close_reason(self, opp: Any, stage: Any, reason: Optional[str]) -> None:
+        """A won or lost deal records why (BR-SF-05), unless the workspace turned that off."""
+        if stage_status(stage) != "OPEN" and not clean_str(reason) and \
+                self.settings(opp.tenant_id).get("require_close_reason", True):
+            raise BadRequestError(f"Say why the deal was {'won' if stage.is_won else 'lost'}")
+
+    def source_campaign(self, prospect_id: Optional[str], before: Optional[datetime] = None) -> Optional[str]:
+        """The campaign that most recently emailed the contact (before a date): its ROI gets the deal (BR-SF-11)."""
+        if not prospect_id:
+            return None
+        return self.repos.lookups.last_campaign_emailed(prospect_id, before)
+
+    def last_activity(self, opp_ids: List[str]) -> Dict[str, datetime]:
+        return self.repos.opportunities.last_activity(opp_ids)
+
+    def opp_dicts(self, opps: List[Any]) -> List[dict]:
+        if not opps:
+            return []
+        lookups = self.repos.lookups
+        names = self.user_names([o.owner_id for o in opps])
+        stages = self.repos.stages.by_ids(opps[0].tenant_id, {o.stage_id for o in opps})
+        accounts = lookups.account_names({o.account_id for o in opps if o.account_id})
+        contacts = lookups.prospects({o.prospect_id for o in opps if o.prospect_id})
+        campaigns = lookups.campaign_names({o.campaign_id for o in opps if o.campaign_id})
+        ctx = _OppContext(names=names, stages=stages, accounts=accounts, contacts=contacts, campaigns=campaigns,
+                          last_touch=self.last_activity([o.opportunity_id for o in opps]),
+                          stale_days=int(self.settings(opps[0].tenant_id).get("stale_deal_days") or 14),
+                          today=date.today())
+        return [_opp_dict(o, ctx) for o in opps]
+
+    def convert_lead(self, user: Any, lead: Any, data: dict, commit: Optional[Commit] = None) -> Any:
+        """SQL -> opportunity, carrying contact, company and owner across (BR-LD-06)."""
+        lead = self.repos.leads.lock(lead.lead_id)
+        if lead.stage != "SQL":
+            raise BadRequestError("Only sales-qualified leads (SQL) can be converted")
+        prospect = self.repos.lookups.prospect(lead.prospect_id)
+        account_id = self._convert_account(lead, prospect)
+        company = self.repos.lookups.account(account_id) if account_id else None
+        stage_list = self.stages(user.tenant_id, commit=commit)
+        stage_id = data.get("stage_id") or next(s.stage_id for s in stage_list if stage_status(s) == "OPEN")
+        owner_id = data.get("owner_id") or lead.owner_id
+        if owner_id != lead.owner_id:
+            self.check_assignable(user, owner_id)
+        name = clean_str(data.get("name")) or (
+            f"{company.name if company else (prospect.company_name or prospect.full_name)} - {date.today():%b %Y}")
+        opp = Opportunity(
+            tenant_id=user.tenant_id, name=name[:255], account_id=account_id, prospect_id=lead.prospect_id,
+            lead_id=lead.lead_id, owner_id=owner_id, stage_id=stage_id, amount=money(data.get("amount")),
+            close_date=data.get("close_date"),
+            client_type=data.get("client_type") or self.default_client_type(user.tenant_id, account_id),
+            next_step=clean_str(data.get("next_step")) or lead.next_step, created_by=user.user_id,
+            campaign_id=lead.campaign_id or self.source_campaign(lead.prospect_id, lead.created_at),
+        )
+        self.apply_stage(opp, stage_id)
+        self.repos.opportunities.add(opp)
+        self.repos.opportunities.flush()
+        lead.stage, lead.opportunity_id = "CONVERTED", opp.opportunity_id
+        lead.stage_changed_at = lead.converted_at = utcnow()
+        lead.account_id = account_id
+        self.sync_contact_lifecycle(prospect, "OPPORTUNITY", user.user_id)
+        self.collab.record_changes(user.tenant_id, "LEAD", lead.lead_id, {"stage": "SQL"}, {"stage": "CONVERTED"},
+                                   user.user_id, "UI")
+        self.collab.record_changes(user.tenant_id, "DEAL", opp.opportunity_id, {"created": None},
+                                   {"created": "Converted from lead"}, user.user_id, "UI")
+        return opp
+
+    def _convert_account(self, lead: Any, prospect: Any) -> Optional[str]:
+        account_id = lead.account_id or (prospect.account_id if prospect else None)
+        if not account_id and prospect:
+            account = self.collab.resolve_company(prospect.tenant_id, prospect.email, prospect.company_name)
+            if account:
+                account_id = account.account_id
+                prospect.account_id = account_id
+        return account_id
+
+    # ── deletes (dependents first: the database has no ON DELETE CASCADE) ──
+    def delete_proposals(self, proposal_ids: List[str]) -> None:
+        self.repos.proposals.delete_many(proposal_ids)
+
+    def delete_opportunities(self, opportunity_ids: List[str]) -> None:
+        self.repos.opportunities.delete_many(opportunity_ids)
+
+    def delete_leads(self, lead_ids: List[str]) -> None:
+        self.repos.leads.delete_many(lead_ids)
 
 
-# ── Opportunities ────────────────────────────────────────────
+# ── Base of the router-facing services ───────────────────────
 
-def visible_opps(db: Session, user: User) -> Query:
-    query = db.query(Opportunity).filter(Opportunity.tenant_id == user.tenant_id)
-    return scope(query, db, user, Opportunity.owner_id)
+CollaboratorFactory = Callable[[Any], SalesCollaborators]
 
 
-def get_opp(db: Session, user: User, opportunity_id: str) -> Opportunity:
-    opp = visible_opps(db, user).filter(Opportunity.opportunity_id == opportunity_id).first()
-    if not opp:
-        raise NotFoundError("Opportunity not found")
-    return opp
+class SalesServiceBase:
+    """One service call = one unit of work (ADR 0009). ``uow`` provides ``repos`` and ``session``
+    (handed to the collaborators); tests pass a fake unit of work and fake collaborators."""
+
+    def __init__(self, uow: Any, collaborators: Optional[CollaboratorFactory] = None) -> None:
+        self.uow = uow
+        self._collaborators: CollaboratorFactory = collaborators or ServiceCollaborators
+
+    @classmethod
+    def for_session(cls, db: SqlSession) -> Any:
+        return cls(SqlAlchemySalesUnitOfWork.for_session(db))
+
+    @contextmanager
+    def work(self) -> Iterator[SalesRules]:
+        with self.uow:
+            yield SalesRules(self.uow.repos, self._collaborators(self.uow.session))
+
+    def commit(self) -> None:
+        self.uow.commit()
 
 
-def default_client_type(db: Session, tenant_id: str, account_id: Optional[str]) -> str:
-    """EXISTING when the company has already won a deal with us (BR-SP-04)."""
-    if account_id and db.query(Opportunity.opportunity_id).filter(
-            Opportunity.tenant_id == tenant_id, Opportunity.account_id == account_id,
-            Opportunity.status == "WON").first():
-        return "EXISTING"
-    return "NEW"
+# ── Session API (the signatures other modules use) ───────────
+
+def _commit_of(db: SqlSession) -> Commit:
+    return db.commit
 
 
-def apply_stage(db: Session, opp: Opportunity, stage_id: str) -> SalesStage:
-    stage = db.query(SalesStage).filter(SalesStage.stage_id == stage_id,
-                                        SalesStage.tenant_id == opp.tenant_id).first()
-    if not stage:
-        raise BadRequestError("Unknown sales stage")
-    status = stage_status(stage)
-    # A brand-new deal has no status yet (the column default applies on insert): treat it as open
-    if status != "OPEN" and opp.status in (None, "OPEN"):
-        opp.closed_at = utcnow()
-        if not opp.close_date:
-            opp.close_date = date.today()
-    elif status == "OPEN":
-        opp.closed_at = None
-    opp.stage_id, opp.status = stage.stage_id, status
-    # Closed deals always take the closed category; open ones follow the stage unless set by hand
-    if status != "OPEN" or not opp.forecast_category_manual:
-        opp.forecast_category = category_for(stage)
-        if status != "OPEN":
-            opp.forecast_category_manual = False
-    return stage
+def stages(db: SqlSession, tenant_id: str, include_inactive: bool = False) -> List[Any]:
+    """The workspace's sales stages in order, seeding (and committing) the defaults the first time."""
+    return SalesRules.for_session(db).stages(tenant_id, include_inactive, commit=_commit_of(db))
 
 
-def stage_change_recipients(owner_id: Optional[str], manager_id: Optional[str],
-                            actor_id: Optional[str]) -> List[str]:
-    """Who hears about a deal moving: its owner and the owner's manager, never the person who moved it."""
-    return [u for u in dict.fromkeys((owner_id, manager_id)) if u and u != actor_id]
+def user_names(db: SqlSession, ids) -> Dict[str, str]:
+    return SalesRules.for_session(db).user_names(ids)
 
 
-def stage_change_message(deal_name: str, stage_name: str, status: str, actor_name: Optional[str],
-                         previous_stage: Optional[str] = None, reason: Optional[str] = None) -> Tuple[str, str, str]:
-    """(kind, title, body) for a deal won / lost / stage-change notification."""
-    deal_name = deal_name or "Deal"
-    who = actor_name or "Someone"
-    if status == "WON":
-        kind, title = "DEAL_WON", f"Deal won: {deal_name}"
-        body = f"{who} marked the deal won."
-    elif status == "LOST":
-        kind, title = "DEAL_LOST", f"Deal lost: {deal_name}"
-        body = f"{who} marked the deal lost."
-    else:
-        kind, title = "DEAL_STAGE", f"Deal moved to {stage_name}: {deal_name}"
-        body = f"{who} moved the deal" + (f" from {previous_stage}" if previous_stage else "") + f" to {stage_name}."
-    if reason and status in ("WON", "LOST"):
-        body += f" Reason: {reason}"
-    return kind, title, body
+def check_assignable(db: SqlSession, user: Any, owner_id: str) -> None:
+    SalesRules.for_session(db).check_assignable(user, owner_id)
 
 
-def notify_stage_change(db: Session, opp: Opportunity, stage: SalesStage, actor: User,
-                        previous_stage: Optional[str] = None) -> int:
-    """In-app notification (and email, per preference) when a deal is won, lost or changes stage. Caller commits."""
-    from app.services.notifications import manager_of, notify
-    recipients = stage_change_recipients(opp.owner_id, manager_of(db, opp.owner_id), actor.user_id)
-    if not recipients:
-        return 0
-    actor_name = getattr(actor, "full_name", None) or actor.email
-    kind, title, body = stage_change_message(opp.name, stage.name, stage_status(stage), actor_name,
-                                             previous_stage, clean_str(opp.closed_reason))
-    return notify(db, opp.tenant_id, recipients, kind, title, body, f"/app/deals/{opp.opportunity_id}")
+def get_lead(db: SqlSession, user: Any, lead_id: str) -> Any:
+    return SalesRules.for_session(db).get_lead(user, lead_id)
 
 
-def require_close_reason(db: Session, opp: Opportunity, stage: SalesStage, reason: Optional[str]) -> None:
-    """A won or lost deal records why (BR-SF-05), unless the workspace turned that off."""
-    from app.services.sales_settings import get_settings
-    if stage_status(stage) != "OPEN" and not clean_str(reason) and get_settings(db, opp.tenant_id).get("require_close_reason", True):
-        raise BadRequestError(f"Say why the deal was {'won' if stage.is_won else 'lost'}")
+def get_opp(db: SqlSession, user: Any, opportunity_id: str) -> Any:
+    return SalesRules.for_session(db).get_opp(user, opportunity_id)
 
 
-def source_campaign(db: Session, prospect_id: Optional[str], before: Optional[datetime] = None) -> Optional[str]:
-    """The campaign that most recently emailed the contact (before a date): its ROI gets the deal (BR-SF-11)."""
-    if not prospect_id:
-        return None
-    from app.models.email_message import EmailMessage
-    q = db.query(EmailMessage.campaign_id).filter(EmailMessage.prospect_id == prospect_id,
-                                                 EmailMessage.direction == "OUTBOUND",
-                                                 EmailMessage.sent_at.isnot(None),
-                                                 EmailMessage.campaign_id.isnot(None))
-    if before:
-        q = q.filter(EmailMessage.sent_at <= before)
-    row = q.order_by(EmailMessage.sent_at.desc()).first()
-    return row[0] if row else None
+def sync_contact_lifecycle(db: SqlSession, prospect: Any, lifecycle: Optional[str], user_id: Optional[str]) -> None:
+    SalesRules.for_session(db).sync_contact_lifecycle(prospect, lifecycle, user_id)
 
 
-def auto_owner(db: Session, tenant_id: str, prospect: Optional[Prospect]) -> Optional[str]:
-    """Owner for an unowned lead from the workspace's assignment rule (BR-SF-03): region, else round robin."""
-    from app.services.sales_settings import get_settings, save_settings
-    rule = get_settings(db, tenant_id)["lead_assignment"]
-    mode = rule.get("mode") or "off"
-    if mode == "off":
-        return None
-    active = {u for (u,) in db.query(User.user_id).filter(User.tenant_id == tenant_id, User.status == "ACTIVE")}
-    if mode == "region" and prospect is not None:
-        for r in rule.get("regions") or []:
-            value = (getattr(prospect, "poc_country" if r.get("field") == "country" else "poc_state", None) or "").strip().lower()
-            if value and value == (r.get("value") or "").strip().lower() and r.get("user_id") in active:
-                return r["user_id"]
-    pool = [u for u in (rule.get("users") or []) if u in active]
-    if not pool:
-        return None
-    index = int(rule.get("next_index") or 0) % len(pool)
-    save_settings(db, tenant_id, {"lead_assignment": {"next_index": index + 1}})
-    return pool[index]
+def set_lead_stage(db: SqlSession, lead: Any, stage: str, user: Any) -> None:
+    SalesRules.for_session(db).set_lead_stage(lead, stage, user)
 
 
-def opp_dicts(db: Session, opps: List[Opportunity]) -> List[dict]:
-    if not opps:
-        return []
-    names = user_names(db, [o.owner_id for o in opps])
-    stage_map = {s.stage_id: s for s in db.query(SalesStage).filter(
-        SalesStage.stage_id.in_({o.stage_id for o in opps}))}
-    accounts = {a.account_id: a.name for a in db.query(Account.account_id, Account.name).filter(
-        Account.account_id.in_({o.account_id for o in opps if o.account_id}))}
-    contacts = {p.prospect_id: p for p in db.query(Prospect).filter(
-        Prospect.prospect_id.in_({o.prospect_id for o in opps if o.prospect_id}))}
-    today = date.today()
-    from app.models.campaign import Campaign
-    campaigns = {c.campaign_id: c.campaign_name for c in db.query(Campaign.campaign_id, Campaign.campaign_name).filter(
-        Campaign.campaign_id.in_({o.campaign_id for o in opps if o.campaign_id}))} if any(o.campaign_id for o in opps) else {}
-    last_touch = last_activity(db, [o.opportunity_id for o in opps])
-    from app.services.sales_settings import get_settings
-    stale_days = int(get_settings(db, opps[0].tenant_id).get("stale_deal_days") or 14)
-    out = []
-    for o in opps:
-        s = stage_map.get(o.stage_id)
-        prob = s.probability if s else 0
-        amount = as_float(o.amount)
-        p = contacts.get(o.prospect_id)
-        out.append({
-            "opportunity_id": o.opportunity_id, "row_version": o.row_version, "name": o.name, "account_id": o.account_id,
-            "company_name": accounts.get(o.account_id), "prospect_id": o.prospect_id,
-            "contact_name": p.full_name if p else None, "contact_email": p.email if p else None,
-            "lead_id": o.lead_id, "owner_id": o.owner_id, "owner_name": names.get(o.owner_id),
-            "stage_id": o.stage_id, "stage_name": s.name if s else None, "probability": prob,
-            "amount": amount if o.amount is not None else None, "weighted_amount": round(amount * prob / 100, 2),
-            "close_date": o.close_date, "client_type": o.client_type, "status": o.status,
-            "closed_reason": o.closed_reason, "next_step": o.next_step, "description": o.description,
-            "closed_at": o.closed_at, "created_at": o.created_at, "updated_at": o.updated_at,
-            "overdue": bool(o.status == "OPEN" and o.close_date and o.close_date < today),
-            "forecast_category": o.forecast_category or (category_for(s) if s else "PIPELINE"),
-            "forecast_category_manual": bool(o.forecast_category_manual),
-            "campaign_id": o.campaign_id, "campaign_name": campaigns.get(o.campaign_id),
-            "days_idle": idle_days(o, last_touch.get(o.opportunity_id)),
-            "stale": bool(o.status == "OPEN" and (idle_days(o, last_touch.get(o.opportunity_id)) >= stale_days
-                                                   or (o.close_date and o.close_date < today))),
-        })
-    return out
+def lead_dicts(db: SqlSession, leads: List[Any]) -> List[dict]:
+    return SalesRules.for_session(db).lead_dicts(leads)
 
 
-def last_activity(db: Session, opp_ids: List[str]) -> Dict[str, datetime]:
-    """Latest logged activity or task change per deal."""
-    if not opp_ids:
-        return {}
-    from app.models.contact_activity import ContactActivity
-    from app.models.crm import CrmTask
-    out: Dict[str, datetime] = {}
-    for oid, at in db.query(ContactActivity.opportunity_id, func.max(ContactActivity.occurred_at)).filter(
-            ContactActivity.opportunity_id.in_(opp_ids)).group_by(ContactActivity.opportunity_id):
-        out[oid] = at
-    for oid, at in db.query(CrmTask.opportunity_id, func.max(CrmTask.updated_at)).filter(
-            CrmTask.opportunity_id.in_(opp_ids)).group_by(CrmTask.opportunity_id):
-        if at and (oid not in out or at > out[oid]):
-            out[oid] = at
-    return out
+def opp_dicts(db: SqlSession, opps: List[Any]) -> List[dict]:
+    return SalesRules.for_session(db).opp_dicts(opps)
 
 
-def idle_days(opp: Opportunity, last_touch: Optional[datetime]) -> int:
-    latest = max([d for d in (opp.updated_at or opp.created_at, last_touch) if d] or [utcnow()])
-    return max((utcnow() - latest).days, 0)
+def last_activity(db: SqlSession, opp_ids: List[str]) -> Dict[str, datetime]:
+    return SalesRules.for_session(db).last_activity(opp_ids)
 
 
-def convert_lead(db: Session, user: User, lead: Lead, data: dict) -> Opportunity:
-    """SQL → opportunity, carrying contact, company and owner across (BR-LD-06)."""
-    # Lock the lead row and re-read it so two simultaneous conversions can't both create a deal
-    lead = db.query(Lead).filter(Lead.lead_id == lead.lead_id).with_for_update().populate_existing().one()
-    if lead.stage != "SQL":
-        raise BadRequestError("Only sales-qualified leads (SQL) can be converted")
-    prospect = db.query(Prospect).filter(Prospect.prospect_id == lead.prospect_id).first()
-    account_id = lead.account_id or (prospect.account_id if prospect else None)
-    if not account_id and prospect:
-        account = crm.resolve_company(db, prospect.tenant_id, prospect.email, prospect.company_name)
-        if account:
-            account_id = account.account_id
-            prospect.account_id = account_id
-    company = db.query(Account).filter(Account.account_id == account_id).first() if account_id else None
-    stage_list = stages(db, user.tenant_id)
-    stage_id = data.get("stage_id") or next(s.stage_id for s in stage_list if stage_status(s) == "OPEN")
-    owner_id = data.get("owner_id") or lead.owner_id
-    if owner_id != lead.owner_id:
-        check_assignable(db, user, owner_id)
-    name = clean_str(data.get("name")) or (
-        f"{company.name if company else (prospect.company_name or prospect.full_name)} - {date.today():%b %Y}")
-    opp = Opportunity(
-        tenant_id=user.tenant_id, name=name[:255], account_id=account_id, prospect_id=lead.prospect_id,
-        lead_id=lead.lead_id, owner_id=owner_id, stage_id=stage_id, amount=money(data.get("amount")),
-        close_date=data.get("close_date"),
-        client_type=data.get("client_type") or default_client_type(db, user.tenant_id, account_id),
-        next_step=clean_str(data.get("next_step")) or lead.next_step, created_by=user.user_id,
-        campaign_id=lead.campaign_id or source_campaign(db, lead.prospect_id, lead.created_at),
-    )
-    apply_stage(db, opp, stage_id)
-    db.add(opp)
-    db.flush()
-    lead.stage, lead.opportunity_id = "CONVERTED", opp.opportunity_id
-    lead.stage_changed_at = lead.converted_at = utcnow()
-    lead.account_id = account_id
-    sync_contact_lifecycle(db, prospect, "OPPORTUNITY", user.user_id)
-    crm.record_changes(db, user.tenant_id, "LEAD", lead.lead_id, {"stage": "SQL"}, {"stage": "CONVERTED"},
-                       user.user_id, "UI")
-    crm.record_changes(db, user.tenant_id, "DEAL", opp.opportunity_id, {"created": None},
-                       {"created": "Converted from lead"}, user.user_id, "UI")
-    return opp
+def default_client_type(db: SqlSession, tenant_id: str, account_id: Optional[str]) -> str:
+    return SalesRules.for_session(db).default_client_type(tenant_id, account_id)
 
 
-# ── Delete (dependents first: the database has no ON DELETE CASCADE) ──
+def apply_stage(db: SqlSession, opp: Any, stage_id: str) -> Any:
+    return SalesRules.for_session(db).apply_stage(opp, stage_id)
 
-def delete_proposals(db: Session, proposal_ids: List[str]) -> None:
+
+def delete_proposals(db: SqlSession, proposal_ids: List[str]) -> None:
     """Delete proposals (quotes) with their line items. Caller commits."""
-    if not proposal_ids:
-        return
-    from app.models.sales import Proposal
-    from app.models.sales_extra import ProposalLine
-    db.query(ProposalLine).filter(ProposalLine.proposal_id.in_(proposal_ids)).delete(synchronize_session=False)
-    db.query(Proposal).filter(Proposal.proposal_id.in_(proposal_ids)).delete(synchronize_session=False)
+    SalesRules.for_session(db).delete_proposals(proposal_ids)
 
 
-def delete_opportunities(db: Session, opportunity_ids: List[str]) -> None:
-    """Delete deals and everything hanging off them: proposals and their lines, deal tasks and
-    history. Activities stay on the contact's timeline; converted leads go back to SQL. Caller commits."""
-    if not opportunity_ids:
-        return
-    from app.models.contact_activity import ContactActivity
-    from app.models.crm import CrmTask, PropertyChange
-    from app.models.sales import Proposal
-    delete_proposals(db, [pid for (pid,) in db.query(Proposal.proposal_id).filter(
-        Proposal.opportunity_id.in_(opportunity_ids))])
-    db.query(CrmTask).filter(CrmTask.opportunity_id.in_(opportunity_ids)).delete(synchronize_session=False)
-    db.query(ContactActivity).filter(ContactActivity.opportunity_id.in_(opportunity_ids),
-                                     ContactActivity.prospect_id.is_(None)).delete(synchronize_session=False)
-    db.query(ContactActivity).filter(ContactActivity.opportunity_id.in_(opportunity_ids)).update(
-        {ContactActivity.opportunity_id: None}, synchronize_session=False)
-    db.query(Lead).filter(Lead.opportunity_id.in_(opportunity_ids)).update(
-        {Lead.opportunity_id: None, Lead.stage: "SQL"}, synchronize_session=False)
-    db.query(PropertyChange).filter(PropertyChange.object_type == "DEAL",
-                                    PropertyChange.object_id.in_(opportunity_ids)).delete(synchronize_session=False)
-    db.query(Opportunity).filter(Opportunity.opportunity_id.in_(opportunity_ids)).delete(synchronize_session=False)
+def delete_opportunities(db: SqlSession, opportunity_ids: List[str]) -> None:
+    """Delete deals and everything hanging off them. Caller commits."""
+    SalesRules.for_session(db).delete_opportunities(opportunity_ids)
 
 
-def delete_leads(db: Session, lead_ids: List[str]) -> None:
+def delete_leads(db: SqlSession, lead_ids: List[str]) -> None:
     """Delete leads; deals converted from them keep going without the link. Caller commits."""
-    if not lead_ids:
-        return
-    from app.models.crm import PropertyChange
-    db.query(Opportunity).filter(Opportunity.lead_id.in_(lead_ids)).update(
-        {Opportunity.lead_id: None}, synchronize_session=False)
-    db.query(PropertyChange).filter(PropertyChange.object_type == "LEAD",
-                                    PropertyChange.object_id.in_(lead_ids)).delete(synchronize_session=False)
-    db.query(Lead).filter(Lead.lead_id.in_(lead_ids)).delete(synchronize_session=False)
+    SalesRules.for_session(db).delete_leads(lead_ids)
+
+
+def entity_id(value: str, missing: str) -> UUID:
+    """The UUID a path names, or 404 with the record's usual message (C-7: ids are UUIDs)."""
+    parsed = rules.parse_entity_id(value)
+    if parsed is None:
+        raise NotFoundError(missing)
+    return parsed

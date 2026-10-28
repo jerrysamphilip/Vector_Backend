@@ -4,11 +4,15 @@ Campaign Draft Model.
 Stores incomplete campaign creation state for resume functionality.
 """
 
-from sqlalchemy import Column, String, Integer, JSON
-import uuid
+from datetime import datetime
+from typing import Any, Optional
+
+from sqlalchemy import JSON, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class CampaignDraft(Base):
@@ -18,21 +22,22 @@ class CampaignDraft(Base):
     """
     __tablename__ = "campaign_drafts"
 
-    draft_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), nullable=False, index=True)
-    user_id = Column(String(36), nullable=False, index=True)
-    
+    draft_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+
     # Draft metadata
-    draft_name = Column(String(255), nullable=True)  # Auto-generated from campaign name
-    current_step = Column(Integer, default=1)
-    
+    draft_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # Auto-generated from campaign name
+    current_step: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=1)
+
     # Full wizard state as JSON
-    draft_data = Column(JSON, nullable=False, default=dict)
     # Stores: formData, selectedLists, sequenceSteps, processingResult, selectedPersona, etc.
-    
+    draft_data: Mapped[Any] = mapped_column(JSON, nullable=False, default=dict)
+
     # Timestamps
-    created_at = Column(UtcDateTime, server_default=NOW6)
-    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
-    
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6,
+                                                           onupdate=NOW6)
+
     def __repr__(self) -> str:
         return f"<CampaignDraft {self.draft_id} - Step {self.current_step}>"

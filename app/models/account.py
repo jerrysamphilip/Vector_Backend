@@ -2,53 +2,71 @@
 """
 Account (company) records. Contacts link to an account instead of only
 carrying company_name as free text.
+
+Typed SQLAlchemy 2 model (ADR 0009, chunk A1): the DDL is pinned by tests/unit/test_a1a_model_ddl.py.
+``custom_fields`` holds company custom property values keyed by field_key (C-16, migration
+0024_company_properties); definitions are ContactFieldDefinition rows with object_type COMPANY.
 """
 
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, UniqueConstraint, Numeric
-from sqlalchemy.orm import relationship
-import uuid
+from datetime import datetime
+from decimal import Decimal
+from typing import TYPE_CHECKING, Any, Optional
+
+from sqlalchemy import JSON, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 class Account(Base):
     __tablename__ = "accounts"
 
-    account_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False, index=True)
+    account_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False, index=True)
 
-    name = Column(String(255), nullable=False)
-    domain = Column(String(255), nullable=True)
-    website = Column(String(500), nullable=True)
-    phone = Column(String(50), nullable=True)
-    industry = Column(String(100), nullable=True)
-    emp_band = Column(String(50), nullable=True)
-    city = Column(String(100), nullable=True)
-    state = Column(String(100), nullable=True)
-    country = Column(String(100), nullable=True)
-    description = Column(Text, nullable=True)
-    street = Column(String(255), nullable=True)
-    postal_code = Column(String(20), nullable=True)
-    annual_revenue = Column(Numeric(18, 2), nullable=True)
-    lifecycle_stage = Column(String(30), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    domain: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    website: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    industry: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    emp_band: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    state: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    street: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    postal_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    annual_revenue: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    lifecycle_stage: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
 
     # Soft delete with 90-day restore (BR-CM-35)
-    deleted_at = Column(UtcDateTime, nullable=True)
-    deleted_by = Column(String(36), nullable=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    deleted_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
 
-    owner_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    owner_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=True)
 
-    created_at = Column(UtcDateTime, server_default=NOW6)
-    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
-    row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, onupdate=NOW6,
+                                                           nullable=True)
+    row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1,
+                                             server_default="1")  # T-3, app/core/concurrency.py
 
-    owner = relationship("User", foreign_keys=[owner_id])
+    # Company custom property values (C-16): {field_key: value}
+    custom_fields: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+
+    owner: Mapped[Optional["User"]] = relationship("User", foreign_keys=[owner_id])
     contacts = relationship("Prospect", back_populates="account", lazy="dynamic")
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "name", name="uq_account_tenant_name"),
         UniqueConstraint("tenant_id", "domain", name="uq_account_tenant_domain"),
+        # Target of contact_companies' (tenant_id, account_id) foreign key (C-22, 0028_child_tenant_ids)
+        UniqueConstraint("tenant_id", "account_id", name="uq_accounts_tenant_account"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

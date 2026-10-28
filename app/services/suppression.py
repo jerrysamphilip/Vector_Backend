@@ -15,12 +15,10 @@ import logging
 from datetime import datetime, timedelta
 from typing import Iterable, Optional, Set
 
-from sqlalchemy import ColumnElement, func, or_
-from sqlalchemy.orm import Session
-
 from app.core.clock import utcnow
 from app.core.config import settings
-from app.models import CampaignProspect, EmailMessage, GlobalUnsubscribe, Prospect
+from app.models.prospect import GlobalUnsubscribe, Prospect
+from app.repositories.suppression import Session, suppression_repo
 from app.utils.campaign_prospect_status import set_prospect_status
 
 logger = logging.getLogger(__name__)
@@ -28,28 +26,18 @@ logger = logging.getLogger(__name__)
 PENDING = ("QUEUED", "SCHEDULED")
 
 
-def active_clause(now: Optional[datetime] = None) -> ColumnElement[bool]:
-    now = now or utcnow()
-    return or_(GlobalUnsubscribe.suppression_expires_at.is_(None), GlobalUnsubscribe.suppression_expires_at > now)
-
-
 def suppressed_emails(db: Session, tenant_id: str, emails: Iterable[str]) -> Set[str]:
     """Lower-cased addresses from `emails` that have an active suppression."""
     wanted = {(e or "").strip().lower() for e in emails if e}
     if not wanted:
         return set()
-    return {(e or "").strip().lower() for (e,) in db.query(GlobalUnsubscribe.email).filter(
-        GlobalUnsubscribe.tenant_id == tenant_id, func.lower(GlobalUnsubscribe.email).in_(wanted), active_clause())}
+    return {(e or "").strip().lower() for e in suppression_repo(db).active_emails(tenant_id, wanted, utcnow())}
 
 
 def active_suppression(db: Session, tenant_id: str, email: str) -> Optional[GlobalUnsubscribe]:
     if not email:
         return None
-    return db.query(GlobalUnsubscribe).filter(
-        GlobalUnsubscribe.tenant_id == tenant_id,
-        func.lower(GlobalUnsubscribe.email) == email.strip().lower(),
-        active_clause(),
-    ).first()
+    return suppression_repo(db).active(tenant_id, email, utcnow())
 
 
 def blocked_reason(db: Session, prospect: Prospect) -> Optional[str]:
@@ -93,8 +81,8 @@ def suppress(
     now = utcnow()
     expires = voluntary_expiry(now) if kind == "UNSUBSCRIBE" else None
 
-    entry = db.query(GlobalUnsubscribe).filter(
-        GlobalUnsubscribe.tenant_id == tenant_id, func.lower(GlobalUnsubscribe.email) == email_l).first()
+    repo = suppression_repo(db)
+    entry = repo.entry(tenant_id, email_l)
     if entry:
         # Never shorten an existing block: a complaint or bounce stays permanent
         if entry.suppression_expires_at is not None and (expires is None or expires > entry.suppression_expires_at):
@@ -102,10 +90,10 @@ def suppress(
         entry.reason = reason[:255]
         entry.unsubscribed_at = now
     else:
-        db.add(GlobalUnsubscribe(tenant_id=tenant_id, email=email_l, unsubscribed_at=now,
+        repo.add(GlobalUnsubscribe(tenant_id=tenant_id, email=email_l, unsubscribed_at=now,
                                  suppression_expires_at=expires, reason=reason[:255]))
 
-    contacts = db.query(Prospect).filter(Prospect.tenant_id == tenant_id, func.lower(Prospect.email) == email_l).all()
+    contacts = repo.contacts_with_email(tenant_id, email_l)
     ids = [p.prospect_id for p in contacts]
     # Outbound webhooks (BR-SF-20): email.bounced / email.unsubscribed (a repeat unsubscribe is not re-sent)
     from app.services import webhooks
@@ -120,13 +108,9 @@ def suppress(
 
     cancelled = 0
     if ids:
-        cancelled = db.query(EmailMessage).filter(
-            EmailMessage.prospect_id.in_(ids), EmailMessage.direction == "OUTBOUND",
-            EmailMessage.status.in_(PENDING),
-        ).update({EmailMessage.status: "CANCELLED", EmailMessage.failure_reason: f"Suppressed: {reason}"[:1000]},
-                 synchronize_session=False)
+        cancelled = repo.cancel_pending(ids, PENDING, f"Suppressed: {reason}"[:1000])
         cp_status = "BOUNCED" if kind == "HARD_BOUNCE" else "UNSUBSCRIBED"
-        for cp in db.query(CampaignProspect).filter(CampaignProspect.prospect_id.in_(ids)):
+        for cp in repo.enrolments(ids):
             if cp.status in ("ACTIVE", "OPENED", "PAUSED", "RECONNECT_ELIGIBLE"):
                 set_prospect_status(cp, cp_status, stopped_reason=reason[:100])
     logger.info("[Suppression] %s %s: %d contact(s), %d pending email(s) cancelled", kind, email_l, len(ids), cancelled)
@@ -135,7 +119,4 @@ def suppress(
 
 def lift(db: Session, tenant_id: str, email: str) -> None:
     """Remove a suppression (contact re-subscribed by a user). Caller commits."""
-    db.query(GlobalUnsubscribe).filter(
-        GlobalUnsubscribe.tenant_id == tenant_id,
-        func.lower(GlobalUnsubscribe.email) == (email or "").strip().lower(),
-    ).delete(synchronize_session=False)
+    suppression_repo(db).remove(tenant_id, (email or "").strip().lower())

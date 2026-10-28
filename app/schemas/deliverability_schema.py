@@ -3,7 +3,7 @@
 """
 Pydantic schemas for Deliverability and Domain Reputation.
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Any
 from datetime import datetime
 
@@ -146,3 +146,9 @@ class SentEmailLogEntry(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# POST /deliverability/domains: a sending domain to add to the workspace (no docstring: it would
+# become the schema's OpenAPI description)
+class DomainCreate(BaseModel):
+    domain_name: str = Field(..., min_length=1, max_length=300)

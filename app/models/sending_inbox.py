@@ -3,13 +3,15 @@
 Sending Inbox model for SMTP email accounts.
 """
 
-from sqlalchemy import Column, String, Boolean, Integer, ForeignKey, Float, Text
+from datetime import datetime
+from typing import Optional
+from sqlalchemy import String, Boolean, Integer, ForeignKey, Float, Text
 from app.core.encrypted_type import EncryptedString, EncryptedText
-from sqlalchemy.orm import relationship
-import uuid
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.types import UtcDateTime
+from app.core.ids import new_id
 
 
 class SendingInbox(Base):
@@ -19,80 +21,80 @@ class SendingInbox(Base):
     """
     __tablename__ = "sending_inboxes"
 
-    inbox_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
+    inbox_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id, nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     
-    email_address = Column(String(255), nullable=False)
-    provider = Column(String(50), nullable=True)  # gmail / sendgrid / outlook / etc
+    email_address: Mapped[str] = mapped_column(String(255), nullable=False)
+    provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # gmail / sendgrid / outlook / etc
     
     # SMTP Configuration (per-inbox sending credentials)
-    smtp_host = Column(String(255), nullable=True)
-    smtp_port = Column(Integer, default=587)
-    smtp_username = Column(String(255), nullable=True)
-    smtp_password = Column(EncryptedString, nullable=True)  # encrypted at rest
-    smtp_use_ssl = Column(Boolean, default=False)   # False=STARTTLS(587), True=SSL(465)
+    smtp_host: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    smtp_port: Mapped[Optional[int]] = mapped_column(Integer, default=587, nullable=True)
+    smtp_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    smtp_password: Mapped[Optional[str]] = mapped_column(EncryptedString, nullable=True)  # encrypted at rest
+    smtp_use_ssl: Mapped[Optional[bool]] = mapped_column(Boolean, default=False, nullable=True)   # False=STARTTLS(587), True=SSL(465)
 
     # Mailbox sign-in (BR-DF-05): PASSWORD, or OAUTH_MS365 for Microsoft 365 mailboxes
     # where basic auth is blocked; IMAP/SMTP then authenticate with XOAUTH2.
-    auth_type = Column(String(30), default="PASSWORD")
-    oauth_refresh_token = Column(EncryptedText, nullable=True)
-    oauth_access_token = Column(EncryptedText, nullable=True)
-    oauth_expires_at = Column(UtcDateTime, nullable=True)
-    oauth_error = Column(Text, nullable=True)
-    imap_last_error = Column(Text, nullable=True)   # last reply-sync failure, shown on the inbox
+    auth_type: Mapped[Optional[str]] = mapped_column(String(30), default="PASSWORD", server_default="PASSWORD", nullable=True)
+    oauth_refresh_token: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    oauth_access_token: Mapped[Optional[str]] = mapped_column(EncryptedText, nullable=True)
+    oauth_expires_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    oauth_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    imap_last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # last reply-sync failure, shown on the inbox
 
     # IMAP Configuration
-    imap_host = Column(String(255), nullable=True)
-    imap_port = Column(Integer, default=993)
-    imap_username = Column(String(255), nullable=True)
-    imap_password = Column(EncryptedString, nullable=True)  # encrypted at rest
-    last_sync_at = Column(UtcDateTime, nullable=True)
+    imap_host: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    imap_port: Mapped[Optional[int]] = mapped_column(Integer, default=993, nullable=True)
+    imap_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    imap_password: Mapped[Optional[str]] = mapped_column(EncryptedString, nullable=True)  # encrypted at rest
+    last_sync_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
     
     # Rate Limiting
     # 500/day is the post-warmup baseline this application is sized for (see
     # current_daily_limit below) — verify against the AWS SES account's
     # Max24HourSend / MaxSendRate before relying on it for a given tenant.
-    daily_limit = Column(Integer, default=500)
-    cooling_period_hours = Column(Integer, default=24)
+    daily_limit: Mapped[Optional[int]] = mapped_column(Integer, default=500, nullable=True)
+    cooling_period_hours: Mapped[Optional[int]] = mapped_column(Integer, default=24, nullable=True)
 
     # Warm-up & Throttle Settings (user-configurable)
     # Defaults to False: mailboxes send at daily_limit immediately rather than
     # ramping. The ramp (WARMUP_SCHEDULE below) still exists and can be
     # switched on per-mailbox for a brand-new domain that needs to build
     # reputation gradually — it's just no longer the default.
-    warmup_enabled = Column(Boolean, default=False)
-    warmup_day = Column(Integer, default=0)                    # Current warmup day (0 = day of creation)
-    warmup_start_date = Column(UtcDateTime, nullable=True)       # When warmup started
-    max_emails_per_day = Column(Integer, nullable=True)        # User override (null = use warmup schedule)
+    warmup_enabled: Mapped[Optional[bool]] = mapped_column(Boolean, default=False, nullable=True)
+    warmup_day: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)                    # Current warmup day (0 = day of creation)
+    warmup_start_date: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)       # When warmup started
+    max_emails_per_day: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)        # User override (null = use warmup schedule)
     # Seconds between emails for this inbox. 60s supports up to 1440/day over a
     # full 24h day; a restricted campaign send_window shrinks that ceiling
     # (window_seconds / delay_between_emails) — see current_daily_limit.
-    delay_between_emails = Column(Integer, default=60)
-    emails_sent_today = Column(Integer, default=0)             # Counter reset daily
-    last_daily_reset = Column(UtcDateTime, nullable=True)        # When counter was last reset
+    delay_between_emails: Mapped[Optional[int]] = mapped_column(Integer, default=60, nullable=True)
+    emails_sent_today: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)             # Counter reset daily
+    last_daily_reset: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)        # When counter was last reset
 
     # Warm-up operations settings / health
-    warmup_status = Column(String(50), default="ACTIVE")       # ACTIVE / PAUSED / ISSUE / COOLING / DISABLED
-    warmup_pool = Column(String(50), default="FOUNDATION")     # FOUNDATION / GROWTH / PREMIUM / ULTRA_PREMIUM
-    warmup_reputation = Column(Float, default=65.0)
-    warmup_auto_adjust = Column(Boolean, default=True)
-    warmup_randomize = Column(Boolean, default=True)
-    warmup_reply_rate_target = Column(Integer, default=35)
-    warmup_max_target = Column(Integer, nullable=True)
-    warmup_daily_target = Column(Integer, default=0)
-    warmup_identifier = Column(String(120), nullable=True)
-    warmup_issue_code = Column(String(100), nullable=True)
-    warmup_issue_message = Column(Text, nullable=True)
-    warmup_last_activity_at = Column(UtcDateTime, nullable=True)
-    warmup_today_sent = Column(Integer, default=0)
-    warmup_today_opened = Column(Integer, default=0)
-    warmup_today_replied = Column(Integer, default=0)
-    warmup_today_saved = Column(Integer, default=0)
+    warmup_status: Mapped[Optional[str]] = mapped_column(String(50), default="ACTIVE", nullable=True)       # ACTIVE / PAUSED / ISSUE / COOLING / DISABLED
+    warmup_pool: Mapped[Optional[str]] = mapped_column(String(50), default="FOUNDATION", nullable=True)     # FOUNDATION / GROWTH / PREMIUM / ULTRA_PREMIUM
+    warmup_reputation: Mapped[Optional[float]] = mapped_column(Float, default=65.0, nullable=True)
+    warmup_auto_adjust: Mapped[Optional[bool]] = mapped_column(Boolean, default=True, nullable=True)
+    warmup_randomize: Mapped[Optional[bool]] = mapped_column(Boolean, default=True, nullable=True)
+    warmup_reply_rate_target: Mapped[Optional[int]] = mapped_column(Integer, default=35, nullable=True)
+    warmup_max_target: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    warmup_daily_target: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    warmup_identifier: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    warmup_issue_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    warmup_issue_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    warmup_last_activity_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    warmup_today_sent: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    warmup_today_opened: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    warmup_today_replied: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    warmup_today_saved: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
 
     # Status
-    last_sent_at = Column(UtcDateTime, nullable=True)
-    is_in_cooling = Column(Boolean, default=False)
-    status = Column(String(50), default="ACTIVE")  # ACTIVE / PAUSED / WARMING
+    last_sent_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    is_in_cooling: Mapped[Optional[bool]] = mapped_column(Boolean, default=False, nullable=True)
+    status: Mapped[Optional[str]] = mapped_column(String(50), default="ACTIVE", nullable=True)  # ACTIVE / PAUSED / WARMING
 
     # Relationships
     tenant = relationship("Tenant", back_populates="sending_inboxes")

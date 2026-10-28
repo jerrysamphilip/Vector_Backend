@@ -159,7 +159,11 @@ All OpenAI calls go through the client wrapper in `app/services/sender_identity.
 - **Static typing**: `mypy.ini` checks `app/core`, `app/services` and `app/utils` in CI;
   `app/core` must be fully annotated. ORM models are treated as `Any` until they move to `Mapped[...]`.
 
-## 8. Known debt
+## 8. Layer pattern
+
+The per-aggregate layout, naming and tests are in [LAYER_PATTERN.md](LAYER_PATTERN.md) (reference: contacts).
+
+## 9. Known debt
 
 - ORM models use classic `Column(...)` declarations; moving them to `Mapped[...]` would let mypy check
   attribute types in services.

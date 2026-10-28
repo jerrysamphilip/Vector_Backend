@@ -22,17 +22,16 @@ from email.utils import getaddresses, parsedate_to_datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlencode
 
-import httpx
-from jose import JWTError, jwt
-from sqlalchemy import func
-from sqlalchemy.orm import Session
-
+from app.adapters import providers
 from app.core.clock import utcnow
+from app.core import tokens
 from app.core.config import settings
+from app.core.tokens import TokenError
 from app.models.contact_activity import ContactActivity
 from app.models.prospect import Prospect
 from app.models.sales_extra import UserConnection
 from app.models.user import User
+from app.repositories.connections import Session, connections_repo
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +47,14 @@ class SyncError(Exception):
     pass
 
 
-# HTTP is behind two functions so tests can replace them
-def http_post(url: str, data: dict) -> httpx.Response:
-    return httpx.post(url, data=data, timeout=20)
+# HTTP goes through the OAuthHttp adapter (app/adapters/m365.py); tests swap it with
+# providers.override(oauth_http=...)
+def http_post(url: str, data: dict) -> Any:
+    return providers.oauth_http().post_form(url, data, timeout=20)
 
 
-def http_request(method: str, url: str, token: str, params: dict | None = None, json: dict | None = None) -> httpx.Response:
-    return httpx.request(method, url, params=params, json=json, timeout=30,
-                         headers={"Authorization": f"Bearer {token}"})
+def http_request(method: str, url: str, token: str, params: dict | None = None, json: dict | None = None) -> Any:
+    return providers.oauth_http().bearer_request(method, url, token, params=params, json=json, timeout=30)
 
 
 # ── OAuth ────────────────────────────────────────────────────
@@ -71,15 +70,14 @@ def _ms_endpoint(path: str) -> str:
 
 
 def make_state(user: User, provider: str, nonce: str | None = None) -> str:
-    return jwt.encode({"user_id": user.user_id, "provider": provider, "purpose": "account_sync", "nonce": nonce,
-                       "exp": utcnow() + timedelta(minutes=15)},
-                      settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return tokens.encode({"user_id": user.user_id, "provider": provider, "purpose": "account_sync", "nonce": nonce,
+                          "exp": utcnow() + timedelta(minutes=15)})
 
 
 def read_state(state: str) -> dict:
     try:
-        data = jwt.decode(state, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-    except JWTError as exc:
+        data = tokens.decode(state, require=("purpose",))
+    except TokenError as exc:
         raise SyncError("The sign-in link has expired. Try connecting again.") from exc
     if data.get("purpose") != "account_sync" or data.get("provider") not in PROVIDERS:
         raise SyncError("Invalid sign-in state")
@@ -117,11 +115,10 @@ def _token(provider: str, data: dict) -> dict:
 def complete(db: Session, user: User, provider: str, code: str) -> UserConnection:
     redirect = settings.GOOGLE_SYNC_REDIRECT_URI if provider == "GOOGLE" else settings.GRAPH_REDIRECT_URI
     tokens = _token(provider, {"grant_type": "authorization_code", "code": code, "redirect_uri": redirect})
-    conn = db.query(UserConnection).filter(UserConnection.user_id == user.user_id,
-                                           UserConnection.provider == provider).first()
+    repo = connections_repo(db)
+    conn = repo.by_provider(user.user_id, provider)
     if not conn:
-        conn = UserConnection(tenant_id=user.tenant_id, user_id=user.user_id, provider=provider)
-        db.add(conn)
+        conn = repo.add(UserConnection(tenant_id=user.tenant_id, user_id=user.user_id, provider=provider))
     _store(conn, tokens)
     conn.last_error = None
     try:
@@ -158,21 +155,21 @@ def access_token(db: Session, conn: UserConnection) -> str:
 
 def _contacts_by_email(db: Session, user: User, emails: Iterable[str]) -> Dict[str, Prospect]:
     """Contacts this user may see, by lower-cased email."""
-    from app.services.contact_service import scope
+    from app.services.contact_service import visibility_scope
     wanted = {e.strip().lower() for e in emails if e and "@" in e}
     if not wanted:
         return {}
-    q = db.query(Prospect).filter(Prospect.tenant_id == user.tenant_id, Prospect.deleted_at.is_(None),
-                                  func.lower(Prospect.email).in_(wanted))
-    return {p.email.lower(): p for p in scope(q, db, user, Prospect.owner_id)}
+    found = connections_repo(db).contacts_by_emails(user.tenant_id, visibility_scope(db, user), wanted)
+    return {p.email.lower(): p for p in found}
 
 
 def _log(db: Session, user: User, prospect: Prospect, kind: str, source: str, external_id: str,
          at: datetime, subject: Optional[str], body: Optional[str], duration: Optional[int] = None) -> bool:
     key = f"{external_id}:{prospect.prospect_id}"[:255]
-    if db.query(ContactActivity.activity_id).filter(ContactActivity.external_id == key).first():
+    repo = connections_repo(db)
+    if repo.activity_logged(key):
         return False
-    db.add(ContactActivity(tenant_id=user.tenant_id, prospect_id=prospect.prospect_id, activity_type=kind,
+    repo.add(ContactActivity(tenant_id=user.tenant_id, prospect_id=prospect.prospect_id, activity_type=kind,
                            subject=(subject or "(no subject)")[:255], body=(body or "")[:2000] or None,
                            duration_minutes=duration, occurred_at=at, created_by=user.user_id,
                            source=source, external_id=key))
@@ -233,6 +230,19 @@ def _google_calendar(db, user, conn, token, since: datetime) -> int:
 
 # ── Microsoft Graph ──────────────────────────────────────────
 
+def _graph_people(m: dict) -> Tuple[str, List[str]]:
+    """(sender, everyone on the message) of a Graph message, lower-cased."""
+    sender = ((m.get("from") or {}).get("emailAddress") or {}).get("address", "").lower()
+    people = [sender] + [((r.get("emailAddress") or {}).get("address") or "").lower()
+                         for r in (m.get("toRecipients") or []) + (m.get("ccRecipients") or [])]
+    return sender, people
+
+
+def _graph_sent_at(m: dict) -> datetime:
+    stamp = m.get("sentDateTime") or m.get("receivedDateTime")
+    return _parse_iso(stamp) if stamp else utcnow()
+
+
 def _graph_mail(db, user, conn, token, since: datetime) -> int:
     resp = http_request("GET", f"{GRAPH}/me/messages", token, params={
         "$filter": f"lastModifiedDateTime ge {since.isoformat()}Z", "$top": 200,
@@ -242,10 +252,8 @@ def _graph_mail(db, user, conn, token, since: datetime) -> int:
     logged = 0
     me = (conn.account_email or user.email or "").lower()
     for m in resp.json().get("value", []):
-        sender = ((m.get("from") or {}).get("emailAddress") or {}).get("address", "").lower()
-        people = [sender] + [((r.get("emailAddress") or {}).get("address") or "").lower()
-                             for r in (m.get("toRecipients") or []) + (m.get("ccRecipients") or [])]
-        at = _parse_iso(m.get("sentDateTime") or m.get("receivedDateTime")) if (m.get("sentDateTime") or m.get("receivedDateTime")) else utcnow()
+        sender, people = _graph_people(m)
+        at = _graph_sent_at(m)
         outbound = sender == me
         for p in _contacts_by_email(db, user, [a for a in people if a and a != me]).values():
             logged += _log(db, user, p, "EMAIL", "OUTLOOK", f"outlook:{m['id']}", at,
@@ -278,7 +286,8 @@ def _graph_calendar(db, user, conn, token, since: datetime) -> int:
 # ── Sync entry points ────────────────────────────────────────
 
 def sync_connection(db: Session, conn: UserConnection) -> dict:
-    user = db.query(User).filter(User.user_id == conn.user_id).first()
+    repo = connections_repo(db)
+    user = repo.user(conn.user_id)
     if not user or user.status != "ACTIVE":
         return {"skipped": True}
     since = (conn.last_sync_at or utcnow() - timedelta(days=LOOKBACK_DAYS)) - timedelta(minutes=5)
@@ -299,7 +308,7 @@ def sync_connection(db: Session, conn: UserConnection) -> dict:
     except Exception as exc:  # provider API / token failure: keep it visible on the connection
         logger.warning("Sync of %s connection %s failed: %s", conn.provider, conn.connection_id, exc)
         db.rollback()
-        conn = db.query(UserConnection).filter(UserConnection.connection_id == conn.connection_id).first()
+        conn = repo.by_id(conn.connection_id)
         conn.last_error = f"{utcnow():%Y-%m-%d %H:%M} UTC: {exc}"[:2000]
         result["error"] = str(exc)
     db.commit()
@@ -308,7 +317,7 @@ def sync_connection(db: Session, conn: UserConnection) -> dict:
 
 def sync_all(db: Session) -> int:
     n = 0
-    for conn in db.query(UserConnection).all():
+    for conn in connections_repo(db).every():
         if (conn.provider == "GOOGLE" and not configured("GOOGLE")) or (conn.provider == "MICROSOFT" and not configured("MICROSOFT")):
             continue
         sync_connection(db, conn)
@@ -318,10 +327,11 @@ def sync_all(db: Session) -> int:
 
 def push_meeting(db: Session, user: User, activity: ContactActivity, deal_name: Optional[str] = None) -> Optional[str]:
     """Create the logged meeting in the user's calendar, inviting the contact. Best effort."""
-    conn = db.query(UserConnection).filter(UserConnection.user_id == user.user_id, UserConnection.sync_calendar.is_(True)).first()
+    repo = connections_repo(db)
+    conn = repo.calendar_connection(user.user_id)
     if not conn or not configured(conn.provider):
         return None
-    prospect = db.query(Prospect).filter(Prospect.prospect_id == activity.prospect_id).first() if activity.prospect_id else None
+    prospect = repo.prospect(activity.prospect_id) if activity.prospect_id else None
     start = activity.occurred_at
     end = start + timedelta(minutes=activity.duration_minutes or 30)
     title = activity.subject or (f"Meeting: {deal_name}" if deal_name else "Meeting")

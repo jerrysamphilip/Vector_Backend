@@ -23,15 +23,14 @@ from datetime import timedelta
 from typing import Optional
 from urllib.parse import urlencode
 
-import httpx
-from jose import JWTError, jwt
-from sqlalchemy.orm import Session
-from sqlalchemy.orm.attributes import set_committed_value
-
+from app.adapters import providers
 from app.core.clock import utcnow
+from app.core import tokens
 from app.core.config import settings
+from app.core.tokens import TokenError
 from app.core.database import SessionLocal
 from app.models.sending_inbox import SendingInbox
+from app.repositories.mailbox_tokens import Session, end_read_transaction, mirror_committed, save_token_fields
 
 logger = logging.getLogger(__name__)
 
@@ -63,13 +62,13 @@ def make_state(inbox_id: str, tenant_id: str, user_id: str, nonce: str | None = 
     payload = {"inbox_id": inbox_id, "tenant_id": tenant_id, "user_id": user_id, "purpose": "ms365_oauth",
                "nonce": nonce,
                "exp": utcnow() + timedelta(minutes=STATE_TTL_MINUTES)}
-    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return tokens.encode(payload)
 
 
 def read_state(state: str) -> dict:
     try:
-        data = jwt.decode(state, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-    except JWTError as exc:
+        data = tokens.decode(state, require=("purpose",))
+    except TokenError as exc:
         raise OAuthError("The sign-in link has expired. Start the connection again.") from exc
     if data.get("purpose") != "ms365_oauth":
         raise OAuthError("Invalid sign-in state")
@@ -92,7 +91,7 @@ def authorize_url(inbox: SendingInbox, state: str) -> str:
 def _token_request(data: dict) -> dict:
     data = {"client_id": settings.MS365_CLIENT_ID, "client_secret": settings.MS365_CLIENT_SECRET,
             "scope": SCOPES, **data}
-    resp = httpx.post(_endpoint("token"), data=data, timeout=20)
+    resp = providers.oauth_http().post_form(_endpoint("token"), data, timeout=20)
     body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
     if resp.status_code != 200 or "access_token" not in body:
         raise OAuthError(body.get("error_description") or body.get("error") or f"Token request failed ({resp.status_code})")
@@ -149,33 +148,23 @@ def access_token(db: Session, inbox: SendingInbox) -> OAuthToken:
     except OAuthError as exc:
         error = f"Microsoft 365 sign-in expired: {exc}. Reconnect the mailbox."[:2000]
         _save_token_fields(inbox_id, {"oauth_error": error})
-        set_committed_value(inbox, "oauth_error", error)
+        mirror_committed(inbox, "oauth_error", error)
         raise
     fields = _token_fields(tokens)
     _save_token_fields(inbox_id, fields)
     for name, value in fields.items():  # mirror onto the caller's object without dirtying it
-        set_committed_value(inbox, name, value)
+        mirror_committed(inbox, name, value)
     return OAuthToken(fields["oauth_access_token"])
 
 
 def _end_read_transaction(db: Optional[Session]) -> None:
     """Ends the caller's transaction when it holds only reads, keeping its objects loaded."""
-    if db is None or not db.in_transaction() or db.new or db.dirty or db.deleted:
-        return
-    keep = db.expire_on_commit
-    db.expire_on_commit = False
-    try:
-        db.commit()  # nothing pending: this only releases the snapshot / connection
-    finally:
-        db.expire_on_commit = keep
+    end_read_transaction(db)
 
 
 def _save_token_fields(inbox_id: str, fields: dict) -> None:
     """Writes the token columns in their own short transaction, apart from the caller's session."""
-    with SessionLocal() as token_db:
-        token_db.query(SendingInbox).filter(SendingInbox.inbox_id == inbox_id).update(
-            fields, synchronize_session=False)
-        token_db.commit()
+    save_token_fields(SessionLocal, inbox_id, fields)
 
 
 def xoauth2(username: str, token: str) -> str:

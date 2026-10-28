@@ -33,7 +33,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from helpers import (FakeImap, HOST_FROM_CONTAINERS, business_tz, get_user, get_workspace, load_state,  # noqa: E402
                      q, reply_mime, req, rows, save_state, scalar, ses_bounce, ses_complaint, ses_delivery,
-                     ses_post, sql, upload_csv, utcnow, wait_until)
+                     ses_post, sql, sql_error, upload_csv, utcnow, wait_until)
 from common import Results, run_id, WEB, login  # noqa: E402
 
 SCRATCH = os.environ.get("PW_DIR", "/tmp/claude-0/-home-user/b764cdf9-b625-5070-aae1-e6d130b3e7df/scratchpad")
@@ -658,10 +658,24 @@ def t_pause_resume():
 # ═════════════════════════ BR-DF-08 unsubscribe ═════════════════════════
 
 @safe("OUT-081", "Unsubscribe stops every campaign in the workspace")
+def _live_in_two_campaigns(p):
+    """A contact still mid-sequence in an ACTIVE campaign is refused by another one (active_elsewhere), so
+    enrol it in both while they are drafts, then launch both: the contact is live in two campaigns."""
+    c1 = mk_campaign(A, "Unsub one", [IN1], waits=(0, 2))
+    c2 = mk_campaign(A, "Unsub two", [IN2], waits=(0,))
+    for c in (c1, c2):
+        s, b = enroll(A, c, [p])
+        assert s == 200 and b["enrolled_count"] == 1, ("enroll", s, b)
+        stub(A, c)
+    for c in (c1, c2):
+        s, b = launch(A, c)
+        assert s == 200, ("launch", s, b)
+    return c1, c2
+
+
 def t_unsubscribe():
     p = mk_contact(A, em("uns-main"))
-    c1 = ready_campaign(A, "Unsub one", [IN1], [p], waits=(0, 2))
-    c2 = ready_campaign(A, "Unsub two", [IN2], [p], waits=(0,))
+    c1, c2 = _live_in_two_campaigns(p)
     m1 = msg(c1, p)[0]
     mark_sent(m1)
     s, page = req("GET", f"/tracking/unsubscribe/{m1}")
@@ -788,6 +802,19 @@ def t_duplicates():
     enroll(A, cid, [p2])
     n_m = scalar(f"SELECT COUNT(*) FROM email_messages WHERE campaign_id={q(cid)}")
     rec("OUT-064", "Enrolling a new contact after launch adds only that contact's emails", n_m == "4", f"msgs={n_m}")
+    # 0020: at most one live email per (campaign, contact, step). A copy of an already-sent step row is refused
+    # by the database itself (ux_email_messages_step_key), so no code path can queue that step twice.
+    first = msg(cid, p)[0]
+    mark_sent(first)
+    err = sql_error(
+        f"INSERT INTO email_messages (message_id, campaign_id, prospect_id, tenant_id, sequence_id, inbox_id, from_email, "
+        f"to_email, subject, body_text, status, scheduled_at, direction, template_id, max_retries, retry_count) "
+        f"SELECT UUID(), campaign_id, prospect_id, tenant_id, sequence_id, inbox_id, from_email, to_email, subject, body_text, "
+        f"'QUEUED', UTC_TIMESTAMP(), 'OUTBOUND', template_id, max_retries, 0 FROM email_messages WHERE message_id={q(first)}")
+    n_step = scalar(f"SELECT COUNT(*) FROM email_messages m JOIN email_sequences s ON s.sequence_id=m.sequence_id "
+                    f"WHERE m.campaign_id={q(cid)} AND m.prospect_id={q(p)} AND s.step_number=1")
+    rec("OUT-065", "Database refuses a second email row for an already-sent step of the same contact (step_key)",
+        "Duplicate entry" in err and "ux_email_messages_step_key" in err and n_step == "1", f"err={err[:200]!r} rows={n_step}")
 
 
 @safe("OUT-110", "Multi-domain inbox rotation")
@@ -941,6 +968,7 @@ def setup_scheduler_cases():
     win = ("00:00:00", "23:59:00")
     pids = {k: mk_contact(A, em(k)) for k in ("sch-reply", "sch-supp", "sch-dup", "sch-ok")}
     pids["sch-personal"] = mk_contact(A, f"personal-{RID}@gmail.com")
+    twin = mk_contact(A, em("sch-dup-old"))   # not enrolled: stands in for an earlier record of sch-dup's address
     cid = ready_campaign(A, "Scheduler", [IN1], list(pids.values()), waits=(0, 2), window=win, tz=tz)
     out["cid"], out["pids"] = cid, pids
     # stop-on-reply via manual mark: step 1 sent, marked replied, step 2 due
@@ -952,13 +980,20 @@ def setup_scheduler_cases():
     sql(f"INSERT INTO global_unsubscribes (tenant_id, email, unsubscribed_at, reason) VALUES "
         f"({q(A.tenant_id)}, {q(em('sch-supp'))}, UTC_TIMESTAMP(), 'systest out-of-band')")
     out["supp"] = msg(cid, pids["sch-supp"])[0]
-    # duplicate: the same step to the same address was already sent by another row
+    # duplicate: this step already went to the same address from another row. Since 0020 the database
+    # refuses a second live row for the same (campaign, contact, step) (ux_email_messages_step_key, checked
+    # in OUT-065), but the step_key is per contact while the scheduler's send-time guard is per address:
+    # the earlier send is recorded under another contact record holding the same address (e.g. the
+    # contact was re-created or merged after that send), which the schema allows. Only the guard stops it.
     orig = msg(cid, pids["sch-dup"])[0]
-    sql(f"INSERT INTO email_messages (message_id, campaign_id, prospect_id, sequence_id, inbox_id, from_email, to_email, "
-        f"subject, body_text, status, scheduled_at, sent_at, direction, template_id, max_retries, retry_count) "
-        f"SELECT UUID(), campaign_id, prospect_id, sequence_id, inbox_id, from_email, to_email, subject, body_text, 'SENT', "
-        f"scheduled_at, UTC_TIMESTAMP(), 'OUTBOUND', template_id, max_retries, 0 FROM email_messages WHERE message_id={q(orig)}")
+    sql(f"INSERT INTO email_messages (message_id, campaign_id, prospect_id, tenant_id, sequence_id, inbox_id, from_email, "
+        f"to_email, subject, body_text, status, scheduled_at, sent_at, direction, template_id, max_retries, retry_count) "
+        f"SELECT UUID(), campaign_id, {q(twin)}, tenant_id, sequence_id, inbox_id, from_email, to_email, subject, body_text, "
+        f"'SENT', scheduled_at, UTC_TIMESTAMP(), 'OUTBOUND', template_id, max_retries, 0 FROM email_messages "
+        f"WHERE message_id={q(orig)}")
     out["dup"] = orig
+    out["dup_prior"] = scalar(f"SELECT COUNT(*) FROM email_messages WHERE campaign_id={q(cid)} AND prospect_id={q(twin)} "
+                              f"AND status='SENT'")
     out["ok"] = msg(cid, pids["sch-ok"])[0]
     out["personal"] = msg(cid, pids["sch-personal"])[0]
     # outside the send window
@@ -991,7 +1026,8 @@ def check_scheduler_cases(sc):
         st[0] == "CANCELLED" and "suppress" in st[1].lower(), f"{st[:2]}")
     st = mstatus(sc["dup"])
     rec("OUT-060", "A second email for an already-sent step to the same address is cancelled, not sent",
-        st[0] == "CANCELLED" and "duplicate" in st[1].lower(), f"{st[:2]}")
+        sc["dup_prior"] == "1" and st[0] == "CANCELLED" and "duplicate" in st[1].lower(),
+        f"prior sent rows={sc['dup_prior']} status={st[:2]}")
     st = mstatus(sc["window"])
     resched = st[5] and datetime.fromisoformat(st[5]) > utcnow() + timedelta(minutes=20)
     rec("OUT-035", "Due email outside the campaign send window is held and re-queued, not sent",

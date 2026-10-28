@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.config import settings
-from app.routers import auth_router
+from app.services import password_reset_email
 from app.services import invitation_email
 from app.utils import safe_origin
 
@@ -78,10 +78,10 @@ def _request(**headers):
 
 
 def test_sec_reset_link_malicious_origin_falls_back(local_env, configured_urls):
-    link = auth_router._build_reset_link_for_origin("tok", _request(origin="http://evil.example\\@localhost"))
+    link = password_reset_email.build_reset_link("tok", _request(origin="http://evil.example\\@localhost"))
     assert link == "https://app.example.com/reset-password?token=tok"
     # a bad Origin does not stop a good Referer
-    link = auth_router._build_reset_link_for_origin(
+    link = password_reset_email.build_reset_link(
         "tok", _request(origin="http://evil.example@localhost", referer="http://localhost:5173/login"))
     assert link == "http://localhost:5173/reset-password?token=tok"
 
@@ -90,10 +90,10 @@ def test_sec_reset_and_magic_link_localhost_only_locally(monkeypatch, configured
     monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
     monkeypatch.setattr(settings, "ENVIRONMENT", "development")
     req = _request(origin="http://localhost:5173")
-    assert auth_router._build_reset_link_for_origin("t", req) == "http://localhost:5173/reset-password?token=t"
+    assert password_reset_email.build_reset_link("t", req) == "http://localhost:5173/reset-password?token=t"
     assert invitation_email.build_magic_login_link("t", req) == "http://localhost:5173/magic-login?token=t"
     monkeypatch.setattr(settings, "ENVIRONMENT", "production")
-    assert auth_router._build_reset_link_for_origin("t", req) == "https://app.example.com/reset-password?token=t"
+    assert password_reset_email.build_reset_link("t", req) == "https://app.example.com/reset-password?token=t"
     assert invitation_email.build_magic_login_link("t", req) == "https://app.example.com/magic-login?token=t"
 
 

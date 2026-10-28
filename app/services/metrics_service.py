@@ -3,13 +3,11 @@
 Real-time metrics service for campaign dashboard.
 """
 
-from sqlalchemy.orm import Session
-from sqlalchemy import func
-from typing import Any, Optional
-import uuid
+from typing import Any
 
 from app.models.metrics import CampaignMetricsRealtime
 from app.models.email_message import EmailEvent
+from app.repositories.campaign_metrics import Session, campaign_metrics_repo
 
 
 class MetricsService:
@@ -17,6 +15,7 @@ class MetricsService:
     
     def __init__(self, db: Session) -> None:
         self.db = db
+        self.repo = campaign_metrics_repo(db)
     
     def get_or_create_metrics(self, campaign_id: str) -> CampaignMetricsRealtime:
         """
@@ -28,10 +27,8 @@ class MetricsService:
         Returns:
             CampaignMetricsRealtime instance
         """
-        metrics = self.db.query(CampaignMetricsRealtime).filter(
-            CampaignMetricsRealtime.campaign_id == campaign_id
-        ).first()
-        
+        metrics = self.repo.get(campaign_id)
+
         if not metrics:
             metrics = CampaignMetricsRealtime(
                 campaign_id=campaign_id,
@@ -41,8 +38,8 @@ class MetricsService:
                 bounced_count=0,
                 row_version=0,
             )
-            self.db.add(metrics)
-            self.db.flush()
+            self.repo.add(metrics)
+            self.repo.flush()
         
         return metrics
     
@@ -51,7 +48,7 @@ class MetricsService:
         metrics = self.get_or_create_metrics(campaign_id)
         metrics.sent_count += count
         metrics.row_version += 1
-        self.db.flush()
+        self.repo.flush()
         return metrics
     
     def increment_opened(self, campaign_id: str, count: int = 1) -> CampaignMetricsRealtime:
@@ -59,7 +56,7 @@ class MetricsService:
         metrics = self.get_or_create_metrics(campaign_id)
         metrics.opened_count += count
         metrics.row_version += 1
-        self.db.flush()
+        self.repo.flush()
         return metrics
     
     def increment_replied(self, campaign_id: str, count: int = 1) -> CampaignMetricsRealtime:
@@ -67,7 +64,7 @@ class MetricsService:
         metrics = self.get_or_create_metrics(campaign_id)
         metrics.replied_count += count
         metrics.row_version += 1
-        self.db.flush()
+        self.repo.flush()
         return metrics
     
     def increment_bounced(self, campaign_id: str, count: int = 1) -> CampaignMetricsRealtime:
@@ -75,7 +72,7 @@ class MetricsService:
         metrics = self.get_or_create_metrics(campaign_id)
         metrics.bounced_count += count
         metrics.row_version += 1
-        self.db.flush()
+        self.repo.flush()
         return metrics
 
     def increment_sender_bounced(self, campaign_id: str, count: int = 1) -> CampaignMetricsRealtime:
@@ -83,7 +80,7 @@ class MetricsService:
         metrics = self.get_or_create_metrics(campaign_id)
         metrics.sender_bounced_count += count
         metrics.row_version += 1
-        self.db.flush()
+        self.repo.flush()
         return metrics
 
     def increment_positive_replied(self, campaign_id: str, count: int = 1) -> CampaignMetricsRealtime:
@@ -91,7 +88,7 @@ class MetricsService:
         metrics = self.get_or_create_metrics(campaign_id)
         metrics.positive_replied_count += count
         metrics.row_version += 1
-        self.db.flush()
+        self.repo.flush()
         return metrics
 
     def increment_ooo(self, campaign_id: str, count: int = 1) -> CampaignMetricsRealtime:
@@ -99,7 +96,7 @@ class MetricsService:
         metrics = self.get_or_create_metrics(campaign_id)
         metrics.ooo_count += count
         metrics.row_version += 1
-        self.db.flush()
+        self.repo.flush()
         return metrics
 
     def process_event(self, campaign_id: str, event_type: int) -> CampaignMetricsRealtime:
@@ -164,74 +161,17 @@ class MetricsService:
         Force sync metrics from raw message and event data.
         Use this to fix out-of-sync or historical metrics.
         """
-        from app.models.email_message import EmailMessage, EmailEvent
-        from app.models.campaign import CampaignProspect
-
-        # 1. Total Sent
-        sent_count = self.db.query(func.count(EmailMessage.message_id)).filter(
-            EmailMessage.campaign_id == campaign_id,
-            EmailMessage.status == "SENT"
-        ).scalar() or 0
-
-        # 2. Total Opened (Unique messages opened)
-        opened_count = self.db.query(func.count(func.distinct(EmailEvent.message_id))).join(
-            EmailMessage, EmailMessage.message_id == EmailEvent.message_id
-        ).filter(
-            EmailMessage.campaign_id == campaign_id,
-            EmailEvent.event_type == EmailEvent.EVENT_OPEN
-        ).scalar() or 0
-        
-        # Robust Open Check: Any prospect in REPLIED or OPENED status must have been opened
-        opened_status_count = self.db.query(func.count(CampaignProspect.id)).filter(
-            CampaignProspect.campaign_id == campaign_id,
-            CampaignProspect.status.in_(["OPENED", "REPLIED"])
-        ).scalar() or 0
-        opened_count = max(opened_count, opened_status_count)
-
-        # 3. Total Replied (Unique messages replied)
-        replied_count = self.db.query(func.count(func.distinct(EmailEvent.message_id))).join(
-            EmailMessage, EmailMessage.message_id == EmailEvent.message_id
-        ).filter(
-            EmailMessage.campaign_id == campaign_id,
-            EmailEvent.event_type == EmailEvent.EVENT_REPLY
-        ).scalar() or 0
-        
-        # Robust Reply Check: Any prospect in REPLIED status
-        replied_status_count = self.db.query(func.count(CampaignProspect.id)).filter(
-            CampaignProspect.campaign_id == campaign_id,
-            CampaignProspect.status == "REPLIED"
-        ).scalar() or 0
-        replied_count = max(replied_count, replied_status_count)
-
-        # 4. Total Bounced
-        bounced_count = self.db.query(func.count(func.distinct(EmailEvent.message_id))).join(
-            EmailMessage, EmailMessage.message_id == EmailEvent.message_id
-        ).filter(
-            EmailMessage.campaign_id == campaign_id,
-            EmailEvent.event_type == EmailEvent.EVENT_BOUNCE
-        ).scalar() or 0
-
-        # 5. Sender-attributable bounces, positive-intent replies, OOO replies
-        sender_bounced_count = self.db.query(func.count(func.distinct(EmailEvent.message_id))).join(
-            EmailMessage, EmailMessage.message_id == EmailEvent.message_id
-        ).filter(
-            EmailMessage.campaign_id == campaign_id,
-            EmailEvent.event_type == EmailEvent.EVENT_SENDER_BOUNCE
-        ).scalar() or 0
-
-        positive_replied_count = self.db.query(func.count(func.distinct(EmailEvent.message_id))).join(
-            EmailMessage, EmailMessage.message_id == EmailEvent.message_id
-        ).filter(
-            EmailMessage.campaign_id == campaign_id,
-            EmailEvent.event_type == EmailEvent.EVENT_POSITIVE_REPLY
-        ).scalar() or 0
-
-        ooo_count = self.db.query(func.count(func.distinct(EmailEvent.message_id))).join(
-            EmailMessage, EmailMessage.message_id == EmailEvent.message_id
-        ).filter(
-            EmailMessage.campaign_id == campaign_id,
-            EmailEvent.event_type == EmailEvent.EVENT_REPLY_OOO
-        ).scalar() or 0
+        repo = self.repo
+        sent_count = repo.sent(campaign_id)
+        # Opened / replied: unique messages with the event, or at least the contacts whose status shows it
+        opened_count = max(repo.messages_with_event(campaign_id, EmailEvent.EVENT_OPEN),
+                           repo.enrolments_in(campaign_id, ["OPENED", "REPLIED"]))
+        replied_count = max(repo.messages_with_event(campaign_id, EmailEvent.EVENT_REPLY),
+                            repo.enrolments_in(campaign_id, ["REPLIED"]))
+        bounced_count = repo.messages_with_event(campaign_id, EmailEvent.EVENT_BOUNCE)
+        sender_bounced_count = repo.messages_with_event(campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
+        positive_replied_count = repo.messages_with_event(campaign_id, EmailEvent.EVENT_POSITIVE_REPLY)
+        ooo_count = repo.messages_with_event(campaign_id, EmailEvent.EVENT_REPLY_OOO)
 
         # Update table
         metrics = self.get_or_create_metrics(campaign_id)
@@ -244,7 +184,7 @@ class MetricsService:
         metrics.ooo_count = ooo_count
         metrics.row_version += 1
         
-        self.db.add(metrics)
-        self.db.flush()
-        
+        self.repo.add(metrics)
+        self.repo.flush()
+
         return metrics

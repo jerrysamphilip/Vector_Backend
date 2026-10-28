@@ -19,18 +19,16 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
-from sqlalchemy import and_, func, or_
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
 from app.core.clock import utcnow
-from app.models.account import Account
-from app.models.contact_activity import ContactActivity
+from app.core.errors import BadRequestError, NotFoundError
+from app.core.job_locks import release, try_acquire
 from app.models.contact_scoring import ContactScoringModel
-from app.models.crm import CrmTask, PropertyChange
-from app.models.email_message import EmailEvent, EmailMessage
+from app.models.crm import PropertyChange
 from app.models.prospect import Prospect
+from app.models.user import User
+from app.repositories.contact_scoring import ScoringRepository, Session, scoring_repo
 from app.services import scoring_engine as engine
+from app.services.contact_query_service import get_contact
 
 logger = logging.getLogger(__name__)
 
@@ -41,33 +39,30 @@ STALE_AFTER_HOURS = 24      # the worker rescores contacts last scored before th
 OOO_SCAN_CHARS = 500        # subject / body characters checked for out-of-office markers
 REPLY_SCAN_CAP = 50_000     # inbound messages read per scoring batch
 
-_PROSPECT_COLUMNS = (
-    Prospect.prospect_id, Prospect.tenant_id, Prospect.email, Prospect.email_type, Prospect.designation,
-    Prospect.industry, Prospect.emp_band, Prospect.poc_country, Prospect.lifecycle_stage, Prospect.lead_status,
-    Prospect.lead_source, Prospect.tags, Prospect.phone, Prospect.mobile_phone, Prospect.account_id,
-    Prospect.score, Prospect.fit_score, Prospect.engagement_score, Prospect.score_grade,
-)
-
 
 def _now() -> datetime:
     return utcnow().replace(microsecond=0)
+
+
+def _repo(db: Session) -> ScoringRepository:
+    return scoring_repo(db)
 
 
 # ── Model ─────────────────────────────────────────────────────────
 
 def get_model_row(db: Session, tenant_id: str) -> ContactScoringModel:
     """The workspace's scoring model row, created with the default rules on first use."""
-    row = db.get(ContactScoringModel, tenant_id)
+    repo = _repo(db)
+    row = repo.model_row(tenant_id)
     if row is not None:
         return row
-    row = ContactScoringModel(tenant_id=tenant_id, model=engine.default_model())
-    db.add(row)
-    try:
-        db.commit()
-    except IntegrityError:  # another request seeded it first
-        db.rollback()
-        row = db.get(ContactScoringModel, tenant_id)
-    return row
+    seeded = ContactScoringModel(tenant_id=tenant_id, model=engine.default_model())
+    if repo.seed_model_row(seeded):
+        return seeded
+    found = repo.model_row(tenant_id)  # another request seeded it first
+    if found is None:
+        raise NotFoundError("Scoring model not found")
+    return found
 
 
 def get_model(db: Session, tenant_id: str) -> Dict[str, Any]:
@@ -93,13 +88,7 @@ def request_recompute(db: Session, tenant_id: str) -> ContactScoringModel:
 
 
 def model_payload(db: Session, row: ContactScoringModel) -> Dict[str, Any]:
-    total = db.query(func.count(Prospect.prospect_id)).filter(
-        Prospect.tenant_id == row.tenant_id, Prospect.deleted_at.is_(None)).scalar() or 0
-    scored = db.query(func.count(Prospect.prospect_id)).filter(
-        Prospect.tenant_id == row.tenant_id, Prospect.deleted_at.is_(None), Prospect.score.isnot(None)).scalar() or 0
-    grades = dict(db.query(Prospect.score_grade, func.count(Prospect.prospect_id)).filter(
-        Prospect.tenant_id == row.tenant_id, Prospect.deleted_at.is_(None), Prospect.score_grade.isnot(None)
-    ).group_by(Prospect.score_grade).all())
+    total, scored, grades = _repo(db).contact_stats(row.tenant_id)
     return {
         "model": engine.load_model(row.model),
         "defaults": engine.default_model(),
@@ -131,10 +120,7 @@ def _email_type(email: Optional[str], stored: Optional[str]) -> Optional[str]:
 
 
 def _contact_inputs(db: Session, rows: List[Any]) -> Dict[str, Dict[str, Any]]:
-    account_ids = {r.account_id for r in rows if r.account_id}
-    accounts = {a.account_id: a for a in db.query(
-        Account.account_id, Account.emp_band, Account.annual_revenue, Account.industry, Account.country
-    ).filter(Account.account_id.in_(account_ids))} if account_ids else {}
+    accounts = _repo(db).account_rows({r.account_id for r in rows if r.account_id})
     contacts = {}
     for r in rows:
         acc = accounts.get(r.account_id)
@@ -161,40 +147,24 @@ def _activity_inputs(db: Session, ids: List[str], since: datetime) -> Dict[str, 
     activity: Dict[str, Dict[str, list]] = {pid: defaultdict(list) for pid in ids}
     if not ids:
         return activity
-    event_signal = {EmailEvent.EVENT_OPEN: "email_opened", EmailEvent.EVENT_CLICK: "email_clicked",
-                    EmailEvent.EVENT_POSITIVE_REPLY: "positive_reply"}
+    repo = _repo(db)
     # One open / click / positive reply per email (the first one), however often it repeats
-    for pid, etype, at in db.query(EmailMessage.prospect_id, EmailEvent.event_type, func.min(EmailEvent.event_time)).join(
-            EmailMessage, EmailMessage.message_id == EmailEvent.message_id).filter(
-            EmailMessage.prospect_id.in_(ids), EmailEvent.event_type.in_(list(event_signal)),
-            EmailEvent.event_time >= since).group_by(EmailMessage.prospect_id, EmailEvent.message_id, EmailEvent.event_type):
-        if at is not None:
-            activity[pid][event_signal[etype]].append((at, 1))
+    for pid, signal, at in repo.first_email_events(ids, since):
+        activity[pid][signal].append((at, 1))
     # Replies: emails received from the contact, except out-of-office / vacation auto-replies
     # (same subject/body markers the IMAP sync uses; the Auto-Submitted header is not stored)
     replies: Dict[tuple, int] = defaultdict(int)
-    for pid, sent_at, subject, body in db.query(
-            EmailMessage.prospect_id, EmailMessage.sent_at, func.substr(EmailMessage.subject, 1, OOO_SCAN_CHARS),
-            func.substr(EmailMessage.body_text, 1, OOO_SCAN_CHARS)).filter(
-            EmailMessage.prospect_id.in_(ids), EmailMessage.direction == "INBOUND",
-            EmailMessage.sent_at >= since).limit(REPLY_SCAN_CAP):
+    for pid, sent_at, subject, body in repo.inbound_replies(ids, since, OOO_SCAN_CHARS, REPLY_SCAN_CAP):
         if sent_at is None or is_auto_reply(subject, body):
             continue
         replies[(pid, sent_at.date())] += 1
     for (pid, day), n in replies.items():
         activity[pid]["email_replied"].append((day, n))
     # Meetings and calls logged against the contact
-    kinds = {"MEETING": "meeting", "CALL": "call"}
-    for pid, kind, day, n in db.query(ContactActivity.prospect_id, ContactActivity.activity_type,
-                                      func.date(ContactActivity.occurred_at), func.count()).filter(
-            ContactActivity.prospect_id.in_(ids), ContactActivity.activity_type.in_(list(kinds)),
-            ContactActivity.occurred_at >= since).group_by(
-            ContactActivity.prospect_id, ContactActivity.activity_type, func.date(ContactActivity.occurred_at)):
-        activity[pid][kinds[kind]].append((day, n))
+    for pid, signal, day, n in repo.logged_activities(ids, since):
+        activity[pid][signal].append((day, n))
     # Tasks on the contact marked done
-    for pid, day, n in db.query(CrmTask.prospect_id, func.date(CrmTask.completed_at), func.count()).filter(
-            CrmTask.prospect_id.in_(ids), CrmTask.status == "DONE", CrmTask.completed_at >= since).group_by(
-            CrmTask.prospect_id, func.date(CrmTask.completed_at)):
+    for pid, day, n in repo.completed_tasks(ids, since):
         activity[pid]["task_completed"].append((day, n))
     return activity
 
@@ -205,20 +175,6 @@ def is_auto_reply(subject: Optional[str], body: Optional[str]) -> bool:
     return is_out_of_office(subject or "", body or "")
 
 
-def _latest_grades(db: Session, tenant_id: str, ids: List[str]) -> Dict[str, Optional[str]]:
-    """The new_value of each contact's most recent score_grade history row."""
-    latest: Dict[str, Optional[str]] = {}
-    if not ids:
-        return latest
-    rows = db.query(PropertyChange.object_id, PropertyChange.new_value).filter(
-        PropertyChange.tenant_id == tenant_id, PropertyChange.object_type == "CONTACT",
-        PropertyChange.field == "score_grade", PropertyChange.object_id.in_(ids)
-    ).order_by(PropertyChange.changed_at, PropertyChange.change_id)
-    for pid, value in rows:
-        latest[pid] = value  # ordered oldest first, so the last one wins
-    return latest
-
-
 def grade_history_needed(stored_grade: Optional[str], new_grade: Optional[str], latest_logged: Optional[str]) -> bool:
     """Write a history row only when an existing grade changes and the latest row does not
     already record this same new grade (two overlapping runs must not log it twice)."""
@@ -226,11 +182,7 @@ def grade_history_needed(stored_grade: Optional[str], new_grade: Optional[str], 
 
 
 def _load_rows(db: Session, tenant_id: str, ids: Iterable[str]) -> List[Any]:
-    ids = list(dict.fromkeys(i for i in ids if i))
-    if not ids:
-        return []
-    return db.query(*_PROSPECT_COLUMNS).filter(
-        Prospect.tenant_id == tenant_id, Prospect.prospect_id.in_(ids), Prospect.deleted_at.is_(None)).all()
+    return _repo(db).contact_rows(tenant_id, list(dict.fromkeys(i for i in ids if i)))
 
 
 # ── Scoring ───────────────────────────────────────────────────────
@@ -255,23 +207,20 @@ def score_contacts(db: Session, tenant_id: str, ids: Iterable[str], model: Optio
     rows = _load_rows(db, tenant_id, list(ids)[:BATCH_SIZE])
     if not rows:
         return 0
+    repo = _repo(db)
     contacts = _contact_inputs(db, rows)
     activity = _activity_inputs(db, [r.prospect_id for r in rows], now - timedelta(days=model["lookback_days"]))
-    table = Prospect.__table__
     results = {r.prospect_id: engine.compute_score(model, contacts[r.prospect_id], activity[r.prospect_id], now)
                for r in rows}
     changed = [r.prospect_id for r in rows if r.score_grade and r.score_grade != results[r.prospect_id]["grade"]]
-    latest = _latest_grades(db, tenant_id, changed)
+    latest = repo.latest_grades(tenant_id, changed)
     for r in rows:
         result = results[r.prospect_id]
-        # Core UPDATE that sets updated_at to itself: a score is not an edit of the contact
-        db.execute(table.update().where(table.c.prospect_id == r.prospect_id).values(
-            score=result["score"], fit_score=result["fit"], engagement_score=result["engagement"],
-            score_grade=result["grade"], scored_at=now, updated_at=table.c.updated_at))
+        repo.store_score(r.prospect_id, result, now)
         if grade_history_needed(r.score_grade, result["grade"], latest.get(r.prospect_id)):
-            db.add(PropertyChange(tenant_id=tenant_id, object_type="CONTACT", object_id=r.prospect_id,
-                                  field="score_grade", old_value=r.score_grade, new_value=result["grade"],
-                                  source="SYSTEM", changed_by=changed_by))
+            repo.add(PropertyChange(tenant_id=tenant_id, object_type="CONTACT", object_id=r.prospect_id,
+                                    field="score_grade", old_value=r.score_grade, new_value=result["grade"],
+                                    source="SYSTEM", changed_by=changed_by))
     return len(rows)
 
 
@@ -291,7 +240,6 @@ def rescore(db: Session, tenant_id: str, ids: Iterable[str], changed_by: Optiona
 
 def _try_lock(name: str) -> Any:
     try:
-        from app.jobs import try_acquire
         return try_acquire(name)
     except Exception as e:  # no lock available (e.g. database unreachable): run unlocked
         logger.warning("Scoring lock %s unavailable (%s)", name, type(e).__name__)
@@ -300,7 +248,6 @@ def _try_lock(name: str) -> Any:
 
 def _release(conn, name: str) -> None:
     if conn and conn != "unlocked":
-        from app.jobs import release
         release(conn, name)
 
 
@@ -317,9 +264,7 @@ def recompute_tenant(tenant_id: str) -> Optional[int]:
             model = get_model(db, tenant_id)
             done, last_id = 0, ""
             while done < TENANT_CAP:
-                ids = [r[0] for r in db.query(Prospect.prospect_id).filter(
-                    Prospect.tenant_id == tenant_id, Prospect.deleted_at.is_(None), Prospect.prospect_id > last_id
-                ).order_by(Prospect.prospect_id).limit(BATCH_SIZE)]
+                ids = _repo(db).live_ids_after(tenant_id, last_id, BATCH_SIZE)
                 if not ids:
                     break
                 done += score_contacts(db, tenant_id, ids, model=model, now=started)
@@ -343,23 +288,15 @@ def run_scoring_job(cap: int = JOB_CAP, tenant_id: Optional[str] = None) -> Dict
     from app.core.database import SessionLocal
     stats = {"recomputed_tenants": 0, "refreshed": 0}
     with SessionLocal() as db:
-        pending_q = db.query(ContactScoringModel.tenant_id).filter(ContactScoringModel.recompute_requested_at.isnot(None))
-        if tenant_id:
-            pending_q = pending_q.filter(ContactScoringModel.tenant_id == tenant_id)
-        pending = [r[0] for r in pending_q.limit(20)]
+        pending = _repo(db).recompute_requested(tenant_id, 20)
     for pending_tenant in pending:
         if recompute_tenant(pending_tenant) is not None:
             stats["recomputed_tenants"] += 1
 
     with SessionLocal() as db:
         cutoff = _now() - timedelta(hours=STALE_AFTER_HOURS)
-        stale_q = db.query(Prospect.tenant_id, Prospect.prospect_id).filter(
-            Prospect.deleted_at.is_(None),
-            or_(Prospect.scored_at.is_(None), and_(Prospect.scored_at.isnot(None), Prospect.scored_at < cutoff)))
-        if tenant_id:
-            stale_q = stale_q.filter(Prospect.tenant_id == tenant_id)
         by_tenant: Dict[str, List[str]] = defaultdict(list)
-        for stale_tenant, pid in stale_q.limit(cap).all():
+        for stale_tenant, pid in _repo(db).stale_contacts(cutoff, tenant_id, cap):
             by_tenant[stale_tenant].append(pid)
         for stale_tenant, ids in by_tenant.items():
             # Same per-workspace lock as recompute_tenant: a sweep never overlaps a full recompute
@@ -378,3 +315,58 @@ def run_scoring_job(cap: int = JOB_CAP, tenant_id: Optional[str] = None) -> Dict
             finally:
                 _release(conn, lock)
     return stats
+
+
+# ── Routes ────────────────────────────────────────────────────────
+
+class ContactScoringService:
+    """The scoring routes (GET/PUT /contacts/scoring-model, scores of one contact). The background
+    recompute after a model change is scheduled by the router (FastAPI BackgroundTasks)."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    @classmethod
+    def for_session(cls, db: Session) -> "ContactScoringService":
+        return cls(db)
+
+    def model(self, user: User) -> Dict[str, Any]:
+        return model_payload(self.db, get_model_row(self.db, user.tenant_id))
+
+    def save_model(self, user: User, raw: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            row = save_model(self.db, user.tenant_id, raw, user.user_id)
+        except engine.ScoringModelError as exc:
+            raise BadRequestError(str(exc)) from exc
+        return model_payload(self.db, row)
+
+    def request_recompute(self, user: User) -> Dict[str, Any]:
+        row = request_recompute(self.db, user.tenant_id)
+        return {"status": "queued", "contacts": _repo(self.db).count_live(user.tenant_id),
+                "requested_at": row.recompute_requested_at}
+
+    def _score_response(self, user: User, prospect: Prospect) -> Dict[str, Any]:
+        model = get_model(self.db, user.tenant_id)
+        live = evaluate(self.db, user.tenant_id, [prospect.prospect_id], model=model).get(prospect.prospect_id)
+        if live is None:
+            raise NotFoundError("Contact not found")
+        return {
+            "prospect_id": prospect.prospect_id,
+            "stored": {"score": prospect.score, "fit": prospect.fit_score, "engagement": prospect.engagement_score,
+                       "grade": prospect.score_grade, "scored_at": prospect.scored_at},
+            **live,
+            "grade_thresholds": model["grade_thresholds"],
+            "half_life_days": model["half_life_days"],
+            "lookback_days": model["lookback_days"],
+        }
+
+    def contact_score(self, user: User, prospect_id: str) -> Dict[str, Any]:
+        """The stored score and a live breakdown (anyone who can see the contact)."""
+        return self._score_response(user, get_contact(self.db, user, prospect_id))
+
+    def recompute_contact(self, user: User, prospect_id: str) -> Dict[str, Any]:
+        prospect = get_contact(self.db, user, prospect_id)
+        score_contacts(self.db, user.tenant_id, [prospect.prospect_id])
+        self.db.commit()
+        self.db.refresh(prospect)
+        return self._score_response(user, prospect)

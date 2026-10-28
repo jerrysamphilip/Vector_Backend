@@ -9,24 +9,25 @@ Users with the manage_prospects permission (Admin) see every contact. Everyone e
 (User) sees and edits only the contacts they own, and can't reassign, bulk edit, merge,
 export or delete.
 
-This module only parses requests and shapes responses; the logic lives in
-app/services/contact_query_service.py (reads), contact_write_service.py (writes),
-contact_field_service.py (custom properties) and contact_activity_service.py (activities).
-Handlers carry return type hints with ``response_model=None`` so the hints document the code
-without turning into response models (the OpenAPI schema and serialisation stay as they were).
+Layered (ADR 0009, the L1 reference): each handler parses the request into domain objects
+(app/domain/contacts.py, app/domain/paging.py) and makes one call to a service --
+ContactQueryService (reads), ContactWriteService (writes), ContactFieldService (custom properties)
+or ContactActivityService (activities) -- injected through the providers below, so tests swap them
+with ``app.dependency_overrides``. Handlers carry return type hints with ``response_model=None`` so
+the hints document the code without turning into response models (the OpenAPI schema and
+serialisation stay as they were).
 """
 
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
 from app.core.concurrency import if_match_version
 from app.core.database import get_db
-from app.models.user import User
-from app.routers.tasks_router import task_dict
+from app.domain.contacts import ContactFilter, contact_sort
+from app.domain.paging import Paging
 from app.schemas.contact_schema import (
     ActivityUpdate,
     ActivityWrite,
@@ -39,11 +40,11 @@ from app.schemas.contact_schema import (
     MergeRequest,
     RestoreRequest,
 )
-from app.services import contact_activity_service as activities
-from app.services import contact_field_service as fields
-from app.services import contact_query_service as contacts
-from app.services import contact_write_service as writes
-from app.services.crm import RESTORE_WINDOW_DAYS
+from app.services.contact_activity_service import ContactActivityService
+from app.services.contact_field_service import ContactFieldService
+from app.services.contact_query_service import ContactQueryService
+from app.services.contact_write_service import ContactWriteService
+from app.services.task_service import task_dict
 from app.utils.http_files import content_disposition
 
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
@@ -51,14 +52,37 @@ router = APIRouter(prefix="/contacts", tags=["Contacts"])
 tenant_user = require_role("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")
 
 
+# Service providers: one unit of work on the request's session (get_db)
+def query_service(db=Depends(get_db)) -> ContactQueryService:
+    return ContactQueryService.for_session(db)
+
+
+def write_service(db=Depends(get_db)) -> ContactWriteService:
+    return ContactWriteService.for_session(db)
+
+
+def field_service(db=Depends(get_db)) -> ContactFieldService:
+    return ContactFieldService.for_session(db)
+
+
+def activity_service(db=Depends(get_db)) -> ContactActivityService:
+    return ContactActivityService.for_session(db)
+
+
+Reads = Depends(query_service)
+Writes = Depends(write_service)
+Fields = Depends(field_service)
+Activities = Depends(activity_service)
+
+
 # =============================
 # COLLECTION
 # =============================
 
 @router.get("/meta", response_model=None)
-def contact_meta(current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
+def contact_meta(current_user: Any = Depends(tenant_user), service: ContactQueryService = Reads) -> Dict[str, Any]:
     """Picklist values and table columns for the UI."""
-    return contacts.contact_meta(current_user)
+    return service.meta(current_user)
 
 
 @router.get("", response_model=None)
@@ -84,15 +108,15 @@ def list_contacts(
     grade: Optional[str] = Query(None, max_length=20, description="Score grade(s): A, B, C, D, comma-separated"),
     score_min: Optional[int] = Query(None, ge=0, le=100),
     score_max: Optional[int] = Query(None, ge=0, le=100),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(tenant_user),
+    service: ContactQueryService = Reads,
+    current_user: Any = Depends(tenant_user),
 ) -> Dict[str, Any]:
-    f = contacts.ContactFilters(
+    f = ContactFilter(
         q=q, owner=owner, account_id=account_id, tag=tag, list_id=list_id, campaign_id=campaign_id,
         consent_status=consent_status, email_valid=email_valid, has_phone=has_phone, country=country,
         industry=industry, lifecycle_stage=lifecycle_stage, lead_status=lead_status, filters=filters,
         grade=grade, score_min=score_min, score_max=score_max)
-    return contacts.list_page(db, current_user, f, sort_by, sort_order, page, page_size)
+    return service.list_page(current_user, f, contact_sort(sort_by, sort_order), Paging(page, page_size))
 
 
 @router.get("/board", response_model=None)
@@ -102,47 +126,45 @@ def contacts_board(
     q: Optional[str] = None,
     owner: Optional[str] = None,
     filters: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(tenant_user),
+    service: ContactQueryService = Reads,
+    current_user: Any = Depends(tenant_user),
 ) -> Dict[str, Any]:
     """Board view: contacts grouped by lifecycle stage or lead status (BR-CM-20)."""
-    return contacts.board(db, current_user, group_by, per_column,
-                          contacts.ContactFilters(q=q, owner=owner, filters=filters))
+    return service.board(current_user, group_by, per_column, ContactFilter(q=q, owner=owner, filters=filters))
 
 
 @router.post("", status_code=201, response_model=None)
 def create_contact(
     payload: ContactCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(tenant_user),
+    service: ContactWriteService = Writes,
+    current_user: Any = Depends(tenant_user),
 ) -> Dict[str, Any]:
-    prospect = writes.create_contact(db, current_user, payload)
-    return contacts.contact_detail(db, current_user, prospect)
+    return service.create(current_user, payload)
 
 
 @router.get("/facets", response_model=None)
-def contact_facets(db: Session = Depends(get_db), current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
+def contact_facets(service: ContactQueryService = Reads, current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
     """Values for the filter dropdowns: tags, countries, industries, lists and campaigns."""
-    return contacts.facets(db, current_user)
+    return service.facets(current_user)
 
 
 @router.get("/owners", response_model=None)
-def contact_owners(db: Session = Depends(get_db), current_user: User = Depends(tenant_user)) -> List[dict]:
+def contact_owners(service: ContactQueryService = Reads, current_user: Any = Depends(tenant_user)) -> List[dict]:
     """Active users in the workspace, for owner pickers."""
-    return contacts.owners(db, current_user)
+    return service.owners(current_user)
 
 
 @router.get("/mentionable-users", response_model=None)
 def mentionable_users(q: Optional[str] = Query(None, max_length=100), limit: int = Query(20, ge=1, le=50),
                       prospect_id: Optional[str] = Query(None, max_length=36),
                       opportunity_id: Optional[str] = Query(None, max_length=36),
-                      db: Session = Depends(get_db), current_user: User = Depends(tenant_user)) -> List[dict]:
+                      service: ContactQueryService = Reads, current_user: Any = Depends(tenant_user)) -> List[dict]:
     """
     Colleagues who can be @mentioned in a note: any active user of the workspace (BR-CM-16).
     With prospect_id (contact notes) or opportunity_id (deal notes), only those who can see that
     record, matching the check made when the note is saved.
     """
-    return contacts.mentionable_users(db, current_user, q, limit, prospect_id, opportunity_id)
+    return service.mentionable_users(current_user, q, limit, prospect_id, opportunity_id)
 
 
 @router.get("/export")
@@ -156,13 +178,13 @@ def export_contacts(
     lead_status: Optional[str] = None,
     tag: Optional[str] = None,
     filters: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(tenant_user),
+    service: ContactQueryService = Reads,
+    current_user: Any = Depends(tenant_user),
 ) -> StreamingResponse:
     """Export a view to CSV / XLSX. Admins and managers only (BR-CM-31)."""
-    f = contacts.ContactFilters(q=q, owner=owner, list_id=list_id, lifecycle_stage=lifecycle_stage,
-                                lead_status=lead_status, tag=tag, filters=filters)
-    export = contacts.export_contacts(db, current_user, format, columns, f)
+    f = ContactFilter(q=q, owner=owner, list_id=list_id, lifecycle_stage=lifecycle_stage,
+                      lead_status=lead_status, tag=tag, filters=filters)
+    export = service.export(current_user, format, columns, f)
     return StreamingResponse(iter([export.content]), media_type=export.media_type,
                              headers={"Content-Disposition": content_disposition(export.filename)})
 
@@ -170,11 +192,11 @@ def export_contacts(
 @router.post("/bulk", response_model=None)
 def bulk_update(
     payload: BulkAction,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(tenant_user),
+    service: ContactWriteService = Writes,
+    current_user: Any = Depends(tenant_user),
 ) -> Dict[str, Any]:
     """Bulk edit, assign, tag, add to list, enroll or delete (BR-CM-36/37)."""
-    return writes.bulk_update(db, current_user, payload)
+    return service.bulk(current_user, payload)
 
 
 # =============================
@@ -186,27 +208,24 @@ def deleted_contacts(
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(tenant_user),
+    service: ContactQueryService = Reads,
+    current_user: Any = Depends(tenant_user),
 ) -> Dict[str, Any]:
-    writes.require_manager(current_user)
-    return contacts.deleted_page(db, current_user, q, page, page_size)
+    return service.deleted_page(current_user, q, Paging(page, page_size))
 
 
 @router.post("/restore", response_model=None)
-def restore(payload: RestoreRequest, db: Session = Depends(get_db),
-            current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
-    count = writes.restore_contacts(db, current_user, payload.prospect_ids)
-    return {"status": "restored", "restored": count}
+def restore(payload: RestoreRequest, service: ContactWriteService = Writes,
+            current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    return service.restore(current_user, payload.prospect_ids)
 
 
 @router.post("/purge", response_model=None)
-def purge_deleted(payload: RestoreRequest, db: Session = Depends(get_db),
-                  current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
+def purge_deleted(payload: RestoreRequest, service: ContactWriteService = Writes,
+                  current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
     """Delete forever: permanently remove contacts that are in Recently deleted (same visibility
     as the list and restore). Uses the erase path; each contact leaves an audit row."""
-    purged = writes.purge_contacts(db, current_user, payload.prospect_ids)
-    return {"status": "purged", "purged": purged}
+    return service.purge(current_user, payload.prospect_ids)
 
 
 # =============================
@@ -216,26 +235,23 @@ def purge_deleted(payload: RestoreRequest, db: Session = Depends(get_db),
 @router.get("/duplicates", response_model=None)
 def find_duplicates(
     limit: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(tenant_user),
+    service: ContactQueryService = Reads,
+    current_user: Any = Depends(tenant_user),
 ) -> Dict[str, Any]:
     """
     Groups of likely duplicates (BR-CM-32): the same email apart from case or dots in
     Gmail-style addresses, a similar name at the same company, or the same phone number.
     """
-    writes.require_manager(current_user)
-    return contacts.find_duplicates(db, current_user, limit)
+    return service.duplicates(current_user, limit)
 
 
 @router.post("/merge", response_model=None)
 def merge(
     payload: MergeRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(tenant_user),
+    service: ContactWriteService = Writes,
+    current_user: Any = Depends(tenant_user),
 ) -> Dict[str, Any]:
-    primary, merged, moved = writes.merge(db, current_user, payload)
-    return {"status": "merged", "merged": merged, "moved": moved,
-            "contact": contacts.contact_detail(db, current_user, primary)}
+    return service.merge(current_user, payload)
 
 
 # =============================
@@ -243,31 +259,29 @@ def merge(
 # =============================
 
 @router.get("/fields", response_model=None)
-def list_fields(db: Session = Depends(get_db), current_user: User = Depends(tenant_user)) -> List[dict]:
-    return fields.list_fields(db, current_user.tenant_id)
+def list_fields(include_inactive: bool = Query(False, description="Also list deactivated properties"),
+                service: ContactFieldService = Fields, current_user: Any = Depends(tenant_user)) -> List[dict]:
+    return service.list(current_user, include_inactive)
 
 
 @router.post("/fields", status_code=201, response_model=None)
-def create_field(payload: FieldWrite, db: Session = Depends(get_db),
-                 current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
-    writes.require_manager(current_user)
-    return fields.create_field(db, current_user.tenant_id, payload)
+def create_field(payload: FieldWrite, service: ContactFieldService = Fields,
+                 current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    return service.create(current_user, payload)
 
 
 @router.patch("/fields/{field_id}", response_model=None)
-def update_field(field_id: str, payload: FieldWrite, db: Session = Depends(get_db),
-                 current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
-    writes.require_manager(current_user)
-    return fields.update_field(db, current_user.tenant_id, field_id, payload)
+def update_field(field_id: str, payload: FieldWrite, service: ContactFieldService = Fields,
+                 current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    return service.update(current_user, field_id, payload)
 
 
 @router.delete("/fields/{field_id}", response_model=None)
-def delete_field(field_id: str, db: Session = Depends(get_db),
-                 current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
-    """Removes the property definition. Stored values stay on contacts but are no longer shown."""
-    writes.require_manager(current_user)
-    fields.delete_field(db, current_user.tenant_id, field_id)
-    return {"status": "deleted", "field_id": field_id}
+def delete_field(field_id: str, service: ContactFieldService = Fields,
+                 current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    """Deactivates the property (C-17): hidden from forms and import mapping; values stay on contacts and are
+    still exported. Reactivate with PATCH ``is_active: true``. System properties cannot be deactivated."""
+    return service.delete(current_user, field_id)
 
 
 # =============================
@@ -275,16 +289,15 @@ def delete_field(field_id: str, db: Session = Depends(get_db),
 # =============================
 
 @router.patch("/activities/{activity_id}", response_model=None)
-def update_activity(activity_id: str, payload: ActivityUpdate, db: Session = Depends(get_db),
-                    current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
-    return activities.update_activity(db, current_user, activity_id, payload)
+def update_activity(activity_id: str, payload: ActivityUpdate, service: ContactActivityService = Activities,
+                    current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    return service.update(current_user, activity_id, payload)
 
 
 @router.delete("/activities/{activity_id}", response_model=None)
-def delete_activity(activity_id: str, db: Session = Depends(get_db),
-                    current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
-    activities.delete_activity(db, current_user, activity_id)
-    return {"status": "deleted", "activity_id": activity_id}
+def delete_activity(activity_id: str, service: ContactActivityService = Activities,
+                    current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    return service.delete(current_user, activity_id)
 
 
 # =============================
@@ -292,30 +305,28 @@ def delete_activity(activity_id: str, db: Session = Depends(get_db),
 # =============================
 
 @router.get("/{prospect_id}", response_model=None)
-def get_contact(prospect_id: str, db: Session = Depends(get_db),
-                current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
-    return contacts.contact_detail(db, current_user, contacts.get_contact(db, current_user, prospect_id))
+def get_contact(prospect_id: str, service: ContactQueryService = Reads,
+                current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    return service.detail(current_user, prospect_id)
 
 
 @router.patch("/{prospect_id}", response_model=None)
 def update_contact(
     prospect_id: str,
     payload: ContactUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(tenant_user),
+    service: ContactWriteService = Writes,
+    current_user: Any = Depends(tenant_user),
     if_match: Optional[int] = Depends(if_match_version),
 ) -> Dict[str, Any]:
     """Edit a contact; send the row_version you loaded as expected_version or If-Match (T-3)."""
-    prospect = writes.update_contact(db, current_user, prospect_id, payload, if_match)
-    return contacts.contact_detail(db, current_user, prospect)
+    return service.update(current_user, prospect_id, payload, if_match)
 
 
 @router.delete("/{prospect_id}", response_model=None)
-def delete_contact(prospect_id: str, db: Session = Depends(get_db),
-                   current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
+def delete_contact(prospect_id: str, service: ContactWriteService = Writes,
+                   current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
     """Soft delete: hidden everywhere and restorable for 90 days (BR-CM-35)."""
-    writes.delete_contact(db, current_user, prospect_id)
-    return {"status": "deleted", "prospect_id": prospect_id, "restorable_days": RESTORE_WINDOW_DAYS}
+    return service.delete(current_user, prospect_id)
 
 
 # =============================
@@ -323,45 +334,44 @@ def delete_contact(prospect_id: str, db: Session = Depends(get_db),
 # =============================
 
 @router.get("/{prospect_id}/companies", response_model=None)
-def list_contact_companies(prospect_id: str, db: Session = Depends(get_db),
-                           current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
+def list_contact_companies(prospect_id: str, service: ContactQueryService = Reads,
+                           current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
     """Every company the contact is associated with, with its label; the primary one first."""
-    return contacts.companies_response(db, contacts.get_contact(db, current_user, prospect_id))
+    return service.companies(current_user, prospect_id)
 
 
 @router.post("/{prospect_id}/companies", status_code=201, response_model=None)
-def add_contact_company(prospect_id: str, payload: CompanyLinkCreate, db: Session = Depends(get_db),
-                        current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
-    return contacts.companies_response(db, writes.add_company(db, current_user, prospect_id, payload))
+def add_contact_company(prospect_id: str, payload: CompanyLinkCreate, service: ContactWriteService = Writes,
+                        current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    return service.add_company(current_user, prospect_id, payload)
 
 
 @router.patch("/{prospect_id}/companies/{account_id}", response_model=None)
 def update_contact_company(prospect_id: str, account_id: str, payload: CompanyLinkUpdate,
-                           db: Session = Depends(get_db),
-                           current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
-    return contacts.companies_response(db, writes.update_company(db, current_user, prospect_id, account_id, payload))
+                           service: ContactWriteService = Writes,
+                           current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    return service.update_company(current_user, prospect_id, account_id, payload)
 
 
 @router.delete("/{prospect_id}/companies/{account_id}", response_model=None)
 def remove_contact_company(prospect_id: str, account_id: str,
                            new_primary_id: Optional[str] = Query(None, max_length=36,
                                                                  description="Required when removing the primary company"),
-                           db: Session = Depends(get_db),
-                           current_user: User = Depends(tenant_user)) -> Dict[str, Any]:
+                           service: ContactWriteService = Writes,
+                           current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
     """Remove an association. The primary company can only go once another one is chosen as primary."""
-    prospect = writes.remove_company(db, current_user, prospect_id, account_id, new_primary_id)
-    return contacts.companies_response(db, prospect)
+    return service.remove_company(current_user, prospect_id, account_id, new_primary_id)
 
 
 @router.get("/{prospect_id}/history", response_model=None)
 def property_history(
     prospect_id: str,
     field: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(tenant_user),
+    service: ContactQueryService = Reads,
+    current_user: Any = Depends(tenant_user),
 ) -> Dict[str, Any]:
     """Every property change with old and new value, user, time and source (BR-CM-11)."""
-    return contacts.property_history(db, current_user, prospect_id, field)
+    return service.property_history(current_user, prospect_id, field)
 
 
 @router.get("/{prospect_id}/timeline", response_model=None)
@@ -370,19 +380,19 @@ def contact_timeline(
     types: Optional[str] = Query(None, description="Comma-separated: NOTE,CALL,MEETING,EMAIL,TASK,PROPERTY,CAMPAIGN,LIST"),
     user_id: Optional[str] = Query(None, description="Only items by this user"),
     limit: int = Query(200, ge=1, le=500),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(tenant_user),
+    service: ContactQueryService = Reads,
+    current_user: Any = Depends(tenant_user),
 ) -> Dict[str, Any]:
     """Everything that happened with this contact, newest first (BR-CM-14)."""
-    return contacts.timeline(db, current_user, prospect_id, types, user_id, limit, task_serializer=task_dict)
+    return service.timeline(current_user, prospect_id, types, user_id, limit, task_serializer=task_dict)
 
 
 @router.post("/{prospect_id}/activities", status_code=201, response_model=None)
 def log_activity(
     prospect_id: str,
     payload: ActivityWrite,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(tenant_user),
+    service: ContactActivityService = Activities,
+    current_user: Any = Depends(tenant_user),
 ) -> Dict[str, Any]:
     """Add a note, or log a call, email or meeting (BR-CM-13)."""
-    return activities.log_activity(db, current_user, prospect_id, payload)
+    return service.log(current_user, prospect_id, payload)

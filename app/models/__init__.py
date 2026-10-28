@@ -39,6 +39,10 @@ from app.models.compliance_check import ComplianceCheck
 from app.models.company_profile import CompanyProfile
 from app.models.automation_rule import AutomationRule
 from app.models.automation_rule_run import AutomationRuleRun  # noqa: F401  (once per rule and contact)
+from app.models.import_mapping import ImportMapping  # noqa: F401  (saved import mappings, 0026)
+from app.models.account_backfill import AccountBackfillItem, AccountBackfillRun  # noqa: F401  (backfill runs, 0024)
+from app.models.contact_identity import ContactIdentifier, DuplicatePair, MergeLog  # noqa: F401  (C-08..C-11, C-19)
+from app.models.export_log import ExportLog  # noqa: F401  (C-07 export log)
 from app.models.campaign_draft import CampaignDraft
 from app.models.invitation import Invitation
 from app.models.refresh_token import RefreshToken
@@ -59,6 +63,7 @@ from app.models.alert_center import AlertPreference, AlertEmailDispatch
 from app.models.subject_variant import EmailSubjectVariant  # noqa: F401  (BR-SF-18 A/B subjects)
 from app.models.webhook import WebhookEndpoint, WebhookDelivery  # noqa: F401  (BR-SF-20 outbound webhooks)
 from app.models.user_activity import UserActivityDay  # noqa: F401  (CRM adoption KPI)
+import app.models.tenant_fill  # noqa: F401,E402  (D3: child rows get their parent's tenant_id on flush)
 
 __all__ = [
     "Base",

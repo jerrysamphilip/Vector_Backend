@@ -1,985 +1,288 @@
 # app/services/reports_service.py
 """
-Reports Service — aggregation queries for Global Analytics, Campaign Comparison,
-Provider Performance, and CSV exports.
+Reports Service — Global Analytics, Campaign Comparison, Provider Performance, Mailbox Health,
+optimisation metrics, team breakdown and the CSV / Word exports (GET /reports/*).
+
+The rules live here: whose campaigns a report covers (``report_scope``), the prospect-status fallbacks
+for opened / replied, rates, series and the export layouts. The SQL is in app/repositories/reports.py
+(``CampaignReportRepository``); the Word layout in app/services/reports_docx.py. CSV cells pass
+through ``csv_safe`` so spreadsheet apps never evaluate a campaign name or mailbox as a formula.
 """
 
-import io
 import csv
+import io
 import logging
-from datetime import date, timedelta, datetime
-from typing import Any, Dict, Optional
+from dataclasses import dataclass
+from datetime import date
+from typing import Any, Callable, Iterable, List, Optional
 
-from docx import Document
-from docx.document import Document as DocxDocument
-from docx.shared import Pt, RGBColor, Inches, Cm
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
-
-from sqlalchemy.orm import Session
-from sqlalchemy import Subquery, and_, case, func
-
-from app.models.campaign import Campaign, CampaignProspect
-from app.models.metrics import CampaignMetricsRealtime
-from app.models.email_message import EmailMessage, EmailEvent
-from app.models.sending_inbox import SendingInbox
-from app.models.prospect import Prospect
-from app.models.domain_reputation import SendingDomain, DomainHealthSnapshot
-from app.models.user import User
-from app.services.campaign_analytics_service import (
-    sent_message_filters,
-    unique_openers_expr,
-    unique_prospects_expr,
+from app.core.errors import NotFoundError, PermissionDenied
+from app.domain.paging import Paging
+from app.domain.reports import (
+    ComparisonSort,
+    DateWindow,
+    OptionalWindow,
+    Owners,
+    ReportInputError,
+    ReportViewer,
+    build_timeseries,
+    median_hours,
+    rate,
+    report_owner_scope,
+    sees_owner,
+)
+from app.models.email_message import EmailEvent
+from app.repositories.reports import (
+    CampaignReportRepository,
+    ComparisonRow,
+    Session,
+    SqlAlchemyCampaignReportRepository,
 )
 from app.schemas.reports_schema import (
-    GlobalKPIs,
-    TimeSeriesPoint,
-    GlobalAnalyticsResponse,
     CampaignComparisonItem,
     CampaignComparisonResponse,
+    CampaignOptimizationMetrics,
+    CampaignStats,
+    DashboardSummaryResponse,
+    GlobalAnalyticsResponse,
+    GlobalKPIs,
+    LeadStats,
+    MailboxHealthItem,
+    MailboxStats,
     ProviderPerformanceItem,
     ProviderPerformanceResponse,
-    LeadStats,
-    MailboxStats,
-    CampaignStats,
-    MailboxHealthItem,
-    CampaignOptimizationMetrics,
+    TimeSeriesPoint,
     UserPerformanceItem,
-    DashboardSummaryResponse,
 )
+from app.services import reports_docx
+from app.services.crm import csv_safe_row
+from app.services.reports_access import ReportAccess, SessionReportAccess
+from app.core.ids import short_id
 
 logger = logging.getLogger(__name__)
 
+EXPORT_PAGE_SIZE = 10000   # exports list every campaign
+CAMPAIGN_COLUMNS = ["Campaign Name", "Status", "Sent", "Opened", "Replied", "Bounced",
+                    "Open Rate %", "Reply Rate %", "Bounce Rate %"]
+MAILBOX_COLUMNS = ["Mailbox", "Leads Contacted", "Emails Sent", "Opened", "Open Rate %",
+                   "Replied", "Reply Rate %", "Bounced", "Bounce Rate %"]
 
 
-def _by_owner(column, user_id) -> list:
-    """Filter for one user id, a set of ids (a manager's team), or nobody (None = everyone)."""
-    if not user_id:
-        return [] if user_id is None else [column.is_(None) & column.isnot(None)]  # empty team -> nothing
-    if isinstance(user_id, str):
-        return [column == user_id]
-    return [column.in_(list(user_id))]
+class _ReportPaging(Paging):
+    """The comparison pages through at most 100 campaigns per API call (the router's limit); exports
+    and the dashboard ask for everything at once."""
+
+    MAX_PAGE_SIZE = EXPORT_PAGE_SIZE
+
+
+def report_scope(access: ReportAccess, viewer: ReportViewer, user_id: Optional[str]) -> Owners:
+    """Whose campaigns a report may cover: agents themselves, admins anyone, managers their own team
+    (a single member on request; another team's member is refused)."""
+    visible = None if viewer.role == "AGENT" else access.visible_user_ids(viewer)
+    try:
+        return report_owner_scope(viewer.role, viewer.user_id, visible, user_id)
+    except ReportInputError as exc:
+        raise PermissionDenied(exc.message) from None
+
+
+class _Fixed(list):
+    """A row of the export's own text (section markers, headers): written as is. Every other row holds
+    data and goes through ``csv_safe_row``."""
+
+
+def _csv(rows: Iterable[list]) -> io.StringIO:
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    for row in rows:
+        writer.writerow(row if isinstance(row, _Fixed) else csv_safe_row(row))
+    buf.seek(0)
+    return buf
+
+
+def _iso(value: Any) -> str:
+    return value.isoformat() if value else ""
+
+
+def _user_label(row: Optional[tuple]) -> Optional[str]:
+    if not row:
+        return None
+    first, last, email = row
+    return f"{first or ''} {last or ''}".strip() or email
+
 
 class ReportsService:
-    def __init__(self, db: Session) -> None:
-        self.db = db
+    def __init__(self, repository: CampaignReportRepository, access: Optional[ReportAccess] = None) -> None:
+        self.repo = repository
+        self.access = access
 
-    def _campaign_subquery(self, tenant_id: str, user_id: Optional[str] = None) -> Subquery:
-        """Return a subquery of campaign_ids scoped to tenant (and optionally a single user)."""
-        q = self.db.query(Campaign.campaign_id).filter(Campaign.tenant_id == tenant_id)
-        q = q.filter(*_by_owner(Campaign.created_by, user_id))
-        return q.subquery()
+    @classmethod
+    def for_session(cls, db: Session) -> "ReportsService":
+        return cls(SqlAlchemyCampaignReportRepository(db), SessionReportAccess(db))
 
-    def _unique_prospects_with(self, event_type: str, *filters) -> int:
-        """Unique prospects (per campaign) with an event of ``event_type``."""
-        return (
-            self.db.query(unique_prospects_expr())
-            .select_from(EmailEvent)
-            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-            .filter(EmailEvent.event_type == event_type, *filters)
-            .scalar()
-        ) or 0
+    def _access(self) -> ReportAccess:
+        if self.access is None:
+            raise RuntimeError("ReportsService needs a ReportAccess for viewer scoping")
+        return self.access
 
-    def _unique_openers(self, *filters) -> int:
-        """Opened = unique prospects (per campaign) with an open event."""
-        return self._unique_prospects_with(EmailEvent.EVENT_OPEN, *filters)
+    def scope(self, viewer: ReportViewer, user_id: Optional[str]) -> Owners:
+        return report_scope(self._access(), viewer, user_id)
 
     # ------------------------------------------------------------------
     # GLOBAL ANALYTICS
     # ------------------------------------------------------------------
 
-    def get_global_analytics(
-        self,
-        tenant_id: str,
-        start_date: date,
-        end_date: date,
-        granularity: str = "daily",
-        user_id: Optional[str] = None,
-    ) -> GlobalAnalyticsResponse:
-        kpis = self._get_global_kpis(tenant_id, start_date, end_date, user_id)
-        timeseries = self._get_global_timeseries(tenant_id, start_date, end_date, granularity, user_id)
-        return GlobalAnalyticsResponse(kpis=kpis, timeseries=timeseries)
+    def get_global_analytics(self, tenant_id: str, start_date: date, end_date: date, granularity: str = "daily",
+                             user_id: Owners = None) -> GlobalAnalyticsResponse:
+        window = DateWindow(start_date, end_date)
+        return GlobalAnalyticsResponse(kpis=self._global_kpis(tenant_id, window, user_id),
+                                       timeseries=self._timeseries(tenant_id, window, granularity, user_id))
 
-    def _get_global_kpis(self, tenant_id: str, start_date: date, end_date: date, user_id: Optional[str] = None) -> GlobalKPIs:
-        """Aggregate KPIs across all campaigns for a tenant (optionally scoped to a user)."""
-
-        tenant_campaigns = self._campaign_subquery(tenant_id, user_id)
-
-        sent = (
-            self.db.query(func.count(EmailMessage.message_id))
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                *sent_message_filters(),
-                EmailMessage.sent_at >= start_date,
-                EmailMessage.sent_at < end_date + timedelta(days=1),
-            )
-            .scalar()
-        ) or 0
-
-        event_row = (
-            self.db.query(
-                # replied / bounced = distinct messages with the event (as the
-                # campaign metrics count them), not raw event rows
-                func.count(func.distinct(case(
-                    (EmailEvent.event_type == EmailEvent.EVENT_REPLY, EmailEvent.message_id)
-                ))).label("replied"),
-                func.count(func.distinct(case(
-                    (EmailEvent.event_type == EmailEvent.EVENT_BOUNCE, EmailEvent.message_id)
-                ))).label("bounced"),
-            )
-            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailEvent.event_time >= start_date,
-                EmailEvent.event_time < end_date + timedelta(days=1),
-            )
-            .first()
-        )
-
-        opened = self._unique_openers(
-            EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-            EmailEvent.event_time >= start_date,
-            EmailEvent.event_time < end_date + timedelta(days=1),
-        )
-        # Clicked = unique prospects (per campaign) with a click event, the
-        # same definition as step analytics and /campaigns/{id}/metrics.
-        clicked = self._unique_prospects_with(
-            EmailEvent.EVENT_CLICK,
-            EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-            EmailEvent.event_time >= start_date,
-            EmailEvent.event_time < end_date + timedelta(days=1),
-        )
-        replied = event_row.replied or 0  # type: ignore[union-attr]  # aggregate query: always one row
-        bounced = event_row.bounced or 0  # type: ignore[union-attr]
-
-        # Fallback: if no open events, count prospects with OPENED/REPLIED status
-        # (mirrors CampaignAnalyticsService logic — a reply implies the email was opened)
-        opened_prospect_fallback = (
-            self.db.query(func.count(func.distinct(CampaignProspect.prospect_id)))
-            .filter(
-                CampaignProspect.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                CampaignProspect.status.in_(["OPENED", "REPLIED"]),
-            )
-            .scalar()
-        ) or 0
-        opened = max(opened, opened_prospect_fallback)
-
-        replied_prospect_fallback = (
-            self.db.query(func.count(func.distinct(CampaignProspect.prospect_id)))
-            .filter(
-                CampaignProspect.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                CampaignProspect.status == "REPLIED",
-            )
-            .scalar()
-        ) or 0
-        replied = max(replied, replied_prospect_fallback)
-
-        # Leads contacted
-        leads_contacted = (
-            self.db.query(func.count(func.distinct(EmailMessage.prospect_id)))
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                *sent_message_filters(),
-                EmailMessage.sent_at >= start_date,
-                EmailMessage.sent_at < end_date + timedelta(days=1),
-            )
-            .scalar()
-        ) or 0
-
-        # Active campaigns — scoped to user if provided
-        active_campaigns = (
-            self.db.query(func.count(Campaign.campaign_id))
-            .filter(
-                Campaign.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                Campaign.status == "ACTIVE",
-            )
-            .scalar()
-        ) or 0
-
+    def _global_kpis(self, tenant_id: str, window: DateWindow, owners: Owners) -> GlobalKPIs:
+        c = self.repo.global_counts(tenant_id, owners, window)
+        # Without open events, prospects with OPENED / REPLIED status count (a reply implies an open)
+        opened = max(c.opened, c.opened_prospects)
+        replied = max(c.replied, c.replied_prospects)
         return GlobalKPIs(
-            total_leads_contacted=leads_contacted,
-            total_emails_sent=sent,
-            total_opened=opened,
-            total_replied=replied,
-            total_bounced=bounced,
-            total_clicked=clicked,
-            overall_open_rate=round((opened / sent) * 100, 2) if sent > 0 else 0.0,
-            overall_reply_rate=round((replied / sent) * 100, 2) if sent > 0 else 0.0,
-            overall_bounce_rate=round((bounced / sent) * 100, 2) if sent > 0 else 0.0,
-            active_campaigns=active_campaigns,
-        )
+            total_leads_contacted=c.leads_contacted, total_emails_sent=c.sent, total_opened=opened,
+            total_replied=replied, total_bounced=c.bounced, total_clicked=c.clicked,
+            overall_open_rate=rate(opened, c.sent), overall_reply_rate=rate(replied, c.sent),
+            overall_bounce_rate=rate(c.bounced, c.sent), active_campaigns=c.active_campaigns)
 
-    def _get_global_timeseries(
-        self,
-        tenant_id: str,
-        start_date: date,
-        end_date: date,
-        granularity: str,
-        user_id: Optional[str] = None,
-    ) -> list:
-        """Daily or weekly sent/opened/replied/bounced across all campaigns."""
-
-        tenant_campaigns = self._campaign_subquery(tenant_id, user_id)
-
-        # Sent per day
-        sent_results = (
-            self.db.query(
-                func.date(EmailMessage.sent_at).label("d"),
-                func.count(EmailMessage.message_id).label("cnt"),
-            )
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                *sent_message_filters(),
-                EmailMessage.sent_at >= start_date,
-                EmailMessage.sent_at < end_date + timedelta(days=1),
-            )
-            .group_by(func.date(EmailMessage.sent_at))
-            .all()
-        )
-        sent_map = {row.d: row.cnt for row in sent_results}
-
-        # Events per day (open, reply, bounce)
-        event_results = (
-            self.db.query(
-                func.date(EmailEvent.event_time).label("d"),
-                EmailEvent.event_type.label("etype"),
-                func.count(func.distinct(EmailEvent.message_id)).label("cnt"),
-            )
-            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailEvent.event_time >= start_date,
-                EmailEvent.event_time < end_date + timedelta(days=1),
-                EmailEvent.event_type.in_([
-                    EmailEvent.EVENT_OPEN,
-                    EmailEvent.EVENT_REPLY,
-                    EmailEvent.EVENT_BOUNCE,
-                ]),
-            )
-            .group_by(func.date(EmailEvent.event_time), EmailEvent.event_type)
-            .all()
-        )
-
-        # Opens per day = unique prospects (per campaign) who opened that day
-        open_map = {row.d: row.cnt for row in (
-            self.db.query(
-                func.date(EmailEvent.event_time).label("d"),
-                unique_openers_expr().label("cnt"),
-            )
-            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailEvent.event_time >= start_date,
-                EmailEvent.event_time < end_date + timedelta(days=1),
-                EmailEvent.event_type == EmailEvent.EVENT_OPEN,
-            )
-            .group_by(func.date(EmailEvent.event_time))
-            .all()
-        )}
-        reply_map = {}
-        bounce_map = {}
-        for row in event_results:
-            if row.etype == EmailEvent.EVENT_OPEN:
-                continue
-            elif row.etype == EmailEvent.EVENT_REPLY:
-                reply_map[row.d] = row.cnt
-            elif row.etype == EmailEvent.EVENT_BOUNCE:
-                bounce_map[row.d] = row.cnt
-
-        # Build series
-        points = []
-        current = start_date
-        while current <= end_date:
-            points.append(TimeSeriesPoint(
-                date=current.isoformat(),
-                sent=sent_map.get(current, 0),
-                opened=open_map.get(current, 0),
-                replied=reply_map.get(current, 0),
-                bounced=bounce_map.get(current, 0),
-            ))
-            current += timedelta(days=1)
-
-        # Aggregate to weekly if requested
-        if granularity == "weekly" and len(points) > 7:
-            weekly = []
-            for i in range(0, len(points), 7):
-                chunk = points[i : i + 7]
-                weekly.append(TimeSeriesPoint(
-                    date=chunk[0].date,
-                    sent=sum(p.sent for p in chunk),
-                    opened=sum(p.opened for p in chunk),
-                    replied=sum(p.replied for p in chunk),
-                    bounced=sum(p.bounced for p in chunk),
-                ))
-            return weekly
-
-        return points
+    def _timeseries(self, tenant_id: str, window: DateWindow, granularity: str, owners: Owners) -> list:
+        sent, opened, replied, bounced = self.repo.daily_counts(tenant_id, owners, window)
+        return [TimeSeriesPoint(date=p.date, sent=p.sent, opened=p.opened, replied=p.replied, bounced=p.bounced)
+                for p in build_timeseries(window, sent, opened, replied, bounced, granularity)]
 
     # ------------------------------------------------------------------
     # CAMPAIGN COMPARISON
     # ------------------------------------------------------------------
 
-    def get_campaign_comparison(
-        self,
-        tenant_id: str,
-        sort_by: str = "open_rate",
-        sort_dir: str = "desc",
-        page: int = 1,
-        page_size: int = 20,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None,
-        user_id: Optional[str] = None,
-    ) -> CampaignComparisonResponse:
+    def get_campaign_comparison(self, tenant_id: str, sort_by: str = "open_rate", sort_dir: str = "desc",
+                                page: int = 1, page_size: int = 20, start_date: Optional[date] = None,
+                                end_date: Optional[date] = None, user_id: Owners = None) -> CampaignComparisonResponse:
         """All campaigns with metrics, sortable and paginated."""
+        paging = _ReportPaging(page, page_size)
+        rows, total = self.repo.comparison_page(tenant_id, user_id, OptionalWindow(start_date, end_date),
+                                                ComparisonSort.parse(sort_by, sort_dir), paging)
+        fallbacks = self.repo.prospect_status_counts([r.campaign_id for r in rows])
+        items = [self._comparison_item(r, fallbacks.get(r.campaign_id, {})) for r in rows]
+        return CampaignComparisonResponse(items=items, total=total, page=page, page_size=page_size)
 
-        sent_filters = list(sent_message_filters())
-        if start_date:
-            sent_filters.append(EmailMessage.sent_at >= start_date)
-        if end_date:
-            sent_filters.append(EmailMessage.sent_at < end_date + timedelta(days=1))
-
-        sent_subquery = (
-            self.db.query(
-                EmailMessage.campaign_id.label("campaign_id"),
-                func.count(EmailMessage.message_id).label("sent_count"),
-            )
-            .filter(*sent_filters)
-            .group_by(EmailMessage.campaign_id)
-            .subquery()
-        )
-
-        event_filters = []
-        if start_date:
-            event_filters.append(EmailEvent.event_time >= start_date)
-        if end_date:
-            event_filters.append(EmailEvent.event_time < end_date + timedelta(days=1))
-
-        event_subquery = (
-            self.db.query(
-                EmailMessage.campaign_id.label("campaign_id"),
-                func.count(func.distinct(case(
-                    (EmailEvent.event_type == EmailEvent.EVENT_OPEN, EmailMessage.prospect_id)
-                ))).label("opened_count"),
-                func.sum(case((EmailEvent.event_type == EmailEvent.EVENT_REPLY, 1), else_=0)).label("replied_count"),
-                func.sum(case((EmailEvent.event_type == EmailEvent.EVENT_BOUNCE, 1), else_=0)).label("bounced_count"),
-            )
-            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-            .filter(*event_filters)
-            .group_by(EmailMessage.campaign_id)
-            .subquery()
-        )
-
-        sent_count_col = func.coalesce(sent_subquery.c.sent_count, 0)
-        opened_count_col = func.coalesce(event_subquery.c.opened_count, 0)
-        replied_count_col = func.coalesce(event_subquery.c.replied_count, 0)
-        bounced_count_col = func.coalesce(event_subquery.c.bounced_count, 0)
-
-        query = (
-            self.db.query(
-                Campaign.campaign_id,
-                Campaign.campaign_name,
-                Campaign.status,
-                Campaign.created_at,
-                sent_count_col.label("sent_count"),
-                opened_count_col.label("opened_count"),
-                replied_count_col.label("replied_count"),
-                bounced_count_col.label("bounced_count"),
-            )
-            .outerjoin(sent_subquery, sent_subquery.c.campaign_id == Campaign.campaign_id)
-            .outerjoin(event_subquery, event_subquery.c.campaign_id == Campaign.campaign_id)
-            .filter(
-                Campaign.tenant_id == tenant_id,
-                *_by_owner(Campaign.created_by, user_id),
-            )
-        )
-
-        total = query.count()
-
-        open_rate_expr = case(
-            (sent_count_col > 0, (opened_count_col * 100.0) / sent_count_col),
-            else_=0.0,
-        )
-        reply_rate_expr = case(
-            (sent_count_col > 0, (replied_count_col * 100.0) / sent_count_col),
-            else_=0.0,
-        )
-        bounce_rate_expr = case(
-            (sent_count_col > 0, (bounced_count_col * 100.0) / sent_count_col),
-            else_=0.0,
-        )
-
-        # Sort
-        sort_column_map = {
-            "sent_count": sent_count_col,
-            "opened_count": opened_count_col,
-            "replied_count": replied_count_col,
-            "bounced_count": bounced_count_col,
-            "campaign_name": Campaign.campaign_name,
-            "created_at": Campaign.created_at,
-        }
-
-        if sort_by in ("open_rate", "reply_rate", "bounce_rate"):
-            rate_field_map = {
-                "open_rate": open_rate_expr,
-                "reply_rate": reply_rate_expr,
-                "bounce_rate": bounce_rate_expr,
-            }
-            col = func.coalesce(rate_field_map[sort_by], 0)
-        else:
-            col = sort_column_map.get(sort_by, Campaign.created_at)
-
-        if sort_dir == "asc":
-            query = query.order_by(col.asc())
-        else:
-            query = query.order_by(col.desc())
-
-        rows = query.offset((page - 1) * page_size).limit(page_size).all()
-
-        # Build prospect-status fallback map for all returned campaigns
-        campaign_ids = [r.campaign_id for r in rows]
-        prospect_fallbacks = {}
-        if campaign_ids:
-            fb_rows = (
-                self.db.query(
-                    CampaignProspect.campaign_id,
-                    CampaignProspect.status,
-                    func.count(func.distinct(CampaignProspect.prospect_id)).label("cnt"),
-                )
-                .filter(
-                    CampaignProspect.campaign_id.in_(campaign_ids),
-                    CampaignProspect.status.in_(["OPENED", "REPLIED"]),
-                )
-                .group_by(CampaignProspect.campaign_id, CampaignProspect.status)
-                .all()
-            )
-            for fb in fb_rows:
-                if fb.campaign_id not in prospect_fallbacks:
-                    prospect_fallbacks[fb.campaign_id] = {"OPENED": 0, "REPLIED": 0}
-                prospect_fallbacks[fb.campaign_id][fb.status] = fb.cnt
-
-        items = []
-        for r in rows:
-            sent = r.sent_count or 0
-            opened = r.opened_count or 0
-            replied = r.replied_count or 0
-            bounced = r.bounced_count or 0
-            fb = prospect_fallbacks.get(r.campaign_id, {})
-            opened = max(opened, fb.get("OPENED", 0) + fb.get("REPLIED", 0))
-            replied = max(replied, fb.get("REPLIED", 0))
-            items.append(CampaignComparisonItem(
-                campaign_id=r.campaign_id,
-                campaign_name=r.campaign_name,
-                status=r.status,
-                sent_count=sent,
-                opened_count=opened,
-                replied_count=replied,
-                bounced_count=bounced,
-                open_rate=round((opened / sent) * 100, 2) if sent > 0 else 0.0,
-                reply_rate=round((replied / sent) * 100, 2) if sent > 0 else 0.0,
-                bounce_rate=round((bounced / sent) * 100, 2) if sent > 0 else 0.0,
-                created_at=r.created_at,
-            ))
-
-        return CampaignComparisonResponse(
-            items=items,
-            total=total,
-            page=page,
-            page_size=page_size,
-        )
+    @staticmethod
+    def _comparison_item(r: ComparisonRow, fb: dict) -> CampaignComparisonItem:
+        sent = r.sent_count
+        opened = max(r.opened_count, fb.get("OPENED", 0) + fb.get("REPLIED", 0))
+        replied = max(r.replied_count, fb.get("REPLIED", 0))
+        return CampaignComparisonItem(
+            campaign_id=r.campaign_id, campaign_name=r.campaign_name, status=r.status, sent_count=sent,
+            opened_count=opened, replied_count=replied, bounced_count=r.bounced_count,
+            open_rate=rate(opened, sent), reply_rate=rate(replied, sent), bounce_rate=rate(r.bounced_count, sent),
+            created_at=r.created_at)
 
     # ------------------------------------------------------------------
     # PROVIDER PERFORMANCE
     # ------------------------------------------------------------------
 
-    def get_provider_performance(
-        self,
-        tenant_id: str,
-        start_date: date,
-        end_date: date,
-        user_id: Optional[str] = None,
-    ) -> ProviderPerformanceResponse:
+    def get_provider_performance(self, tenant_id: str, start_date: date, end_date: date,
+                                 user_id: Owners = None) -> ProviderPerformanceResponse:
         """Per-provider (Gmail/Outlook/SES) aggregate metrics."""
-
-        tenant_campaigns = self._campaign_subquery(tenant_id, user_id)
-
-        # Sent per provider
-        sent_rows = (
-            self.db.query(
-                func.coalesce(SendingInbox.provider, "unknown").label("provider"),
-                func.count(EmailMessage.message_id).label("sent"),
-            )
-            .join(SendingInbox, SendingInbox.inbox_id == EmailMessage.inbox_id)
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                *sent_message_filters(),
-                EmailMessage.sent_at >= start_date,
-                EmailMessage.sent_at < end_date + timedelta(days=1),
-            )
-            .group_by(func.coalesce(SendingInbox.provider, "unknown"))
-            .all()
-        )
-
-        providers_sent = {r.provider: r.sent for r in sent_rows}
-
-        # Events per provider
-        event_rows = (
-            self.db.query(
-                func.coalesce(SendingInbox.provider, "unknown").label("provider"),
-                EmailEvent.event_type.label("etype"),
-                func.count(EmailEvent.event_id).label("cnt"),
-            )
-            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-            .join(SendingInbox, SendingInbox.inbox_id == EmailMessage.inbox_id)
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailEvent.event_time >= start_date,
-                EmailEvent.event_time < end_date + timedelta(days=1),
-                EmailEvent.event_type.in_([
-                    EmailEvent.EVENT_OPEN,
-                    EmailEvent.EVENT_REPLY,
-                    EmailEvent.EVENT_BOUNCE,
-                ]),
-            )
-            .group_by(func.coalesce(SendingInbox.provider, "unknown"), EmailEvent.event_type)
-            .all()
-        )
-
-        # Build lookup
-        provider_events: Dict[str, Any] = {}
-        for r in event_rows:
-            if r.provider not in provider_events:
-                provider_events[r.provider] = {}
-            provider_events[r.provider][r.etype] = r.cnt
-
-        provider_openers = dict(
-            self.db.query(func.coalesce(SendingInbox.provider, "unknown"), unique_openers_expr())
-            .select_from(EmailEvent)
-            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-            .join(SendingInbox, SendingInbox.inbox_id == EmailMessage.inbox_id)
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailEvent.event_time >= start_date,
-                EmailEvent.event_time < end_date + timedelta(days=1),
-                EmailEvent.event_type == EmailEvent.EVENT_OPEN,
-            )
-            .group_by(func.coalesce(SendingInbox.provider, "unknown"))
-            .all()
-        )
-
-        all_providers = set(providers_sent.keys()) | set(provider_events.keys())
-
+        c = self.repo.provider_counts(tenant_id, user_id, DateWindow(start_date, end_date))
         items = []
-        for prov in sorted(all_providers):
-            sent = providers_sent.get(prov, 0)
-            events = provider_events.get(prov, {})
-            opened = provider_openers.get(prov, 0)
+        for prov in sorted(set(c.sent) | set(c.events)):
+            sent, events, opened = c.sent.get(prov, 0), c.events.get(prov, {}), c.openers.get(prov, 0)
             replied = events.get(EmailEvent.EVENT_REPLY, 0)
             bounced = events.get(EmailEvent.EVENT_BOUNCE, 0)
-
             items.append(ProviderPerformanceItem(
-                provider=prov,
-                sent_count=sent,
-                delivered_count=max(sent - bounced, 0),
-                opened_count=opened,
-                replied_count=replied,
-                bounced_count=bounced,
-                open_rate=round((opened / sent) * 100, 2) if sent > 0 else 0.0,
-                reply_rate=round((replied / sent) * 100, 2) if sent > 0 else 0.0,
-                bounce_rate=round((bounced / sent) * 100, 2) if sent > 0 else 0.0,
-            ))
-
+                provider=prov, sent_count=sent, delivered_count=max(sent - bounced, 0), opened_count=opened,
+                replied_count=replied, bounced_count=bounced, open_rate=rate(opened, sent),
+                reply_rate=rate(replied, sent), bounce_rate=rate(bounced, sent)))
         return ProviderPerformanceResponse(providers=items)
 
     # ------------------------------------------------------------------
-    # LEAD STATS
+    # LEADS, MAILBOXES, CAMPAIGNS
     # ------------------------------------------------------------------
 
-    def get_lead_stats(self, tenant_id: str, user_id: Optional[str] = None) -> LeadStats:
+    def get_lead_stats(self, tenant_id: str, user_id: Owners = None) -> LeadStats:
         """New leads (step 1) vs follow-up leads (step > 1)."""
-        tenant_campaigns = self._campaign_subquery(tenant_id, user_id)
-
-        total = (
-            self.db.query(func.count(CampaignProspect.id))
-            .filter(CampaignProspect.campaign_id.in_(
-                self.db.query(tenant_campaigns.c.campaign_id)
-            ))
-            .scalar()
-        ) or 0
-
-        new_leads = (
-            self.db.query(func.count(CampaignProspect.id))
-            .filter(
-                CampaignProspect.campaign_id.in_(
-                    self.db.query(tenant_campaigns.c.campaign_id)
-                ),
-                CampaignProspect.current_step == 1,
-            )
-            .scalar()
-        ) or 0
-
-        return LeadStats(
-            total_leads_contacted=total,
-            new_leads_reached=new_leads,
-            follow_up_leads=total - new_leads,
-        )
-
-    # ------------------------------------------------------------------
-    # MAILBOX STATS
-    # ------------------------------------------------------------------
+        total, new_leads = self.repo.lead_counts(tenant_id, user_id)
+        return LeadStats(total_leads_contacted=total, new_leads_reached=new_leads, follow_up_leads=total - new_leads)
 
     def get_mailbox_stats(self, tenant_id: str) -> MailboxStats:
         """Mailbox connection statistics."""
-        inboxes = (
-            self.db.query(
-                SendingInbox.status,
-                SendingInbox.warmup_enabled,
-            )
-            .filter(SendingInbox.tenant_id == tenant_id)
-            .all()
-        )
+        inboxes = self.repo.mailbox_states(tenant_id)
+        return MailboxStats(total_connected=len(inboxes),
+                            mailbox_in_use=sum(1 for status, _ in inboxes if status == "ACTIVE"),
+                            disconnected=sum(1 for status, _ in inboxes if status == "PAUSED"),
+                            without_warmup=sum(1 for _, warmup in inboxes if not warmup))
 
-        total = len(inboxes)
-        active = sum(1 for i in inboxes if i.status == "ACTIVE")
-        paused = sum(1 for i in inboxes if i.status == "PAUSED")
-        no_warmup = sum(1 for i in inboxes if not i.warmup_enabled)
-
-        return MailboxStats(
-            total_connected=total,
-            mailbox_in_use=active,
-            disconnected=paused,
-            without_warmup=no_warmup,
-        )
-
-    # ------------------------------------------------------------------
-    # CAMPAIGN STATS
-    # ------------------------------------------------------------------
-
-    def get_campaign_stats(self, tenant_id: str, user_id: Optional[str] = None) -> CampaignStats:
+    def get_campaign_stats(self, tenant_id: str, user_id: Owners = None) -> CampaignStats:
         """Campaign status breakdown."""
-        q = self.db.query(Campaign.status, func.count(Campaign.campaign_id)).filter(Campaign.tenant_id == tenant_id)
-        q = q.filter(*_by_owner(Campaign.created_by, user_id))
-        rows = (
-            q.group_by(Campaign.status)
-            .all()
-        )
-        counts = {r[0]: r[1] for r in rows}
-        total = sum(counts.values())
+        counts = self.repo.campaign_status_counts(tenant_id, user_id)
+        return CampaignStats(total_campaigns=sum(counts.values()), active=counts.get("ACTIVE", 0),
+                             paused=counts.get("PAUSED", 0), drafted=counts.get("DRAFT", 0),
+                             completed=counts.get("COMPLETED", 0))
 
-        return CampaignStats(
-            total_campaigns=total,
-            active=counts.get("ACTIVE", 0),
-            paused=counts.get("PAUSED", 0),
-            drafted=counts.get("DRAFT", 0),
-            completed=counts.get("COMPLETED", 0),
-        )
-
-    # ------------------------------------------------------------------
-    # EMAIL HEALTH PER MAILBOX
-    # ------------------------------------------------------------------
-
-    def get_mailbox_health(self, tenant_id: str, user_id: Optional[str] = None) -> list:
+    def get_mailbox_health(self, tenant_id: str, user_id: Owners = None) -> list:
         """Per-mailbox email metrics (optionally scoped to a specific user's campaigns)."""
-        tenant_campaigns = self._campaign_subquery(tenant_id, user_id)
-
-        # Sent + leads per inbox
-        sent_rows = (
-            self.db.query(
-                SendingInbox.email_address.label("mailbox"),
-                func.count(EmailMessage.message_id).label("sent"),
-                func.count(func.distinct(EmailMessage.prospect_id)).label("leads"),
-            )
-            .join(SendingInbox, SendingInbox.inbox_id == EmailMessage.inbox_id)
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                *sent_message_filters(),
-            )
-            .group_by(SendingInbox.email_address)
-            .all()
-        )
-
-        # Events per inbox
-        event_rows = (
-            self.db.query(
-                SendingInbox.email_address.label("mailbox"),
-                EmailEvent.event_type.label("etype"),
-                func.count(EmailEvent.event_id).label("cnt"),
-            )
-            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-            .join(SendingInbox, SendingInbox.inbox_id == EmailMessage.inbox_id)
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailEvent.event_type.in_([
-                    EmailEvent.EVENT_OPEN,
-                    EmailEvent.EVENT_REPLY,
-                    EmailEvent.EVENT_BOUNCE,
-                ]),
-            )
-            .group_by(SendingInbox.email_address, EmailEvent.event_type)
-            .all()
-        )
-
-        # Build lookup
-        mailbox_events: Dict[str, Any] = {}
-        for r in event_rows:
-            if r.mailbox not in mailbox_events:
-                mailbox_events[r.mailbox] = {}
-            mailbox_events[r.mailbox][r.etype] = r.cnt
-
-        mailbox_openers = dict(
-            self.db.query(SendingInbox.email_address, unique_openers_expr())
-            .select_from(EmailEvent)
-            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-            .join(SendingInbox, SendingInbox.inbox_id == EmailMessage.inbox_id)
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailEvent.event_type == EmailEvent.EVENT_OPEN,
-            )
-            .group_by(SendingInbox.email_address)
-            .all()
-        )
-
+        c = self.repo.mailbox_counts(tenant_id, user_id)
         items = []
-        for r in sent_rows:
-            events = mailbox_events.get(r.mailbox, {})
-            sent = r.sent or 0
-            opened = mailbox_openers.get(r.mailbox, 0)
+        for mailbox, sent, leads in c.sent:
+            sent = sent or 0
+            events, opened = c.events.get(mailbox, {}), c.openers.get(mailbox, 0)
             replied = events.get(EmailEvent.EVENT_REPLY, 0)
             bounced = events.get(EmailEvent.EVENT_BOUNCE, 0)
-
             items.append(MailboxHealthItem(
-                mailbox=r.mailbox,
-                lead_contacted=r.leads or 0,
-                email_sent=sent,
-                opened=opened,
-                opened_rate=round((opened / sent) * 100, 2) if sent > 0 else 0.0,
-                replied=replied,
-                replied_rate=round((replied / sent) * 100, 2) if sent > 0 else 0.0,
-                bounced=bounced,
-                bounce_rate=round((bounced / sent) * 100, 2) if sent > 0 else 0.0,
-            ))
-
+                mailbox=mailbox, lead_contacted=leads or 0, email_sent=sent, opened=opened,
+                opened_rate=rate(opened, sent), replied=replied, replied_rate=rate(replied, sent), bounced=bounced,
+                bounce_rate=rate(bounced, sent)))
         return sorted(items, key=lambda x: x.email_sent, reverse=True)
 
-    # ------------------------------------------------------------------
-    # CAMPAIGN OPTIMIZATION METRICS
-    # ------------------------------------------------------------------
-
-    def get_optimization_metrics(self, tenant_id: str, user_id: Optional[str] = None) -> CampaignOptimizationMetrics:
-        """Key campaign optimization metrics."""
-        tenant_campaigns = self._campaign_subquery(tenant_id, user_id)
-
-        # Avg leads contacted before first reply per campaign
-        # (total prospects / campaigns that got at least 1 reply)
-        campaigns_with_replies = (
-            self.db.query(func.count(func.distinct(EmailMessage.campaign_id)))
-            .join(EmailEvent, EmailEvent.message_id == EmailMessage.message_id)
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailEvent.event_type == EmailEvent.EVENT_REPLY,
-            )
-            .scalar()
-        ) or 0
-
-        total_prospects = (
-            self.db.query(func.count(CampaignProspect.id))
-            .filter(CampaignProspect.campaign_id.in_(
-                self.db.query(tenant_campaigns.c.campaign_id)
-            ))
-            .scalar()
-        ) or 0
-
-        avg_leads = round(total_prospects / campaigns_with_replies, 1) if campaigns_with_replies > 0 else 0.0
-
-        # Follow-up reply rate (replies from prospects on step > 1)
-        follow_up_prospects = (
-            self.db.query(CampaignProspect.prospect_id, CampaignProspect.campaign_id)
-            .filter(
-                CampaignProspect.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                CampaignProspect.current_step > 1,
-            )
-            .subquery()
-        )
-
-        follow_up_sent = (
-            self.db.query(func.count(EmailMessage.message_id))
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailMessage.prospect_id.in_(
-                    self.db.query(follow_up_prospects.c.prospect_id)
-                ),
-                *sent_message_filters(),
-            )
-            .scalar()
-        ) or 0
-
-        follow_up_replies = (
-            self.db.query(func.count(EmailEvent.event_id))
-            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-            .filter(
-                EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                EmailMessage.prospect_id.in_(
-                    self.db.query(follow_up_prospects.c.prospect_id)
-                ),
-                EmailEvent.event_type == EmailEvent.EVENT_REPLY,
-            )
-            .scalar()
-        ) or 0
-
-        follow_up_rate = round((follow_up_replies / follow_up_sent) * 100, 2) if follow_up_sent > 0 else 0.0
-
-        # Median time to first reply (in hours)
+    def get_optimization_metrics(self, tenant_id: str, user_id: Owners = None) -> CampaignOptimizationMetrics:
+        """Avg prospects per campaign with a reply, follow-up reply rate, median time to first reply."""
+        c = self.repo.optimization_counts(tenant_id, user_id)
+        avg_leads = round(c.total_prospects / c.campaigns_with_replies, 1) if c.campaigns_with_replies > 0 else 0.0
+        follow_up_rate = rate(c.follow_up_replies, c.follow_up_sent)
         try:
-            reply_times = (
-                self.db.query(
-                    func.min(EmailEvent.event_time).label("first_reply"),
-                    func.min(EmailMessage.sent_at).label("first_sent"),
-                )
-                .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-                .filter(
-                    EmailMessage.campaign_id.in_(self.db.query(tenant_campaigns.c.campaign_id)),
-                    EmailEvent.event_type == EmailEvent.EVENT_REPLY,
-                )
-                .group_by(EmailMessage.prospect_id)
-                .all()
-            )
-
-            if reply_times:
-                diffs = []
-                for r in reply_times:
-                    if r.first_reply and r.first_sent:
-                        diff_hours = (r.first_reply - r.first_sent).total_seconds() / 3600
-                        if diff_hours > 0:
-                            diffs.append(diff_hours)
-                diffs.sort()
-                median_hours = diffs[len(diffs) // 2] if diffs else 0.0
-            else:
-                median_hours = 0.0
+            median = median_hours(self.repo.first_reply_times(tenant_id, user_id))
         except Exception:  # optional metric: report 0 rather than failing the whole report
             logger.warning("Median time-to-reply query failed", exc_info=True)
-            median_hours = 0.0
+            median = 0.0
+        return CampaignOptimizationMetrics(avg_leads_before_first_reply=avg_leads,
+                                           follow_up_reply_rate=follow_up_rate,
+                                           median_time_to_first_reply_hours=round(median, 1))
 
-        return CampaignOptimizationMetrics(
-            avg_leads_before_first_reply=avg_leads,
-            follow_up_reply_rate=follow_up_rate,
-            median_time_to_first_reply_hours=round(median_hours, 1),
-        )
+    def get_user_breakdown(self, tenant_id: str, start_date: date, end_date: date, user_ids: Owners = None) -> list:
+        """Per-user campaign performance summary for team analytics (user_ids: limit to a team)."""
+        window = DateWindow(start_date, end_date)
+        results = []
+        for u in self.repo.breakdown_users(tenant_id, user_ids):
+            c = self.repo.user_counts(tenant_id, u.user_id, window)
+            results.append(UserPerformanceItem(
+                user_id=u.user_id, first_name=u.first_name, last_name=u.last_name, email=u.email, role=u.role,
+                campaigns_created=c.campaigns, total_sent=c.sent, total_opened=c.opened, total_replied=c.replied,
+                total_bounced=c.bounced, open_rate=rate(c.opened, c.sent), reply_rate=rate(c.replied, c.sent),
+                bounce_rate=rate(c.bounced, c.sent)))
+        return results
 
     # ------------------------------------------------------------------
     # FULL DASHBOARD SUMMARY
     # ------------------------------------------------------------------
 
-    def get_user_breakdown(self, tenant_id: str, start_date: date, end_date: date, user_ids=None) -> list:
-        """Per-user campaign performance summary for team analytics (user_ids: limit to a team)."""
-        users = (
-            self.db.query(User)
-            .filter(
-                User.tenant_id == tenant_id,
-                User.status == "ACTIVE",
-                User.role != "PLATFORM_ADMIN",
-                *_by_owner(User.user_id, user_ids),
-            )
-            .order_by(User.first_name)
-            .all()
-        )
-
-        results = []
-        for u in users:
-            campaigns_q = self.db.query(Campaign.campaign_id).filter(
-                Campaign.tenant_id == tenant_id,
-                Campaign.created_by == u.user_id,
-            ).subquery()
-
-            campaigns_count = (
-                self.db.query(func.count(Campaign.campaign_id))
-                .filter(Campaign.tenant_id == tenant_id, Campaign.created_by == u.user_id)
-                .scalar()
-            ) or 0
-
-            sent = (
-                self.db.query(func.count(EmailMessage.message_id))
-                .filter(
-                    EmailMessage.campaign_id.in_(self.db.query(campaigns_q.c.campaign_id)),
-                    *sent_message_filters(),
-                    EmailMessage.sent_at >= start_date,
-                    EmailMessage.sent_at < end_date + timedelta(days=1),
-                )
-                .scalar()
-            ) or 0
-
-            event_row = (
-                self.db.query(
-                    func.sum(case((EmailEvent.event_type == EmailEvent.EVENT_OPEN, 1), else_=0)).label("opened"),
-                    func.sum(case((EmailEvent.event_type == EmailEvent.EVENT_REPLY, 1), else_=0)).label("replied"),
-                    func.sum(case((EmailEvent.event_type == EmailEvent.EVENT_BOUNCE, 1), else_=0)).label("bounced"),
-                )
-                .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-                .filter(
-                    EmailMessage.campaign_id.in_(self.db.query(campaigns_q.c.campaign_id)),
-                    EmailEvent.event_time >= start_date,
-                    EmailEvent.event_time < end_date + timedelta(days=1),
-                )
-                .first()
-            )
-
-            opened = self._unique_openers(
-                EmailMessage.campaign_id.in_(self.db.query(campaigns_q.c.campaign_id)),
-                EmailEvent.event_time >= start_date,
-                EmailEvent.event_time < end_date + timedelta(days=1),
-            )
-            replied = event_row.replied or 0  # type: ignore[union-attr]  # aggregate query: always one row
-            bounced = event_row.bounced or 0  # type: ignore[union-attr]
-
-            results.append(UserPerformanceItem(
-                user_id=u.user_id,
-                first_name=u.first_name,
-                last_name=u.last_name,
-                email=u.email,
-                role=u.role,
-                campaigns_created=campaigns_count,
-                total_sent=sent,
-                total_opened=opened,
-                total_replied=replied,
-                total_bounced=bounced,
-                open_rate=round((opened / sent) * 100, 2) if sent > 0 else 0.0,
-                reply_rate=round((replied / sent) * 100, 2) if sent > 0 else 0.0,
-                bounce_rate=round((bounced / sent) * 100, 2) if sent > 0 else 0.0,
-            ))
-
-        return results
-
-    def get_dashboard_summary(
-        self,
-        tenant_id: str,
-        start_date: date,
-        end_date: date,
-        granularity: str = "daily",
-        user_id: Optional[str] = None,
-    ) -> DashboardSummaryResponse:
+    def get_dashboard_summary(self, tenant_id: str, start_date: date, end_date: date, granularity: str = "daily",
+                              user_id: Owners = None) -> DashboardSummaryResponse:
         """One call for the full Smartlead-style dashboard."""
         analytics = self.get_global_analytics(tenant_id, start_date, end_date, granularity, user_id)
-        provider_perf = self.get_provider_performance(tenant_id, start_date, end_date, user_id)
-        top_campaigns = self.get_campaign_comparison(
-            tenant_id,
-            sort_by="sent_count",
-            sort_dir="desc",
-            page_size=10,
-            start_date=start_date,
-            end_date=end_date,
-            user_id=user_id,
-        )
-
+        top_campaigns = self.get_campaign_comparison(tenant_id, sort_by="sent_count", sort_dir="desc", page_size=10,
+                                                     start_date=start_date, end_date=end_date, user_id=user_id)
         # User breakdown only for org-wide view (not when filtering to one user)
-        user_breakdown = [] if isinstance(user_id, str) else self.get_user_breakdown(tenant_id, start_date, end_date, user_id)
-
+        user_breakdown = [] if isinstance(user_id, str) else self.get_user_breakdown(tenant_id, start_date, end_date,
+                                                                                   user_id)
         return DashboardSummaryResponse(
-            kpis=analytics.kpis,
-            timeseries=analytics.timeseries,
+            kpis=analytics.kpis, timeseries=analytics.timeseries,
             lead_stats=self.get_lead_stats(tenant_id, user_id),
             campaign_stats=self.get_campaign_stats(tenant_id, user_id),
             mailbox_stats=self.get_mailbox_stats(tenant_id),
-            providers=provider_perf.providers,
+            providers=self.get_provider_performance(tenant_id, start_date, end_date, user_id).providers,
             mailbox_health=self.get_mailbox_health(tenant_id, user_id),
             top_campaigns=top_campaigns.items,
             optimization=self.get_optimization_metrics(tenant_id, user_id),
@@ -987,483 +290,194 @@ class ReportsService:
         )
 
     # ------------------------------------------------------------------
-    # CSV EXPORTS
+    # EXPORTS
     # ------------------------------------------------------------------
 
-    def export_global_analytics_csv(
-        self, tenant_id: str, start_date: date, end_date: date, user_id: Optional[str] = None
-    ) -> io.StringIO:
+    def _all_campaigns(self, tenant_id: str, user_id: Owners, start_date: Optional[date] = None,
+                       end_date: Optional[date] = None, sort_by: str = "open_rate") -> List[CampaignComparisonItem]:
+        return self.get_campaign_comparison(tenant_id, sort_by=sort_by, sort_dir="desc", page_size=EXPORT_PAGE_SIZE,
+                                            start_date=start_date, end_date=end_date, user_id=user_id).items
+
+    def _user_label(self, tenant_id: str, user_id: Owners) -> str:
+        label = _user_label(self.repo.user_name(tenant_id, user_id)) if isinstance(user_id, str) and user_id else None
+        return label or "All Users"
+
+    def export_global_analytics_csv(self, tenant_id: str, start_date: date, end_date: date,
+                                    user_id: Owners = None) -> io.StringIO:
         """CSV with three sections: overall KPI summary, daily time-series, and per-campaign breakdown."""
         analytics = self.get_global_analytics(tenant_id, start_date, end_date, user_id=user_id)
-        campaigns = self.get_campaign_comparison(
-            tenant_id,
-            sort_by="sent_count",
-            sort_dir="desc",
-            page_size=10000,
-            start_date=start_date,
-            end_date=end_date,
-            user_id=user_id,
-        )
-
-        # Resolve user name for the header label
-        user_label = "All Users"
-        if user_id:
-            u = self.db.query(User).filter(User.user_id == user_id).first()
-            if u:
-                user_label = f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email
-
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-
-        # ── Section 1: Overall KPI Summary ──
+        campaigns = self._all_campaigns(tenant_id, user_id, start_date, end_date, sort_by="sent_count")
         k = analytics.kpis
-        writer.writerow(["=== OVERALL SUMMARY ==="])
-        writer.writerow(["Period", f"{start_date} to {end_date}"])
-        writer.writerow(["Filtered By", user_label])
-        writer.writerow(["Active Campaigns", k.active_campaigns])
-        writer.writerow(["Total Leads Contacted", k.total_leads_contacted])
-        writer.writerow(["Total Emails Sent", k.total_emails_sent])
-        writer.writerow(["Total Opened", k.total_opened])
-        writer.writerow(["Total Replied", k.total_replied])
-        writer.writerow(["Total Bounced", k.total_bounced])
-        writer.writerow(["Total Clicked", k.total_clicked])
-        writer.writerow(["Overall Open Rate", f"{k.overall_open_rate}%"])
-        writer.writerow(["Overall Reply Rate", f"{k.overall_reply_rate}%"])
-        writer.writerow(["Overall Bounce Rate", f"{k.overall_bounce_rate}%"])
-        writer.writerow([])
+        rows: List[list] = [
+            _Fixed(["=== OVERALL SUMMARY ==="]),
+            ["Period", f"{start_date} to {end_date}"],
+            ["Filtered By", self._user_label(tenant_id, user_id)],
+            *[[label, value] for label, value in _kpi_rows(k)],
+            [],
+            _Fixed(["=== DAILY TIME-SERIES ==="]),
+            _Fixed(["Date", "Sent", "Opened", "Replied", "Bounced"]),
+            *[[pt.date, pt.sent, pt.opened, pt.replied, pt.bounced] for pt in analytics.timeseries],
+            [],
+            _Fixed(["=== PER-CAMPAIGN BREAKDOWN ==="]),
+            _Fixed([*CAMPAIGN_COLUMNS, "Created At"]),
+            *[_campaign_row(c, str, _iso) for c in campaigns],
+        ]
+        return _csv(rows)
 
-        # ── Section 2: Daily Time-Series ──
-        writer.writerow(["=== DAILY TIME-SERIES ==="])
-        writer.writerow(["Date", "Sent", "Opened", "Replied", "Bounced"])
-        for pt in analytics.timeseries:
-            writer.writerow([pt.date, pt.sent, pt.opened, pt.replied, pt.bounced])
-        writer.writerow([])
-
-        # ── Section 3: Per-Campaign Breakdown ──
-        writer.writerow(["=== PER-CAMPAIGN BREAKDOWN ==="])
-        writer.writerow([
-            "Campaign Name", "Status",
-            "Sent", "Opened", "Replied", "Bounced",
-            "Open Rate %", "Reply Rate %", "Bounce Rate %",
-            "Created At",
-        ])
-        for c in campaigns.items:
-            writer.writerow([
-                c.campaign_name,
-                c.status,
-                c.sent_count,
-                c.opened_count,
-                c.replied_count,
-                c.bounced_count,
-                c.open_rate,
-                c.reply_rate,
-                c.bounce_rate,
-                c.created_at.isoformat() if c.created_at else "",
-            ])
-
-        buf.seek(0)
-        return buf
-
-    def export_campaign_comparison_csv(self, tenant_id: str, user_id: Optional[str] = None) -> io.StringIO:
+    def export_campaign_comparison_csv(self, tenant_id: str, user_id: Owners = None) -> io.StringIO:
         """CSV of all campaigns with metrics (optionally scoped to a specific user)."""
-        result = self.get_campaign_comparison(tenant_id, page_size=10000, user_id=user_id)
+        rows: List[list] = [_Fixed([*CAMPAIGN_COLUMNS, "Created At"])]
+        rows += [_campaign_row(c, str, _iso) for c in self._all_campaigns(tenant_id, user_id)]
+        return _csv(rows)
 
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow([
-            "Campaign Name", "Status", "Sent", "Opened", "Replied", "Bounced",
-            "Open Rate %", "Reply Rate %", "Bounce Rate %", "Created At",
-        ])
-        for c in result.items:
-            writer.writerow([
-                c.campaign_name, c.status, c.sent_count, c.opened_count,
-                c.replied_count, c.bounced_count,
-                c.open_rate, c.reply_rate, c.bounce_rate,
-                c.created_at.isoformat() if c.created_at else "",
-            ])
-        buf.seek(0)
-        return buf
+    def export_prospects_csv_for(self, viewer: ReportViewer, campaign_id: str) -> io.StringIO:
+        """The campaign's prospects, if the campaign is the viewer's tenant's and its creator is visible."""
+        exists, owner = self.repo.campaign_owner(viewer.tenant_id, campaign_id)
+        if not exists or not sees_owner(self._access().visible_user_ids(viewer), owner):
+            raise NotFoundError("Campaign not found")
+        return self.export_prospects_csv(campaign_id)
 
     def export_prospects_csv(self, campaign_id: str) -> io.StringIO:
         """CSV of prospects enrolled in a campaign with engagement data."""
-
-        rows = (
-            self.db.query(
-                Prospect.email,
-                Prospect.first_name,
-                Prospect.last_name,
-                Prospect.company_name,
-                Prospect.designation,
-                CampaignProspect.status,
-                CampaignProspect.current_step,
-            )
-            .join(CampaignProspect, CampaignProspect.prospect_id == Prospect.prospect_id)
-            .filter(CampaignProspect.campaign_id == campaign_id)
-            .all()
-        )
-
-        # Get engagement counts per prospect
-        engagement = (
-            self.db.query(
-                EmailMessage.prospect_id,
-                func.sum(case(
-                    (and_(*sent_message_filters()), 1), else_=0
-                )).label("sent"),
-                func.sum(case(
-                    (EmailMessage.status == "SENT", 1), else_=0
-                )).label("delivered"),
-            )
-            .filter(EmailMessage.campaign_id == campaign_id)
-            .group_by(EmailMessage.prospect_id)
-            .all()
-        )
-        engagement_map = {r.prospect_id: {"sent": r.sent, "delivered": r.delivered} for r in engagement}
-
-        # Get event counts per prospect
-        event_counts = (
-            self.db.query(
-                EmailMessage.prospect_id,
-                EmailEvent.event_type,
-                func.count(EmailEvent.event_id).label("cnt"),
-            )
-            .join(EmailEvent, EmailEvent.message_id == EmailMessage.message_id)
-            .filter(EmailMessage.campaign_id == campaign_id)
-            .group_by(EmailMessage.prospect_id, EmailEvent.event_type)
-            .all()
-        )
-        event_map: Dict[str, Any] = {}
-        for r in event_counts:
-            if r.prospect_id not in event_map:
-                event_map[r.prospect_id] = {}
-            event_map[r.prospect_id][r.event_type] = r.cnt
-
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow([
-            "Email", "First Name", "Last Name", "Company", "Designation",
-            "Status", "Current Step", "Emails Sent", "Opens", "Clicks", "Replies", "Bounces",
-        ])
-        for r in rows:
-            # Match prospect_id from CampaignProspect join
-            prospect_row = (
-                self.db.query(CampaignProspect.prospect_id)
-                .join(Prospect, Prospect.prospect_id == CampaignProspect.prospect_id)
-                .filter(
-                    CampaignProspect.campaign_id == campaign_id,
-                    Prospect.email == r.email,
-                )
-                .first()
-            )
-            pid = prospect_row.prospect_id if prospect_row else None
-            events = event_map.get(pid, {})  # type: ignore[arg-type]  # None (unknown prospect) -> {}
-
-            writer.writerow([
-                r.email, r.first_name or "", r.last_name or "",
-                r.company_name or "", r.designation or "",
-                r.status or "", r.current_step or 0,
-                engagement_map.get(pid, {}).get("sent", 0),
-                events.get(EmailEvent.EVENT_OPEN, 0),
-                events.get(EmailEvent.EVENT_CLICK, 0),
-                events.get(EmailEvent.EVENT_REPLY, 0),
-                events.get(EmailEvent.EVENT_BOUNCE, 0),
+        data = self.repo.prospect_export(campaign_id)
+        rows: List[list] = [_Fixed(["Email", "First Name", "Last Name", "Company", "Designation", "Status",
+                                    "Current Step", "Emails Sent", "Opens", "Clicks", "Replies", "Bounces"])]
+        for r in data.rows:
+            events = data.events.get(r.prospect_id, {})
+            rows.append([
+                r.email, r.first_name or "", r.last_name or "", r.company_name or "", r.designation or "",
+                r.status or "", r.current_step or 0, data.engagement.get(r.prospect_id, {}).get("sent", 0),
+                events.get(EmailEvent.EVENT_OPEN, 0), events.get(EmailEvent.EVENT_CLICK, 0),
+                events.get(EmailEvent.EVENT_REPLY, 0), events.get(EmailEvent.EVENT_BOUNCE, 0),
             ])
-        buf.seek(0)
-        return buf
-
-    # ------------------------------------------------------------------
-    # WORD EXPORT HELPERS
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _set_cell_bg(cell, hex_color: str) -> None:
-        """Fill a table cell background with a hex color (e.g. '2d6bbf')."""
-        tc = cell._tc
-        tcPr = tc.get_or_add_tcPr()
-        shd = OxmlElement("w:shd")
-        shd.set(qn("w:val"), "clear")
-        shd.set(qn("w:color"), "auto")
-        shd.set(qn("w:fill"), hex_color)
-        tcPr.append(shd)
-
-    @staticmethod
-    def _set_cell_border_bottom(cell, hex_color: str = "E5E7EB") -> None:
-        """Add a bottom border to a cell."""
-        tc = cell._tc
-        tcPr = tc.get_or_add_tcPr()
-        tcBorders = OxmlElement("w:tcBorders")
-        bottom = OxmlElement("w:bottom")
-        bottom.set(qn("w:val"), "single")
-        bottom.set(qn("w:sz"), "4")
-        bottom.set(qn("w:color"), hex_color)
-        tcBorders.append(bottom)
-        tcPr.append(tcBorders)
-
-    def _add_section_heading(self, doc: DocxDocument, text: str) -> None:
-        p = doc.add_paragraph()
-        p.paragraph_format.space_before = Pt(18)
-        p.paragraph_format.space_after = Pt(6)
-        run = p.add_run(text.upper())
-        run.bold = True
-        run.font.size = Pt(9)
-        run.font.color.rgb = RGBColor(0x2D, 0x6B, 0xBF)
-        run.font.name = "Calibri"
-        # Bottom border on paragraph
-        pPr = p._p.get_or_add_pPr()
-        pBdr = OxmlElement("w:pBdr")
-        bottom = OxmlElement("w:bottom")
-        bottom.set(qn("w:val"), "single")
-        bottom.set(qn("w:sz"), "4")
-        bottom.set(qn("w:color"), "2d6bbf")
-        pBdr.append(bottom)
-        pPr.append(pBdr)
-
-    def _add_kpi_table(self, doc: DocxDocument, rows: list[tuple]) -> None:
-        """Two-column key-value table for KPI summary."""
-        table = doc.add_table(rows=len(rows), cols=2)
-        table.style = "Table Grid"
-        table.alignment = WD_TABLE_ALIGNMENT.LEFT
-        for i, (label, value) in enumerate(rows):
-            lc = table.cell(i, 0)
-            vc = table.cell(i, 1)
-            lc.text = label
-            vc.text = str(value)
-            lc.paragraphs[0].runs[0].font.size = Pt(10)
-            lc.paragraphs[0].runs[0].font.name = "Calibri"
-            lc.paragraphs[0].runs[0].bold = True
-            lc.paragraphs[0].runs[0].font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
-            vc.paragraphs[0].runs[0].font.size = Pt(10)
-            vc.paragraphs[0].runs[0].font.name = "Calibri"
-            vc.paragraphs[0].runs[0].bold = True
-            vc.paragraphs[0].runs[0].font.color.rgb = RGBColor(0x11, 0x18, 0x27)
-            bg = "F9FAFB" if i % 2 == 0 else "FFFFFF"
-            self._set_cell_bg(lc, bg)
-            self._set_cell_bg(vc, bg)
-        # Column widths
-        for row in table.rows:
-            row.cells[0].width = Inches(2.8)
-            row.cells[1].width = Inches(1.5)
-
-    def _add_data_table(self, doc: DocxDocument, headers: list[str], data_rows: list[list]) -> None:
-        """Full data table with blue header row."""
-        table = doc.add_table(rows=1 + len(data_rows), cols=len(headers))
-        table.style = "Table Grid"
-        table.alignment = WD_TABLE_ALIGNMENT.LEFT
-
-        # Header row
-        hdr_cells = table.rows[0].cells
-        for i, h in enumerate(headers):
-            hdr_cells[i].text = h
-            run = hdr_cells[i].paragraphs[0].runs[0]
-            run.bold = True
-            run.font.size = Pt(8)
-            run.font.name = "Calibri"
-            run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-            hdr_cells[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-            self._set_cell_bg(hdr_cells[i], "2D6BBF")
-
-        # Data rows
-        for r_idx, row_data in enumerate(data_rows):
-            row_cells = table.rows[r_idx + 1].cells
-            bg = "F9FAFB" if r_idx % 2 == 0 else "FFFFFF"
-            for c_idx, val in enumerate(row_data):
-                row_cells[c_idx].text = str(val) if val is not None else ""
-                run = row_cells[c_idx].paragraphs[0].runs[0]
-                run.font.size = Pt(8)
-                run.font.name = "Calibri"
-                run.font.color.rgb = RGBColor(0x11, 0x18, 0x27)
-                self._set_cell_bg(row_cells[c_idx], bg)
-
-    # ------------------------------------------------------------------
-    # WORD EXPORT
-    # ------------------------------------------------------------------
-
-    def export_global_analytics_docx(
-        self, tenant_id: str, start_date: date, end_date: date, user_id: Optional[str] = None
-    ) -> io.BytesIO:
-        """
-        Full analytics report as a Word document with:
-        - Cover header with title and date range
-        - Section 1: Overall KPI summary
-        - Section 2: Daily time-series table
-        - Section 3: Per-campaign breakdown table
-        - Section 4: Mailbox health table
-        - Section 5: Provider performance table
-        """
-        analytics = self.get_global_analytics(tenant_id, start_date, end_date, user_id=user_id)
-        campaigns = self.get_campaign_comparison(
-            tenant_id, sort_by="sent_count", sort_dir="desc",
-            page_size=10000, start_date=start_date, end_date=end_date, user_id=user_id,
-        )
-        mailbox_health = self.get_mailbox_health(tenant_id, user_id)
-        provider_perf = self.get_provider_performance(tenant_id, start_date, end_date, user_id=user_id)
-
-        # Resolve user name for report header
-        user_label = "All Users"
-        if user_id:
-            u = self.db.query(User).filter(User.user_id == user_id).first()
-            if u:
-                user_label = f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email
-
-        doc = Document()
-
-        # ── Page margins ──
-        section = doc.sections[0]
-        section.page_width = Inches(8.5)
-        section.page_height = Inches(11)
-        section.left_margin = Inches(1)
-        section.right_margin = Inches(1)
-        section.top_margin = Inches(1)
-        section.bottom_margin = Inches(1)
-
-        # ── Cover Header ──
-        title_para = doc.add_paragraph()
-        title_para.paragraph_format.space_after = Pt(4)
-        title_run = title_para.add_run("OUTREACH360 — ANALYTICS REPORT")
-        title_run.bold = True
-        title_run.font.size = Pt(18)
-        title_run.font.name = "Calibri"
-        title_run.font.color.rgb = RGBColor(0x2D, 0x6B, 0xBF)
-
-        sub_para = doc.add_paragraph()
-        sub_para.paragraph_format.space_after = Pt(2)
-        sub_run = sub_para.add_run(f"Period: {start_date.strftime('%B %d, %Y')} – {end_date.strftime('%B %d, %Y')}")
-        sub_run.font.size = Pt(10)
-        sub_run.font.name = "Calibri"
-        sub_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
-
-        scope_para = doc.add_paragraph()
-        scope_para.paragraph_format.space_after = Pt(2)
-        scope_run = scope_para.add_run(f"Filtered By: {user_label}")
-        scope_run.font.size = Pt(10)
-        scope_run.font.name = "Calibri"
-        scope_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
-
-        gen_para = doc.add_paragraph()
-        gen_para.paragraph_format.space_after = Pt(16)
-        gen_run = gen_para.add_run(f"Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}")
-        gen_run.font.size = Pt(9)
-        gen_run.font.name = "Calibri"
-        gen_run.font.color.rgb = RGBColor(0xA0, 0xAA, 0xB5)
-
-        # ── Section 1: Overall KPI Summary ──
-        k = analytics.kpis
-        self._add_section_heading(doc, "1. Overall KPI Summary")
-        self._add_kpi_table(doc, [
-            ("Active Campaigns",     k.active_campaigns),
-            ("Total Leads Contacted", k.total_leads_contacted),
-            ("Total Emails Sent",    k.total_emails_sent),
-            ("Total Opened",         k.total_opened),
-            ("Total Replied",        k.total_replied),
-            ("Total Bounced",        k.total_bounced),
-            ("Total Clicked",        k.total_clicked),
-            ("Overall Open Rate",    f"{k.overall_open_rate}%"),
-            ("Overall Reply Rate",   f"{k.overall_reply_rate}%"),
-            ("Overall Bounce Rate",  f"{k.overall_bounce_rate}%"),
-        ])
-
-        # ── Section 2: Daily Time-Series ──
-        self._add_section_heading(doc, "2. Daily Sending Activity")
-        self._add_data_table(
-            doc,
-            headers=["Date", "Sent", "Opened", "Replied", "Bounced"],
-            data_rows=[
-                [pt.date, pt.sent, pt.opened, pt.replied, pt.bounced]
-                for pt in analytics.timeseries
-            ],
-        )
-
-        # ── Section 3: Per-Campaign Breakdown ──
-        doc.add_page_break()
-        self._add_section_heading(doc, "3. Per-Campaign Breakdown")
-        self._add_data_table(
-            doc,
-            headers=[
-                "Campaign Name", "Status", "Sent", "Opened", "Replied",
-                "Bounced", "Open Rate %", "Reply Rate %", "Bounce Rate %", "Created",
-            ],
-            data_rows=[
-                [
-                    c.campaign_name, c.status,
-                    c.sent_count, c.opened_count, c.replied_count, c.bounced_count,
-                    f"{c.open_rate}%", f"{c.reply_rate}%", f"{c.bounce_rate}%",
-                    c.created_at.strftime("%Y-%m-%d") if c.created_at else "",
-                ]
-                for c in campaigns.items
-            ],
-        )
-
-        # ── Section 4: Mailbox Health ──
-        self._add_section_heading(doc, "4. Mailbox Health")
-        self._add_data_table(
-            doc,
-            headers=[
-                "Mailbox", "Leads Contacted", "Emails Sent",
-                "Opened", "Open Rate %", "Replied", "Reply Rate %",
-                "Bounced", "Bounce Rate %",
-            ],
-            data_rows=[
-                [
-                    m.mailbox, m.lead_contacted, m.email_sent,
-                    m.opened, f"{m.opened_rate}%",
-                    m.replied, f"{m.replied_rate}%",
-                    m.bounced, f"{m.bounce_rate}%",
-                ]
-                for m in mailbox_health
-            ],
-        )
-
-        # ── Section 5: Provider Performance ──
-        self._add_section_heading(doc, "5. Provider Performance")
-        self._add_data_table(
-            doc,
-            headers=[
-                "Provider", "Sent", "Opened", "Replied", "Bounced",
-                "Open Rate %", "Reply Rate %", "Bounce Rate %",
-            ],
-            data_rows=[
-                [
-                    p.provider, p.sent_count, p.opened_count,
-                    p.replied_count, p.bounced_count,
-                    f"{p.open_rate}%", f"{p.reply_rate}%", f"{p.bounce_rate}%",
-                ]
-                for p in provider_perf.providers
-            ],
-        )
-
-        # ── Footer note ──
-        doc.add_paragraph()
-        footer_para = doc.add_paragraph()
-        footer_run = footer_para.add_run("This report was automatically generated by Outreach360.ai")
-        footer_run.font.size = Pt(8)
-        footer_run.font.name = "Calibri"
-        footer_run.font.color.rgb = RGBColor(0xA0, 0xAA, 0xB5)
-        footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        buf = io.BytesIO()
-        doc.save(buf)
-        buf.seek(0)
-        return buf
+        return _csv(rows)
 
     def export_deliverability_csv(self, tenant_id: str) -> io.StringIO:
         """CSV of per-mailbox email health metrics for the tenant."""
-        items = self.get_mailbox_health(tenant_id)
+        rows: List[list] = [_Fixed(MAILBOX_COLUMNS)]
+        rows += [_mailbox_row(m, str) for m in self.get_mailbox_health(tenant_id)]
+        return _csv(rows)
 
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow([
-            "Mailbox", "Leads Contacted", "Emails Sent",
-            "Opened", "Open Rate %",
-            "Replied", "Reply Rate %",
-            "Bounced", "Bounce Rate %",
-        ])
-        for m in items:
-            writer.writerow([
-                m.mailbox,
-                m.lead_contacted,
-                m.email_sent,
-                m.opened, m.opened_rate,
-                m.replied, m.replied_rate,
-                m.bounced, m.bounce_rate,
-            ])
-        buf.seek(0)
-        return buf
+    def export_global_analytics_docx(self, tenant_id: str, start_date: date, end_date: date,
+                                     user_id: Owners = None) -> io.BytesIO:
+        """Full analytics report as a Word document (layout: app/services/reports_docx.py)."""
+        analytics = self.get_global_analytics(tenant_id, start_date, end_date, user_id=user_id)
+        campaigns = self._all_campaigns(tenant_id, user_id, start_date, end_date, sort_by="sent_count")
+        return reports_docx.analytics_report(
+            start_date=start_date, end_date=end_date, user_label=self._user_label(tenant_id, user_id),
+            kpi_rows=_kpi_rows(analytics.kpis),
+            timeseries=[[pt.date, pt.sent, pt.opened, pt.replied, pt.bounced] for pt in analytics.timeseries],
+            campaigns=[_campaign_row(c, _percent, lambda d: d.strftime("%Y-%m-%d") if d else "") for c in campaigns],
+            mailboxes=[_mailbox_row(m, _percent) for m in self.get_mailbox_health(tenant_id, user_id)],
+            providers=[[p.provider, p.sent_count, p.opened_count, p.replied_count, p.bounced_count,
+                        f"{p.open_rate}%", f"{p.reply_rate}%", f"{p.bounce_rate}%"]
+                       for p in self.get_provider_performance(tenant_id, start_date, end_date, user_id=user_id).providers],
+        )
+
+
+def _percent(value: float) -> str:
+    return f"{value}%"
+
+
+def _kpi_rows(k: GlobalKPIs) -> List[tuple]:
+    return [
+        ("Active Campaigns", k.active_campaigns), ("Total Leads Contacted", k.total_leads_contacted),
+        ("Total Emails Sent", k.total_emails_sent), ("Total Opened", k.total_opened),
+        ("Total Replied", k.total_replied), ("Total Bounced", k.total_bounced), ("Total Clicked", k.total_clicked),
+        ("Overall Open Rate", f"{k.overall_open_rate}%"), ("Overall Reply Rate", f"{k.overall_reply_rate}%"),
+        ("Overall Bounce Rate", f"{k.overall_bounce_rate}%"),
+    ]
+
+
+def _campaign_row(c: CampaignComparisonItem, fmt_rate: Callable[[float], Any], fmt_date: Callable[[Any], str]) -> list:
+    return [c.campaign_name, c.status, c.sent_count, c.opened_count, c.replied_count, c.bounced_count,
+            _keep(fmt_rate, c.open_rate), _keep(fmt_rate, c.reply_rate), _keep(fmt_rate, c.bounce_rate),
+            fmt_date(c.created_at)]
+
+
+def _mailbox_row(m: MailboxHealthItem, fmt_rate: Callable[[float], Any]) -> list:
+    return [m.mailbox, m.lead_contacted, m.email_sent, m.opened, _keep(fmt_rate, m.opened_rate), m.replied,
+            _keep(fmt_rate, m.replied_rate), m.bounced, _keep(fmt_rate, m.bounce_rate)]
+
+
+def _keep(fmt: Callable[[float], Any], value: float) -> Any:
+    """CSV keeps the number itself (``str`` marks that); Word shows it with a % sign."""
+    return value if fmt is str else fmt(value)
+
+
+# ── Per-viewer entry points (one call per route) ──────────────
+
+@dataclass(frozen=True)
+class ReportFile:
+    content: Any
+    filename: str
+
+
+def _owner_suffix(owners: Owners) -> str:
+    return "_" + short_id(owners) if isinstance(owners, str) else ""
+
+
+class ViewerReports:
+    """The /reports routes: default period, the viewer's scope, then the report."""
+
+    def __init__(self, reports: ReportsService, today: Callable[[], date] = date.today) -> None:
+        self.reports = reports
+        self._today = today
+
+    @classmethod
+    def for_session(cls, db: Session) -> "ViewerReports":
+        return cls(ReportsService.for_session(db))
+
+    def _window(self, start: Optional[date], end: Optional[date]) -> DateWindow:
+        return DateWindow.or_default(start, end, self._today())
+
+    def dashboard_summary(self, viewer: ReportViewer, start_date: Optional[date], end_date: Optional[date],
+                          granularity: str, user_id: Optional[str]) -> DashboardSummaryResponse:
+        w = self._window(start_date, end_date)
+        owners = self.reports.scope(viewer, user_id)   # AGENTs always see only their own data
+        return self.reports.get_dashboard_summary(viewer.tenant_id, w.start, w.end, granularity, owners)
+
+    def global_analytics(self, viewer: ReportViewer, start_date: Optional[date], end_date: Optional[date],
+                         granularity: str, user_id: Optional[str]) -> GlobalAnalyticsResponse:
+        w = self._window(start_date, end_date)
+        owners = self.reports.scope(viewer, user_id)
+        return self.reports.get_global_analytics(viewer.tenant_id, w.start, w.end, granularity, owners)
+
+    def campaign_comparison(self, viewer: ReportViewer, start_date: Optional[date], end_date: Optional[date],
+                            sort_by: str, sort_dir: str, page: int, page_size: int,
+                            user_id: Optional[str]) -> CampaignComparisonResponse:
+        owners = self.reports.scope(viewer, user_id)
+        return self.reports.get_campaign_comparison(viewer.tenant_id, sort_by=sort_by, sort_dir=sort_dir, page=page,
+                                                    page_size=page_size, start_date=start_date, end_date=end_date,
+                                                    user_id=owners)
+
+    def provider_performance(self, viewer: ReportViewer, start_date: Optional[date],
+                             end_date: Optional[date]) -> ProviderPerformanceResponse:
+        w = self._window(start_date, end_date)
+        return self.reports.get_provider_performance(viewer.tenant_id, w.start, w.end, self.reports.scope(viewer, None))
+
+    def global_analytics_csv(self, viewer: ReportViewer, start_date: Optional[date], end_date: Optional[date],
+                             user_id: Optional[str]) -> ReportFile:
+        w = self._window(start_date, end_date)
+        owners = self.reports.scope(viewer, user_id)
+        buf = self.reports.export_global_analytics_csv(viewer.tenant_id, w.start, w.end, owners)
+        return ReportFile(buf, f"analytics_{w.start}_{w.end}{_owner_suffix(owners)}.csv")
+
+    def global_analytics_docx(self, viewer: ReportViewer, start_date: Optional[date], end_date: Optional[date],
+                              user_id: Optional[str]) -> ReportFile:
+        w = self._window(start_date, end_date)
+        owners = self.reports.scope(viewer, user_id)
+        buf = self.reports.export_global_analytics_docx(viewer.tenant_id, w.start, w.end, owners)
+        return ReportFile(buf, f"analytics_report_{w.start}_{w.end}{_owner_suffix(owners)}.docx")
+
+    def campaign_comparison_csv(self, viewer: ReportViewer, user_id: Optional[str]) -> ReportFile:
+        owners = self.reports.scope(viewer, user_id)
+        buf = self.reports.export_campaign_comparison_csv(viewer.tenant_id, user_id=owners)
+        suffix = "".join(c for c in short_id(owners) if c.isalnum() or c in "-_") if isinstance(owners, str) else ""
+        return ReportFile(buf, f"campaign_comparison{'_' + suffix if suffix else ''}.csv")
+
+    def prospects_csv(self, viewer: ReportViewer, campaign_id: str) -> ReportFile:
+        return ReportFile(self.reports.export_prospects_csv_for(viewer, campaign_id), f"prospects_{short_id(campaign_id)}.csv")
+
+    def deliverability_csv(self, viewer: ReportViewer) -> ReportFile:
+        return ReportFile(self.reports.export_deliverability_csv(viewer.tenant_id), "mailbox_health_report.csv")

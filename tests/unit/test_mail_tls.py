@@ -131,12 +131,6 @@ def _inbox(**kw):
     return SimpleNamespace(**base)
 
 
-def _db_returning(inbox):
-    db = MagicMock()
-    db.query.return_value.filter.return_value.first.return_value = inbox
-    return db
-
-
 # ── the helper ─────────────────────────────────────────────────
 
 def test_tls_context_verifies_certificates_and_hostnames():
@@ -232,24 +226,44 @@ def test_imap_sync_passes_context(monkeypatch):
     _assert_verifying(imap.ssl_context)
 
 
-def test_inbox_router_test_endpoints_pass_context(monkeypatch):
-    from app.routers import inbox_router
-    monkeypatch.setattr(inbox_router, "_check_mail_host", lambda host: None)
+class _MailboxUow:
+    """Unit of work of InboxService (app/services/inbox_service.py) holding one mailbox."""
+
+    def __init__(self, inbox):
+        self.inbox = inbox
+        self.session = MagicMock()
+        self.inboxes = SimpleNamespace(get=lambda tenant_id, inbox_id: self.inbox)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return None
+
+    def commit(self):
+        pass
+
+
+def _inbox_service(monkeypatch, inbox):
+    from app.services import inbox_service
+    monkeypatch.setattr(inbox_service, "check_mail_host", lambda host: None)
+    return inbox_service.InboxService(_MailboxUow(inbox))
+
+
+def test_inbox_test_endpoints_pass_context(monkeypatch):
     user = SimpleNamespace(tenant_id="t1")
 
-    out = inbox_router.test_smtp_connection("i1", db=_db_returning(_inbox()), current_user=user)
+    out = _inbox_service(monkeypatch, _inbox()).test_smtp(user, "i1")
     assert out["status"] == "connected"
     _assert_verifying(FakeSMTP.instances[-1].context)
 
     monkeypatch.setattr(FakeIMAP4, "select", lambda self, *a, **k: ("NO", []), raising=False)
-    out = inbox_router.test_imap_connection("i1", db=_db_returning(_inbox()), current_user=user)
+    out = _inbox_service(monkeypatch, _inbox()).test_imap(user, "i1")
     assert out["status"] == "connected"
     _assert_verifying(FakeIMAP4.instances[-1].ssl_context)
 
 
-def test_inbox_router_reports_certificate_errors(monkeypatch):
-    from app.routers import inbox_router
-    monkeypatch.setattr(inbox_router, "_check_mail_host", lambda host: None)
+def test_inbox_test_endpoints_report_certificate_errors(monkeypatch):
     user = SimpleNamespace(tenant_id="t1")
 
     def bad_cert(*a, **k):
@@ -259,10 +273,9 @@ def test_inbox_router_reports_certificate_errors(monkeypatch):
 
     monkeypatch.setattr(imaplib, "IMAP4_SSL", bad_cert)
     monkeypatch.setattr(smtplib, "SMTP_SSL", bad_cert)
-    out = inbox_router.test_imap_connection("i1", db=_db_returning(_inbox()), current_user=user)
+    out = _inbox_service(monkeypatch, _inbox()).test_imap(user, "i1")
     assert out["status"] == "connection_failed" and "certificate could not be verified" in out["error"]
-    out = inbox_router.test_smtp_connection("i1", db=_db_returning(_inbox(smtp_use_ssl=True, smtp_port=465)),
-                                            current_user=user)
+    out = _inbox_service(monkeypatch, _inbox(smtp_use_ssl=True, smtp_port=465)).test_smtp(user, "i1")
     assert out["status"] == "connection_failed" and "Hostname mismatch" in out["error"]
 
 

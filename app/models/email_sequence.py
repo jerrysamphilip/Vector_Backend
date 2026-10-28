@@ -3,11 +3,13 @@
 Email Sequence model for multi-step campaign flows.
 """
 
-from sqlalchemy import Column, String, Boolean, Integer, ForeignKey, CheckConstraint
-from sqlalchemy.orm import relationship
-import uuid
+from typing import Optional
+
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.core.ids import new_id
 
 
 class EmailSequence(Base):
@@ -17,21 +19,24 @@ class EmailSequence(Base):
     """
     __tablename__ = "email_sequences"
 
-    sequence_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    campaign_id = Column(String(36), ForeignKey("campaigns.campaign_id"), nullable=False)
+    sequence_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    campaign_id: Mapped[str] = mapped_column(String(36), ForeignKey("campaigns.campaign_id"), nullable=False)
+    # The campaign's tenant (D3, 0028_child_tenant_ids); filled from the campaign by app/models/tenant_fill.py
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
 
-    step_number = Column(Integer, nullable=False)
-    wait_days = Column(Integer, default=0)
+    step_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    wait_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
 
     # Stop Conditions
-    stop_on_reply = Column(Boolean, default=True)
-    stop_on_bounce = Column(Boolean, default=True)
+    stop_on_reply: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=True)
+    stop_on_bounce: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=True)
 
     # Send Window (hour of day, 0-23)
-    send_start_hour = Column(Integer, nullable=True)
-    send_end_hour = Column(Integer, nullable=True)
+    send_start_hour: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    send_end_hour: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
-    row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
+    # T-3, app/core/concurrency.py
+    row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     # Relationships
     campaign = relationship("Campaign", back_populates="sequences")
@@ -40,6 +45,7 @@ class EmailSequence(Base):
 
     __table_args__ = (
         CheckConstraint("step_number BETWEEN 1 AND 7", name="ck_sequence_step_range"),
+        Index("ix_email_sequences_tenant_campaign", "tenant_id", "campaign_id", "step_number"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 

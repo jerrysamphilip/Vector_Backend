@@ -4,12 +4,15 @@ Activities logged against a single contact: notes, calls and meetings.
 Emails are not stored here; the contact timeline reads them from email_messages.
 """
 
-from sqlalchemy import Column, String, Text, Integer, ForeignKey
-from sqlalchemy.orm import relationship
-import uuid
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 ACTIVITY_TYPES = ("NOTE", "CALL", "MEETING", "EMAIL")
 
@@ -17,26 +20,26 @@ ACTIVITY_TYPES = ("NOTE", "CALL", "MEETING", "EMAIL")
 class ContactActivity(Base):
     __tablename__ = "contact_activities"
 
-    activity_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
-    prospect_id = Column(String(36), ForeignKey("prospects.prospect_id"), nullable=True, index=True)
+    activity_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
+    prospect_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("prospects.prospect_id"), nullable=True, index=True)
     # Activity logged on a deal (BR-SF-06); prospect_id is then the deal's contact, if it has one
-    opportunity_id = Column(String(36), ForeignKey("opportunities.opportunity_id"), nullable=True, index=True)
+    opportunity_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("opportunities.opportunity_id"), nullable=True, index=True)
     # Where it came from: MANUAL, or GMAIL / OUTLOOK / GOOGLE_CALENDAR / OUTLOOK_CALENDAR for synced items
     # (BR-SF-16); external_id de-duplicates synced items
-    source = Column(String(20), nullable=True)
-    external_id = Column(String(255), nullable=True, index=True)
+    source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    external_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
 
-    activity_type = Column(String(20), nullable=False, default="NOTE")  # NOTE / CALL / MEETING / EMAIL (logged by hand)
-    subject = Column(String(255), nullable=True)
-    body = Column(Text, nullable=True)
-    outcome = Column(String(100), nullable=True)  # e.g. Connected, Left voicemail, No answer
-    duration_minutes = Column(Integer, nullable=True)
-    occurred_at = Column(UtcDateTime, nullable=False, server_default=NOW6)
+    activity_type: Mapped[str] = mapped_column(String(20), nullable=False, default="NOTE")  # NOTE / CALL / MEETING / EMAIL (logged by hand)
+    subject: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    outcome: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # e.g. Connected, Left voicemail, No answer
+    duration_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, server_default=NOW6)
 
-    created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    created_at = Column(UtcDateTime, server_default=NOW6)
-    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
+    created_by: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, onupdate=NOW6, nullable=True)
 
     prospect = relationship("Prospect", back_populates="activities")
     author = relationship("User", foreign_keys=[created_by])

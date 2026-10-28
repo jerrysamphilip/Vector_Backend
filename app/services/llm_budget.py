@@ -12,10 +12,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
-from sqlalchemy import text
-
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.repositories.platform_flags import PlatformFlagRepository
 
 logger = logging.getLogger(__name__)
 
@@ -61,18 +60,14 @@ def charge(kwargs: dict) -> Tuple[dict, int]:
     day = _day()
     db = SessionLocal()
     try:
+        flags = PlatformFlagRepository(db)
         for name in (f"llm_usd_micro:{day}", f"llm_calls:{day}"):
-            db.execute(text("INSERT IGNORE INTO platform_flags (name, value) VALUES (:n, '0')"), {"n": name})
-        ok = db.execute(text("UPDATE platform_flags SET value = CAST(value AS UNSIGNED) + :e "
-                             "WHERE name = :n AND CAST(value AS UNSIGNED) + :e <= :l"),
-                        {"n": f"llm_usd_micro:{day}", "e": est, "l": limit}).rowcount  # type: ignore[attr-defined]
+            flags.ensure_counter(name)
+        ok = flags.add_within(f"llm_usd_micro:{day}", est, limit)
         if ok:
-            ok = db.execute(text("UPDATE platform_flags SET value = CAST(value AS UNSIGNED) + 1 "
-                                 "WHERE name = :n AND CAST(value AS UNSIGNED) < :l"),
-                            {"n": f"llm_calls:{day}", "l": int(settings.OPENAI_MAX_CALLS_PER_DAY)}).rowcount  # type: ignore[attr-defined]
+            ok = flags.increment_below(f"llm_calls:{day}", int(settings.OPENAI_MAX_CALLS_PER_DAY))
             if not ok:                 # call ceiling hit: give the dollar reservation back
-                db.execute(text("UPDATE platform_flags SET value = GREATEST(CAST(value AS SIGNED) - :e, 0) WHERE name = :n"),
-                           {"n": f"llm_usd_micro:{day}", "e": est})
+                flags.adjust(f"llm_usd_micro:{day}", -est)
         db.commit()
     finally:
         db.close()
@@ -94,8 +89,7 @@ def settle(reserved_micro: int, response=None) -> None:
         return
     db = SessionLocal()
     try:
-        db.execute(text("UPDATE platform_flags SET value = GREATEST(CAST(value AS SIGNED) + :d, 0) WHERE name = :n"),
-                   {"d": delta, "n": f"llm_usd_micro:{_day()}"})
+        PlatformFlagRepository(db).adjust(f"llm_usd_micro:{_day()}", delta)
         db.commit()
     finally:
         db.close()
@@ -104,7 +98,7 @@ def settle(reserved_micro: int, response=None) -> None:
 def spent_today_usd() -> float:
     db = SessionLocal()
     try:
-        v = db.execute(text("SELECT value FROM platform_flags WHERE name = :n"), {"n": f"llm_usd_micro:{_day()}"}).scalar()
+        v = PlatformFlagRepository(db).get(f"llm_usd_micro:{_day()}")
     finally:
         db.close()
     return int(v or 0) / 1_000_000

@@ -43,20 +43,6 @@ layers =
     app.utils
     app.models
     app.core
-ignore_imports =
-    # --- BASELINE 2026-10-18 (may only shrink) ---
-    # TODO(C-4): auth resolves the current User/Tenant; move the lookup into a service and pass it in.
-    app.core.auth -> app.models.user
-    app.core.auth -> app.models.tenant
-    # TODO(C-4): token revocation / activity checks belong in a service-level dependency, not app.core.auth.
-    app.core.auth -> app.services.token_revocation
-    app.core.auth -> app.services.user_activity
-    # TODO(C-4): MAX_MENTIONS is a shared constant; move it to app.core or app.schemas.
-    app.schemas.contact_schema -> app.services.mentions
-    # TODO(C-4): the classifier should receive the LLM budget hooks from its service caller.
-    app.utils.reply_classifier -> app.services.llm_budget
-    # TODO(C-4): the job lock helpers (try_acquire/release) belong in app.core or a service module.
-    app.services.contact_scoring -> app.jobs
 
 [importlinter:contract:core-no-upper]
 name = C-5 app.core must not import app.services, app.routers, app.jobs or app.db
@@ -68,10 +54,6 @@ forbidden_modules =
     app.routers
     app.jobs
     app.db
-ignore_imports =
-    # --- BASELINE 2026-10-18 (may only shrink); same TODOs as the layers contract ---
-    app.core.auth -> app.services.token_revocation
-    app.core.auth -> app.services.user_activity
 
 [importlinter:contract:services-no-routers]
 name = C-5 app.services must not import app.routers (HTTP stays in the adapters)
@@ -90,21 +72,6 @@ name = C-5 no import cycles between the app sub-packages
 type = acyclic_siblings
 ancestors =
     app
-ignore_imports =
-    # --- BASELINE 2026-10-18 (may only shrink); the layer violations above close these package cycles ---
-    app.core.auth -> app.models.user
-    app.core.auth -> app.models.tenant
-    app.core.auth -> app.services.token_revocation
-    app.core.auth -> app.services.user_activity
-    app.schemas.contact_schema -> app.services.mentions
-    app.utils.reply_classifier -> app.services.llm_budget
-    app.services.contact_scoring -> app.jobs
-    # TODO(C-5): cycles inside app.services, broken today by function-local imports. Fix by moving the
-    # shared helper (crm._fmt -> app.utils) or inverting the call (sales/campaign_email callbacks).
-    app.services.contact_service -> app.services.sales
-    app.services.subject_variant_service -> app.services.campaign_email_service
-    app.services.webhooks -> app.services.crm
-    app.services.workflow -> app.services.crm
 
 # ---------------------------------------------------------------------------------------------------
 # L0 target layers (ADR 0009). Direct imports only (allow_indirect_imports) except for app.domain:
@@ -125,168 +92,6 @@ forbidden_modules =
     app.models
     app.repositories
 allow_indirect_imports = True
-ignore_imports =
-    # --- BASELINE 2026-10 (shrink only; see REFACTOR_PLAN.md) ---
-    app.routers.accounts_router -> app.models.account
-    app.routers.accounts_router -> app.models.crm
-    app.routers.accounts_router -> app.models.email_message
-    app.routers.accounts_router -> app.models.prospect
-    app.routers.accounts_router -> app.models.user
-    app.routers.accounts_router -> sqlalchemy
-    app.routers.ai_email_router -> app.models
-    app.routers.ai_email_router -> app.models.user
-    app.routers.ai_email_router -> sqlalchemy
-    app.routers.auth_router -> app.models.invitation
-    app.routers.auth_router -> app.models.magic_login_token
-    app.routers.auth_router -> app.models.password_reset_token
-    app.routers.auth_router -> app.models.refresh_token
-    app.routers.auth_router -> app.models.tenant
-    app.routers.auth_router -> app.models.user
-    app.routers.auth_router -> sqlalchemy
-    app.routers.automation_router -> app.models.automation_rule
-    app.routers.automation_router -> app.models.campaign
-    app.routers.automation_router -> app.models.user
-    app.routers.automation_router -> sqlalchemy
-    app.routers.campaign_draft_router -> app.models.campaign_draft
-    app.routers.campaign_draft_router -> app.models.user
-    app.routers.campaign_draft_router -> sqlalchemy
-    app.routers.campaign_router -> app.models.campaign
-    app.routers.campaign_router -> app.models.user
-    app.routers.campaign_router -> sqlalchemy
-    app.routers.campaign_wizard_router -> app.models.user
-    app.routers.campaign_wizard_router -> sqlalchemy
-    app.routers.company_profile_router -> app.models.company_profile
-    app.routers.company_profile_router -> app.models.user
-    app.routers.company_profile_router -> sqlalchemy
-    app.routers.connections_router -> app.models.sales_extra
-    app.routers.connections_router -> app.models.user
-    app.routers.connections_router -> sqlalchemy
-    app.routers.contact_scoring_router -> app.models.prospect
-    app.routers.contact_scoring_router -> app.models.user
-    app.routers.contact_scoring_router -> sqlalchemy
-    app.routers.contacts_router -> app.models.user
-    app.routers.contacts_router -> sqlalchemy
-    app.routers.conversation_router -> app.models.user
-    app.routers.conversation_router -> sqlalchemy
-    app.routers.crm_router -> app.models.account
-    app.routers.crm_router -> app.models.crm
-    app.routers.crm_router -> app.models.prospect
-    app.routers.crm_router -> app.models.user
-    app.routers.crm_router -> sqlalchemy
-    app.routers.custom_reports_router -> app.models.account
-    app.routers.custom_reports_router -> app.models.campaign
-    app.routers.custom_reports_router -> app.models.contact_activity
-    app.routers.custom_reports_router -> app.models.crm
-    app.routers.custom_reports_router -> app.models.prospect
-    app.routers.custom_reports_router -> app.models.sales
-    app.routers.custom_reports_router -> app.models.sales_extra
-    app.routers.custom_reports_router -> app.models.user
-    app.routers.custom_reports_router -> sqlalchemy
-    app.routers.deliverability_router -> app.models.campaign
-    app.routers.deliverability_router -> app.models.domain_reputation
-    app.routers.deliverability_router -> app.models.email_message
-    app.routers.deliverability_router -> app.models.provider_reputation
-    app.routers.deliverability_router -> app.models.user
-    app.routers.deliverability_router -> sqlalchemy
-    app.routers.email_scheduler_router -> app.models.user
-    app.routers.email_scheduler_router -> sqlalchemy
-    app.routers.import_router -> app.models.account
-    app.routers.import_router -> app.models.contact_field
-    app.routers.import_router -> app.models.crm
-    app.routers.import_router -> app.models.prospect
-    app.routers.import_router -> app.models.prospect_list
-    app.routers.import_router -> app.models.user
-    app.routers.import_router -> sqlalchemy
-    app.routers.inbox_router -> app.models.conversation
-    app.routers.inbox_router -> app.models.email_message
-    app.routers.inbox_router -> app.models.inbox_warmup_event
-    app.routers.inbox_router -> app.models.inbox_warmup_metric
-    app.routers.inbox_router -> app.models.join_tables
-    app.routers.inbox_router -> app.models.sending_inbox
-    app.routers.inbox_router -> app.models.user
-    app.routers.inbox_router -> sqlalchemy
-    app.routers.lists_router -> app.models.prospect
-    app.routers.lists_router -> app.models.prospect_list
-    app.routers.lists_router -> app.models.user
-    app.routers.lists_router -> sqlalchemy
-    app.routers.platform_admin_router -> app.models.campaign
-    app.routers.platform_admin_router -> app.models.magic_login_token
-    app.routers.platform_admin_router -> app.models.tenant
-    app.routers.platform_admin_router -> app.models.user
-    app.routers.platform_admin_router -> sqlalchemy
-    app.routers.prospect_list_router -> app.models.campaign
-    app.routers.prospect_list_router -> app.models.contact_activity
-    app.routers.prospect_list_router -> app.models.conversation
-    app.routers.prospect_list_router -> app.models.email_message
-    app.routers.prospect_list_router -> app.models.email_sequence
-    app.routers.prospect_list_router -> app.models.prospect
-    app.routers.prospect_list_router -> app.models.prospect_list
-    app.routers.prospect_list_router -> app.models.prospect_persona
-    app.routers.prospect_list_router -> app.models.user
-    app.routers.prospect_list_router -> sqlalchemy
-    app.routers.quotes_router -> app.models.account
-    app.routers.quotes_router -> app.models.prospect
-    app.routers.quotes_router -> app.models.sales
-    app.routers.quotes_router -> app.models.sales_extra
-    app.routers.quotes_router -> app.models.tenant
-    app.routers.quotes_router -> app.models.user
-    app.routers.quotes_router -> sqlalchemy
-    app.routers.reports_router -> app.models.campaign
-    app.routers.reports_router -> app.models.user
-    app.routers.reports_router -> sqlalchemy
-    app.routers.sales_admin_router -> app.models.prospect
-    app.routers.sales_admin_router -> app.models.sales_extra
-    app.routers.sales_admin_router -> app.models.user
-    app.routers.sales_admin_router -> sqlalchemy
-    app.routers.sales_kpi_router -> app.models.sales
-    app.routers.sales_kpi_router -> app.models.user
-    app.routers.sales_kpi_router -> sqlalchemy
-    app.routers.sales_reports_router -> app.models.campaign
-    app.routers.sales_reports_router -> app.models.contact_activity
-    app.routers.sales_reports_router -> app.models.crm
-    app.routers.sales_reports_router -> app.models.email_message
-    app.routers.sales_reports_router -> app.models.prospect
-    app.routers.sales_reports_router -> app.models.sales
-    app.routers.sales_reports_router -> app.models.sales_extra
-    app.routers.sales_reports_router -> app.models.user
-    app.routers.sales_reports_router -> sqlalchemy
-    app.routers.sales_router -> app.models.account
-    app.routers.sales_router -> app.models.contact_activity
-    app.routers.sales_router -> app.models.crm
-    app.routers.sales_router -> app.models.email_message
-    app.routers.sales_router -> app.models.prospect
-    app.routers.sales_router -> app.models.sales
-    app.routers.sales_router -> app.models.sales_extra
-    app.routers.sales_router -> app.models.user
-    app.routers.sales_router -> sqlalchemy
-    app.routers.ses_webhook_router -> app.models
-    app.routers.ses_webhook_router -> app.models.automation_rule
-    app.routers.ses_webhook_router -> app.models.campaign
-    app.routers.ses_webhook_router -> app.models.conversation
-    app.routers.ses_webhook_router -> sqlalchemy
-    app.routers.subject_variant_router -> app.models.campaign
-    app.routers.subject_variant_router -> app.models.user
-    app.routers.subject_variant_router -> sqlalchemy
-    app.routers.tasks_router -> app.models.account
-    app.routers.tasks_router -> app.models.crm
-    app.routers.tasks_router -> app.models.prospect
-    app.routers.tasks_router -> app.models.sales
-    app.routers.tasks_router -> app.models.user
-    app.routers.tasks_router -> sqlalchemy
-    app.routers.template_router -> app.models.campaign
-    app.routers.template_router -> app.models.email_attachment
-    app.routers.template_router -> app.models.email_sequence
-    app.routers.template_router -> app.models.email_template
-    app.routers.template_router -> app.models.user
-    app.routers.template_router -> sqlalchemy
-    app.routers.tracking_router -> app.models
-    app.routers.tracking_router -> app.models.prospect
-    app.routers.tracking_router -> sqlalchemy
-    app.routers.user_router -> app.models.user
-    app.routers.user_router -> sqlalchemy
-    app.routers.webhooks_router -> app.models.user
-    app.routers.webhooks_router -> app.models.webhook
-    app.routers.webhooks_router -> sqlalchemy
 
 # TODO(L1, A1-A8): services call repositories (SQL) through Protocols and own the unit of work;
 # FastAPI types (HTTPException, UploadFile, BackgroundTasks, ...) stay in the routers (ADR 0001).
@@ -299,77 +104,6 @@ forbidden_modules =
     sqlalchemy
     fastapi
 allow_indirect_imports = True
-ignore_imports =
-    # --- BASELINE 2026-10 (shrink only; see REFACTOR_PLAN.md) ---
-    app.services.account_sync -> sqlalchemy
-    app.services.ai_email_service -> sqlalchemy
-    app.services.alert_center_service -> sqlalchemy
-    app.services.audit_service -> sqlalchemy
-    app.services.automation_rule_service -> sqlalchemy
-    app.services.batch_processor_service -> sqlalchemy
-    app.services.campaign_analytics_service -> sqlalchemy
-    app.services.campaign_crud_service -> sqlalchemy
-    app.services.campaign_email_service -> sqlalchemy
-    app.services.campaign_query_service -> sqlalchemy
-    app.services.campaign_schedule_service -> sqlalchemy
-    app.services.campaign_send_now_service -> sqlalchemy
-    app.services.campaign_service -> sqlalchemy
-    app.services.campaign_template_service -> sqlalchemy
-    app.services.campaign_tracking_service -> sqlalchemy
-    app.services.campaign_wizard_service -> sqlalchemy
-    app.services.campaign_wizard_template_service -> sqlalchemy
-    app.services.compliance_service -> sqlalchemy
-    app.services.contact_activity_service -> sqlalchemy
-    app.services.contact_companies -> sqlalchemy
-    app.services.contact_field_service -> sqlalchemy
-    app.services.contact_query_service -> sqlalchemy
-    app.services.contact_scoring -> sqlalchemy
-    app.services.contact_service -> sqlalchemy
-    app.services.contact_write_service -> sqlalchemy
-    app.services.conversation_service -> sqlalchemy
-    app.services.crm -> sqlalchemy
-    app.services.crm_kpis -> sqlalchemy
-    app.services.daily_limit -> sqlalchemy
-    app.services.deliverability_service -> sqlalchemy
-    app.services.domain_tenancy -> sqlalchemy
-    app.services.email_scheduler_service -> sqlalchemy
-    app.services.email_sender_service -> sqlalchemy
-    app.services.enrollment_rules -> sqlalchemy
-    app.services.execution_service -> sqlalchemy
-    app.services.forecast_snapshots -> sqlalchemy
-    app.services.imap_sync_service -> sqlalchemy
-    app.services.invitation_email -> fastapi
-    app.services.invitation_service -> fastapi
-    app.services.invitation_service -> sqlalchemy
-    app.services.llm_budget -> sqlalchemy
-    app.services.mentions -> sqlalchemy
-    app.services.metrics_service -> sqlalchemy
-    app.services.ms365_oauth -> sqlalchemy
-    app.services.notifications -> sqlalchemy
-    app.services.oauth_binding -> fastapi
-    app.services.platform_flags -> sqlalchemy
-    app.services.prospect_upload_service -> sqlalchemy
-    app.services.provider_ingestion_service -> sqlalchemy
-    app.services.quote_approval -> sqlalchemy
-    app.services.reconnect_service -> sqlalchemy
-    app.services.reports_service -> sqlalchemy
-    app.services.sales -> sqlalchemy
-    app.services.sales_jobs -> sqlalchemy
-    app.services.sales_settings -> sqlalchemy
-    app.services.send_safety -> sqlalchemy
-    app.services.sender_identity -> sqlalchemy
-    app.services.sequence_generator -> sqlalchemy
-    app.services.sequence_service -> sqlalchemy
-    app.services.session_limits -> sqlalchemy
-    app.services.subject_variant_service -> sqlalchemy
-    app.services.suppression -> sqlalchemy
-    app.services.token_revocation -> sqlalchemy
-    app.services.user_activity -> sqlalchemy
-    app.services.user_admin_service -> sqlalchemy
-    app.services.warmup_service -> sqlalchemy
-    app.services.warmup_smtp -> sqlalchemy
-    app.services.webhooks -> sqlalchemy
-    app.services.workflow -> sqlalchemy
 
 [importlinter:contract:domain-pure]
 name = L0 app.domain is pure: no sqlalchemy, fastapi, models, services, repositories or routers (indirect too)

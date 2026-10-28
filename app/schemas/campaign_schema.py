@@ -3,8 +3,8 @@
 Pydantic schemas for Campaign API.
 """
 
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Any, Dict, Literal, Optional, List
 from datetime import datetime, date, time
 from enum import Enum
 
@@ -34,6 +34,7 @@ class CampaignCreate(BaseModel):
     send_window_end: Optional[time] = Field(None, description="End time for sending emails")
     respect_timezone: bool = Field(True, description="Respect prospect's timezone")
     campaign_timezone: str = Field("UTC", description="Campaign timezone")
+    wait_business_days: bool = Field(False, description="Wait days between steps count business days (F-04)")
 
     # Sending Schedule
     sending_mode: str = Field("spread", description="spread | random | batch")
@@ -79,6 +80,7 @@ class CampaignUpdate(BaseModel):
     send_window_end: Optional[time] = None
     respect_timezone: Optional[bool] = None
     campaign_timezone: Optional[str] = None
+    wait_business_days: Optional[bool] = Field(None, description="Wait days count business days (F-04)")
     sending_mode: Optional[str] = None
     min_gap_minutes: Optional[int] = Field(None, ge=0, le=10080)
     batch_size: Optional[int] = Field(None, ge=1, le=100000)
@@ -89,6 +91,44 @@ class CampaignUpdate(BaseModel):
     end_date: Optional[date] = None
     inbox_ids: Optional[List[str]] = Field(None, description="Update list of Sending Inboxes")
     expected_version: Optional[int] = Field(None, ge=1, description="row_version the client loaded (T-3)")
+
+    @field_validator("campaign_name")
+    @classmethod
+    def _strip_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("campaign_name must not be blank")
+        return v
+
+    @model_validator(mode="after")
+    def _dates_in_order(self) -> "CampaignUpdate":
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        return self
+
+    def changes(self) -> Dict[str, Any]:
+        """
+        The fields this request changes (S-23): a field left out is unchanged; an explicit null
+        clears a field in CLEARABLE_FIELDS and is ignored for the others (they cannot be empty).
+        ``inbox_ids`` and ``expected_version`` are not included (handled separately).
+        """
+        out: Dict[str, Any] = {}
+        for name in self.model_fields_set:
+            if name in ("inbox_ids", "expected_version"):
+                continue
+            value = getattr(self, name)
+            if value is None and name not in CLEARABLE_FIELDS:
+                continue
+            out[name] = value
+        return out
+
+
+# Campaign settings an update may clear with an explicit null (S-23); every other field ignores null
+CLEARABLE_FIELDS = frozenset({
+    "sender_name", "sender_title", "cta_link", "batch_size", "daily_batch_size", "start_date", "end_date",
+})
 
 
 class CampaignVersionedAction(BaseModel):
@@ -107,6 +147,61 @@ class CampaignFilter(BaseModel):
     # Pagination
     page: int = Field(1, ge=1, description="Page number")
     page_size: int = Field(20, ge=1, le=100, description="Items per page")
+
+
+class CampaignDuplicateRequest(BaseModel):
+    """POST /campaigns/{id}/duplicates: optional overrides for the copy (S-12). Unset = the source's value."""
+
+    campaign_name: Optional[str] = Field(None, min_length=1, max_length=255,
+                                         description="Name of the copy (default 'Copy of <source>')")
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    send_window_start: Optional[time] = None
+    send_window_end: Optional[time] = None
+    campaign_timezone: Optional[str] = Field(None, max_length=50)
+    inbox_ids: Optional[List[str]] = Field(None, description="Mailboxes of the copy (default: the source's usable ones)")
+    list_ids: Optional[List[str]] = Field(None, description="Lists to enrol into the copy")
+    prospect_ids: Optional[List[str]] = Field(None, description="Contacts to enrol into the copy")
+    skip_source_prospects: bool = Field(True, description="Do not enrol contacts already in the source campaign")
+    copy_automation_rules: bool = True
+    copy_attachments: bool = True
+
+    @field_validator("campaign_name")
+    @classmethod
+    def _strip(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() if v else v
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "CampaignDuplicateRequest":
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        if self.send_window_start and self.send_window_end and self.send_window_end <= self.send_window_start:
+            raise ValueError("send_window_end must be after send_window_start")
+        return self
+
+
+class EnrollmentCheckRequest(BaseModel):
+    """
+    POST /campaigns/{id}/enrollments/checks: who would be enrolled and why the others would not,
+    without enrolling anyone (S-20). ``path`` picks the rules: ``campaign`` = POST /campaigns/{id}/prospects
+    (list_ids / prospect_ids, 24h cool-off), ``wizard`` = POST /campaigns/{id}/enrollments (list_id +
+    segmentation, cool_off_days).
+    """
+
+    path: Literal["campaign", "wizard"] = "campaign"
+    list_ids: Optional[List[str]] = None
+    prospect_ids: Optional[List[str]] = None
+    list_id: Optional[str] = None
+    persona_types: Optional[List[str]] = None
+    exclude_personal_emails: bool = True
+    cool_off_days: int = Field(7, ge=0, le=3650)
+    excluded_prospect_ids: Optional[List[str]] = None
+
+    @model_validator(mode="after")
+    def _has_source(self) -> "EnrollmentCheckRequest":
+        if self.path == "wizard" and not self.list_id:
+            raise ValueError("list_id is required for the wizard check")
+        return self
 
 
 class CampaignEnrollmentRequest(BaseModel):
@@ -184,6 +279,7 @@ class CampaignResponse(BaseModel):
     send_window_end: Optional[time] = None
     respect_timezone: bool = True
     campaign_timezone: str = "UTC"
+    wait_business_days: bool = False  # wait days count business days (F-04)
     sending_mode: str = "spread"
     min_gap_minutes: int = 2
     batch_size: Optional[int] = None
@@ -206,9 +302,28 @@ class CampaignResponse(BaseModel):
     
     # Assigned sending inboxes (serialized for frontend)
     sending_inboxes: List[dict] = []
+    # The campaign this one was duplicated from (S-12)
+    source_campaign_id: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class PersonaGap(BaseModel):
+    """A persona of the enrolled contacts with no template (own or generic) for some steps."""
+
+    persona_type: str
+    prospect_count: int
+    missing_steps: List[int]
+
+
+class CampaignDuplicateResponse(BaseModel):
+    campaign: CampaignResponse
+    source_campaign_id: str
+    copied: Dict[str, int]
+    skipped_inboxes: List[str] = []
+    enrollment: Optional[Dict[str, Any]] = None
+    persona_gaps: List[PersonaGap] = []
 
 
 class CampaignListItem(BaseModel):
@@ -260,3 +375,5 @@ class CampaignStateChange(BaseModel):
     reason: Optional[str] = None
     changed_at: datetime
     row_version: Optional[int] = None  # the campaign's new row_version (T-3)
+    # Launch only: the planned volume exceeds what the mailboxes can send in the window (F-04)
+    pacing_warning: Optional[Dict[str, Any]] = None

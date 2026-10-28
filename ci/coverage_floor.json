@@ -16,64 +16,173 @@
   "layers": {
     "unit": {
       "app": {
-        "line": 40.33,
-        "branch": 13.78
+        "line": 65.82,
+        "branch": 45.36
       },
       "app.core": {
-        "line": 69.69,
-        "branch": 43.9
+        "line": 79.79,
+        "branch": 60.0
       },
       "app.routers": {
-        "line": 32.85,
-        "branch": 1.9
+        "line": 80.87,
+        "branch": 63.09
       },
       "app.services": {
-        "line": 26.99,
-        "branch": 11.47
+        "line": 55.84,
+        "branch": 37.65
       },
       "app.utils": {
-        "line": 76.0,
-        "branch": 73.29
+        "line": 85.49,
+        "branch": 81.72
       },
       "app.domain": {
         "line": 100.0,
         "branch": 100.0
       },
       "app.repositories": {
-        "line": 98.57,
-        "branch": 93.75
+        "line": 48.29,
+        "branch": 6.81
       }
     },
     "functional": {
       "app": {
-        "line": 61.93,
-        "branch": 39.37
+        "line": 78.85,
+        "branch": 57.27
       },
       "app.core": {
-        "line": 83.67,
-        "branch": 61.38
+        "line": 81.26,
+        "branch": 56.33
       },
       "app.routers": {
-        "line": 60.87,
-        "branch": 35.89
+        "line": 86.15,
+        "branch": 57.14
       },
       "app.services": {
-        "line": 55.07,
-        "branch": 40.2
+        "line": 71.86,
+        "branch": 54.58
       },
       "app.utils": {
-        "line": 63.56,
-        "branch": 48.69
+        "line": 73.17,
+        "branch": 60.04
       },
       "app.domain": {
-        "line": 0.0,
-        "branch": 0.0
+        "line": 86.43,
+        "branch": 66.17
       },
       "app.repositories": {
-        "line": 0.0,
-        "branch": 0.0
+        "line": 91.92,
+        "branch": 72.85
       }
     }
   },
-  "lowered": []
+  "lowered": [
+    {
+      "date": "2026-10-27",
+      "layer": "unit",
+      "key": "app.repositories",
+      "metric": "line",
+      "from": 98.57,
+      "to": 45.27,
+      "reason": "app.repositories now holds the SQL of contacts, sales, reports, campaigns and inbox; ADR 0009 tests repositories against MySQL in the functional layer, not in unit tests"
+    },
+    {
+      "date": "2026-10-27",
+      "layer": "unit",
+      "key": "app.repositories",
+      "metric": "branch",
+      "from": 93.75,
+      "to": 7.5,
+      "reason": "app.repositories now holds the SQL of contacts, sales, reports, campaigns and inbox; ADR 0009 tests repositories against MySQL in the functional layer, not in unit tests"
+    },
+    {
+      "date": "2026-10-27",
+      "layer": "functional",
+      "key": "app.core",
+      "metric": "branch",
+      "from": 61.38,
+      "to": 60.85,
+      "reason": "app.core: S1 moved token checks into app/core/tokens.py; its refusal branches (alg confusion, missing claims, wrong type) are covered by tests/unit/test_s1_tokens.py, not reachable through the functional API tests"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "unit",
+      "key": "app.repositories",
+      "metric": "branch",
+      "from": 7.5,
+      "to": 5.31,
+      "reason": "app.repositories (branch): this round moved the SQL of accounts, lists, identity, imports, automation, webhooks, campaigns, inbox and sending into repositories; ADR 0009 tests repositories against MySQL in the functional layer"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.core",
+      "metric": "line",
+      "from": 83.67,
+      "to": 81.26,
+      "reason": "app.core: S2's IP-pinned SMTP/IMAP classes in tls.py need live mail servers (functional tests use fake connectors; unit-tested in test_s2_mail_pinning). app.routers branch: routers are thin now (304 branches left); the covered logic moved to services. app.domain: fully covered by unit tests (100 %); the functional figure is incidental"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.core",
+      "metric": "branch",
+      "from": 60.85,
+      "to": 57.72,
+      "reason": "app.core: S2's IP-pinned SMTP/IMAP classes in tls.py need live mail servers (functional tests use fake connectors; unit-tested in test_s2_mail_pinning). app.routers branch: routers are thin now (304 branches left); the covered logic moved to services. app.domain: fully covered by unit tests (100 %); the functional figure is incidental"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.routers",
+      "metric": "branch",
+      "from": 43.56,
+      "to": 35.52,
+      "reason": "app.core: S2's IP-pinned SMTP/IMAP classes in tls.py need live mail servers (functional tests use fake connectors; unit-tested in test_s2_mail_pinning). app.routers branch: routers are thin now (304 branches left); the covered logic moved to services. app.domain: fully covered by unit tests (100 %); the functional figure is incidental"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.domain",
+      "metric": "line",
+      "from": 89.37,
+      "to": 87.2,
+      "reason": "app.core: S2's IP-pinned SMTP/IMAP classes in tls.py need live mail servers (functional tests use fake connectors; unit-tested in test_s2_mail_pinning). app.routers branch: routers are thin now (304 branches left); the covered logic moved to services. app.domain: fully covered by unit tests (100 %); the functional figure is incidental"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.domain",
+      "metric": "branch",
+      "from": 69.4,
+      "to": 66.83,
+      "reason": "app.core: S2's IP-pinned SMTP/IMAP classes in tls.py need live mail servers (functional tests use fake connectors; unit-tested in test_s2_mail_pinning). app.routers branch: routers are thin now (304 branches left); the covered logic moved to services. app.domain: fully covered by unit tests (100 %); the functional figure is incidental"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.core",
+      "metric": "branch",
+      "from": 57.72,
+      "to": 56.33,
+      "reason": "Round 4: new pure rules (custom properties, DNS compare, SES events, sending window) and MySQL TLS/UUIDv7 option branches are covered by unit tests (app.domain unit 100%); the API layer does not reach their error branches"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.domain",
+      "metric": "line",
+      "from": 87.2,
+      "to": 86.43,
+      "reason": "Round 4: new pure rules (custom properties, DNS compare, SES events, sending window) and MySQL TLS/UUIDv7 option branches are covered by unit tests (app.domain unit 100%); the API layer does not reach their error branches"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.domain",
+      "metric": "branch",
+      "from": 66.83,
+      "to": 66.17,
+      "reason": "Round 4: new pure rules (custom properties, DNS compare, SES events, sending window) and MySQL TLS/UUIDv7 option branches are covered by unit tests (app.domain unit 100%); the API layer does not reach their error branches"
+    }
+  ]
 }

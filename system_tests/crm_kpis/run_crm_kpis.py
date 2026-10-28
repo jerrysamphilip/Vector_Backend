@@ -162,11 +162,13 @@ PERIOD_START = (datetime.now(timezone.utc) - timedelta(days=89)).date()
 
 def positive_reply(pid, days_ago):
     mid = str(uuid.uuid4())
-    sql(f"INSERT INTO email_messages (message_id, prospect_id, direction, status, to_email, subject, sent_at) "
-        f"VALUES ('{mid}', '{pid}', 'OUTBOUND', 'SENT', 'x@example.com', 'Hi', UTC_TIMESTAMP() - INTERVAL {days_ago + 1} DAY)")
+    sql(f"INSERT INTO email_messages (message_id, prospect_id, tenant_id, direction, status, to_email, subject, sent_at) "
+        f"SELECT '{mid}', prospect_id, tenant_id, 'OUTBOUND', 'SENT', 'x@example.com', 'Hi', "
+        f"UTC_TIMESTAMP() - INTERVAL {days_ago + 1} DAY FROM prospects WHERE prospect_id = '{pid}'")
     for etype in (4, 8):
-        sql(f"INSERT INTO email_events (event_id, message_id, event_type, event_time) "
-            f"VALUES ('{uuid.uuid4()}', '{mid}', {etype}, UTC_TIMESTAMP() - INTERVAL {days_ago} DAY)")
+        sql(f"INSERT INTO email_events (event_id, message_id, tenant_id, event_type, event_time) "
+            f"SELECT '{uuid.uuid4()}', message_id, tenant_id, {etype}, UTC_TIMESTAMP() - INTERVAL {days_ago} DAY "
+            f"FROM email_messages WHERE message_id = '{mid}'")
     return mid
 
 
@@ -176,8 +178,9 @@ for i in (1, 2, 3, 4):
 positive_reply(rc[1], 4)                       # a second positive reply from the same contact
 positive_reply(rc[5], 200)                     # outside the period
 inbound = str(uuid.uuid4())
-sql(f"INSERT INTO email_messages (message_id, prospect_id, direction, status, to_email, subject, body_text, sent_at) "
-    f"VALUES ('{inbound}', '{rc[1]}', 'INBOUND', 'RECEIVED', 'me@example.com', 'Re: Hi', 'Sounds good, call me', UTC_TIMESTAMP() - INTERVAL 5 DAY)")
+sql(f"INSERT INTO email_messages (message_id, prospect_id, tenant_id, direction, status, to_email, subject, body_text, sent_at) "
+    f"SELECT '{inbound}', prospect_id, tenant_id, 'INBOUND', 'RECEIVED', 'me@example.com', 'Re: Hi', 'Sounds good, call me', "
+    f"UTC_TIMESTAMP() - INTERVAL 5 DAY FROM prospects WHERE prospect_id = '{rc[1]}'")
 s1, l1 = req("POST", "/leads/from-message", {"message_id": inbound}, OWNER)
 s2, _ = req("POST", "/leads", {"prospect_id": rc[2], "source": "Referral"}, OWNER)
 s3, _ = req("POST", "/leads", {"prospect_id": rc[6], "source": "Campaign reply"}, OWNER)

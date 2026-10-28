@@ -8,17 +8,15 @@ emails it too when that user has email notifications on (app/services/notificati
 """
 from typing import Dict, Iterable, List, Optional
 
-from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
-
 from app.core.errors import BadRequestError
+from app.domain.mentions import MAX_MENTIONS
 from app.models.contact_activity import ContactActivity
 from app.models.crm import NoteMention
 from app.models.user import User
+from app.repositories.mentions import Session, mentions_repo
 from app.services.notifications import notify
-from app.utils.sql_like import like
 
-MAX_MENTIONS = 20
+__all__ = ["MAX_MENTIONS", "for_activities", "mentionable_users", "save", "validate"]
 
 
 def _name(u: Optional[User]) -> str:
@@ -31,19 +29,12 @@ def mentionable_users(db: Session, user: User, q: Optional[str] = None, limit: i
                       owner_id: Optional[str] = None, check_owner: bool = False) -> List[dict]:
     """Active colleagues matching q. With check_owner, only those who can see a record owned by
     owner_id (the same rule validate() applies when the note is saved)."""
-    query = db.query(User).filter(User.tenant_id == user.tenant_id, User.status == "ACTIVE",
-                                  User.role.in_(("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT")))
-    if q and q.strip():
-        term = q.strip().lower()
-        query = query.filter(or_(like(func.lower(func.concat(func.coalesce(User.first_name, ""), " ",
-                                                             func.coalesce(User.last_name, ""))), term),
-                                 like(func.lower(User.email), term)))
-    query = query.order_by(User.first_name, User.last_name)
+    repo = mentions_repo(db)
     if check_owner:
         from app.services.contact_service import can_see_owner
-        users = [u for u in query.limit(500).all() if can_see_owner(db, u, owner_id)][:limit]
+        users = [u for u in repo.mentionable(user.tenant_id, q, 500) if can_see_owner(db, u, owner_id)][:limit]
     else:
-        users = query.limit(limit).all()
+        users = repo.mentionable(user.tenant_id, q, limit)
     return [{"user_id": u.user_id, "name": _name(u), "email": u.email} for u in users]
 
 
@@ -57,9 +48,7 @@ def validate(db: Session, user: User, user_ids: Optional[Iterable[str]], owner_i
         return []
     if len(ids) > MAX_MENTIONS:
         raise BadRequestError(f"Mention at most {MAX_MENTIONS} people in one note")
-    users = db.query(User).filter(User.user_id.in_(ids), User.tenant_id == user.tenant_id,
-                                  User.status == "ACTIVE",
-                                  User.role.in_(("SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT"))).all()
+    users = mentions_repo(db).active_users(user.tenant_id, ids)
     if len(users) != len(ids):
         raise BadRequestError("You can only mention active users in your workspace")
     if check_owner:
@@ -75,15 +64,16 @@ def save(db: Session, author: User, activity: ContactActivity, users: List[User]
          link: str, replace: bool = False) -> int:
     """Store the mentions and notify the newly mentioned users (never the author). With replace,
     mentions no longer in `users` are removed. Caller commits. Returns notifications created."""
-    existing = {m.user_id: m for m in db.query(NoteMention).filter(NoteMention.activity_id == activity.activity_id)}
+    repo = mentions_repo(db)
+    existing = {m.user_id: m for m in repo.of_activity(activity.activity_id)}
     wanted = {u.user_id for u in users}
     if replace:
         for uid, m in existing.items():
             if uid not in wanted:
-                db.delete(m)
+                repo.delete(m)
     new = [u for u in users if u.user_id not in existing]
     for u in new:
-        db.add(NoteMention(tenant_id=author.tenant_id, activity_id=activity.activity_id, user_id=u.user_id,
+        repo.add(NoteMention(tenant_id=author.tenant_id, activity_id=activity.activity_id, user_id=u.user_id,
                            created_by=author.user_id))
     recipients = [u.user_id for u in new if u.user_id != author.user_id]
     if not recipients:
@@ -101,7 +91,6 @@ def for_activities(db: Session, activity_ids: Iterable[str]) -> Dict[str, List[d
     if not ids:
         return {}
     out: Dict[str, List[dict]] = {}
-    for m, u in db.query(NoteMention, User).join(User, User.user_id == NoteMention.user_id).filter(
-            NoteMention.activity_id.in_(ids)).order_by(NoteMention.created_at):
+    for m, u in mentions_repo(db).with_users(ids):
         out.setdefault(m.activity_id, []).append({"user_id": u.user_id, "name": _name(u)})
     return out

@@ -1,5 +1,10 @@
 """
 Unified dashboard alert aggregation + alert email dispatching.
+
+Domain reputation, mailbox (paused / stale sync), sending-pipeline (app/services/sending_alerts.py) and
+paused-campaign alerts of one workspace, filtered and tuned by each user's preferences, and e-mailed to
+admins with a cooldown per alert and recipient. SQL lives in app/repositories/inbox_alerts.py; the
+``fn(db, ...)`` methods work in the caller's session (the router's request, the jobs).
 """
 
 from __future__ import annotations
@@ -7,18 +12,20 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import timedelta
-from typing import Any, Dict, List, Optional
-
-from sqlalchemy.orm import Session
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.core.clock import utcnow
 from app.core.config import settings
-from app.models.alert_center import AlertEmailDispatch, AlertPreference
 from app.models.campaign import Campaign
 from app.models.domain_reputation import ReputationAlert
 from app.models.sending_inbox import SendingInbox
-from app.models.user import User
+from app.repositories.inbox_alerts import (AlertCenterRepository, AlertCenterUnitOfWork, AlertEmailDispatch,
+                                           AlertPreference, Session)
+from app.domain.inbox_sending import (ALERT_DELIVERY_EVENTS_MISSING, ALERT_INBOX_LIMIT_REACHED,
+                                      ALERT_NO_ACTIVE_MAILBOX, ALERT_SEND_FAILURE_RATE, ALERT_SES_UNAVAILABLE,
+                                      ALERT_STUCK_SENDING, SENDING_ALERT_TYPES)
 from app.services.email_sender_service import email_sender
+from app.services.sending_alerts import collect_sending_alerts
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +40,14 @@ ALL_ALERT_TYPES = (
     ALERT_TYPE_INBOX_PAUSED,
     ALERT_TYPE_INBOX_SYNC_STALE,
     ALERT_TYPE_CAMPAIGN_PAUSED,
+    # Sending pipeline (S-11, app/services/sending_alerts.py)
+    *SENDING_ALERT_TYPES,
 )
 
 INBOX_ALERT_TYPES = (
     ALERT_TYPE_INBOX_PAUSED,
     ALERT_TYPE_INBOX_SYNC_STALE,
+    ALERT_INBOX_LIMIT_REACHED,
 )
 
 PREF_SCOPE_USER = "USER"
@@ -50,7 +60,107 @@ DEFAULT_PREFS = {
     ALERT_TYPE_INBOX_PAUSED: {"enabled": True, "email_enabled": False, "cooldown_minutes": 360},
     ALERT_TYPE_INBOX_SYNC_STALE: {"enabled": True, "email_enabled": False, "cooldown_minutes": 360},
     ALERT_TYPE_CAMPAIGN_PAUSED: {"enabled": True, "email_enabled": False, "cooldown_minutes": 360},
+    # Sending pipeline: problems that stop mail are e-mailed by default, with a shorter cooldown
+    ALERT_NO_ACTIVE_MAILBOX: {"enabled": True, "email_enabled": True, "cooldown_minutes": 360},
+    ALERT_INBOX_LIMIT_REACHED: {"enabled": True, "email_enabled": False, "cooldown_minutes": 720},
+    ALERT_SEND_FAILURE_RATE: {"enabled": True, "email_enabled": True, "cooldown_minutes": 180},
+    ALERT_DELIVERY_EVENTS_MISSING: {"enabled": True, "email_enabled": True, "cooldown_minutes": 180},
+    ALERT_SES_UNAVAILABLE: {"enabled": True, "email_enabled": True, "cooldown_minutes": 60},
+    ALERT_STUCK_SENDING: {"enabled": True, "email_enabled": False, "cooldown_minutes": 180},
 }
+
+
+def _default_cooldown(alert_type: str) -> int:
+    return int(DEFAULT_PREFS.get(alert_type, {}).get("cooldown_minutes", 360))
+
+
+def _reputation_alert(alert: ReputationAlert) -> Dict[str, Any]:
+    return {
+        "id": f"deliverability:{alert.alert_id}",
+        "source": "DOMAIN",
+        "severity": (alert.severity or "WARNING").upper(),
+        "title": f"{(alert.alert_type or 'Alert').replace('_', ' ').title()} on {alert.domain_name}",
+        "message": alert.details or "Deliverability issue detected on this sending domain.",
+        "created_at": alert.created_at,
+        "route": "/app/domain-health",
+        "action_label": "Open Domain Health",
+        "alert_type": ALERT_TYPE_DOMAIN_REPUTATION,
+        "scope_type": "TENANT",
+        "scope_id": None,
+    }
+
+
+def _inbox_status_alert(inbox: SendingInbox, now_utc: Any) -> Optional[Dict[str, Any]]:
+    """A mailbox that is not ACTIVE: paused (warning) or unavailable (critical)."""
+    inbox_status = (inbox.status or "").upper()
+    if inbox_status == "ACTIVE":
+        return None
+    if inbox_status == "PAUSED":
+        title = "Suspended Alerts (Email)"
+        message = f"{inbox.email_address} is paused and will not send campaign emails until resumed."
+        severity = "WARNING"
+    else:
+        title = "Inbox unavailable for campaign sending"
+        message = (
+            f"{inbox.email_address} is in {inbox_status or 'UNKNOWN'} state. "
+            "Campaign creation will reject this inbox until it returns to ACTIVE."
+        )
+        severity = "CRITICAL"
+    return {
+        "id": f"email-status:{inbox.inbox_id}:{inbox_status}",
+        "source": "EMAIL",
+        "severity": severity,
+        "title": title,
+        "message": message,
+        "created_at": inbox.last_sent_at or inbox.last_sync_at or now_utc,
+        "route": "/app/email-accounts",
+        "action_label": "Open Email Accounts",
+        "alert_type": ALERT_TYPE_INBOX_PAUSED,
+        "scope_type": "INBOX",
+        "scope_id": inbox.inbox_id,
+    }
+
+
+def _inbox_sync_alert(inbox: SendingInbox, now_utc: Any) -> Optional[Dict[str, Any]]:
+    """Replies not synced for 48 hours (warning) or 96 (critical)."""
+    if not inbox.last_sync_at:
+        return None
+    stale_hours = (now_utc - inbox.last_sync_at).total_seconds() / 3600
+    if stale_hours < 48:
+        return None
+    return {
+        "id": f"email-sync:{inbox.inbox_id}:{inbox.last_sync_at.isoformat()}",
+        "source": "SYNC",
+        "severity": "CRITICAL" if stale_hours >= 96 else "WARNING",
+        "title": "Inbox sync is stale",
+        "message": f"{inbox.email_address} has not synced replies for {int(stale_hours)} hours.",
+        "created_at": inbox.last_sync_at,
+        "route": "/app/email-accounts",
+        "action_label": "Review inbox sync",
+        "alert_type": ALERT_TYPE_INBOX_SYNC_STALE,
+        "scope_type": "INBOX",
+        "scope_id": inbox.inbox_id,
+    }
+
+
+def _inbox_alerts(inbox: SendingInbox, now_utc: Any) -> List[Dict[str, Any]]:
+    return [a for a in (_inbox_status_alert(inbox, now_utc), _inbox_sync_alert(inbox, now_utc)) if a]
+
+
+def _campaign_alert(campaign: Campaign) -> Dict[str, Any]:
+    return {
+        "id": f"campaign-paused:{campaign.campaign_id}:{campaign.updated_at.isoformat() if campaign.updated_at else ''}",
+        "source": "CAMPAIGN",
+        "severity": "INFO",
+        "title": "Campaign activity is paused",
+        "message": f"{campaign.campaign_name} is paused and not progressing until it is resumed.",
+        "created_at": campaign.updated_at,
+        "route": f"/app/campaigns/{campaign.campaign_id}",
+        "action_label": "Open campaign",
+        "alert_type": ALERT_TYPE_CAMPAIGN_PAUSED,
+        "scope_type": "TENANT",
+        "scope_id": None,
+    }
 
 
 class AlertCenterService:
@@ -63,7 +173,7 @@ class AlertCenterService:
         return f"{scope_type}:{scope_id or ''}:{alert_type}"
 
     def _pref_map(self, db: Session, tenant_id: str) -> Dict[str, AlertPreference]:
-        prefs = db.query(AlertPreference).filter(AlertPreference.tenant_id == tenant_id).all()
+        prefs = AlertCenterRepository(db).preferences(tenant_id)
         return {
             self._scope_key(p.scope_type, p.scope_id, p.alert_type): p
             for p in prefs
@@ -89,7 +199,7 @@ class AlertCenterService:
                 return {
                     "enabled": bool(specific.enabled),
                     "email_enabled": bool(specific.email_enabled),
-                    "cooldown_minutes": int(specific.cooldown_minutes or 360),
+                    "cooldown_minutes": int(specific.cooldown_minutes or _default_cooldown(alert_type)),
                 }
 
         if user_id:
@@ -99,7 +209,7 @@ class AlertCenterService:
                 return {
                     "enabled": bool(user_pref.enabled),
                     "email_enabled": bool(user_pref.email_enabled),
-                    "cooldown_minutes": int(user_pref.cooldown_minutes or 360),
+                    "cooldown_minutes": int(user_pref.cooldown_minutes or _default_cooldown(alert_type)),
                 }
 
         return dict(DEFAULT_PREFS.get(alert_type, {"enabled": True, "email_enabled": False, "cooldown_minutes": 360}))
@@ -114,130 +224,34 @@ class AlertCenterService:
         return 2
 
     def collect_dashboard_alerts(self, db: Session, tenant_id: str, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        repo = AlertCenterRepository(db)
+        now_utc = utcnow()
         alerts: List[Dict[str, Any]] = []
         if tenant_id:
-            reputation_alerts = (
-                db.query(ReputationAlert)
-                .filter(
-                    ReputationAlert.tenant_id == tenant_id,
-                    ReputationAlert.is_resolved == False,  # noqa: E712
-                )
-                .order_by(ReputationAlert.created_at.desc())
-                .all()
-            )
-            for alert in reputation_alerts:
-                alerts.append(
-                    {
-                        "id": f"deliverability:{alert.alert_id}",
-                        "source": "DOMAIN",
-                        "severity": (alert.severity or "WARNING").upper(),
-                        "title": f"{(alert.alert_type or 'Alert').replace('_', ' ').title()} on {alert.domain_name}",
-                        "message": alert.details or "Deliverability issue detected on this sending domain.",
-                        "created_at": alert.created_at,
-                        "route": "/app/domain-health",
-                        "action_label": "Open Domain Health",
-                        "alert_type": ALERT_TYPE_DOMAIN_REPUTATION,
-                        "scope_type": "TENANT",
-                        "scope_id": None,
-                    }
-                )
-
-        inboxes = db.query(SendingInbox).filter(SendingInbox.tenant_id == tenant_id).all()
-        now_utc = utcnow()
+            alerts.extend(_reputation_alert(a) for a in repo.open_reputation_alerts(tenant_id))
+        inboxes = repo.inboxes(tenant_id)
         for inbox in inboxes:
-            inbox_status = (inbox.status or "").upper()
-            if inbox_status != "ACTIVE":
-                if inbox_status == "PAUSED":
-                    title = "Suspended Alerts (Email)"
-                    message = f"{inbox.email_address} is paused and will not send campaign emails until resumed."
-                    severity = "WARNING"
-                else:
-                    title = "Inbox unavailable for campaign sending"
-                    message = (
-                        f"{inbox.email_address} is in {inbox_status or 'UNKNOWN'} state. "
-                        "Campaign creation will reject this inbox until it returns to ACTIVE."
-                    )
-                    severity = "CRITICAL"
+            alerts.extend(_inbox_alerts(inbox, now_utc))
+        alerts.extend(collect_sending_alerts(db, tenant_id, inboxes, now_utc))
+        alerts.extend(_campaign_alert(c) for c in repo.paused_campaigns(tenant_id))
+        return self._apply_preferences(self._pref_map(db, tenant_id), alerts, user_id)
 
-                alerts.append(
-                    {
-                        "id": f"email-status:{inbox.inbox_id}:{inbox_status}",
-                        "source": "EMAIL",
-                        "severity": severity,
-                        "title": title,
-                        "message": message,
-                        "created_at": inbox.last_sent_at or inbox.last_sync_at or now_utc,
-                        "route": "/app/email-accounts",
-                        "action_label": "Open Email Accounts",
-                        "alert_type": ALERT_TYPE_INBOX_PAUSED,
-                        "scope_type": "INBOX",
-                        "scope_id": inbox.inbox_id,
-                    }
-                )
-
-            if inbox.last_sync_at:
-                stale_hours = (now_utc - inbox.last_sync_at).total_seconds() / 3600
-                if stale_hours >= 48:
-                    alerts.append(
-                        {
-                            "id": f"email-sync:{inbox.inbox_id}:{inbox.last_sync_at.isoformat()}",
-                            "source": "SYNC",
-                            "severity": "CRITICAL" if stale_hours >= 96 else "WARNING",
-                            "title": "Inbox sync is stale",
-                            "message": f"{inbox.email_address} has not synced replies for {int(stale_hours)} hours.",
-                            "created_at": inbox.last_sync_at,
-                            "route": "/app/email-accounts",
-                            "action_label": "Review inbox sync",
-                            "alert_type": ALERT_TYPE_INBOX_SYNC_STALE,
-                            "scope_type": "INBOX",
-                            "scope_id": inbox.inbox_id,
-                        }
-                    )
-
-        paused_campaigns = (
-            db.query(Campaign)
-            .filter(Campaign.tenant_id == tenant_id, Campaign.status == "PAUSED")
-            .all()
-        )
-        for campaign in paused_campaigns:
-            alerts.append(
-                {
-                    "id": f"campaign-paused:{campaign.campaign_id}:{campaign.updated_at.isoformat() if campaign.updated_at else ''}",
-                    "source": "CAMPAIGN",
-                    "severity": "INFO",
-                    "title": "Campaign activity is paused",
-                    "message": f"{campaign.campaign_name} is paused and not progressing until it is resumed.",
-                    "created_at": campaign.updated_at,
-                    "route": f"/app/campaigns/{campaign.campaign_id}",
-                    "action_label": "Open campaign",
-                    "alert_type": ALERT_TYPE_CAMPAIGN_PAUSED,
-                    "scope_type": "TENANT",
-                    "scope_id": None,
-                }
-            )
-
-        pref_map = self._pref_map(db, tenant_id)
+    def _apply_preferences(self, pref_map: Dict[str, AlertPreference], alerts: List[Dict[str, Any]],
+                           user_id: Optional[str]) -> List[Dict[str, Any]]:
+        """The alerts the user wants (with their e-mail setting and cooldown), most severe and newest first."""
         filtered_alerts: List[Dict[str, Any]] = []
         for alert in alerts:
-            pref = self._resolve_pref(
-                pref_map,
-                alert_type=alert["alert_type"],
-                scope_type=alert["scope_type"],
-                scope_id=alert["scope_id"],
-                user_id=user_id,
-            )
+            pref = self._resolve_pref(pref_map, alert_type=alert["alert_type"], scope_type=alert["scope_type"],
+                                      scope_id=alert["scope_id"], user_id=user_id)
             if not pref["enabled"]:
                 continue
             alert["email_enabled"] = pref["email_enabled"]
             alert["cooldown_minutes"] = pref["cooldown_minutes"]
             filtered_alerts.append(alert)
-
-        filtered_alerts.sort(
-            key=lambda a: (
-                self._severity_rank(a.get("severity", "INFO")),
-                -(a["created_at"].timestamp() if a.get("created_at") else 0),
-            )
-        )
+        filtered_alerts.sort(key=lambda a: (
+            self._severity_rank(a.get("severity", "INFO")),
+            -(a["created_at"].timestamp() if a.get("created_at") else 0),
+        ))
         return filtered_alerts
 
     def list_preferences(self, db: Session, tenant_id: str, user_id: str) -> Dict[str, Any]:
@@ -264,7 +278,7 @@ class AlertCenterService:
             )
 
         inbox_preferences = []
-        inboxes = db.query(SendingInbox).filter(SendingInbox.tenant_id == tenant_id).order_by(SendingInbox.email_address).all()
+        inboxes = AlertCenterRepository(db).inboxes(tenant_id, ordered=True)
         for inbox in inboxes:
             prefs = []
             for alert_type in INBOX_ALERT_TYPES:
@@ -299,55 +313,38 @@ class AlertCenterService:
         }
 
     def upsert_preferences(self, db: Session, tenant_id: str, user_id: str, items: List[Dict[str, Any]]) -> None:
-        inbox_ids = {
-            inbox_id
-            for (inbox_id,) in db.query(SendingInbox.inbox_id).filter(SendingInbox.tenant_id == tenant_id).all()
-        }
-        for item in items:
-            alert_type = (item.get("alert_type") or "").upper()
-            scope_type = (item.get("scope_type") or LEGACY_SCOPE_TENANT).upper()
-            scope_id = item.get("scope_id")
+        """Store the user's preferences (ValueError for an unknown type / scope or another tenant's inbox). Commits."""
+        with AlertCenterUnitOfWork.for_session(db) as uow:
+            repo = uow.alerts
+            inbox_ids = repo.inbox_ids(tenant_id)
+            for item in items:
+                alert_type, store_scope_type, store_scope_id = self._pref_key(item, user_id, inbox_ids)
+                existing = repo.preference(tenant_id, store_scope_type, store_scope_id, alert_type)
+                if not existing:
+                    existing = AlertPreference(tenant_id=tenant_id, scope_type=store_scope_type,
+                                               scope_id=store_scope_id, alert_type=alert_type)
+                    repo.add(existing)
+                existing.enabled = bool(item.get("enabled", True))
+                existing.email_enabled = bool(item.get("email_enabled", False))
+                existing.cooldown_minutes = int(item.get("cooldown_minutes") or 360)
+            uow.commit()
 
-            if alert_type not in ALL_ALERT_TYPES:
-                raise ValueError(f"Unsupported alert_type: {alert_type}")
-            if scope_type not in (LEGACY_SCOPE_TENANT, LEGACY_SCOPE_INBOX):
-                raise ValueError(f"Unsupported scope_type: {scope_type}")
-            if scope_type == LEGACY_SCOPE_INBOX:
-                if not scope_id:
-                    raise ValueError("scope_id is required for INBOX scope")
-                if scope_id not in inbox_ids:
-                    raise ValueError("Inbox not found in tenant")
-                store_scope_type = PREF_SCOPE_USER_INBOX
-                store_scope_id = self._user_inbox_scope_id(user_id, scope_id)
-            else:
-                store_scope_type = PREF_SCOPE_USER
-                store_scope_id = user_id
-
-            existing = (
-                db.query(AlertPreference)
-                .filter(
-                    AlertPreference.tenant_id == tenant_id,
-                    AlertPreference.scope_type == store_scope_type,
-                    AlertPreference.scope_id == store_scope_id,
-                    AlertPreference.alert_type == alert_type,
-                )
-                .first()
-            )
-
-            if not existing:
-                existing = AlertPreference(
-                    tenant_id=tenant_id,
-                    scope_type=store_scope_type,
-                    scope_id=store_scope_id,
-                    alert_type=alert_type,
-                )
-                db.add(existing)
-
-            existing.enabled = bool(item.get("enabled", True))
-            existing.email_enabled = bool(item.get("email_enabled", False))
-            existing.cooldown_minutes = int(item.get("cooldown_minutes") or 360)
-
-        db.commit()
+    def _pref_key(self, item: Dict[str, Any], user_id: str, inbox_ids: Iterable[str]) -> Tuple[str, str, str]:
+        """(alert type, stored scope type, stored scope id) of one requested preference."""
+        alert_type = (item.get("alert_type") or "").upper()
+        scope_type = (item.get("scope_type") or LEGACY_SCOPE_TENANT).upper()
+        scope_id = item.get("scope_id")
+        if alert_type not in ALL_ALERT_TYPES:
+            raise ValueError(f"Unsupported alert_type: {alert_type}")
+        if scope_type not in (LEGACY_SCOPE_TENANT, LEGACY_SCOPE_INBOX):
+            raise ValueError(f"Unsupported scope_type: {scope_type}")
+        if scope_type != LEGACY_SCOPE_INBOX:
+            return alert_type, PREF_SCOPE_USER, user_id
+        if not scope_id:
+            raise ValueError("scope_id is required for INBOX scope")
+        if scope_id not in inbox_ids:
+            raise ValueError("Inbox not found in tenant")
+        return alert_type, PREF_SCOPE_USER_INBOX, self._user_inbox_scope_id(user_id, scope_id)
 
     @staticmethod
     def _frontend_base_url() -> str:
@@ -355,102 +352,68 @@ class AlertCenterService:
         first = next((part.strip() for part in raw.split(",") if part.strip()), "http://localhost:5173")
         return first.rstrip("/")
 
-    async def dispatch_alert_emails_for_tenant(self, db: Session, tenant_id: str) -> Dict[str, int]:
-        recipients = (
-            db.query(User.user_id, User.email)
-            .filter(
-                User.tenant_id == tenant_id,
-                User.status == "ACTIVE",
-                User.role.in_(["SUPER_ADMIN", "ADMIN"]),
-            )
-            .all()
-        )
-        recipients = [(uid, email) for (uid, email) in recipients if email]
+    async def dispatch_alert_emails_for_tenant(self, db: Session, tenant_id: str,
+                                               only_types: Optional[Iterable[str]] = None) -> Dict[str, int]:
+        """E-mail each admin the alerts their preferences ask for (cooldown per alert and recipient);
+        ``only_types`` limits it to those alert types (the sending_alerts job passes SENDING_ALERT_TYPES)."""
+        wanted = set(only_types) if only_types is not None else None
+        recipients = [(uid, email) for (uid, email) in AlertCenterRepository(db).admin_recipients(tenant_id) if email]
         if not recipients:
             return {"sent": 0, "skipped": 0, "failed": 0}
 
         frontend_base = self._frontend_base_url()
         now = utcnow()
-        sent_count = 0
-        skipped_count = 0
-        failed_count = 0
+        counts = {"sent": 0, "skipped": 0, "failed": 0}
+        with AlertCenterUnitOfWork.for_session(db) as uow:
+            for recipient_user_id, recipient_email in recipients:
+                alerts = self.collect_dashboard_alerts(uow.session, tenant_id, user_id=recipient_user_id)
+                if wanted is not None:
+                    alerts = [a for a in alerts if a.get("alert_type") in wanted]
+                for alert in alerts:
+                    outcome = await self._email_alert(uow.session, tenant_id, alert, recipient_email, now,
+                                                      frontend_base)
+                    counts[outcome] += 1
+            uow.commit()  # the cooldown records
+        return counts
 
-        for recipient_user_id, recipient_email in recipients:
-            alerts = self.collect_dashboard_alerts(db, tenant_id, user_id=recipient_user_id)
-            if not alerts:
-                continue
-
-            for alert in alerts:
-                if not alert.get("email_enabled"):
-                    skipped_count += 1
-                    continue
-
-                alert_key = alert["id"]
-                cooldown_minutes = int(alert.get("cooldown_minutes") or 360)
-                cooldown_delta = timedelta(minutes=max(cooldown_minutes, 1))
-                route = alert.get("route") or ""
-                route_url = f"{frontend_base}{route}" if route.startswith("/") else frontend_base
-
-                subject = f"[Alert Center] {alert.get('severity', 'INFO')} - {alert.get('title', 'Alert')}"
-                body = (
-                    f"Alert: {alert.get('title', 'Alert')}\n"
-                    f"Severity: {alert.get('severity', 'INFO')}\n"
-                    f"Source: {alert.get('source', 'SYSTEM')}\n\n"
-                    f"{alert.get('message', '')}\n\n"
-                    f"Open in app: {route_url}\n"
-                )
-
-                dispatch = (
-                    db.query(AlertEmailDispatch)
-                    .filter(
-                        AlertEmailDispatch.tenant_id == tenant_id,
-                        AlertEmailDispatch.alert_key == alert_key,
-                        AlertEmailDispatch.recipient_email == recipient_email,
-                    )
-                    .first()
-                )
-
-                if dispatch and dispatch.last_sent_at and (now - dispatch.last_sent_at) < cooldown_delta:
-                    skipped_count += 1
-                    continue
-
-                try:
-                    result = await email_sender.send_plain_email(
-                        to_email=recipient_email,
-                        subject=subject,
-                        body_content=body,
-                    )
-                    if result.get("success"):
-                        if not dispatch:
-                            dispatch = AlertEmailDispatch(
-                                tenant_id=tenant_id,
-                                alert_key=alert_key,
-                                recipient_email=recipient_email,
-                            )
-                            db.add(dispatch)
-                        dispatch.last_sent_at = now
-                        dispatch.send_count = int(dispatch.send_count or 0) + 1
-                        sent_count += 1
-                    else:
-                        failed_count += 1
-                        logger.warning(
-                            f"[ALERT-EMAIL] Failed recipient={recipient_email} key={alert_key}: {result.get('error')}"
-                        )
-                except Exception as exc:
-                    failed_count += 1
-                    logger.error(f"[ALERT-EMAIL] Unexpected failure recipient={recipient_email} key={alert_key}: {exc}")
-
-        db.commit()
-        return {"sent": sent_count, "skipped": skipped_count, "failed": failed_count}
+    async def _email_alert(self, db: Session, tenant_id: str, alert: Dict[str, Any], recipient_email: str,
+                           now: Any, frontend_base: str) -> str:
+        """E-mail one alert to one admin unless disabled or within its cooldown: sent / skipped / failed."""
+        if not alert.get("email_enabled"):
+            return "skipped"
+        alert_key = alert["id"]
+        cooldown_delta = timedelta(minutes=max(int(alert.get("cooldown_minutes") or 360), 1))
+        route = alert.get("route") or ""
+        route_url = f"{frontend_base}{route}" if route.startswith("/") else frontend_base
+        subject = f"[Alert Center] {alert.get('severity', 'INFO')} - {alert.get('title', 'Alert')}"
+        body = (
+            f"Alert: {alert.get('title', 'Alert')}\n"
+            f"Severity: {alert.get('severity', 'INFO')}\n"
+            f"Source: {alert.get('source', 'SYSTEM')}\n\n"
+            f"{alert.get('message', '')}\n\n"
+            f"Open in app: {route_url}\n"
+        )
+        repo = AlertCenterRepository(db)
+        dispatch = repo.dispatch(tenant_id, alert_key, recipient_email)
+        if dispatch and dispatch.last_sent_at and (now - dispatch.last_sent_at) < cooldown_delta:
+            return "skipped"
+        try:
+            result = await email_sender.send_plain_email(to_email=recipient_email, subject=subject, body_content=body)
+        except Exception as exc:
+            logger.error(f"[ALERT-EMAIL] Unexpected failure recipient={recipient_email} key={alert_key}: {exc}")
+            return "failed"
+        if not result.get("success"):
+            logger.warning(f"[ALERT-EMAIL] Failed recipient={recipient_email} key={alert_key}: {result.get('error')}")
+            return "failed"
+        if not dispatch:
+            dispatch = AlertEmailDispatch(tenant_id=tenant_id, alert_key=alert_key, recipient_email=recipient_email)
+            repo.add(dispatch)
+        dispatch.last_sent_at = now
+        dispatch.send_count = int(dispatch.send_count or 0) + 1
+        return "sent"
 
     async def evaluate_and_dispatch_all(self, db: Session) -> Dict[str, Any]:
-        tenant_ids: set = set()
-        tenant_ids.update(
-            t for (t,) in db.query(SendingInbox.tenant_id).filter(SendingInbox.tenant_id.isnot(None)).distinct().all()
-        )
-        tenant_ids.update(
-            t for (t,) in db.query(Campaign.tenant_id).filter(Campaign.tenant_id.isnot(None)).distinct().all()
-        )
+        tenant_ids = AlertCenterRepository(db).alerting_tenant_ids()
 
         summary = {"tenants": 0, "sent": 0, "skipped": 0, "failed": 0}
         for tenant_id in tenant_ids:

@@ -1,0 +1,480 @@
+-- ForecastSnapshot
+CREATE TABLE forecast_snapshots (
+	snapshot_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	period_type VARCHAR(10) NOT NULL, 
+	period_start DATE NOT NULL, 
+	period_end DATE NOT NULL, 
+	owner_id VARCHAR(36) NOT NULL, 
+	won NUMERIC(15, 2) NOT NULL DEFAULT '0', 
+	weighted NUMERIC(15, 2) NOT NULL DEFAULT '0', 
+	forecast NUMERIC(15, 2) NOT NULL DEFAULT '0', 
+	open_count INTEGER NOT NULL DEFAULT '0', 
+	commit_open NUMERIC(15, 2), 
+	committed NUMERIC(15, 2), 
+	source VARCHAR(10) NOT NULL DEFAULT 'SCHEDULED', 
+	taken_by VARCHAR(36), 
+	taken_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (snapshot_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(owner_id) REFERENCES users (user_id) ON DELETE CASCADE, 
+	FOREIGN KEY(taken_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE UNIQUE INDEX uq_forecast_snapshots ON forecast_snapshots (tenant_id, period_type, period_start, owner_id)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col snapshot_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col period_type String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col period_start Date notnull   default=None onupdate=None server_default=None server_onupdate=None
+col period_end Date notnull   default=None onupdate=None server_default=None server_onupdate=None
+col owner_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col won Numeric notnull   default='0' onupdate=None server_default='0' server_onupdate=None
+col weighted Numeric notnull   default='0' onupdate=None server_default='0' server_onupdate=None
+col forecast Numeric notnull   default='0' onupdate=None server_default='0' server_onupdate=None
+col open_count Integer notnull   default='0' onupdate=None server_default='0' server_onupdate=None
+col commit_open Numeric null   default=None onupdate=None server_default=None server_onupdate=None
+col committed Numeric null   default=None onupdate=None server_default=None server_onupdate=None
+col source String notnull   default='SCHEDULED' onupdate=None server_default='SCHEDULED' server_onupdate=None
+col taken_by String null   default=None onupdate=None server_default=None server_onupdate=None
+col taken_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- Lead
+CREATE TABLE leads (
+	lead_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	prospect_id VARCHAR(36) NOT NULL, 
+	account_id VARCHAR(36), 
+	owner_id VARCHAR(36) NOT NULL, 
+	source VARCHAR(100), 
+	stage VARCHAR(20) NOT NULL, 
+	qualification JSON, 
+	next_step VARCHAR(255), 
+	next_step_at DATETIME(6), 
+	disqualified_reason VARCHAR(255), 
+	recycle_at DATETIME(6), 
+	opportunity_id VARCHAR(36), 
+	campaign_id VARCHAR(36), 
+	stage_changed_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	qualified_at DATETIME(6), 
+	converted_at DATETIME(6), 
+	created_by VARCHAR(36), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	row_version INTEGER NOT NULL DEFAULT '1', 
+	PRIMARY KEY (lead_id), 
+	CONSTRAINT ck_leads_stage CHECK (stage IN ('NEW', 'CONTACTED', 'ENGAGED', 'SQL', 'CONVERTED', 'DISQUALIFIED')), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(prospect_id) REFERENCES prospects (prospect_id), 
+	FOREIGN KEY(account_id) REFERENCES accounts (account_id), 
+	FOREIGN KEY(owner_id) REFERENCES users (user_id), 
+	FOREIGN KEY(campaign_id) REFERENCES campaigns (campaign_id), 
+	FOREIGN KEY(created_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_leads_owner ON leads (owner_id)
+CREATE INDEX ix_leads_prospect ON leads (prospect_id)
+CREATE INDEX ix_leads_tenant_stage ON leads (tenant_id, stage)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col lead_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col prospect_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col account_id String null   default=None onupdate=None server_default=None server_onupdate=None
+col owner_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col source String null   default=None onupdate=None server_default=None server_onupdate=None
+col stage String notnull   default='NEW' onupdate=None server_default=None server_onupdate=None
+col qualification JSON null   default=None onupdate=None server_default=None server_onupdate=None
+col next_step String null   default=None onupdate=None server_default=None server_onupdate=None
+col next_step_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col disqualified_reason String null   default=None onupdate=None server_default=None server_onupdate=None
+col recycle_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col opportunity_id String null   default=None onupdate=None server_default=None server_onupdate=None
+col campaign_id String null   default=None onupdate=None server_default=None server_onupdate=None
+col stage_changed_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col qualified_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col converted_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col created_by String null   default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col updated_at DateTime null   default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col row_version Integer notnull   default='1' onupdate=None server_default='1' server_onupdate=None
+-- MessageTemplate
+CREATE TABLE message_templates (
+	template_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	name VARCHAR(150) NOT NULL, 
+	category VARCHAR(60), 
+	subject TEXT NOT NULL, 
+	body TEXT NOT NULL, 
+	shared BOOL NOT NULL, 
+	owner_id VARCHAR(36) NOT NULL, 
+	usage_count INTEGER NOT NULL, 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (template_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(owner_id) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_message_templates_tenant ON message_templates (tenant_id, category)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col template_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col name String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col category String null   default=None onupdate=None server_default=None server_onupdate=None
+col subject Text notnull   default=None onupdate=None server_default=None server_onupdate=None
+col body Text notnull   default=None onupdate=None server_default=None server_onupdate=None
+col shared Boolean notnull   default='True' onupdate=None server_default=None server_onupdate=None
+col owner_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col usage_count Integer notnull   default='0' onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col updated_at DateTime null   default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- Notification
+CREATE TABLE notifications (
+	notification_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	user_id VARCHAR(36) NOT NULL, 
+	kind VARCHAR(40) NOT NULL, 
+	title VARCHAR(255) NOT NULL, 
+	body TEXT, 
+	link VARCHAR(500), 
+	dedupe_key VARCHAR(120), 
+	read_at DATETIME(6), 
+	emailed_at DATETIME(6), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (notification_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(user_id) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_notifications_dedupe ON notifications (user_id, dedupe_key)
+CREATE INDEX ix_notifications_user_read ON notifications (user_id, read_at, created_at)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col notification_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col user_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col kind String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col title String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col body Text null   default=None onupdate=None server_default=None server_onupdate=None
+col link String null   default=None onupdate=None server_default=None server_onupdate=None
+col dedupe_key String null   default=None onupdate=None server_default=None server_onupdate=None
+col read_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col emailed_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- Opportunity
+CREATE TABLE opportunities (
+	opportunity_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	name VARCHAR(255) NOT NULL, 
+	account_id VARCHAR(36), 
+	prospect_id VARCHAR(36), 
+	lead_id VARCHAR(36), 
+	owner_id VARCHAR(36) NOT NULL, 
+	stage_id VARCHAR(36) NOT NULL, 
+	amount NUMERIC(15, 2), 
+	close_date DATE, 
+	client_type VARCHAR(10) NOT NULL, 
+	status VARCHAR(10) NOT NULL, 
+	closed_reason VARCHAR(255), 
+	next_step VARCHAR(255), 
+	description TEXT, 
+	forecast_category VARCHAR(12), 
+	forecast_category_manual BOOL NOT NULL DEFAULT '0', 
+	campaign_id VARCHAR(36), 
+	closed_at DATETIME(6), 
+	created_by VARCHAR(36), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	row_version INTEGER NOT NULL DEFAULT '1', 
+	PRIMARY KEY (opportunity_id), 
+	CONSTRAINT ck_opportunities_status CHECK (status IN ('OPEN', 'WON', 'LOST')), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(account_id) REFERENCES accounts (account_id), 
+	FOREIGN KEY(prospect_id) REFERENCES prospects (prospect_id), 
+	FOREIGN KEY(lead_id) REFERENCES leads (lead_id), 
+	FOREIGN KEY(owner_id) REFERENCES users (user_id), 
+	FOREIGN KEY(stage_id) REFERENCES sales_stages (stage_id), 
+	FOREIGN KEY(campaign_id) REFERENCES campaigns (campaign_id), 
+	FOREIGN KEY(created_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_opps_account ON opportunities (account_id)
+CREATE INDEX ix_opps_owner ON opportunities (owner_id)
+CREATE INDEX ix_opps_tenant_status_close ON opportunities (tenant_id, status, close_date)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col opportunity_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col name String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col account_id String null   default=None onupdate=None server_default=None server_onupdate=None
+col prospect_id String null   default=None onupdate=None server_default=None server_onupdate=None
+col lead_id String null   default=None onupdate=None server_default=None server_onupdate=None
+col owner_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col stage_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col amount Numeric null   default=None onupdate=None server_default=None server_onupdate=None
+col close_date Date null   default=None onupdate=None server_default=None server_onupdate=None
+col client_type String notnull   default='NEW' onupdate=None server_default=None server_onupdate=None
+col status String notnull   default='OPEN' onupdate=None server_default=None server_onupdate=None
+col closed_reason String null   default=None onupdate=None server_default=None server_onupdate=None
+col next_step String null   default=None onupdate=None server_default=None server_onupdate=None
+col description Text null   default=None onupdate=None server_default=None server_onupdate=None
+col forecast_category String null   default=None onupdate=None server_default=None server_onupdate=None
+col forecast_category_manual Boolean notnull   default='False' onupdate=None server_default='0' server_onupdate=None
+col campaign_id String null   default=None onupdate=None server_default=None server_onupdate=None
+col closed_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col created_by String null   default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col updated_at DateTime null   default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col row_version Integer notnull   default='1' onupdate=None server_default='1' server_onupdate=None
+-- Product
+CREATE TABLE products (
+	product_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	name VARCHAR(200) NOT NULL, 
+	sku VARCHAR(60), 
+	description TEXT, 
+	unit_price NUMERIC(15, 2) NOT NULL, 
+	unit VARCHAR(30), 
+	active BOOL NOT NULL, 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (product_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_products_tenant ON products (tenant_id, active)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col product_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col name String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col sku String null   default=None onupdate=None server_default=None server_onupdate=None
+col description Text null   default=None onupdate=None server_default=None server_onupdate=None
+col unit_price Numeric notnull   default='0' onupdate=None server_default=None server_onupdate=None
+col unit String null   default=None onupdate=None server_default=None server_onupdate=None
+col active Boolean notnull   default='True' onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- ProposalLine
+CREATE TABLE proposal_lines (
+	line_id VARCHAR(36) NOT NULL, 
+	proposal_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	product_id VARCHAR(36), 
+	description VARCHAR(500) NOT NULL, 
+	quantity NUMERIC(12, 2) NOT NULL, 
+	unit_price NUMERIC(15, 2) NOT NULL, 
+	discount_pct NUMERIC(5, 2) NOT NULL, 
+	sort_order INTEGER NOT NULL, 
+	PRIMARY KEY (line_id), 
+	FOREIGN KEY(proposal_id) REFERENCES proposals (proposal_id), 
+	FOREIGN KEY(product_id) REFERENCES products (product_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_proposal_lines_proposal_id ON proposal_lines (proposal_id)
+CREATE INDEX ix_proposal_lines_tenant_proposal ON proposal_lines (tenant_id, proposal_id)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col line_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
+col proposal_id String notnull  idx default=None onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col product_id String null   default=None onupdate=None server_default=None server_onupdate=None
+col description String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col quantity Numeric notnull   default='1' onupdate=None server_default=None server_onupdate=None
+col unit_price Numeric notnull   default='0' onupdate=None server_default=None server_onupdate=None
+col discount_pct Numeric notnull   default='0' onupdate=None server_default=None server_onupdate=None
+col sort_order Integer notnull   default='0' onupdate=None server_default=None server_onupdate=None
+-- Proposal
+CREATE TABLE proposals (
+	proposal_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	opportunity_id VARCHAR(36) NOT NULL, 
+	title VARCHAR(255) NOT NULL, 
+	amount NUMERIC(15, 2), 
+	status VARCHAR(20) NOT NULL, 
+	valid_until DATE, 
+	notes TEXT, 
+	sent_at DATETIME(6), 
+	decided_at DATETIME(6), 
+	created_by VARCHAR(36), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	row_version INTEGER NOT NULL DEFAULT '1', 
+	approval_status VARCHAR(20) NOT NULL DEFAULT 'NOT_REQUIRED', 
+	approval_discount_pct NUMERIC(5, 2), 
+	approval_requested_by VARCHAR(36), 
+	approval_requested_at DATETIME(6), 
+	approval_decided_by VARCHAR(36), 
+	approval_decided_at DATETIME(6), 
+	approval_reason VARCHAR(1000), 
+	PRIMARY KEY (proposal_id), 
+	CONSTRAINT ck_proposals_status CHECK (status IN ('DRAFT', 'SENT', 'UNDER_REVIEW', 'ACCEPTED', 'REJECTED')), 
+	CONSTRAINT ck_proposals_approval_status CHECK (approval_status IN ('NOT_REQUIRED', 'PENDING', 'APPROVED', 'REJECTED')), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(opportunity_id) REFERENCES opportunities (opportunity_id), 
+	FOREIGN KEY(created_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_proposals_opp ON proposals (opportunity_id)
+CREATE INDEX ix_proposals_tenant_approval ON proposals (tenant_id, approval_status)
+CREATE INDEX ix_proposals_tenant_status ON proposals (tenant_id, status)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col proposal_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col opportunity_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col title String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col amount Numeric null   default=None onupdate=None server_default=None server_onupdate=None
+col status String notnull   default='DRAFT' onupdate=None server_default=None server_onupdate=None
+col valid_until Date null   default=None onupdate=None server_default=None server_onupdate=None
+col notes Text null   default=None onupdate=None server_default=None server_onupdate=None
+col sent_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col decided_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col created_by String null   default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col updated_at DateTime null   default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col row_version Integer notnull   default='1' onupdate=None server_default='1' server_onupdate=None
+col approval_status String notnull   default='NOT_REQUIRED' onupdate=None server_default='NOT_REQUIRED' server_onupdate=None
+col approval_discount_pct Numeric null   default=None onupdate=None server_default=None server_onupdate=None
+col approval_requested_by String null   default=None onupdate=None server_default=None server_onupdate=None
+col approval_requested_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col approval_decided_by String null   default=None onupdate=None server_default=None server_onupdate=None
+col approval_decided_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col approval_reason String null   default=None onupdate=None server_default=None server_onupdate=None
+-- SalesSetting
+CREATE TABLE sales_settings (
+	tenant_id VARCHAR(36) NOT NULL, 
+	settings JSON NOT NULL, 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (tenant_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col tenant_id String notnull pk  default=None onupdate=None server_default=None server_onupdate=None
+col settings JSON notnull   default=None onupdate=None server_default=None server_onupdate=None
+col updated_at DateTime null   default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- SalesStage
+CREATE TABLE sales_stages (
+	stage_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	name VARCHAR(100) NOT NULL, 
+	probability INTEGER NOT NULL, 
+	sort_order INTEGER NOT NULL, 
+	is_won BOOL NOT NULL, 
+	is_lost BOOL NOT NULL, 
+	active BOOL NOT NULL, 
+	PRIMARY KEY (stage_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_sales_stages_tenant ON sales_stages (tenant_id, sort_order)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col stage_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col name String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col probability Integer notnull   default='0' onupdate=None server_default=None server_onupdate=None
+col sort_order Integer notnull   default='0' onupdate=None server_default=None server_onupdate=None
+col is_won Boolean notnull   default='False' onupdate=None server_default=None server_onupdate=None
+col is_lost Boolean notnull   default='False' onupdate=None server_default=None server_onupdate=None
+col active Boolean notnull   default='True' onupdate=None server_default=None server_onupdate=None
+-- SalesTarget
+CREATE TABLE sales_targets (
+	target_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	user_id VARCHAR(36) NOT NULL, 
+	fy INTEGER NOT NULL, 
+	quarter INTEGER NOT NULL, 
+	amount NUMERIC(15, 2) NOT NULL, 
+	set_by VARCHAR(36), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (target_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(user_id) REFERENCES users (user_id), 
+	FOREIGN KEY(set_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE UNIQUE INDEX uq_sales_targets ON sales_targets (tenant_id, user_id, fy, quarter)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col target_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col user_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col fy Integer notnull   default=None onupdate=None server_default=None server_onupdate=None
+col quarter Integer notnull   default=None onupdate=None server_default=None server_onupdate=None
+col amount Numeric notnull   default='0' onupdate=None server_default=None server_onupdate=None
+col set_by String null   default=None onupdate=None server_default=None server_onupdate=None
+col updated_at DateTime null   default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- SavedReport
+CREATE TABLE saved_reports (
+	report_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	owner_id VARCHAR(36) NOT NULL, 
+	name VARCHAR(150) NOT NULL, 
+	description TEXT, 
+	definition JSON NOT NULL, 
+	shared BOOL NOT NULL, 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (report_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(owner_id) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col report_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col owner_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col name String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col description Text null   default=None onupdate=None server_default=None server_onupdate=None
+col definition JSON notnull   default=None onupdate=None server_default=None server_onupdate=None
+col shared Boolean notnull   default='False' onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col updated_at DateTime null   default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- UserConnection
+CREATE TABLE user_connections (
+	connection_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	user_id VARCHAR(36) NOT NULL, 
+	provider VARCHAR(20) NOT NULL, 
+	account_email VARCHAR(255), 
+	access_token TEXT, 
+	refresh_token TEXT, 
+	expires_at DATETIME(6), 
+	sync_email BOOL NOT NULL, 
+	sync_calendar BOOL NOT NULL, 
+	last_sync_at DATETIME(6), 
+	last_error TEXT, 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (connection_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(user_id) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE UNIQUE INDEX uq_user_connections ON user_connections (user_id, provider)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col connection_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col user_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col provider String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col account_email String null   default=None onupdate=None server_default=None server_onupdate=None
+col access_token EncryptedText null   default=None onupdate=None server_default=None server_onupdate=None
+col refresh_token EncryptedText null   default=None onupdate=None server_default=None server_onupdate=None
+col expires_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col sync_email Boolean notnull   default='True' onupdate=None server_default=None server_onupdate=None
+col sync_calendar Boolean notnull   default='True' onupdate=None server_default=None server_onupdate=None
+col last_sync_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col last_error Text null   default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- WorkflowRule
+CREATE TABLE workflow_rules (
+	rule_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	name VARCHAR(150) NOT NULL, 
+	object_type VARCHAR(10) NOT NULL, 
+	field VARCHAR(60) NOT NULL, 
+	operator VARCHAR(20) NOT NULL, 
+	value VARCHAR(255), 
+	actions JSON NOT NULL, 
+	active BOOL NOT NULL, 
+	run_count INTEGER NOT NULL, 
+	last_run_at DATETIME(6), 
+	created_by VARCHAR(36), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (rule_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(created_by) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_workflow_rules_tenant ON workflow_rules (tenant_id, object_type, active)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col rule_id String notnull pk  default='callable:_uuid' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col name String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col object_type String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col field String notnull   default=None onupdate=None server_default=None server_onupdate=None
+col operator String notnull   default='changes' onupdate=None server_default=None server_onupdate=None
+col value String null   default=None onupdate=None server_default=None server_onupdate=None
+col actions JSON notnull   default=None onupdate=None server_default=None server_onupdate=None
+col active Boolean notnull   default='True' onupdate=None server_default=None server_onupdate=None
+col run_count Integer notnull   default='0' onupdate=None server_default=None server_onupdate=None
+col last_run_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
+col created_by String null   default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null   default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None

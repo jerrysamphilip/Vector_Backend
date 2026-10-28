@@ -133,10 +133,12 @@ R.check("CS-020", "A grade change writes a property history row (D -> C, SYSTEM)
 
 # Email engagement (opens / clicks / replies) is counted on recompute
 mid = str(uuid.uuid4())
-sql(f"INSERT INTO email_messages (message_id, prospect_id, direction, status, to_email, subject, sent_at) "
-    f"VALUES ('{mid}', '{eng['prospect_id']}', 'OUTBOUND', 'SENT', 'x@example.com', 'Hi', UTC_TIMESTAMP())")
+sql(f"INSERT INTO email_messages (message_id, prospect_id, tenant_id, direction, status, to_email, subject, sent_at) "
+    f"SELECT '{mid}', prospect_id, tenant_id, 'OUTBOUND', 'SENT', 'x@example.com', 'Hi', UTC_TIMESTAMP() "
+    f"FROM prospects WHERE prospect_id = '{eng['prospect_id']}'")
 for etype in (2, 2, 3):
-    sql(f"INSERT INTO email_events (event_id, message_id, event_type, event_time) VALUES ('{uuid.uuid4()}', '{mid}', {etype}, UTC_TIMESTAMP())")
+    sql(f"INSERT INTO email_events (event_id, message_id, tenant_id, event_type, event_time) "
+        f"SELECT '{uuid.uuid4()}', message_id, tenant_id, {etype}, UTC_TIMESTAMP() FROM email_messages WHERE message_id = '{mid}'")
 s, sc = req("POST", f"/contacts/{eng['prospect_id']}/score/recompute", None, OWNER)
 sig = {x["signal"]: x["count"] for x in (sc or {}).get("engagement_signals", [])} if s == 200 else {}
 R.check("CS-021", "Email opens (one per email) and clicks count towards engagement",

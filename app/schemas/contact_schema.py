@@ -2,11 +2,11 @@
 """Request bodies of the contact management API (app/routers/contacts_router.py)."""
 
 from datetime import datetime
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, EmailStr, Field
 
-from app.services.mentions import MAX_MENTIONS
+from app.domain.mentions import MAX_MENTIONS
 
 
 class ContactWrite(BaseModel):
@@ -103,10 +103,20 @@ class RestoreRequest(BaseModel):
     prospect_ids: List[str] = Field(..., min_length=1, max_length=5000)
 
 
+class FieldOption(BaseModel):
+    """A choice option (C-17): ``value`` is what records store, ``label`` what people see. Renaming a label
+    keeps the value; a new option without a value takes its label as value."""
+    value: Optional[str] = Field(None, max_length=100)
+    label: str = Field(..., min_length=1, max_length=100)
+
+
 class FieldWrite(BaseModel):
     label: str = Field(..., min_length=1, max_length=100)
-    field_type: str = "TEXT"
-    options: Optional[List[str]] = None
+    # Fixed after creation (C-17): on PATCH leave it out or send the current type; creating defaults to TEXT
+    field_type: Optional[str] = None
+    options: Optional[List[Union[str, FieldOption]]] = None
+    max_length: Optional[int] = Field(None, ge=1, le=10000)  # TEXT / LONG_TEXT only
+    is_active: Optional[bool] = None  # PATCH: false deactivates, true reactivates
     sort_order: Optional[int] = None
     group_name: Optional[str] = Field(None, max_length=100)
     required: bool = False

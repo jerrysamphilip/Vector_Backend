@@ -1,8 +1,10 @@
 """System tests for A/B testing of email subject lines (BRD v2.0 BR-SF-18 / RP-104).
 
 Runs against the live stack (API_URL, MySQL via docker exec - see ../common.py) and creates
-its own two workspaces. The campaign is launched with a start date 20 days out, so nothing is
-actually sent; emails are then marked SENT and opened / clicked / replied with SQL inside our
+its own two workspaces. The campaign sends from a mailbox connected through POST /inboxes (a
+campaign needs an ACTIVE sending inbox to launch, app/services/send_guards.py); its SMTP host is
+smtp.invalid (RFC 2606, never resolves), so nothing could be delivered even by accident. The
+campaign is launched with a start date 20 days out, so nothing is actually sent; emails are then marked SENT and opened / clicked / replied with SQL inside our
 own tenant, as the scheduler and the tracking endpoints would.
 
     python3 run_ab_testing.py      (writes results.json / results.md here)
@@ -40,8 +42,14 @@ def rows(query):
 s, b = W.set_sender_identity()
 assert s == 200, ("sender identity", s, b)
 
-# ── fixture: a one-step campaign with N_PROSPECTS enrolled ─────────
-s, c = req("POST", "/campaigns", {"campaign_name": f"AB System {rid}", "start_date": FUTURE,
+# ── fixture: a sending mailbox and a one-step campaign with N_PROSPECTS enrolled ─────────
+# Connected the way the "connect mailbox" screen does; smtp.invalid never resolves, so no mail can leave.
+s, ib = req("POST", "/inboxes", {"email_address": f"ab-sender-{rid}@ab-send-{rid}.example", "smtp_host": "smtp.invalid",
+                                 "smtp_username": f"ab-{rid}", "smtp_password": f"Smtp-{rid}", "warmup_enabled": False,
+                                 "daily_limit": 500, "max_emails_per_day": 500}, OWNER)
+assert s == 201 and ib.get("status") == "ACTIVE", ("inbox", s, ib)
+INBOX = ib["inbox_id"]
+s, c = req("POST", "/campaigns", {"campaign_name": f"AB System {rid}", "start_date": FUTURE, "inbox_ids": [INBOX],
                                   "respect_timezone": False, "campaign_timezone": "UTC"}, OWNER)
 assert s == 201, ("campaign", s, c)
 CID = c["campaign_id"]
@@ -122,6 +130,13 @@ R.check("AB-S022", "Each email carries its variant's subject, personalised", ok,
 s, sched = req("GET", f"/campaigns/{CID}/schedule", None, OWNER)
 labels = {p.get("subject_variant") for it in (sched or {}).get("schedule", []) for p in it.get("prospects", [])}
 R.check("AB-S023", "Schedule view shows the variant per email", s == 200 and bool(labels & {"A", "B"}), (s, labels))
+if len(msgs) != N_PROSPECTS:
+    # Every later case needs the launched emails: stop with the recorded failures instead of an IndexError
+    R.record("AB-S029", "Launch created the step's emails (needed by the stats / promote cases)", False,
+             f"{len(msgs)} of {N_PROSPECTS} emails exist after launch; the remaining cases cannot run", "test-issue")
+    counts = R.write()
+    print(counts)
+    sys.exit(1)
 
 # ── AB-S030..: stats, sample size, winner ───────────────────────────
 a_ids = [m[0] for m in msgs if m[1] == "A"]
@@ -133,8 +148,9 @@ def mark_sent(ids):
 
 
 def events(ids, etype):
-    values = ",".join(f"(UUID(), {q(i)}, {etype}, UTC_TIMESTAMP())" for i in ids)
-    sql(f"INSERT INTO email_events (event_id, message_id, event_type, event_time) VALUES {values}")
+    values = ",".join(f"(UUID(), {q(i)}, (SELECT tenant_id FROM email_messages WHERE message_id={q(i)}), {etype}, "
+                      f"UTC_TIMESTAMP())" for i in ids)
+    sql(f"INSERT INTO email_events (event_id, message_id, tenant_id, event_type, event_time) VALUES {values}")
 
 
 mark_sent(a_ids[:MIN_SENDS - 1] + b_ids[:MIN_SENDS - 1])

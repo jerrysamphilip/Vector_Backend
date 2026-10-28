@@ -13,21 +13,18 @@ Flow:
 Prompts: app/prompts/llm_system_prompts.py
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
-from sqlalchemy.orm import Session
 import uuid
 
 from app.core.clock import utcnow
 from app.models import (
     Prospect,
-    ProspectListMember,
     ProspectPersona,
     EmailTemplate,
-    EmailSequence,
     PersonaBlueprint,
-    Campaign,
 )
+from app.repositories.personas import Session, SqlAlchemyPersonaCampaignRepository
 from app.services.ai_email_service import classify_prospect, PERSONA_DISPLAY_NAMES
 from app.services.sender_identity import bind_tenant
 from app.services.sequence_generator import AI_FALLBACK_NOTICE, builtin_sequence_emails, generate_sequence_with_llm
@@ -42,6 +39,48 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # BATCH CLASSIFICATION
 # ============================================================
+
+def _persona_of(prospect: Prospect, persona_by_prospect_id: Dict[str, ProspectPersona],
+                new_personas: List[ProspectPersona]) -> Tuple[str, float]:
+    """(persona type, confidence): the stored classification, else a new AUTO_BATCH one (staged in new_personas)."""
+    existing = persona_by_prospect_id.get(prospect.prospect_id)
+    if existing:
+        return existing.persona_type, existing.confidence_score
+    persona_type, confidence = classify_prospect(
+        designation=prospect.designation or "",
+        company_name=prospect.company_name or ""
+    )
+    new_persona = ProspectPersona(
+        persona_id=str(uuid.uuid4()),
+        prospect_id=prospect.prospect_id,
+        persona_type=persona_type,
+        confidence_score=confidence,
+        classification_method="AUTO_BATCH",
+    )
+    new_personas.append(new_persona)
+    persona_by_prospect_id[prospect.prospect_id] = new_persona
+    return persona_type, confidence
+
+
+def _preview_row(prospect: Prospect, confidence: float) -> Dict[str, Any]:
+    """All of the contact's data, for the wizard's preview."""
+    return {
+        "prospect_id": prospect.prospect_id,
+        "first_name": prospect.first_name or "",
+        "last_name": prospect.last_name or "",
+        "email": prospect.email,
+        "company_name": prospect.company_name or "",
+        "designation": prospect.designation or "",
+        "industry": prospect.industry or "technology",
+        "linkedin_url": prospect.linkedin_url or "",
+        "poc_city": prospect.poc_city or "",
+        "poc_state": prospect.poc_state or "",
+        "poc_country": prospect.poc_country or "",
+        "emp_band": prospect.emp_band or "",
+        "timezone": prospect.timezone or "",
+        "confidence": confidence,
+    }
+
 
 def batch_classify_prospects(
     db: Session,
@@ -63,81 +102,28 @@ def batch_classify_prospects(
         ...
     }
     """
-    query = (
-        db.query(Prospect)
-        .join(ProspectListMember, ProspectListMember.prospect_id == Prospect.prospect_id)
-        .filter(
-            ProspectListMember.list_id == list_id,
-            Prospect.tenant_id == tenant_id,
-        )
-    )
-    if excluded_prospect_ids:
-        query = query.filter(Prospect.prospect_id.notin_(excluded_prospect_ids))
-    prospects = query.all()
+    repo = SqlAlchemyPersonaCampaignRepository(db)
+    prospects = repo.list_contacts(tenant_id, list_id, excluded_prospect_ids)
 
     if not prospects:
         return {}
 
     prospect_ids = [prospect.prospect_id for prospect in prospects]
-    existing_personas = (
-        db.query(ProspectPersona)
-        .filter(ProspectPersona.prospect_id.in_(prospect_ids))
-        .all()
-    )
+    existing_personas = repo.personas_for(prospect_ids)
     persona_by_prospect_id = {
         persona.prospect_id: persona
         for persona in existing_personas
     }
 
-    # Group by persona
+    # Group by persona; contacts not yet classified are classified now (saved by the caller's commit)
     grouped = defaultdict(list)
-    new_personas = []
-    
+    new_personas: List[ProspectPersona] = []
     for prospect in prospects:
-        # Check if already classified
-        existing_persona = persona_by_prospect_id.get(prospect.prospect_id)
-        
-        if existing_persona:
-            persona_type = existing_persona.persona_type
-            confidence = existing_persona.confidence_score
-        else:
-            # Classify using AI
-            persona_type, confidence = classify_prospect(
-                designation=prospect.designation or "",
-                company_name=prospect.company_name or ""
-            )
-            
-            # Save classification
-            new_persona = ProspectPersona(
-                persona_id=str(uuid.uuid4()),
-                prospect_id=prospect.prospect_id,
-                persona_type=persona_type,
-                confidence_score=confidence,
-                classification_method="AUTO_BATCH",
-            )
-            new_personas.append(new_persona)
-            persona_by_prospect_id[prospect.prospect_id] = new_persona
-        
-        # Include ALL prospect data for preview functionality
-        grouped[persona_type].append({
-            "prospect_id": prospect.prospect_id,
-            "first_name": prospect.first_name or "",
-            "last_name": prospect.last_name or "",
-            "email": prospect.email,
-            "company_name": prospect.company_name or "",
-            "designation": prospect.designation or "",
-            "industry": prospect.industry or "technology",
-            "linkedin_url": prospect.linkedin_url or "",
-            "poc_city": prospect.poc_city or "",
-            "poc_state": prospect.poc_state or "",
-            "poc_country": prospect.poc_country or "",
-            "emp_band": prospect.emp_band or "",
-            "timezone": prospect.timezone or "",
-            "confidence": confidence,
-        })
+        persona_type, confidence = _persona_of(prospect, persona_by_prospect_id, new_personas)
+        grouped[persona_type].append(_preview_row(prospect, confidence))
 
     if new_personas:
-        db.add_all(new_personas)
+        repo.add_all(new_personas)
     
     # NOTE: No db.commit() here — the parent function owns the transaction.
     return dict(grouped)
@@ -211,15 +197,9 @@ def load_persona_blueprint(db: Session, campaign_id: str, persona_type: str) -> 
     """Binds the campaign's tenant for prompt branding (its own company name) and returns the
     persona's active blueprint, detached from the session so it stays usable after the read
     transaction ends: the LLM call must not run inside one (T-1)."""
-    tenant_id = db.query(Campaign.tenant_id).filter(Campaign.campaign_id == campaign_id).scalar()
-    bind_tenant(tenant_id, db)
-    blueprint = db.query(PersonaBlueprint).filter(
-        PersonaBlueprint.persona_type == persona_type,
-        PersonaBlueprint.is_active == True  # noqa: E712  (SQL expression)
-    ).first()
-    if blueprint is not None:
-        db.expunge(blueprint)
-    return blueprint
+    repo = SqlAlchemyPersonaCampaignRepository(db)
+    bind_tenant(repo.campaign_tenant(campaign_id), db)
+    return repo.detached_active_blueprint(persona_type)
 
 
 def generate_persona_sequence(
@@ -305,7 +285,7 @@ def save_persona_templates(
             },
             generated_at=utcnow(),
         )
-        db.add(template)
+        SqlAlchemyPersonaCampaignRepository(db).add(template)
 
         # Calculate cumulative day (Day 1, then add wait_days for each subsequent step)
         # wait_days = delay after previous email, so we need to sum all previous wait_days
@@ -381,27 +361,15 @@ def generate_templates_per_persona(
     # Clear any existing templates for this campaign to prevent duplicates on re-generation.
     # Do not commit here — the caller owns the transaction and will roll back everything
     # if generation fails later in the flow.
-    old_ids = [t for (t,) in db.query(EmailTemplate.template_id).filter(
-        EmailTemplate.campaign_id == campaign_id).all()]
-    if old_ids:
-        from app.models.email_template import EmailTemplateVersion
-        from app.models.email_attachment import EmailAttachment
-        db.query(EmailTemplateVersion).filter(
-            EmailTemplateVersion.template_id.in_(old_ids)).delete(synchronize_session=False)
-        db.query(EmailAttachment).filter(
-            EmailAttachment.template_id.in_(old_ids)).delete(synchronize_session=False)
-    db.query(EmailTemplate).filter(
-        EmailTemplate.campaign_id == campaign_id
-    ).delete(synchronize_session=False)
+    repo = SqlAlchemyPersonaCampaignRepository(db)
+    repo.delete_campaign_templates(campaign_id)
 
     # Fetch campaign and existing sequences to link templates
-    campaign = db.query(Campaign).filter(Campaign.campaign_id == campaign_id).first()
+    campaign = repo.campaign(campaign_id)
     cta_link = normalize_cta_link(campaign.cta_link if campaign else None)
     cta_enabled = has_effective_cta_link(cta_link)
 
-    sequences = db.query(EmailSequence).filter(
-        EmailSequence.campaign_id == campaign_id
-    ).all()
+    sequences = repo.sequences(campaign_id)
     step_to_seq_id = {s.step_number: s.sequence_id for s in sequences}
 
     results = []

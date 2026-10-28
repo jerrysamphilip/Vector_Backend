@@ -4,12 +4,12 @@ Compliance Check model for email content validation.
 Tracks GDPR, CAN-SPAM, spam score, and disallowed phrases.
 """
 
-from sqlalchemy import Column, String, Boolean, Float, ForeignKey, JSON
+from sqlalchemy import Column, String, Boolean, Float, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
-import uuid
 
 from app.models import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id, short_id
 
 
 class ComplianceCheck(Base):
@@ -19,8 +19,10 @@ class ComplianceCheck(Base):
     """
     __tablename__ = "compliance_checks"
 
-    check_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    check_id = Column(String(36), primary_key=True, default=new_id)
     template_id = Column(String(36), ForeignKey("email_templates.template_id"), nullable=False)
+    # The template's tenant (D3, 0028_child_tenant_ids); filled from the template by app/models/tenant_fill.py
+    tenant_id = Column(String(36), nullable=False)
 
     # Spam Detection
     spam_score = Column(Float, default=0.0)  # 0-100 scale
@@ -55,11 +57,12 @@ class ComplianceCheck(Base):
     template = relationship("EmailTemplate", backref="compliance_checks")
 
     __table_args__ = (
+        Index("ix_compliance_checks_tenant_template", "tenant_id", "template_id"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
     def __repr__(self) -> str:
-        return f"<ComplianceCheck {self.check_id[:8]}... ({self.status})>"
+        return f"<ComplianceCheck {short_id(self.check_id)}... ({self.status})>"
     
     @property
     def is_approved(self) -> bool:

@@ -12,6 +12,55 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 `docs/REQUIREMENTS.md`; test traceability: `docs/TRACEABILITY.md`.
 
 ### Added
+- Round 4 (database and team-review leftovers):
+  - `tenant_id` on 14 child tables, filled from the parent by one flush listener (`app/models/tenant_fill.py`),
+    with tenant-first indexes and database-enforced tenant integrity (composite keys, one primary company per
+    contact) (D3, C-22; migration 0028). CHECK constraints on status columns, vocabularies in
+    `app/domain/status.py` (D5; 0029).
+  - Contact and global search use a FULLTEXT ngram pre-filter with identical results (D7; 0030): at 100k
+    contacts p95 drops from 0.6-1.1 s to 0.01-0.21 s. Timing test `tests/test_dbb_contact_search_perf.py`
+    (`PERF=1`).
+  - Optional MySQL TLS (`MYSQL_SSL_MODE`, `MYSQL_SSL_CA`; D8) and time-ordered UUIDv7 primary keys for new rows
+    (`app/core/ids.py`; D4). Short ids in file names, PDF references and logs now use an id's last 8
+    characters (`short_id`), because UUIDv7s made in the same minute share their first 8.
+  - Custom-property safety (C-17; 0031): properties are deactivated instead of deleted (values kept, still
+    exported, reactivation), system properties protected, type fixed after creation, option renames keep stored
+    values (`{value, label}`), new BOOLEAN and LONG_TEXT types and `max_length`. Inactive properties are hidden
+    from import mapping.
+  - IMAP settings derived from SMTP when not set (S-26), DNS records compared with live DNS with a suggested
+    value (SPF merged) (S-25), and the scheduler parks messages until the sending window opens and moves a new
+    contact to the campaign mailbox with the most room when one hits its daily cap (S-17).
+  - Migration 0032 and model `server_default`s give a freshly built database the same 23 column defaults as an
+    upgraded one (users.notify_email, webhook counters, forecast snapshot totals and others), so raw-SQL
+    writers (scripts, system tests) work on both.
+  - All remaining import-linter exceptions removed (57 -> 0); `app/core/auth.py` reads users through an
+    `AuthStore` that `app/main.py` installs (fails closed when none is installed).
+- Layered architecture applied to every remaining aggregate (wave 3: accounts, lists, identity/auth, import,
+  automation, webhooks, scoring, notifications, campaigns, inbox, deliverability, worker): routers thin, services own
+  the unit of work, SQL in repositories, `Mapped[]` models with identical DDL, OpenAPI unchanged for existing paths.
+  External services behind adapters with DI providers (`app/adapters`: SES, SMTP/IMAP, OpenAI, file storage, OAuth).
+- Edit a campaign after launch: `POST /campaigns/{id}/edits` (+ `/edits/checks` dry run) re-renders and re-plans unsent
+  mail under row locks and row_version, adds/deletes steps safely, rebinds inboxes; e-mail previews as a real contact,
+  template assignments, launch `pacing_warning`, business-day waits (migration 0027).
+- Contacts: stored duplicate pairs with confidence and reasons, dismiss/reopen, merge preview with row locks, merge log
+  snapshots, e-mail history so retired and merged addresses resolve to the surviving contact, export audit log, unique
+  list names and paged lists (migration 0025).
+- Companies: custom properties, backfill preview / run history / undo, export, field propagation with history
+  (migration 0024).
+- Background CRM import: upload, mapping (saved), dry run, checkpointed worker job with progress, cancel and resume;
+  import modes, date/number/choice parsing, sheet choice (migration 0026). Hard-bounce automation trigger.
+- Jobs: duplicate scan (6 h), hourly domain-health snapshots with 90-day retention; the scheduler wakes when the next
+  paced mailbox is ready.
+- Layered architecture applied to contacts (reference, `docs/LAYER_PATTERN.md`), sales and reports: typed domain
+  query objects, repositories holding all SQL, services owning the unit of work, thin routers, `Mapped[]` models
+  with identical DDL. OpenAPI and report outputs unchanged (golden test `tests/test_a6_report_outputs.py`).
+  73 import-layer exceptions, 16 complexity hotspots, 71 function-local imports and 9 `# type: ignore` removed.
+- Campaigns: duplicate (migration 0022), clear fields with null, enrolment dry run, timing columns, removed
+  contacts hidden and re-enrolable, weighted inbox rotation.
+- Inbox: reply classification POSITIVE / NEUTRAL / NEGATIVE / OUT_OF_OFFICE / UNSUBSCRIBE (rules first, LLM only
+  within the daily cap; migration 0023); confident unsubscribes suppress, low-confidence ones are flagged for
+  review; conversation search, labels, campaign, activity timeline and paging; sending-pipeline alerts (no mailbox,
+  limit reached, failure rate, missing delivery events, SES unavailable, stuck sending); resume a paused mailbox.
 - CI gates for the NTS Build Standard Addendum (`docs/CI_GATES.md`): complexity (C-1), type-ignore ratchet (C-2),
   no `assert` in app code (C-3, ruff S101 + bandit B101), import-layer contracts and function-local import
   register (C-4/C-5), requirement traceability, release identity, frontend/backend route contract, blocking
@@ -37,6 +86,11 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - Layered test framework (`scripts/test.py`: unit, functional, system, e2e, ui) and the `docs/TESTING.md` guide.
 
 ### Changed
+- A hard bounce stops the campaign's remaining steps per step stop_on_bounce; company backfill covers only the contacts
+  the user can see; `DELETE /campaigns/sequences/{id}` refuses (409) once a step was sent, else removes its unsent mail
+  and renumbers; list names that already exist get " (2)" on upload/import/bulk add.
+- Conversations follow the contact owner/team visibility scope (an agent sees the conversations of the contacts
+  they can see); before, any member of the workspace saw all of them.
 - Refactor: routers are thin HTTP adapters over services; service-layer domain errors (`app/core/errors.py`);
   typing for app/core, app/services, app/utils (mypy in CI); architecture notes in `docs/ARCHITECTURE.md`.
 - The AGENT role gets `manage_campaigns` by default; role defaults have a single source.
@@ -44,6 +98,16 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - `domain_error_handler` guards its input with an explicit type check instead of `assert` (kept under `python -O`).
 
 ### Security
+- SNS webhook hardening (C-04/C-09): signed timestamp window (24 h back, 15 min ahead), RSA certificates within
+  their validity only, certificate cache with TTL and size limit, no redirects, no userinfo or non-443 ports in
+  certificate and subscribe URLs, optional `SNS_ALLOWED_TOPIC_ARNS`, 503 when the certificate cannot be fetched
+  so SNS retries. Positive tests sign real SignatureVersion 1 and 2 messages.
+- SMTP/IMAP connections resolve the host once, check it (no private/loopback/metadata addresses when deployed) and
+  connect to that address with the hostname kept for TLS verification, closing the DNS-rebinding gap (S2).
+- Session tokens on PyJWT 2.15.1 behind `app/core/tokens.py` (S1): python-jose and ecdsa removed, so the
+  dependency audit has no accepted exceptions left. Only the configured HS algorithm is accepted (`none`, other HS
+  sizes and asymmetric headers refused); `exp` (and `jti` on access tokens) required. Tokens issued before the
+  switch stay valid; session policies (idle, absolute cap, refresh reuse detection, CSRF, MFA) unchanged.
 - Reset, invite and magic links are built from a validated origin only (`app/utils/safe_origin.py`): a crafted
   `Origin: http://evil.example\\@localhost` no longer yields a link to another host (F024); localhost origins only
   in a local environment.

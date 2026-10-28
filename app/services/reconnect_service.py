@@ -13,12 +13,9 @@ Voluntary unsubscribes are never overrideable.
 import logging
 from typing import List, Optional, Dict
 
-from sqlalchemy import func
-from sqlalchemy.orm import Session
-
 from app.core.clock import utcnow
-from app.models.campaign import CampaignProspect
-from app.models.prospect import Prospect, GlobalUnsubscribe
+from app.models.prospect import GlobalUnsubscribe
+from app.repositories.revalidation import Session, SqlAlchemyRevalidationRepository
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +39,7 @@ class ProspectRevalidationService:
 
     def __init__(self, db: Session) -> None:
         self.db = db
+        self.repo = SqlAlchemyRevalidationRepository(db)
 
     def _is_voluntary_unsub(self, record: GlobalUnsubscribe) -> bool:
         reason = (record.reason or "").strip()
@@ -56,10 +54,7 @@ class ProspectRevalidationService:
         return record.suppression_expires_at > utcnow()
 
     def get_blocked_reason(self, tenant_id: str, email: str) -> Optional[str]:
-        record = self.db.query(GlobalUnsubscribe).filter(
-            GlobalUnsubscribe.tenant_id == tenant_id,
-            GlobalUnsubscribe.email == email,
-        ).first()
+        record = self.repo.suppression(tenant_id, email)
 
         if not record:
             return None
@@ -85,27 +80,17 @@ class ProspectRevalidationService:
     ) -> Dict:
         new_email = new_email.strip().lower()
 
-        prospect = self.db.query(Prospect).filter(
-            Prospect.prospect_id == prospect_id,
-            Prospect.tenant_id == tenant_id,
-        ).first()
+        prospect = self.repo.contact(tenant_id, prospect_id)
         if not prospect:
             raise ValueError(f"Prospect {prospect_id!r} not found.")
 
         old_email = prospect.email
 
-        conflict = self.db.query(Prospect).filter(
-            Prospect.tenant_id == tenant_id,
-            Prospect.email == new_email,
-            Prospect.prospect_id != prospect_id,
-        ).first()
+        conflict = self.repo.other_contact_with_email(tenant_id, new_email, prospect_id)
         if conflict:
             raise ValueError(f"Email {new_email!r} is already registered to another prospect.")
 
-        old_unsub = self.db.query(GlobalUnsubscribe).filter(
-            GlobalUnsubscribe.tenant_id == tenant_id,
-            GlobalUnsubscribe.email == old_email,
-        ).first()
+        old_unsub = self.repo.suppression(tenant_id, old_email)
 
         cleared_suppression = False
 
@@ -122,7 +107,7 @@ class ProspectRevalidationService:
                 )
                 raise PermissionError(msg)
 
-            self.db.delete(old_unsub)
+            self.repo.delete(old_unsub)
             cleared_suppression = True
             logger.warning(
                 f"[Revalidation] Cleared hard-bounce suppression for {old_email!r} "
@@ -131,16 +116,9 @@ class ProspectRevalidationService:
 
         prospect.email = new_email
         prospect.is_valid_email = True
-        self.db.flush()
+        self.repo.flush()
 
-        updated_cp = (
-            self.db.query(CampaignProspect)
-            .filter(
-                CampaignProspect.prospect_id == prospect_id,
-                CampaignProspect.status == "BOUNCED",
-            )
-            .all()
-        )
+        updated_cp = self.repo.bounced_enrolments(prospect_id)
         for cp in updated_cp:
             cp.status = "RECONNECT_ELIGIBLE"
 
@@ -167,9 +145,7 @@ class ProspectRevalidationService:
 
     def list_bounced_prospects(self, tenant_id: str) -> List[Dict]:
         hard_bounce_emails = set()
-        all_unsubs = self.db.query(GlobalUnsubscribe).filter(
-            GlobalUnsubscribe.tenant_id == tenant_id,
-        ).all()
+        all_unsubs = self.repo.suppressions(tenant_id)
         for rec in all_unsubs:
             if not self._is_voluntary_unsub(rec):
                 hard_bounce_emails.add(rec.email)
@@ -177,26 +153,12 @@ class ProspectRevalidationService:
         if not hard_bounce_emails:
             return []
 
-        bounced_prospects = (
-            self.db.query(Prospect)
-            .filter(
-                Prospect.tenant_id == tenant_id,
-                Prospect.email.in_(hard_bounce_emails),
-            )
-            .all()
-        )
+        bounced_prospects = self.repo.contacts_with_emails(tenant_id, hard_bounce_emails)
 
         result = []
         for p in bounced_prospects:
-            cp_count = self.db.query(func.count(CampaignProspect.id)).filter(
-                CampaignProspect.prospect_id == p.prospect_id,
-                CampaignProspect.status == "BOUNCED",
-            ).scalar() or 0
-
-            unsub = self.db.query(GlobalUnsubscribe).filter(
-                GlobalUnsubscribe.tenant_id == tenant_id,
-                GlobalUnsubscribe.email == p.email,
-            ).first()
+            cp_count = self.repo.count_bounced_enrolments(p.prospect_id)
+            unsub = self.repo.suppression(tenant_id, p.email)
 
             result.append({
                 "prospect_id": p.prospect_id,

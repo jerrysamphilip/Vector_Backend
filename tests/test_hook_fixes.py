@@ -25,6 +25,7 @@ from app.models.email_message import EmailEvent, EmailMessage
 from app.models.email_sequence import EmailSequence
 from app.models.email_template import EmailTemplate
 from app.routers import ses_webhook_router
+from app.services.ses_event_service import SesEventService
 from app.services.automation_rule_service import automation_service, claim_rule_run
 
 WEBHOOK = "/webhooks/ses/notifications"
@@ -201,9 +202,9 @@ def test_webhook_rejects_invalid_json(client):
 
 
 def test_webhook_error_is_generic(client, monkeypatch):
-    async def boom(message, db):
+    def boom(self, uow, message):
         raise RuntimeError("Unknown column 'secret_col' in /srv/app/x.py")
-    monkeypatch.setattr(ses_webhook_router, "_handle_delivery", boom)
+    monkeypatch.setattr(SesEventService, "_delivery", boom)
     r = client.post(WEBHOOK, json={"notificationType": "Delivery", "mail": {}, "delivery": {}})
     assert r.status_code == 500
     assert "secret_col" not in r.text and r.json()["detail"] == "Error processing notification"

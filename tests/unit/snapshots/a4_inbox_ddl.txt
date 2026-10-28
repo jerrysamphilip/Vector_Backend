@@ -1,0 +1,421 @@
+-- Conversation
+CREATE TABLE conversations (
+	id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	prospect_id VARCHAR(36) NOT NULL, 
+	inbox_id VARCHAR(36) NOT NULL, 
+	subject VARCHAR(255), 
+	status VARCHAR(50), 
+	is_unread BOOL, 
+	last_message_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(prospect_id) REFERENCES prospects (prospect_id), 
+	FOREIGN KEY(inbox_id) REFERENCES sending_inboxes (inbox_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col prospect_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col inbox_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col subject String null    default=None onupdate=None server_default=None server_onupdate=None
+col status String null    default='OPEN' onupdate=None server_default=None server_onupdate=None
+col is_unread Boolean null    default='True' onupdate=None server_default=None server_onupdate=None
+col last_message_at DateTime null    default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col created_at DateTime null    default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col updated_at DateTime null    default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+rel inbox -> SendingInbox uselist=False back_populates=None cascade=['merge', 'save-update']
+rel messages -> EmailMessage uselist=True back_populates=conversation cascade=['merge', 'save-update']
+rel prospect -> Prospect uselist=False back_populates=None cascade=['merge', 'save-update']
+rel tenant -> Tenant uselist=False back_populates=None cascade=['merge', 'save-update']
+-- DomainHealthSnapshot
+CREATE TABLE domain_health_snapshots (
+	snapshot_id VARCHAR(36) NOT NULL, 
+	domain_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36), 
+	domain_name VARCHAR(255) NOT NULL, 
+	snapshot_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	reputation_score INTEGER NOT NULL, 
+	bounce_rate_24h FLOAT, 
+	complaint_rate_24h FLOAT, 
+	open_rate_24h FLOAT, 
+	raw_metrics JSON, 
+	PRIMARY KEY (snapshot_id), 
+	FOREIGN KEY(domain_id) REFERENCES sending_domains (domain_id) ON DELETE CASCADE, 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_domain_health_snapshots_domain_id ON domain_health_snapshots (domain_id)
+CREATE INDEX ix_domain_health_snapshots_tenant_id ON domain_health_snapshots (tenant_id)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col snapshot_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
+col domain_id String notnull  idx  default=None onupdate=None server_default=None server_onupdate=None
+col tenant_id String null  idx  default=None onupdate=None server_default=None server_onupdate=None
+col domain_name String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col snapshot_at DateTime null    default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col reputation_score Integer notnull    default=None onupdate=None server_default=None server_onupdate=None
+col bounce_rate_24h Float null    default='0.0' onupdate=None server_default=None server_onupdate=None
+col complaint_rate_24h Float null    default='0.0' onupdate=None server_default=None server_onupdate=None
+col open_rate_24h Float null    default='0.0' onupdate=None server_default=None server_onupdate=None
+col raw_metrics JSON null    default=None onupdate=None server_default=None server_onupdate=None
+rel domain -> SendingDomain uselist=False back_populates=snapshots cascade=['merge', 'save-update']
+-- ExternalFeedbackEvent
+CREATE TABLE external_feedback_events (
+	event_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36), 
+	provider VARCHAR(50) NOT NULL, 
+	domain_name VARCHAR(255) NOT NULL, 
+	event_type VARCHAR(50) NOT NULL, 
+	event_time DATETIME(6), 
+	recipient_hash VARCHAR(255), 
+	raw_payload JSON, 
+	ingested_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (event_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_ext_events_tenant_domain ON external_feedback_events (tenant_id, domain_name)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col event_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
+col tenant_id String null    default=None onupdate=None server_default=None server_onupdate=None
+col provider String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col domain_name String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col event_type String notnull    default='COMPLAINT' onupdate=None server_default=None server_onupdate=None
+col event_time DateTime null    default=None onupdate=None server_default=None server_onupdate=None
+col recipient_hash String null    default=None onupdate=None server_default=None server_onupdate=None
+col raw_payload JSON null    default=None onupdate=None server_default=None server_onupdate=None
+col ingested_at DateTime null    default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- ExternalIngestionRun
+CREATE TABLE external_ingestion_runs (
+	run_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36), 
+	provider VARCHAR(50) NOT NULL, 
+	domain_name VARCHAR(255), 
+	source VARCHAR(50) NOT NULL, 
+	status VARCHAR(20) NOT NULL, 
+	records_ingested INTEGER NOT NULL, 
+	error_message TEXT, 
+	started_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	completed_at DATETIME(6), 
+	PRIMARY KEY (run_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_ext_runs_tenant_provider ON external_ingestion_runs (tenant_id, provider, started_at)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col run_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
+col tenant_id String null    default=None onupdate=None server_default=None server_onupdate=None
+col provider String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col domain_name String null    default=None onupdate=None server_default=None server_onupdate=None
+col source String notnull    default='MANUAL' onupdate=None server_default=None server_onupdate=None
+col status String notnull    default='SUCCESS' onupdate=None server_default=None server_onupdate=None
+col records_ingested Integer notnull    default='0' onupdate=None server_default=None server_onupdate=None
+col error_message Text null    default=None onupdate=None server_default=None server_onupdate=None
+col started_at DateTime null    default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col completed_at DateTime null    default=None onupdate=None server_default=None server_onupdate=None
+-- ExternalReputationMetric
+CREATE TABLE external_reputation_metrics (
+	metric_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36), 
+	provider VARCHAR(50) NOT NULL, 
+	domain_name VARCHAR(255) NOT NULL, 
+	metric_date VARCHAR(20) NOT NULL, 
+	spam_rate FLOAT, 
+	complaint_rate FLOAT, 
+	bounce_rate FLOAT, 
+	reputation_score FLOAT, 
+	delivery_error_rate FLOAT, 
+	source VARCHAR(50), 
+	raw_payload JSON, 
+	ingested_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (metric_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_ext_metrics_tenant_domain ON external_reputation_metrics (tenant_id, domain_name)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col metric_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
+col tenant_id String null    default=None onupdate=None server_default=None server_onupdate=None
+col provider String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col domain_name String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col metric_date String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col spam_rate Float null    default=None onupdate=None server_default=None server_onupdate=None
+col complaint_rate Float null    default=None onupdate=None server_default=None server_onupdate=None
+col bounce_rate Float null    default=None onupdate=None server_default=None server_onupdate=None
+col reputation_score Float null    default=None onupdate=None server_default=None server_onupdate=None
+col delivery_error_rate Float null    default=None onupdate=None server_default=None server_onupdate=None
+col source String null    default='MANUAL' onupdate=None server_default=None server_onupdate=None
+col raw_payload JSON null    default=None onupdate=None server_default=None server_onupdate=None
+col ingested_at DateTime null    default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- ImapSyncState
+CREATE TABLE imap_sync_state (
+	inbox_id VARCHAR(36) NOT NULL, 
+	folder VARCHAR(255) NOT NULL, 
+	uidvalidity BIGINT, 
+	last_uid BIGINT NOT NULL DEFAULT '0', 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (inbox_id, folder)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col inbox_id String notnull pk   default=None onupdate=None server_default=None server_onupdate=None
+col folder String notnull pk   default=None onupdate=None server_default=None server_onupdate=None
+col uidvalidity BigInteger null    default=None onupdate=None server_default=None server_onupdate=None
+col last_uid BigInteger notnull    default='0' onupdate=None server_default='0' server_onupdate=None
+col updated_at DateTime null    default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+-- InboxWarmupEvent
+CREATE TABLE inbox_warmup_events (
+	event_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	inbox_id VARCHAR(36) NOT NULL, 
+	peer_inbox_id VARCHAR(36), 
+	event_type VARCHAR(50) NOT NULL, 
+	status VARCHAR(20) NOT NULL, 
+	subject VARCHAR(255), 
+	detail TEXT, 
+	event_metadata JSON, 
+	event_time DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (event_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(inbox_id) REFERENCES sending_inboxes (inbox_id), 
+	FOREIGN KEY(peer_inbox_id) REFERENCES sending_inboxes (inbox_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col event_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col inbox_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col peer_inbox_id String null    default=None onupdate=None server_default=None server_onupdate=None
+col event_type String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col status String notnull    default='SUCCESS' onupdate=None server_default=None server_onupdate=None
+col subject String null    default=None onupdate=None server_default=None server_onupdate=None
+col detail Text null    default=None onupdate=None server_default=None server_onupdate=None
+col event_metadata JSON null    default=None onupdate=None server_default=None server_onupdate=None
+col event_time DateTime notnull    default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+rel inbox -> SendingInbox uselist=False back_populates=warmup_events cascade=['merge', 'save-update']
+rel peer_inbox -> SendingInbox uselist=False back_populates=None cascade=['merge', 'save-update']
+-- InboxWarmupMetric
+CREATE TABLE inbox_warmup_metrics (
+	metric_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	inbox_id VARCHAR(36) NOT NULL, 
+	metric_date VARCHAR(10) NOT NULL, 
+	planned_sends INTEGER, 
+	actual_sends INTEGER, 
+	received_count INTEGER, 
+	open_count INTEGER, 
+	reply_count INTEGER, 
+	saved_from_spam_count INTEGER, 
+	bounce_count INTEGER, 
+	complaint_count INTEGER, 
+	reputation_score FLOAT, 
+	pool_tier VARCHAR(50), 
+	issue_code VARCHAR(100), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (metric_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(inbox_id) REFERENCES sending_inboxes (inbox_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col metric_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col inbox_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col metric_date String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col planned_sends Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col actual_sends Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col received_count Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col open_count Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col reply_count Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col saved_from_spam_count Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col bounce_count Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col complaint_count Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col reputation_score Float null    default='65.0' onupdate=None server_default=None server_onupdate=None
+col pool_tier String null    default='FOUNDATION' onupdate=None server_default=None server_onupdate=None
+col issue_code String null    default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null    default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col updated_at DateTime null    default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+rel inbox -> SendingInbox uselist=False back_populates=warmup_metrics cascade=['merge', 'save-update']
+-- ReputationAlert
+CREATE TABLE reputation_alerts (
+	alert_id VARCHAR(36) NOT NULL, 
+	domain_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36), 
+	domain_name VARCHAR(255) NOT NULL, 
+	alert_type VARCHAR(50) NOT NULL, 
+	severity VARCHAR(20), 
+	details TEXT, 
+	is_resolved BOOL, 
+	resolution_notes TEXT, 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	resolved_at DATETIME(6), 
+	PRIMARY KEY (alert_id), 
+	FOREIGN KEY(domain_id) REFERENCES sending_domains (domain_id) ON DELETE CASCADE, 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_reputation_alerts_domain_id ON reputation_alerts (domain_id)
+CREATE INDEX ix_reputation_alerts_tenant_id ON reputation_alerts (tenant_id)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col alert_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
+col domain_id String notnull  idx  default=None onupdate=None server_default=None server_onupdate=None
+col tenant_id String null  idx  default=None onupdate=None server_default=None server_onupdate=None
+col domain_name String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col alert_type String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col severity String null    default='WARNING' onupdate=None server_default=None server_onupdate=None
+col details Text null    default=None onupdate=None server_default=None server_onupdate=None
+col is_resolved Boolean null    default='False' onupdate=None server_default=None server_onupdate=None
+col resolution_notes Text null    default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null    default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col resolved_at DateTime null    default=None onupdate=None server_default=None server_onupdate=None
+rel domain -> SendingDomain uselist=False back_populates=alerts cascade=['merge', 'save-update']
+-- SendingDomain
+CREATE TABLE sending_domains (
+	domain_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36), 
+	domain_name VARCHAR(255) NOT NULL, 
+	spf_status VARCHAR(50), 
+	dkim_status VARCHAR(50), 
+	dmarc_status VARCHAR(50), 
+	current_reputation_score INTEGER, 
+	safety_threshold INTEGER, 
+	is_blacklisted BOOL, 
+	warmup_status VARCHAR(50), 
+	ses_reputation_status VARCHAR(50), 
+	sesv2_enabled BOOL, 
+	account_reputation_score FLOAT, 
+	sends_24h INTEGER DEFAULT '0', 
+	bounce_rate_24h FLOAT DEFAULT '0', 
+	complaint_rate_24h FLOAT DEFAULT '0', 
+	health_checked_at DATETIME(6), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (domain_id), 
+	CONSTRAINT uq_sending_domains_tenant_domain UNIQUE (tenant_id, domain_name), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+CREATE INDEX ix_sending_domains_domain_name ON sending_domains (domain_name)
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col domain_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
+col tenant_id String null    default=None onupdate=None server_default=None server_onupdate=None
+col domain_name String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col spf_status String null    default='UNKNOWN' onupdate=None server_default=None server_onupdate=None
+col dkim_status String null    default='UNKNOWN' onupdate=None server_default=None server_onupdate=None
+col dmarc_status String null    default='UNKNOWN' onupdate=None server_default=None server_onupdate=None
+col current_reputation_score Integer null    default='100' onupdate=None server_default=None server_onupdate=None
+col safety_threshold Integer null    default='70' onupdate=None server_default=None server_onupdate=None
+col is_blacklisted Boolean null    default='False' onupdate=None server_default=None server_onupdate=None
+col warmup_status String null    default='COLD' onupdate=None server_default=None server_onupdate=None
+col ses_reputation_status String null    default='UNKNOWN' onupdate=None server_default=None server_onupdate=None
+col sesv2_enabled Boolean null    default='False' onupdate=None server_default=None server_onupdate=None
+col account_reputation_score Float null    default='1.0' onupdate=None server_default=None server_onupdate=None
+col sends_24h Integer null    default='0' onupdate=None server_default='0' server_onupdate=None
+col bounce_rate_24h Float null    default='0.0' onupdate=None server_default='0' server_onupdate=None
+col complaint_rate_24h Float null    default='0.0' onupdate=None server_default='0' server_onupdate=None
+col health_checked_at DateTime null    default=None onupdate=None server_default=None server_onupdate=None
+col created_at DateTime null    default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+col updated_at DateTime null    default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
+rel alerts -> ReputationAlert uselist=True back_populates=domain cascade=['delete', 'delete-orphan', 'expunge', 'merge', 'refresh-expire', 'save-update']
+rel snapshots -> DomainHealthSnapshot uselist=True back_populates=domain cascade=['delete', 'delete-orphan', 'expunge', 'merge', 'refresh-expire', 'save-update']
+-- SendingInbox
+CREATE TABLE sending_inboxes (
+	inbox_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	email_address VARCHAR(255) NOT NULL, 
+	provider VARCHAR(50), 
+	smtp_host VARCHAR(255), 
+	smtp_port INTEGER, 
+	smtp_username VARCHAR(255), 
+	smtp_password VARCHAR(1024), 
+	smtp_use_ssl BOOL, 
+	auth_type VARCHAR(30) DEFAULT 'PASSWORD', 
+	oauth_refresh_token TEXT, 
+	oauth_access_token TEXT, 
+	oauth_expires_at DATETIME(6), 
+	oauth_error TEXT, 
+	imap_last_error TEXT, 
+	imap_host VARCHAR(255), 
+	imap_port INTEGER, 
+	imap_username VARCHAR(255), 
+	imap_password VARCHAR(1024), 
+	last_sync_at DATETIME(6), 
+	daily_limit INTEGER, 
+	cooling_period_hours INTEGER, 
+	warmup_enabled BOOL, 
+	warmup_day INTEGER, 
+	warmup_start_date DATETIME(6), 
+	max_emails_per_day INTEGER, 
+	delay_between_emails INTEGER, 
+	emails_sent_today INTEGER, 
+	last_daily_reset DATETIME(6), 
+	warmup_status VARCHAR(50), 
+	warmup_pool VARCHAR(50), 
+	warmup_reputation FLOAT, 
+	warmup_auto_adjust BOOL, 
+	warmup_randomize BOOL, 
+	warmup_reply_rate_target INTEGER, 
+	warmup_max_target INTEGER, 
+	warmup_daily_target INTEGER, 
+	warmup_identifier VARCHAR(120), 
+	warmup_issue_code VARCHAR(100), 
+	warmup_issue_message TEXT, 
+	warmup_last_activity_at DATETIME(6), 
+	warmup_today_sent INTEGER, 
+	warmup_today_opened INTEGER, 
+	warmup_today_replied INTEGER, 
+	warmup_today_saved INTEGER, 
+	last_sent_at DATETIME(6), 
+	is_in_cooling BOOL, 
+	status VARCHAR(50), 
+	PRIMARY KEY (inbox_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+col inbox_id String notnull pk   default='callable:new_id' onupdate=None server_default=None server_onupdate=None
+col tenant_id String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col email_address String notnull    default=None onupdate=None server_default=None server_onupdate=None
+col provider String null    default=None onupdate=None server_default=None server_onupdate=None
+col smtp_host String null    default=None onupdate=None server_default=None server_onupdate=None
+col smtp_port Integer null    default='587' onupdate=None server_default=None server_onupdate=None
+col smtp_username String null    default=None onupdate=None server_default=None server_onupdate=None
+col smtp_password EncryptedString null    default=None onupdate=None server_default=None server_onupdate=None
+col smtp_use_ssl Boolean null    default='False' onupdate=None server_default=None server_onupdate=None
+col auth_type String null    default='PASSWORD' onupdate=None server_default='PASSWORD' server_onupdate=None
+col oauth_refresh_token EncryptedText null    default=None onupdate=None server_default=None server_onupdate=None
+col oauth_access_token EncryptedText null    default=None onupdate=None server_default=None server_onupdate=None
+col oauth_expires_at DateTime null    default=None onupdate=None server_default=None server_onupdate=None
+col oauth_error Text null    default=None onupdate=None server_default=None server_onupdate=None
+col imap_last_error Text null    default=None onupdate=None server_default=None server_onupdate=None
+col imap_host String null    default=None onupdate=None server_default=None server_onupdate=None
+col imap_port Integer null    default='993' onupdate=None server_default=None server_onupdate=None
+col imap_username String null    default=None onupdate=None server_default=None server_onupdate=None
+col imap_password EncryptedString null    default=None onupdate=None server_default=None server_onupdate=None
+col last_sync_at DateTime null    default=None onupdate=None server_default=None server_onupdate=None
+col daily_limit Integer null    default='500' onupdate=None server_default=None server_onupdate=None
+col cooling_period_hours Integer null    default='24' onupdate=None server_default=None server_onupdate=None
+col warmup_enabled Boolean null    default='False' onupdate=None server_default=None server_onupdate=None
+col warmup_day Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col warmup_start_date DateTime null    default=None onupdate=None server_default=None server_onupdate=None
+col max_emails_per_day Integer null    default=None onupdate=None server_default=None server_onupdate=None
+col delay_between_emails Integer null    default='60' onupdate=None server_default=None server_onupdate=None
+col emails_sent_today Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col last_daily_reset DateTime null    default=None onupdate=None server_default=None server_onupdate=None
+col warmup_status String null    default='ACTIVE' onupdate=None server_default=None server_onupdate=None
+col warmup_pool String null    default='FOUNDATION' onupdate=None server_default=None server_onupdate=None
+col warmup_reputation Float null    default='65.0' onupdate=None server_default=None server_onupdate=None
+col warmup_auto_adjust Boolean null    default='True' onupdate=None server_default=None server_onupdate=None
+col warmup_randomize Boolean null    default='True' onupdate=None server_default=None server_onupdate=None
+col warmup_reply_rate_target Integer null    default='35' onupdate=None server_default=None server_onupdate=None
+col warmup_max_target Integer null    default=None onupdate=None server_default=None server_onupdate=None
+col warmup_daily_target Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col warmup_identifier String null    default=None onupdate=None server_default=None server_onupdate=None
+col warmup_issue_code String null    default=None onupdate=None server_default=None server_onupdate=None
+col warmup_issue_message Text null    default=None onupdate=None server_default=None server_onupdate=None
+col warmup_last_activity_at DateTime null    default=None onupdate=None server_default=None server_onupdate=None
+col warmup_today_sent Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col warmup_today_opened Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col warmup_today_replied Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col warmup_today_saved Integer null    default='0' onupdate=None server_default=None server_onupdate=None
+col last_sent_at DateTime null    default=None onupdate=None server_default=None server_onupdate=None
+col is_in_cooling Boolean null    default='False' onupdate=None server_default=None server_onupdate=None
+col status String null    default='ACTIVE' onupdate=None server_default=None server_onupdate=None
+rel campaigns -> Campaign uselist=True back_populates=inboxes cascade=['merge', 'save-update']
+rel messages -> EmailMessage uselist=True back_populates=inbox cascade=['merge', 'save-update']
+rel tenant -> Tenant uselist=False back_populates=sending_inboxes cascade=['merge', 'save-update']
+rel warmup_events -> InboxWarmupEvent uselist=True back_populates=inbox cascade=['merge', 'save-update']
+rel warmup_metrics -> InboxWarmupMetric uselist=True back_populates=inbox cascade=['merge', 'save-update']

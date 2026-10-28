@@ -8,27 +8,21 @@ body (app/core/auth_cookies.py); other clients keep getting tokens in the body.
 When a user has two-factor on, password / magic link / Google sign-in returns
 {mfa_required: true, mfa_token} instead of tokens; POST /api/auth/mfa/verify with a code then
 issues the session.
+
+Layered (ADR 0009, chunk A5): handlers read the request (body, cookies, headers, client rate limits) and
+make one call to AuthService (app/services/auth_service.py) or MfaService (app/services/mfa_service.py),
+injected through the providers below so tests swap them with ``app.dependency_overrides``. Issued tokens
+go into cookies here (``_deliver``); the rules and SQL live in the services and repositories.
 """
 
 import logging
-import os
-import secrets
-from datetime import timedelta
-from urllib.parse import quote_plus, urlencode
+from typing import Optional
 
-from botocore.exceptions import BotoCoreError, ClientError
-
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
-from jose import JWTError
-from pydantic import BaseModel, EmailStr
-from sqlalchemy import or_
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
-from app.core.clock import utcnow
-from app.core import rate_limit, totp
-from app.core.auth import ROLE_DEFAULT_PERMISSIONS, ensure_tenant_active, get_current_user, require_role
+from app.core import rate_limit
+from app.core.auth import get_current_user, require_role
 from app.core.auth_cookies import (
     ACCESS_COOKIE,
     REFRESH_COOKIE,
@@ -37,358 +31,88 @@ from app.core.auth_cookies import (
     set_auth_cookies,
     wants_cookies,
 )
-from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import (
-    create_access_token,
-    create_mfa_token,
-    decode_access_token,
-    decode_mfa_token,
-    generate_refresh_token,
-    hash_password,
-    hash_token,
-    verify_password,
+from app.schemas.auth_schema import (
+    ChangePasswordRequest,
+    ForgotPasswordRequest,
+    GoogleCallbackRequest,
+    LoginRequest,
+    MagicLoginRequest,
+    MfaCodeRequest,
+    MfaDisableRequest,
+    MfaTenantPolicyRequest,
+    MfaVerifyRequest,
+    RefreshRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
+    SetPasswordRequest,
+    TokenResponse,
+    UpdateProfileRequest,
 )
-from app.models.invitation import Invitation
-from app.models.magic_login_token import MagicLoginToken
-from app.models.password_reset_token import PasswordResetToken
-from app.models.refresh_token import RefreshToken
-from app.models.tenant import Tenant
-from app.models.user import User
-from app.services import session_limits, token_revocation
-from app.services.audit_service import AuditService
-from app.services.ses_client import get_ses_client
-from app.services.user_lookup import find_user_for_login
-from app.utils import safe_origin
+from app.services import google_identity, session_limits
+from app.services.auth_service import AuthService, PasswordChange
+from app.services.mfa_service import MfaService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 
-# ── Request / Response Schemas ────────────────────────────
+# ── Providers: one unit of work on the request's session (get_db) ──
 
-class RegisterRequest(BaseModel):
-    first_name: str
-    last_name: str
-    email: EmailStr
-    password: str
-    tenant_name: str = "My Workspace"
+def auth_service(db=Depends(get_db)) -> AuthService:
+    return AuthService.for_session(db)
 
 
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
+def mfa_service(db=Depends(get_db)) -> MfaService:
+    return MfaService.for_session(db)
 
 
-class RefreshRequest(BaseModel):
-    # Optional: browser clients send it in the httpOnly refresh_token cookie instead
-    refresh_token: str | None = None
+Auth = Depends(auth_service)
+Mfa = Depends(mfa_service)
 
 
-class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str
+# ── Request adapters ──────────────────────────────────────
+
+class _LoginThrottle:
+    """Sign-in lockout per client IP and (email, IP) pair (app/core/rate_limit.py)."""
+
+    def __init__(self, request: Request, email: str) -> None:
+        self.request = request
+        self.email = email
+
+    def check(self) -> None:
+        rate_limit.check_login_allowed(self.request, self.email)
+
+    def failed(self) -> None:
+        rate_limit.record_login_failure(self.request, self.email)
+
+    def succeeded(self) -> None:
+        rate_limit.record_login_success(self.request, self.email)
 
 
-class SetPasswordRequest(BaseModel):
-    new_password: str
+class _RegisterThrottle:
+    """Sign-ups per client IP."""
+
+    def __init__(self, request: Request) -> None:
+        self.request = request
+
+    def check(self) -> None:
+        rate_limit.check(self.request, "register", rate_limit.REGISTER_PER_IP)
+
+    def failed(self) -> None:
+        return None
+
+    def succeeded(self) -> None:
+        return None
 
 
-class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
-
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    new_password: str
-
-
-class MagicLoginRequest(BaseModel):
-    token: str
-
-
-class UpdateProfileRequest(BaseModel):
-    first_name: str | None = None
-    last_name: str | None = None
-    avatar_url: str | None = None
-
-
-class GoogleCallbackRequest(BaseModel):
-    credential: str  # Google ID token from frontend
-
-
-class TokenResponse(BaseModel):
-    # Tokens are omitted in cookie mode (X-Auth-Mode: cookie) and when a second factor is required
-    access_token: str | None = None
-    refresh_token: str | None = None
-    token_type: str | None = None
-    user: dict | None = None
-    first_login: bool = False
-    mfa_required: bool = False
-    mfa_token: str | None = None
-
-
-class MfaVerifyRequest(BaseModel):
-    mfa_token: str
-    code: str | None = None
-    recovery_code: str | None = None
-
-
-class MfaCodeRequest(BaseModel):
-    code: str
-
-
-class MfaDisableRequest(BaseModel):
-    password: str | None = None
-    code: str | None = None
-    recovery_code: str | None = None
-
-
-class MfaTenantPolicyRequest(BaseModel):
-    require_mfa: bool
-
-
-# ── Helpers ───────────────────────────────────────────────
-
-_DEFAULT_PERMS: dict[str, list[str]] = {
-    role: list(perms) for role, perms in ROLE_DEFAULT_PERMISSIONS.items()
-}
-
-
-def _user_dict(user: User) -> dict:
-    tenant = getattr(user, "tenant", None) if user.tenant_id and user.role != "PLATFORM_ADMIN" else None
-    effective_permissions = (
-        user.custom_permissions
-        if user.custom_permissions is not None
-        else _DEFAULT_PERMS.get(user.role, [])
-    )
-    return {
-        "user_id": user.user_id,
-        "tenant_id": user.tenant_id,
-        "tenant_name": user.tenant.tenant_name if getattr(user, "tenant", None) else None,
-        "first_name": user.first_name,
-        "last_name": user.last_name,
-        "email": user.email,
-        "role": user.role,
-        "status": user.status,
-        "auth_provider": user.auth_provider or "local",
-        "email_verified": user.email_verified or False,
-        "avatar_url": user.avatar_url,
-        "permissions": effective_permissions,
-        "sales_level": user.sales_level,
-        "manager_id": user.manager_id,
-        "mfa_enabled": bool(user.mfa_enabled),
-        "mfa_required": bool(tenant.require_mfa) if tenant is not None else False,
-        "mfa_setup_required": bool(tenant is not None and tenant.require_mfa and not user.mfa_enabled),
-    }
-
-
-def _issue_tokens(user: User, db: Session, device_info: str = None, first_login: bool = False,
-                  lineage: session_limits.SessionLineage | None = None) -> dict:
-    """Create access + refresh tokens and persist the refresh token.
-
-    lineage: the session a rotated token belongs to (refresh); None starts a new session (sign-in)."""
-    now = utcnow()
-    lineage = lineage or session_limits.new_lineage(now)
-    access_token = create_access_token(user.user_id, user.tenant_id, user.role)
-    raw_refresh = generate_refresh_token()
-
-    rt = RefreshToken(
-        user_id=user.user_id,
-        token_hash=hash_token(raw_refresh),
-        device_info=device_info,
-        expires_at=session_limits.refresh_expiry(
-            now=now, session_started_at=lineage.session_started_at,
-            refresh_ttl=session_limits.refresh_ttl(), absolute=session_limits.absolute_limit()),
-        session_id=lineage.session_id,
-        session_started_at=lineage.session_started_at,
-        last_activity_at=lineage.last_activity_at,
-    )
-    db.add(rt)
-
-    user.last_login_at = utcnow()
-    db.commit()
-    # Signing in counts as activity for the CRM adoption KPI
-    from app.services.user_activity import record_for
-    record_for(db, user)
-
-    return {
-        "access_token": access_token,
-        "refresh_token": raw_refresh,
-        "token_type": "bearer",
-        "user": _user_dict(user),
-        "first_login": first_login,
-    }
-
-
-def _deliver_tokens(result: dict, request: Request, response: Response) -> dict:
-    """Cookie mode: move the tokens into httpOnly cookies and leave them out of the body."""
-    if wants_cookies(request):
+def _deliver(result: dict, request: Request, response: Response) -> dict:
+    """Cookie mode: move issued tokens into httpOnly cookies and leave them out of the body."""
+    if "access_token" in result and wants_cookies(request):
         set_auth_cookies(response, result["access_token"], result["refresh_token"])
         result = {**result, "access_token": None, "refresh_token": None, "token_type": None}
     return result
-
-
-def mark_invitation_accepted(db: Session, user: User) -> None:
-    """An invited user has joined (first sign-in or accept-invite): their open invitation is accepted."""
-    db.query(Invitation).filter(
-        Invitation.tenant_id == user.tenant_id,
-        Invitation.email == user.email,
-        Invitation.status.in_(("PENDING", "EXPIRED")),
-    ).update({Invitation.status: "ACCEPTED"}, synchronize_session=False)
-
-
-def _complete_sign_in(user: User, db: Session, request: Request, response: Response,
-                      first_login: bool = False) -> dict:
-    """First factor passed (password, magic link, Google, sign-up). Users with two-factor on get a
-    short-lived mfa_token to exchange at /api/auth/mfa/verify; everyone else gets a session."""
-    if first_login:
-        mark_invitation_accepted(db, user)
-    if user.mfa_enabled:
-        db.commit()  # keep what the first step changed (e.g. magic link marked used)
-        return {"mfa_required": True, "mfa_token": create_mfa_token(user.user_id, first_login),
-                "first_login": first_login}
-    return _deliver_tokens(_issue_tokens(user, db, first_login=first_login), request, response)
-
-
-def _get_ses_client():
-    """The shared SES client (one per region/credentials, not one per reset email, T-5)."""
-    return get_ses_client()
-
-
-def _build_reset_link(token: str) -> str:
-    # Prefer request-origin mapping when available to avoid cross-env reset links.
-    # (e.g., localhost -> localhost, sales -> sales, outreach -> outreach)
-    # This prevents stage BASE_URL from leaking into dev reset emails.
-    return _build_reset_link_for_origin(token, None)
-
-
-def _build_reset_link_for_origin(token: str, request: Request | None) -> str:
-    """The reset link, on the front end the request came from when that is a known (or, locally, a
-    localhost) origin rebuilt from validated parts (F024), else on the configured front end."""
-    request_origin = safe_origin.request_origin(request.headers) if request is not None else ""
-    reset_url = (settings.RESET_PASSWORD_URL or "").strip()
-    backend_base = settings.BASE_URL.rstrip("/")
-    frontend_base = (settings.FRONTEND_URL or "").split(",")[0].strip().rstrip("/")
-    profile = (os.getenv("APP_PROFILE", "") or "").strip().lower()
-    resolved_base = safe_origin.resolve_base_url(backend_base, frontend_base, profile)
-    base = request_origin and f"{request_origin}/reset-password" or reset_url or f"{resolved_base}/reset-password"
-    separator = "&" if "?" in base else "?"
-    return f"{base}{separator}token={quote_plus(token)}"
-
-
-def _send_password_reset_email(to_email: str, reset_link: str):
-    sender_email = (settings.SENDER_EMAIL or "").strip()
-    if not sender_email:
-        raise RuntimeError("SENDER_EMAIL is not configured")
-
-    sender_name = (settings.SENDER_NAME or "").strip() or "Sales Pro"
-    support_email = sender_email
-
-    subject = "Reset your password"
-    body = "\n".join(
-        [
-            "Hi,",
-            "",
-            "We received a request to reset your password.",
-            "",
-            f"Reset Password: {reset_link}",
-            "",
-            f"This link expires in {settings.PASSWORD_RESET_EXPIRE_MINUTES} minutes.",
-            "",
-            "If you did not request this, you can ignore this email.",
-            "",
-            f"Need help? Contact {support_email}.",
-        ]
-    )
-
-    ses_client = _get_ses_client()
-    ses_client.send_email(
-        Source=f"{sender_name} <{sender_email}>",
-        Destination={"ToAddresses": [to_email]},
-        Message={
-            "Subject": {"Data": subject, "Charset": "UTF-8"},
-            "Body": {"Text": {"Data": body, "Charset": "UTF-8"}},
-        },
-    )
-
-
-def _flush_new_account(db: Session) -> None:
-    """Write a new sign-up account; another live account with the address (one per email across
-    workspaces, F017; a concurrent sign-up) is a 409, not a 500."""
-    try:
-        db.flush()
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="Email already registered")
-
-
-# ── Endpoints ─────────────────────────────────────────────
-
-@router.post("/register", response_model=TokenResponse, response_model_exclude_none=True,
-             status_code=status.HTTP_201_CREATED)
-def register(body: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
-    """
-    Register the first SUPER_ADMIN user and create a new tenant workspace.
-    Subsequent users should be invited via /api/users/invite.
-    """
-    if not settings.self_signup_enabled:
-        raise HTTPException(status_code=403, detail="Self sign-up is disabled. Ask your administrator for an invitation.")
-    rate_limit.check(request, "register", rate_limit.REGISTER_PER_IP)
-    # Check for existing user with same email
-    existing = db.query(User).filter(User.email == body.email).first()
-    if existing:
-        raise HTTPException(status_code=409, detail="Email already registered")
-
-    if len(body.password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
-
-    # Create tenant
-    tenant = Tenant(tenant_name=body.tenant_name)
-    db.add(tenant)
-    db.flush()
-
-    # Create SUPER_ADMIN user (tenant creator)
-    user = User(
-        tenant_id=tenant.tenant_id,
-        first_name=body.first_name,
-        last_name=body.last_name,
-        email=body.email,
-        password_hash=hash_password(body.password),
-        role="SUPER_ADMIN",
-        auth_provider="local",
-        email_verified=True,
-    )
-    db.add(user)
-    _flush_new_account(db)
-
-    logger.info(f"Registered new SUPER_ADMIN: {user.email} in tenant {tenant.tenant_id}")
-    return _complete_sign_in(user, db, request, response)
-
-
-@router.post("/login", response_model=TokenResponse, response_model_exclude_none=True)
-def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
-    """Authenticate with email + password and receive JWT tokens."""
-    rate_limit.check_login_allowed(request, body.email)
-    user = find_user_for_login(db, body.email)
-
-    if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
-        rate_limit.record_login_failure(request, body.email)
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    rate_limit.record_login_success(request, body.email)
-
-    if user.status not in ("ACTIVE", "INVITED"):
-        raise HTTPException(status_code=403, detail="Account is suspended or inactive")
-    if user.status == "INVITED":
-        # I-13: an invited account has no password of its own yet; it joins only through the
-        # emailed set-password link (/magic-login), never with a password.
-        raise HTTPException(status_code=403,
-                            detail="Finish joining with the sign-in link in your invitation email. "
-                                   "If it has expired, ask your administrator to resend it.")
-    ensure_tenant_active(db, user)
-
-    return _complete_sign_in(user, db, request, response)
 
 
 def _refresh_token_from(request: Request, body: RefreshRequest | None, csrf: bool) -> str | None:
@@ -401,12 +125,45 @@ def _refresh_token_from(request: Request, body: RefreshRequest | None, csrf: boo
     return raw
 
 
+def _presented_access_token(request: Request) -> Optional[str]:
+    """The request's access token: Authorization: Bearer, else the access cookie."""
+    auth_header = request.headers.get("authorization") or ""
+    return auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else request.cookies.get(ACCESS_COOKIE)
+
+
+def _password_changed(change: PasswordChange, request: Request, response: Response) -> dict:
+    if change.session is not None:
+        _deliver(change.session, request, response)
+    return change.body
+
+
+# ── Endpoints ─────────────────────────────────────────────
+
+@router.post("/register", response_model=TokenResponse, response_model_exclude_none=True,
+             status_code=status.HTTP_201_CREATED)
+def register(body: RegisterRequest, request: Request, response: Response, svc: AuthService = Auth):
+    """
+    Register the first SUPER_ADMIN user and create a new tenant workspace.
+    Subsequent users should be invited via /api/users/invite.
+    """
+    result = svc.register(body.first_name, body.last_name, body.email, body.password, body.tenant_name,
+                          _RegisterThrottle(request))
+    return _deliver(result, request, response)
+
+
+@router.post("/login", response_model=TokenResponse, response_model_exclude_none=True)
+def login(body: LoginRequest, request: Request, response: Response, svc: AuthService = Auth):
+    """Authenticate with email + password and receive JWT tokens."""
+    result = svc.login(body.email, body.password, _LoginThrottle(request, body.email))
+    return _deliver(result, request, response)
+
+
 @router.post("/refresh", response_model=TokenResponse, response_model_exclude_none=True)
 def refresh_token(
     request: Request,
     response: Response,
     body: RefreshRequest | None = None,
-    db: Session = Depends(get_db),
+    svc: AuthService = Auth,
 ):
     """Exchange a valid refresh token (body or cookie) for a new access + refresh token pair.
 
@@ -416,179 +173,60 @@ def refresh_token(
     also revokes the whole session). The SPA reports user activity in the X-User-Activity header
     (seconds since the last interaction); a refresh without it does not count as activity."""
     raw = _refresh_token_from(request, body, csrf=True)
-    if not raw:
-        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
     try:
-        rt, lineage = session_limits.begin_refresh(
-            db, hash_token(raw), request.headers.get(session_limits.ACTIVITY_HEADER))
+        result = svc.refresh(raw, request.headers.get(session_limits.ACTIVITY_HEADER))
     except session_limits.SessionRefused as refused:
-        result = JSONResponse(status_code=401, content={"detail": refused.detail})
+        refusal = JSONResponse(status_code=401, content={"detail": refused.detail})
         if refused.clear_cookies:
-            clear_auth_cookies(result)
-        return result
-
-    user = db.query(User).filter(User.user_id == rt.user_id).first()
-    if not user or user.status != "ACTIVE":
-        raise HTTPException(status_code=401, detail="User not found or inactive")
-    ensure_tenant_active(db, user)
-
-    # Revoke old refresh token (rotation); the new one stays in the same session
-    session_limits.mark_rotated(rt)
-
-    return _deliver_tokens(_issue_tokens(user, db, lineage=lineage), request, response)
-
-
-def _revoke_presented_access_token(request: Request, db: Session) -> None:
-    """Put the request's access token (Authorization: Bearer, else the access cookie) on the revoked
-    list. Expired / invalid tokens are ignored: they are refused anyway."""
-    auth_header = request.headers.get("authorization") or ""
-    token = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else request.cookies.get(ACCESS_COOKIE)
-    if not token:
-        return
-    try:
-        payload = decode_access_token(token)
-    except JWTError:
-        return
-    token_revocation.revoke(db, payload)
+            clear_auth_cookies(refusal)
+        return refusal
+    return _deliver(result, request, response)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
     request: Request,
     body: RefreshRequest | None = None,
-    db: Session = Depends(get_db),
-):
+    svc: AuthService = Auth,
+) -> Response:
     """Revoke the refresh token (body or cookie) and the access token (bearer or cookie), and clear
     the session cookies.
 
     No access token is needed: holding the refresh token is the proof, and an expired session must
     still be able to sign out. A still-valid access token sent with the request is revoked too, so a
     copy of it stops working at once instead of at its expiry."""
-    raw = _refresh_token_from(request, body, csrf=False)
-    if raw:
-        rt = db.query(RefreshToken).filter(
-            RefreshToken.token_hash == hash_token(raw),
-            RefreshToken.revoked_at.is_(None),
-        ).first()
-        if rt:
-            rt.revoked_at = utcnow()
-            rt.revoked_reason = session_limits.REASON_LOGOUT
-            db.commit()
-    _revoke_presented_access_token(request, db)
+    svc.logout(_refresh_token_from(request, body, csrf=False), _presented_access_token(request))
     result = Response(status_code=status.HTTP_204_NO_CONTENT)
     clear_auth_cookies(result)
     return result
 
 
-# ── Google OAuth ──────────────────────────────────────────
+# ── Password reset and magic link ─────────────────────────
 
 @router.post("/forgot-password")
-def forgot_password(body: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+def forgot_password(body: ForgotPasswordRequest, request: Request, svc: AuthService = Auth):
     """
     Request a password reset link.
     Always returns a generic success message to prevent account enumeration.
     """
     rate_limit.check(request, "reset", rate_limit.EMAIL_REQUESTS_PER_IP, body.email, rate_limit.EMAIL_REQUESTS_PER_EMAIL)
-    generic_response = {
-        "message": "If an account exists for that email, a password reset link has been sent."
-    }
-
-    user = find_user_for_login(db, body.email)
-    if not user or user.status != "ACTIVE":
-        return generic_response
-
-    raw_token = secrets.token_urlsafe(48)
-    reset_record = PasswordResetToken(
-        user_id=user.user_id,
-        token_hash=hash_token(raw_token),
-        expires_at=utcnow() + timedelta(minutes=settings.PASSWORD_RESET_EXPIRE_MINUTES),
-    )
-    db.add(reset_record)
-    db.commit()
-
-    try:
-        reset_link = _build_reset_link_for_origin(raw_token, request)
-        _send_password_reset_email(user.email, reset_link)
-        logger.info(f"Password reset email sent to {user.email}")
-    except (ClientError, BotoCoreError, RuntimeError) as exc:
-        logger.error(f"Password reset email failed for {user.email}: {exc}")
-    except Exception as exc:
-        logger.exception(f"Unexpected password reset error for {user.email}: {exc}")
-
-    return generic_response
+    return svc.forgot_password(body.email, request)
 
 
 @router.post("/reset-password")
-def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+def reset_password(body: ResetPasswordRequest, svc: AuthService = Auth):
     """Reset password using a valid single-use reset token."""
-    if len(body.new_password) < 8:
-        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
-
-    token_hash = hash_token(body.token)
-    reset_record = db.query(PasswordResetToken).filter(
-        PasswordResetToken.token_hash == token_hash,
-        PasswordResetToken.used_at.is_(None),
-    ).first()
-
-    if not reset_record:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
-
-    if reset_record.expires_at < utcnow():
-        reset_record.used_at = utcnow()
-        db.commit()
-        raise HTTPException(status_code=400, detail="Reset token has expired")
-
-    user = db.query(User).filter(User.user_id == reset_record.user_id).first()
-    if not user or user.status != "ACTIVE":
-        raise HTTPException(status_code=404, detail="User not found or inactive")
-
-    user.password_hash = hash_password(body.new_password)
-    if not user.auth_provider:
-        user.auth_provider = "local"
-
-    reset_record.used_at = utcnow()
-
-    db.query(RefreshToken).filter(
-        RefreshToken.user_id == user.user_id,
-        RefreshToken.revoked_at.is_(None),
-    ).update({"revoked_at": utcnow()})
-
-    db.commit()
-    logger.info(f"Password reset completed for {user.email}")
-    return {"message": "Password reset successful"}
+    return svc.reset_password(body.token, body.new_password)
 
 
 @router.post("/magic-login", response_model=TokenResponse, response_model_exclude_none=True)
-def magic_login(body: MagicLoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+def magic_login(body: MagicLoginRequest, request: Request, response: Response, svc: AuthService = Auth):
     """Exchange a one-time magic login token for normal auth tokens."""
     rate_limit.check(request, "magic", rate_limit.LOGIN_ATTEMPTS_PER_IP)
-    token_hash = hash_token(body.token)
-    magic_record = db.query(MagicLoginToken).filter(
-        MagicLoginToken.token_hash == token_hash,
-        MagicLoginToken.used_at.is_(None),
-    ).first()
+    return _deliver(svc.magic_login(body.token), request, response)
 
-    if not magic_record:
-        raise HTTPException(status_code=401, detail="Invalid or expired magic login token")
 
-    if magic_record.expires_at < utcnow():
-        magic_record.used_at = utcnow()
-        db.commit()
-        raise HTTPException(status_code=401, detail="Magic login token has expired")
-
-    user = db.query(User).filter(User.user_id == magic_record.user_id).first()
-    if not user or user.status not in ("ACTIVE", "INVITED"):
-        raise HTTPException(status_code=401, detail="User not found or inactive")
-    ensure_tenant_active(db, user)
-
-    # Activate invited user on first login via magic link
-    is_first_login = user.status == "INVITED"
-    if is_first_login:
-        user.status = "ACTIVE"
-
-    magic_record.used_at = utcnow()
-    return _complete_sign_in(user, db, request, response, first_login=is_first_login)
-
+# ── Google OAuth ──────────────────────────────────────────
 
 @router.get("/google")
 def google_auth_url():
@@ -596,154 +234,41 @@ def google_auth_url():
     Build Google OAuth consent URL for redirect-based sign-in.
     (One Tap flow can still call /google/callback directly.)
     """
-    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_REDIRECT_URI:
-        raise HTTPException(status_code=501, detail="Google OAuth not configured")
-
-    state = secrets.token_urlsafe(24)
-    params = urlencode(
-        {
-            "client_id": settings.GOOGLE_CLIENT_ID,
-            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
-            "response_type": "code",
-            "scope": "openid email profile",
-            "access_type": "offline",
-            "prompt": "consent",
-            "state": state,
-        }
-    )
-    return {"auth_url": f"https://accounts.google.com/o/oauth2/v2/auth?{params}", "state": state}
-
-GOOGLE_LINK_REFUSED = ("An account with this email already exists. Sign in with your email and password; "
-                       "signing in with Google is not linked to existing accounts automatically.")
-
-
-def _link_google_account(db: Session, user: User, google_id: str, email: str) -> None:
-    """Attach a Google identity to an existing account found by its (Google-verified) email.
-
-    Only for email domains listed in SSO_LINK_ALLOWED_DOMAINS (default: none), otherwise 409: whoever controls
-    a Google account for the address must not silently take over a password account (I-12). An account
-    already linked to a different Google identity is never re-linked. Every link is audit-logged."""
-    domain = email.rsplit("@", 1)[-1].strip().lower()
-    if user.google_id or domain not in settings.sso_link_allowed_domains:
-        logger.warning("Google sign-in refused for existing account %s (auto-link not allowed for %s)", user.user_id, domain)
-        raise HTTPException(status_code=409, detail=GOOGLE_LINK_REFUSED)
-    user.google_id = google_id
-    user.auth_provider = "google"
-    logger.info("Google identity linked to existing account %s (domain %s)", user.user_id, domain)
-    if user.tenant_id:
-        AuditService(db).log_action(user.tenant_id, user.user_id, "LINK", "google_sso", user.user_id)
+    return google_identity.consent_url()
 
 
 @router.post("/google/callback", response_model=TokenResponse, response_model_exclude_none=True)
 def google_callback(body: GoogleCallbackRequest, request: Request, response: Response,
-                    db: Session = Depends(get_db)):
+                    svc: AuthService = Auth):
     """
     Verify Google ID token from the frontend, then login or register the user.
     The frontend uses Google Sign-In and sends the credential (ID token) here.
     """
-    if not settings.GOOGLE_CLIENT_ID:
-        raise HTTPException(status_code=501, detail="Google OAuth not configured")
-    try:
-        from google.oauth2 import id_token
-        from google.auth.transport import requests as google_requests
-    except ImportError:
-        logger.error("Google sign-in requested but the google-auth package is not installed")
-        raise HTTPException(status_code=501, detail="Google OAuth not configured")
-    try:
-        idinfo = id_token.verify_oauth2_token(
-            body.credential,
-            google_requests.Request(),
-            settings.GOOGLE_CLIENT_ID,
-        )
-    except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid Google token")
-
-    google_id = idinfo["sub"]
-    email = idinfo.get("email", "")
-    first_name = idinfo.get("given_name", "")
-    last_name = idinfo.get("family_name", "")
-    avatar = idinfo.get("picture", "")
-    if not email or idinfo.get("email_verified") not in (True, "true"):
-        raise HTTPException(status_code=401, detail="Google account email is not verified")
-
-    # Check if user exists by google_id or email
-    user = db.query(User).filter(User.google_id == google_id).first()
-    if not user:
-        user = find_user_for_login(db, email)
-
-    if user:
-        if user.status not in ("ACTIVE", "INVITED"):
-            raise HTTPException(status_code=403, detail="Account is suspended or inactive")
-        ensure_tenant_active(db, user)
-        if user.google_id != google_id:
-            _link_google_account(db, user, google_id, email)
-        if avatar and not user.avatar_url:
-            user.avatar_url = avatar
-        user.email_verified = True
-    else:
-        if not settings.self_signup_enabled:
-            raise HTTPException(status_code=403, detail="Self sign-up is disabled. Ask your administrator for an invitation.")
-        # New user — create tenant + SUPER_ADMIN (tenant creator)
-        tenant = Tenant(tenant_name=f"{first_name}'s Workspace")
-        db.add(tenant)
-        db.flush()
-
-        user = User(
-            tenant_id=tenant.tenant_id,
-            first_name=first_name,
-            last_name=last_name,
-            email=email,
-            google_id=google_id,
-            auth_provider="google",
-            email_verified=True,
-            avatar_url=avatar,
-            role="SUPER_ADMIN",
-        )
-        db.add(user)
-        _flush_new_account(db)
-        logger.info(f"Google OAuth: created SUPER_ADMIN {email} in new tenant")
-
-    return _complete_sign_in(user, db, request, response)
+    return _deliver(svc.google_sign_in(body.credential), request, response)
 
 
 # ── Profile ───────────────────────────────────────────────
 
 @router.get("/me")
-def get_me(current_user: User = Depends(get_current_user)):
+def get_me(current_user=Depends(get_current_user)):
     """Return the current authenticated user's profile (includes mfa_enabled / mfa_setup_required)."""
-    return _user_dict(current_user)
+    return AuthService.profile(current_user)
 
 
 @router.get("/session")
-def get_session(current_user: User = Depends(get_current_user)):
+def get_session(current_user=Depends(get_current_user)):
     """Is this browser signed in? 200 with the user (and two-factor state) or 401."""
-    user = _user_dict(current_user)
-    return {
-        "authenticated": True,
-        "user": user,
-        "mfa_enabled": user["mfa_enabled"],
-        "mfa_required": user["mfa_required"],
-        "mfa_setup_required": user["mfa_setup_required"],
-        "recovery_codes_remaining": totp.remaining_recovery_codes(current_user.mfa_recovery_codes)
-        if current_user.mfa_enabled else 0,
-    }
+    return AuthService.session_state(current_user)
 
 
 @router.put("/me")
 def update_me(
     body: UpdateProfileRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    svc: AuthService = Auth,
 ):
     """Update the current user's profile (name, avatar)."""
-    if body.first_name is not None:
-        current_user.first_name = body.first_name
-    if body.last_name is not None:
-        current_user.last_name = body.last_name
-    if body.avatar_url is not None:
-        current_user.avatar_url = body.avatar_url
-    db.commit()
-    return _user_dict(current_user)
+    return svc.update_profile(current_user, body.first_name, body.last_name, body.avatar_url)
 
 
 @router.put("/me/password")
@@ -751,32 +276,12 @@ def change_password(
     body: ChangePasswordRequest,
     request: Request,
     response: Response,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    svc: AuthService = Auth,
 ):
     """Change the current user's password. Revokes all refresh tokens."""
-    if not current_user.password_hash:
-        raise HTTPException(status_code=400, detail="Account uses Google sign-in, no password set")
-
-    if not verify_password(body.current_password, current_user.password_hash):
-        raise HTTPException(status_code=401, detail="Current password is incorrect")
-
-    if len(body.new_password) < 8:
-        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
-
-    current_user.password_hash = hash_password(body.new_password)
-
-    # Revoke all refresh tokens (force re-login on other devices)
-    db.query(RefreshToken).filter(
-        RefreshToken.user_id == current_user.user_id,
-        RefreshToken.revoked_at.is_(None),
-    ).update({"revoked_at": utcnow()})
-
-    db.commit()
-    if wants_cookies(request):
-        # The refresh cookie was just revoked with the rest; give this browser a fresh session
-        _deliver_tokens(_issue_tokens(current_user, db), request, response)
-    return {"message": "Password changed successfully"}
+    change = svc.change_password(current_user, body.current_password, body.new_password, wants_cookies(request))
+    return _password_changed(change, request, response)
 
 
 @router.post("/me/set-password")
@@ -784,210 +289,58 @@ def set_initial_password(
     body: SetPasswordRequest,
     request: Request,
     response: Response,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    svc: AuthService = Auth,
 ):
     """
     First password for an invited account (I-13). Invitees never receive a password: they sign
     in once with the emailed link (/magic-login) and choose one here, so no current password is
     asked. Only for a local account that has no password yet; everyone else uses PUT /me/password.
     """
-    if current_user.password_hash or (current_user.auth_provider or "local") != "local":
-        raise HTTPException(status_code=409, detail="A password is already set. Use change password instead.")
-    if len(body.new_password) < 8:
-        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
-
-    current_user.password_hash = hash_password(body.new_password)
-    # Other sessions (if any) end; this browser keeps a fresh one
-    db.query(RefreshToken).filter(
-        RefreshToken.user_id == current_user.user_id,
-        RefreshToken.revoked_at.is_(None),
-    ).update({"revoked_at": utcnow()})
-    db.commit()
-    logger.info("Initial password set for user %s", current_user.user_id)
-    if wants_cookies(request):
-        _deliver_tokens(_issue_tokens(current_user, db), request, response)
-    return {"message": "Password set successfully"}
+    change = svc.set_initial_password(current_user, body.new_password, wants_cookies(request))
+    return _password_changed(change, request, response)
 
 
 # ── Two-factor authentication (TOTP) ──────────────────────
 
-def _mfa_audit(db: Session, user: User, action: str, entity_type: str = "mfa") -> None:
-    """Audit-log a two-factor change (ENABLE_MFA, DISABLE_MFA, RECOVERY_CODE_USED_MFA, ...)."""
-    logger.info("Two-factor %s %s for user %s", entity_type, action, user.user_id)
-    if not user.tenant_id:
-        return  # PLATFORM_ADMIN: no tenant to file the audit row under
-    try:
-        from app.services.audit_service import AuditService
-        AuditService(db).log_action(user.tenant_id, user.user_id, action, entity_type, user.user_id)
-    except Exception:
-        logger.exception("Could not write the two-factor audit entry")
-
-
-def _accept_totp(db: Session, user: User, code: str | None) -> bool:
-    """Accept a current TOTP code once: records its time step atomically so it can't be replayed."""
-    secret = user.mfa_secret
-    step = totp.matching_step(secret, code, user.mfa_last_step)
-    if step is None:
-        return False
-    updated = db.query(User).filter(
-        User.user_id == user.user_id,
-        or_(User.mfa_last_step.is_(None), User.mfa_last_step < step),
-    ).update({User.mfa_last_step: step}, synchronize_session=False)
-    if updated != 1:
-        return False  # the same (or a later) code was used concurrently
-    db.expire(user, ["mfa_last_step"])
-    return True
-
-
-def _accept_recovery_code(db: Session, user: User, code: str | None) -> bool:
-    """Accept an unused recovery code and burn it (single use, also under concurrency)."""
-    stored = user.mfa_recovery_codes
-    remaining = totp.consume_recovery_code(stored, code or "")
-    if remaining is None:
-        return False
-    updated = db.query(User).filter(
-        User.user_id == user.user_id,
-        User.mfa_recovery_codes == stored,
-    ).update({User.mfa_recovery_codes: remaining}, synchronize_session=False)
-    if updated != 1:
-        return False
-    db.expire(user, ["mfa_recovery_codes"])
-    return True
-
-
-def _check_second_factor(db: Session, user: User, code: str | None, recovery_code: str | None,
-                         mfa_jti: str | None = None, allow_recovery: bool = True) -> str:
-    """Verify a TOTP or recovery code with per-user (and per pending sign-in) lockout.
-    Returns "totp" or "recovery"; raises 401 on a wrong code, 429 when locked."""
-    rate_limit.check_mfa_allowed(user.user_id, mfa_jti)
-    used = None
-    if code and _accept_totp(db, user, code):
-        used = "totp"
-    elif allow_recovery and recovery_code and _accept_recovery_code(db, user, recovery_code):
-        used = "recovery"
-    if not used:
-        db.rollback()
-        rate_limit.record_mfa_failure(user.user_id, mfa_jti)
-        raise HTTPException(status_code=401, detail="Invalid authentication code")
-    rate_limit.record_mfa_success(user.user_id)
-    if used == "recovery":
-        _mfa_audit(db, user, "RECOVERY_CODE_USED")
-    return used
-
-
 @router.post("/mfa/verify", response_model=TokenResponse, response_model_exclude_none=True)
-def mfa_verify(body: MfaVerifyRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+def mfa_verify(body: MfaVerifyRequest, request: Request, response: Response, svc: MfaService = Mfa):
     """Second sign-in step: exchange the mfa_token from /login (or magic link / Google) plus a
     6-digit code or a recovery code for a session. Public; the mfa_token is the credential."""
     rate_limit.check(request, "mfa", rate_limit.MFA_ATTEMPTS_PER_IP)
-    try:
-        payload = decode_mfa_token(body.mfa_token)
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Your sign-in expired. Please sign in again.")
-    jti = payload["jti"]
-    if rate_limit.limiter.blocked(f"mfa-token-used:{jti}", 1, 600):
-        raise HTTPException(status_code=401, detail="Your sign-in expired. Please sign in again.")
-    if not (body.code or body.recovery_code):
-        raise HTTPException(status_code=400, detail="Enter the code from your authenticator app or a recovery code")
-
-    user = db.query(User).filter(User.user_id == payload["sub"]).first()
-    if not user or user.status != "ACTIVE" or not user.mfa_enabled:
-        raise HTTPException(status_code=401, detail="Your sign-in expired. Please sign in again.")
-    ensure_tenant_active(db, user)
-
-    _check_second_factor(db, user, body.code, body.recovery_code, mfa_jti=jti)
-    rate_limit.limiter.hit(f"mfa-token-used:{jti}", 1, 600)  # one session per mfa_token
-    return _deliver_tokens(_issue_tokens(user, db, first_login=bool(payload.get("fl"))), request, response)
+    return _deliver(svc.verify(body.mfa_token, body.code, body.recovery_code), request, response)
 
 
 @router.post("/mfa/setup")
-def mfa_setup(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def mfa_setup(current_user=Depends(get_current_user), svc: MfaService = Mfa):
     """Start enrolment: a new secret (not active until /mfa/enable confirms a code from it)."""
-    if current_user.mfa_enabled:
-        raise HTTPException(status_code=409, detail="Two-factor authentication is already on. Turn it off first to use a new authenticator.")
-    secret = totp.generate_secret()
-    current_user.mfa_secret = secret
-    current_user.mfa_last_step = None
-    db.commit()
-    return {
-        "secret": secret,
-        "otpauth_uri": totp.provisioning_uri(secret, current_user.email),
-        "issuer": totp.ISSUER,
-        "account": current_user.email,
-    }
+    return svc.setup(current_user)
 
 
 @router.post("/mfa/enable")
-def mfa_enable(body: MfaCodeRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def mfa_enable(body: MfaCodeRequest, current_user=Depends(get_current_user), svc: MfaService = Mfa):
     """Confirm the authenticator with a code and turn two-factor on. Returns the recovery codes
     (shown once; only their hashes are kept)."""
-    if current_user.mfa_enabled:
-        raise HTTPException(status_code=409, detail="Two-factor authentication is already on.")
-    if not current_user.mfa_secret:
-        raise HTTPException(status_code=400, detail="Start the setup first.")
-    _check_second_factor(db, current_user, body.code, None, allow_recovery=False)
-    codes, hashes = totp.generate_recovery_codes()
-    current_user.mfa_enabled = True
-    current_user.mfa_enabled_at = utcnow()
-    current_user.mfa_recovery_codes = hashes
-    _mfa_audit(db, current_user, "ENABLE")
-    db.commit()
-    return {"mfa_enabled": True, "recovery_codes": codes}
+    return svc.enable(current_user, body.code)
 
 
 @router.post("/mfa/disable")
-def mfa_disable(body: MfaDisableRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def mfa_disable(body: MfaDisableRequest, current_user=Depends(get_current_user), svc: MfaService = Mfa):
     """Turn two-factor off: needs the password (accounts that have one) and a code or recovery code.
     Not allowed while the workspace requires two-factor."""
-    if not current_user.mfa_enabled:
-        raise HTTPException(status_code=400, detail="Two-factor authentication is not on.")
-    if current_user.tenant is not None and current_user.tenant.require_mfa:
-        raise HTTPException(status_code=403, detail="Your workspace requires two-factor authentication, so it can't be turned off.")
-    if current_user.password_hash:
-        rate_limit.check_mfa_allowed(current_user.user_id)
-        if not body.password or not verify_password(body.password, current_user.password_hash):
-            rate_limit.record_mfa_failure(current_user.user_id)
-            raise HTTPException(status_code=401, detail="Password is incorrect")
-    if not (body.code or body.recovery_code):
-        raise HTTPException(status_code=400, detail="Enter a code from your authenticator app or a recovery code")
-    _check_second_factor(db, current_user, body.code, body.recovery_code)
-    current_user.mfa_enabled = False
-    current_user.mfa_secret = None
-    current_user.mfa_recovery_codes = None
-    current_user.mfa_enabled_at = None
-    current_user.mfa_last_step = None
-    _mfa_audit(db, current_user, "DISABLE")
-    db.commit()
-    return {"mfa_enabled": False}
+    return svc.disable(current_user, body.password, body.code, body.recovery_code)
 
 
 @router.post("/mfa/recovery-codes")
-def mfa_regenerate_recovery_codes(body: MfaCodeRequest, current_user: User = Depends(get_current_user),
-                                  db: Session = Depends(get_db)):
+def mfa_regenerate_recovery_codes(body: MfaCodeRequest, current_user=Depends(get_current_user),
+                                  svc: MfaService = Mfa):
     """Replace all recovery codes (needs a current authenticator code). Returns the new codes once."""
-    if not current_user.mfa_enabled:
-        raise HTTPException(status_code=400, detail="Two-factor authentication is not on.")
-    _check_second_factor(db, current_user, body.code, None, allow_recovery=False)
-    codes, hashes = totp.generate_recovery_codes()
-    current_user.mfa_recovery_codes = hashes
-    _mfa_audit(db, current_user, "REGENERATE_RECOVERY_CODES")
-    db.commit()
-    return {"recovery_codes": codes}
+    return svc.regenerate_recovery_codes(current_user, body.code)
 
 
 @router.put("/mfa/tenant-policy")
-def mfa_tenant_policy(body: MfaTenantPolicyRequest, current_user: User = Depends(require_role("SUPER_ADMIN")),
-                      db: Session = Depends(get_db)):
+def mfa_tenant_policy(body: MfaTenantPolicyRequest, current_user=Depends(require_role("SUPER_ADMIN")),
+                      svc: MfaService = Mfa):
     """SUPER_ADMIN: require two-factor for everyone in this workspace (or stop requiring it).
     Users without it are sent to set it up before they can use anything else."""
-    tenant = db.query(Tenant).filter(Tenant.tenant_id == current_user.tenant_id).first()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    if body.require_mfa and not current_user.mfa_enabled:
-        raise HTTPException(status_code=400, detail="Turn on two-factor for your own account before requiring it for everyone.")
-    if bool(tenant.require_mfa) != body.require_mfa:
-        tenant.require_mfa = body.require_mfa
-        _mfa_audit(db, current_user, "REQUIRE" if body.require_mfa else "UNREQUIRE", "tenant_mfa_policy")
-        db.commit()
-    return {"require_mfa": bool(tenant.require_mfa)}
+    return svc.set_tenant_policy(current_user, body.require_mfa)

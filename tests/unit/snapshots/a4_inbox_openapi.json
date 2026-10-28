@@ -1,0 +1,4656 @@
+{
+ "components": {
+  "schemas": {
+   "ActivityItem": {
+    "description": "One step in a sent email's timeline (S-10): SENT / DELIVERED / OPENED / CLICKED / BOUNCED /\nCOMPLAINED / UNSUBSCRIBED / REPLIED (with the reply's label).",
+    "properties": {
+     "at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At"
+     },
+     "reply_label": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reply Label"
+     },
+     "reply_message_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reply Message Id"
+     },
+     "type": {
+      "title": "Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "type"
+    ],
+    "title": "ActivityItem",
+    "type": "object"
+   },
+   "AlertPreferenceBulkUpsertRequest": {
+    "properties": {
+     "preferences": {
+      "items": {
+       "$ref": "#/components/schemas/AlertPreferenceItem"
+      },
+      "title": "Preferences",
+      "type": "array"
+     }
+    },
+    "required": [
+     "preferences"
+    ],
+    "title": "AlertPreferenceBulkUpsertRequest",
+    "type": "object"
+   },
+   "AlertPreferenceItem": {
+    "properties": {
+     "alert_type": {
+      "title": "Alert Type",
+      "type": "string"
+     },
+     "cooldown_minutes": {
+      "default": 360,
+      "title": "Cooldown Minutes",
+      "type": "integer"
+     },
+     "email_enabled": {
+      "title": "Email Enabled",
+      "type": "boolean"
+     },
+     "enabled": {
+      "title": "Enabled",
+      "type": "boolean"
+     },
+     "scope_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Scope Id"
+     },
+     "scope_type": {
+      "title": "Scope Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "scope_type",
+     "alert_type",
+     "enabled",
+     "email_enabled"
+    ],
+    "title": "AlertPreferenceItem",
+    "type": "object"
+   },
+   "AlertPreferenceOverviewResponse": {
+    "properties": {
+     "inbox_preferences": {
+      "items": {
+       "$ref": "#/components/schemas/InboxAlertPreferenceGroup"
+      },
+      "title": "Inbox Preferences",
+      "type": "array"
+     },
+     "tenant_preferences": {
+      "items": {
+       "$ref": "#/components/schemas/AlertPreferenceItem"
+      },
+      "title": "Tenant Preferences",
+      "type": "array"
+     }
+    },
+    "required": [
+     "tenant_preferences",
+     "inbox_preferences"
+    ],
+    "title": "AlertPreferenceOverviewResponse",
+    "type": "object"
+   },
+   "ConversationDetailResponse": {
+    "properties": {
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "inbox_id": {
+      "title": "Inbox Id",
+      "type": "string"
+     },
+     "messages": {
+      "items": {
+       "$ref": "#/components/schemas/MessageResponse"
+      },
+      "title": "Messages",
+      "type": "array"
+     },
+     "prospect_id": {
+      "title": "Prospect Id",
+      "type": "string"
+     },
+     "subject": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subject"
+     }
+    },
+    "required": [
+     "id",
+     "prospect_id",
+     "inbox_id",
+     "subject",
+     "messages"
+    ],
+    "title": "ConversationDetailResponse",
+    "type": "object"
+   },
+   "ConversationListItem": {
+    "properties": {
+     "campaign_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Id"
+     },
+     "campaign_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Name"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "inbox_email": {
+      "title": "Inbox Email",
+      "type": "string"
+     },
+     "is_unread": {
+      "title": "Is Unread",
+      "type": "boolean"
+     },
+     "last_message_at": {
+      "format": "date-time",
+      "title": "Last Message At",
+      "type": "string"
+     },
+     "last_message_direction": {
+      "default": "OUTBOUND",
+      "title": "Last Message Direction",
+      "type": "string"
+     },
+     "last_message_final_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Message Final Status"
+     },
+     "last_message_snippet": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Message Snippet"
+     },
+     "last_message_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Message Status"
+     },
+     "last_reply_label": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Reply Label"
+     },
+     "needs_review": {
+      "default": false,
+      "title": "Needs Review",
+      "type": "boolean"
+     },
+     "prospect_email": {
+      "title": "Prospect Email",
+      "type": "string"
+     },
+     "prospect_id": {
+      "title": "Prospect Id",
+      "type": "string"
+     },
+     "prospect_name": {
+      "title": "Prospect Name",
+      "type": "string"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "subject": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subject"
+     }
+    },
+    "required": [
+     "id",
+     "prospect_id",
+     "prospect_name",
+     "prospect_email",
+     "inbox_email",
+     "subject",
+     "last_message_snippet",
+     "last_message_at",
+     "is_unread",
+     "status"
+    ],
+    "title": "ConversationListItem",
+    "type": "object"
+   },
+   "ConversationListResponse": {
+    "properties": {
+     "has_more": {
+      "default": false,
+      "title": "Has More",
+      "type": "boolean"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ConversationListItem"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "page": {
+      "title": "Page",
+      "type": "integer"
+     },
+     "page_size": {
+      "title": "Page Size",
+      "type": "integer"
+     },
+     "total": {
+      "title": "Total",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "items",
+     "total",
+     "page",
+     "page_size"
+    ],
+    "title": "ConversationListResponse",
+    "type": "object"
+   },
+   "DashboardAlertResponse": {
+    "properties": {
+     "action_label": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Action Label"
+     },
+     "alert_type": {
+      "title": "Alert Type",
+      "type": "string"
+     },
+     "created_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Created At"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "message": {
+      "title": "Message",
+      "type": "string"
+     },
+     "route": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Route"
+     },
+     "scope_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Scope Id"
+     },
+     "scope_type": {
+      "title": "Scope Type",
+      "type": "string"
+     },
+     "severity": {
+      "title": "Severity",
+      "type": "string"
+     },
+     "source": {
+      "title": "Source",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "source",
+     "severity",
+     "title",
+     "message",
+     "alert_type",
+     "scope_type"
+    ],
+    "title": "DashboardAlertResponse",
+    "type": "object"
+   },
+   "DomainCreate": {
+    "properties": {
+     "domain_name": {
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "Domain Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "domain_name"
+    ],
+    "title": "DomainCreate",
+    "type": "object"
+   },
+   "ExternalFeedbackEventResponse": {
+    "properties": {
+     "domain_name": {
+      "title": "Domain Name",
+      "type": "string"
+     },
+     "event_id": {
+      "title": "Event Id",
+      "type": "string"
+     },
+     "event_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Time"
+     },
+     "event_type": {
+      "title": "Event Type",
+      "type": "string"
+     },
+     "ingested_at": {
+      "format": "date-time",
+      "title": "Ingested At",
+      "type": "string"
+     },
+     "provider": {
+      "title": "Provider",
+      "type": "string"
+     },
+     "recipient_hash": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recipient Hash"
+     }
+    },
+    "required": [
+     "event_id",
+     "provider",
+     "domain_name",
+     "event_type",
+     "ingested_at"
+    ],
+    "title": "ExternalFeedbackEventResponse",
+    "type": "object"
+   },
+   "ExternalMetricResponse": {
+    "properties": {
+     "bounce_rate": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bounce Rate"
+     },
+     "complaint_rate": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Complaint Rate"
+     },
+     "delivery_error_rate": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Delivery Error Rate"
+     },
+     "domain_name": {
+      "title": "Domain Name",
+      "type": "string"
+     },
+     "ingested_at": {
+      "format": "date-time",
+      "title": "Ingested At",
+      "type": "string"
+     },
+     "metric_date": {
+      "title": "Metric Date",
+      "type": "string"
+     },
+     "metric_id": {
+      "title": "Metric Id",
+      "type": "string"
+     },
+     "provider": {
+      "title": "Provider",
+      "type": "string"
+     },
+     "reputation_score": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reputation Score"
+     },
+     "source": {
+      "title": "Source",
+      "type": "string"
+     },
+     "spam_rate": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Spam Rate"
+     }
+    },
+    "required": [
+     "metric_id",
+     "provider",
+     "domain_name",
+     "metric_date",
+     "source",
+     "ingested_at"
+    ],
+    "title": "ExternalMetricResponse",
+    "type": "object"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "title": "Detail",
+      "type": "array"
+     }
+    },
+    "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "InboxAlertPreferenceGroup": {
+    "properties": {
+     "email_address": {
+      "title": "Email Address",
+      "type": "string"
+     },
+     "inbox_id": {
+      "title": "Inbox Id",
+      "type": "string"
+     },
+     "preferences": {
+      "items": {
+       "$ref": "#/components/schemas/AlertPreferenceItem"
+      },
+      "title": "Preferences",
+      "type": "array"
+     }
+    },
+    "required": [
+     "inbox_id",
+     "email_address",
+     "preferences"
+    ],
+    "title": "InboxAlertPreferenceGroup",
+    "type": "object"
+   },
+   "InboxWarmupDetailResponse": {
+    "properties": {
+     "events": {
+      "items": {
+       "$ref": "#/components/schemas/InboxWarmupEventResponse"
+      },
+      "title": "Events",
+      "type": "array"
+     },
+     "history": {
+      "items": {
+       "$ref": "#/components/schemas/InboxWarmupMetricResponse"
+      },
+      "title": "History",
+      "type": "array"
+     },
+     "inbox": {
+      "$ref": "#/components/schemas/SendingInboxResponse"
+     },
+     "today_metric": {
+      "$ref": "#/components/schemas/InboxWarmupMetricResponse"
+     }
+    },
+    "required": [
+     "inbox",
+     "today_metric",
+     "history",
+     "events"
+    ],
+    "title": "InboxWarmupDetailResponse",
+    "type": "object"
+   },
+   "InboxWarmupEventResponse": {
+    "properties": {
+     "detail": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Detail"
+     },
+     "event_id": {
+      "title": "Event Id",
+      "type": "string"
+     },
+     "event_metadata": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Metadata"
+     },
+     "event_time": {
+      "format": "date-time",
+      "title": "Event Time",
+      "type": "string"
+     },
+     "event_type": {
+      "title": "Event Type",
+      "type": "string"
+     },
+     "inbox_id": {
+      "title": "Inbox Id",
+      "type": "string"
+     },
+     "peer_inbox_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Peer Inbox Id"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "subject": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subject"
+     }
+    },
+    "required": [
+     "event_id",
+     "inbox_id",
+     "event_type",
+     "status",
+     "event_time"
+    ],
+    "title": "InboxWarmupEventResponse",
+    "type": "object"
+   },
+   "InboxWarmupMetricResponse": {
+    "properties": {
+     "actual_sends": {
+      "title": "Actual Sends",
+      "type": "integer"
+     },
+     "bounce_count": {
+      "title": "Bounce Count",
+      "type": "integer"
+     },
+     "complaint_count": {
+      "title": "Complaint Count",
+      "type": "integer"
+     },
+     "issue_code": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Issue Code"
+     },
+     "metric_date": {
+      "title": "Metric Date",
+      "type": "string"
+     },
+     "metric_id": {
+      "title": "Metric Id",
+      "type": "string"
+     },
+     "open_count": {
+      "title": "Open Count",
+      "type": "integer"
+     },
+     "planned_sends": {
+      "title": "Planned Sends",
+      "type": "integer"
+     },
+     "pool_tier": {
+      "title": "Pool Tier",
+      "type": "string"
+     },
+     "received_count": {
+      "title": "Received Count",
+      "type": "integer"
+     },
+     "reply_count": {
+      "title": "Reply Count",
+      "type": "integer"
+     },
+     "reputation_score": {
+      "title": "Reputation Score",
+      "type": "number"
+     },
+     "saved_from_spam_count": {
+      "title": "Saved From Spam Count",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "metric_id",
+     "metric_date",
+     "planned_sends",
+     "actual_sends",
+     "received_count",
+     "open_count",
+     "reply_count",
+     "saved_from_spam_count",
+     "bounce_count",
+     "complaint_count",
+     "reputation_score",
+     "pool_tier"
+    ],
+    "title": "InboxWarmupMetricResponse",
+    "type": "object"
+   },
+   "MessageResponse": {
+    "properties": {
+     "activity": {
+      "items": {
+       "$ref": "#/components/schemas/ActivityItem"
+      },
+      "title": "Activity",
+      "type": "array"
+     },
+     "body_text": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Body Text"
+     },
+     "campaign_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Id"
+     },
+     "campaign_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Name"
+     },
+     "delivered_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Delivered At"
+     },
+     "direction": {
+      "title": "Direction",
+      "type": "string"
+     },
+     "final_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Final Status"
+     },
+     "from_email": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "From Email"
+     },
+     "message_id": {
+      "title": "Message Id",
+      "type": "string"
+     },
+     "reply_confidence": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reply Confidence"
+     },
+     "reply_label": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reply Label"
+     },
+     "reply_needs_review": {
+      "default": false,
+      "title": "Reply Needs Review",
+      "type": "boolean"
+     },
+     "scheduled_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Scheduled At"
+     },
+     "sent_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sent At"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "subject": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subject"
+     },
+     "to_email": {
+      "title": "To Email",
+      "type": "string"
+     }
+    },
+    "required": [
+     "message_id",
+     "direction",
+     "subject",
+     "body_text",
+     "from_email",
+     "to_email",
+     "scheduled_at",
+     "sent_at",
+     "status"
+    ],
+    "title": "MessageResponse",
+    "type": "object"
+   },
+   "ProviderIngestRequest": {
+    "properties": {
+     "domain_name": {
+      "title": "Domain Name",
+      "type": "string"
+     },
+     "dry_run": {
+      "default": false,
+      "title": "Dry Run",
+      "type": "boolean"
+     },
+     "payload": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Payload"
+     },
+     "provider": {
+      "title": "Provider",
+      "type": "string"
+     },
+     "source": {
+      "default": "MANUAL",
+      "title": "Source",
+      "type": "string"
+     }
+    },
+    "required": [
+     "provider",
+     "domain_name"
+    ],
+    "title": "ProviderIngestRequest",
+    "type": "object"
+   },
+   "ReplyRequest": {
+    "properties": {
+     "body_text": {
+      "title": "Body Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "body_text"
+    ],
+    "title": "ReplyRequest",
+    "type": "object"
+   },
+   "ReplyResponse": {
+    "properties": {
+     "message": {
+      "$ref": "#/components/schemas/MessageResponse"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "message",
+     "status"
+    ],
+    "title": "ReplyResponse",
+    "type": "object"
+   },
+   "ReputationAlertResponse": {
+    "properties": {
+     "alert_id": {
+      "title": "Alert Id",
+      "type": "string"
+     },
+     "alert_type": {
+      "title": "Alert Type",
+      "type": "string"
+     },
+     "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+     },
+     "details": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Details"
+     },
+     "domain_name": {
+      "title": "Domain Name",
+      "type": "string"
+     },
+     "is_resolved": {
+      "title": "Is Resolved",
+      "type": "boolean"
+     },
+     "severity": {
+      "title": "Severity",
+      "type": "string"
+     }
+    },
+    "required": [
+     "alert_id",
+     "domain_name",
+     "alert_type",
+     "severity",
+     "is_resolved",
+     "created_at"
+    ],
+    "title": "ReputationAlertResponse",
+    "type": "object"
+   },
+   "SESDataPoint": {
+    "properties": {
+     "Bounces": {
+      "title": "Bounces",
+      "type": "integer"
+     },
+     "Complaints": {
+      "title": "Complaints",
+      "type": "integer"
+     },
+     "DeliveryAttempts": {
+      "title": "Deliveryattempts",
+      "type": "integer"
+     },
+     "Rejects": {
+      "title": "Rejects",
+      "type": "integer"
+     },
+     "Timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+     }
+    },
+    "required": [
+     "Timestamp",
+     "DeliveryAttempts",
+     "Bounces",
+     "Complaints",
+     "Rejects"
+    ],
+    "title": "SESDataPoint",
+    "type": "object"
+   },
+   "SESStatisticsResponse": {
+    "properties": {
+     "data_points": {
+      "items": {
+       "$ref": "#/components/schemas/SESDataPoint"
+      },
+      "title": "Data Points",
+      "type": "array"
+     },
+     "summary": {
+      "additionalProperties": true,
+      "title": "Summary",
+      "type": "object"
+     }
+    },
+    "required": [
+     "data_points",
+     "summary"
+    ],
+    "title": "SESStatisticsResponse",
+    "type": "object"
+   },
+   "SendingDomainResponse": {
+    "properties": {
+     "account_reputation_score": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 1.0,
+      "title": "Account Reputation Score"
+     },
+     "active_campaigns": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Active Campaigns",
+      "type": "array"
+     },
+     "associated_inboxes": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Associated Inboxes",
+      "type": "array"
+     },
+     "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+     },
+     "current_reputation_score": {
+      "default": 100,
+      "title": "Current Reputation Score",
+      "type": "integer"
+     },
+     "dkim_status": {
+      "default": "UNKNOWN",
+      "title": "Dkim Status",
+      "type": "string"
+     },
+     "dmarc_status": {
+      "default": "UNKNOWN",
+      "title": "Dmarc Status",
+      "type": "string"
+     },
+     "domain_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Domain Id"
+     },
+     "domain_name": {
+      "title": "Domain Name",
+      "type": "string"
+     },
+     "is_blacklisted": {
+      "default": false,
+      "title": "Is Blacklisted",
+      "type": "boolean"
+     },
+     "ses_reputation_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "UNKNOWN",
+      "title": "Ses Reputation Status"
+     },
+     "sesv2_enabled": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": false,
+      "title": "Sesv2 Enabled"
+     },
+     "spf_status": {
+      "default": "UNKNOWN",
+      "title": "Spf Status",
+      "type": "string"
+     },
+     "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+     },
+     "warmup_status": {
+      "default": "COLD",
+      "title": "Warmup Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "domain_name",
+     "created_at",
+     "updated_at"
+    ],
+    "title": "SendingDomainResponse",
+    "type": "object"
+   },
+   "SendingInboxCreate": {
+    "properties": {
+     "daily_limit": {
+      "anyOf": [
+       {
+        "maximum": 100000.0,
+        "minimum": 0.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 500,
+      "title": "Daily Limit"
+     },
+     "delay_between_emails": {
+      "anyOf": [
+       {
+        "maximum": 3600.0,
+        "minimum": 0.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 60,
+      "title": "Delay Between Emails"
+     },
+     "email_address": {
+      "title": "Email Address",
+      "type": "string"
+     },
+     "imap_host": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imap Host"
+     },
+     "imap_password": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imap Password"
+     },
+     "imap_port": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 993,
+      "title": "Imap Port"
+     },
+     "imap_username": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imap Username"
+     },
+     "max_emails_per_day": {
+      "anyOf": [
+       {
+        "maximum": 100000.0,
+        "minimum": 0.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Emails Per Day"
+     },
+     "provider": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "SMTP",
+      "title": "Provider"
+     },
+     "smtp_host": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Smtp Host"
+     },
+     "smtp_password": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Smtp Password"
+     },
+     "smtp_port": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 587,
+      "title": "Smtp Port"
+     },
+     "smtp_use_ssl": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": false,
+      "title": "Smtp Use Ssl"
+     },
+     "smtp_username": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Smtp Username"
+     },
+     "warmup_auto_adjust": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": true,
+      "title": "Warmup Auto Adjust"
+     },
+     "warmup_enabled": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": false,
+      "title": "Warmup Enabled"
+     },
+     "warmup_identifier": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Identifier"
+     },
+     "warmup_max_target": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Max Target"
+     },
+     "warmup_randomize": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": true,
+      "title": "Warmup Randomize"
+     },
+     "warmup_reply_rate_target": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 35,
+      "title": "Warmup Reply Rate Target"
+     }
+    },
+    "required": [
+     "email_address"
+    ],
+    "title": "SendingInboxCreate",
+    "type": "object"
+   },
+   "SendingInboxCreatedResponse": {
+    "properties": {
+     "auth_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "PASSWORD",
+      "title": "Auth Type"
+     },
+     "current_daily_limit": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Current Daily Limit"
+     },
+     "daily_capacity": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Daily Capacity"
+     },
+     "daily_limit": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Daily Limit"
+     },
+     "delay_between_emails": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 60,
+      "title": "Delay Between Emails"
+     },
+     "domain_verification": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Domain Verification"
+     },
+     "email_address": {
+      "title": "Email Address",
+      "type": "string"
+     },
+     "emails_sent_today": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Emails Sent Today"
+     },
+     "has_imap_password": {
+      "default": false,
+      "title": "Has Imap Password",
+      "type": "boolean"
+     },
+     "has_smtp_password": {
+      "default": false,
+      "title": "Has Smtp Password",
+      "type": "boolean"
+     },
+     "imap_configured": {
+      "default": false,
+      "title": "Imap Configured",
+      "type": "boolean"
+     },
+     "imap_derived_from_smtp": {
+      "default": false,
+      "title": "Imap Derived From Smtp",
+      "type": "boolean"
+     },
+     "imap_host": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imap Host"
+     },
+     "imap_last_error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imap Last Error"
+     },
+     "imap_port": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 993,
+      "title": "Imap Port"
+     },
+     "imap_username": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imap Username"
+     },
+     "inbox_id": {
+      "title": "Inbox Id",
+      "type": "string"
+     },
+     "last_sent_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Sent At"
+     },
+     "last_sync_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Sync At"
+     },
+     "max_emails_per_day": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Emails Per Day"
+     },
+     "oauth_error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Oauth Error"
+     },
+     "oauth_expires_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Oauth Expires At"
+     },
+     "paused_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Paused At"
+     },
+     "paused_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Paused Reason"
+     },
+     "provider": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Provider"
+     },
+     "remaining_today": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remaining Today"
+     },
+     "sent_today": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sent Today"
+     },
+     "smtp_host": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Smtp Host"
+     },
+     "smtp_port": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 587,
+      "title": "Smtp Port"
+     },
+     "smtp_use_ssl": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": false,
+      "title": "Smtp Use Ssl"
+     },
+     "smtp_username": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Smtp Username"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Status"
+     },
+     "warmup_auto_adjust": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": true,
+      "title": "Warmup Auto Adjust"
+     },
+     "warmup_daily_target": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Warmup Daily Target"
+     },
+     "warmup_day": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Warmup Day"
+     },
+     "warmup_enabled": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": true,
+      "title": "Warmup Enabled"
+     },
+     "warmup_identifier": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Identifier"
+     },
+     "warmup_issue_code": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Issue Code"
+     },
+     "warmup_issue_message": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Issue Message"
+     },
+     "warmup_last_activity_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Last Activity At"
+     },
+     "warmup_max_target": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Max Target"
+     },
+     "warmup_pool": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "FOUNDATION",
+      "title": "Warmup Pool"
+     },
+     "warmup_randomize": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": true,
+      "title": "Warmup Randomize"
+     },
+     "warmup_reply_rate_target": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 35,
+      "title": "Warmup Reply Rate Target"
+     },
+     "warmup_reputation": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 65.0,
+      "title": "Warmup Reputation"
+     },
+     "warmup_start_date": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Start Date"
+     },
+     "warmup_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "ACTIVE",
+      "title": "Warmup Status"
+     },
+     "warmup_today_opened": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Warmup Today Opened"
+     },
+     "warmup_today_replied": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Warmup Today Replied"
+     },
+     "warmup_today_saved": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Warmup Today Saved"
+     },
+     "warmup_today_sent": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Warmup Today Sent"
+     }
+    },
+    "required": [
+     "inbox_id",
+     "email_address"
+    ],
+    "title": "SendingInboxCreatedResponse",
+    "type": "object"
+   },
+   "SendingInboxResponse": {
+    "properties": {
+     "auth_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "PASSWORD",
+      "title": "Auth Type"
+     },
+     "current_daily_limit": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Current Daily Limit"
+     },
+     "daily_capacity": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Daily Capacity"
+     },
+     "daily_limit": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Daily Limit"
+     },
+     "delay_between_emails": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 60,
+      "title": "Delay Between Emails"
+     },
+     "email_address": {
+      "title": "Email Address",
+      "type": "string"
+     },
+     "emails_sent_today": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Emails Sent Today"
+     },
+     "has_imap_password": {
+      "default": false,
+      "title": "Has Imap Password",
+      "type": "boolean"
+     },
+     "has_smtp_password": {
+      "default": false,
+      "title": "Has Smtp Password",
+      "type": "boolean"
+     },
+     "imap_configured": {
+      "default": false,
+      "title": "Imap Configured",
+      "type": "boolean"
+     },
+     "imap_derived_from_smtp": {
+      "default": false,
+      "title": "Imap Derived From Smtp",
+      "type": "boolean"
+     },
+     "imap_host": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imap Host"
+     },
+     "imap_last_error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imap Last Error"
+     },
+     "imap_port": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 993,
+      "title": "Imap Port"
+     },
+     "imap_username": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imap Username"
+     },
+     "inbox_id": {
+      "title": "Inbox Id",
+      "type": "string"
+     },
+     "last_sent_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Sent At"
+     },
+     "last_sync_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Sync At"
+     },
+     "max_emails_per_day": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Emails Per Day"
+     },
+     "oauth_error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Oauth Error"
+     },
+     "oauth_expires_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Oauth Expires At"
+     },
+     "paused_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Paused At"
+     },
+     "paused_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Paused Reason"
+     },
+     "provider": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Provider"
+     },
+     "remaining_today": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remaining Today"
+     },
+     "sent_today": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sent Today"
+     },
+     "smtp_host": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Smtp Host"
+     },
+     "smtp_port": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 587,
+      "title": "Smtp Port"
+     },
+     "smtp_use_ssl": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": false,
+      "title": "Smtp Use Ssl"
+     },
+     "smtp_username": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Smtp Username"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Status"
+     },
+     "warmup_auto_adjust": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": true,
+      "title": "Warmup Auto Adjust"
+     },
+     "warmup_daily_target": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Warmup Daily Target"
+     },
+     "warmup_day": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Warmup Day"
+     },
+     "warmup_enabled": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": true,
+      "title": "Warmup Enabled"
+     },
+     "warmup_identifier": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Identifier"
+     },
+     "warmup_issue_code": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Issue Code"
+     },
+     "warmup_issue_message": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Issue Message"
+     },
+     "warmup_last_activity_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Last Activity At"
+     },
+     "warmup_max_target": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Max Target"
+     },
+     "warmup_pool": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "FOUNDATION",
+      "title": "Warmup Pool"
+     },
+     "warmup_randomize": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": true,
+      "title": "Warmup Randomize"
+     },
+     "warmup_reply_rate_target": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 35,
+      "title": "Warmup Reply Rate Target"
+     },
+     "warmup_reputation": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 65.0,
+      "title": "Warmup Reputation"
+     },
+     "warmup_start_date": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Start Date"
+     },
+     "warmup_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "ACTIVE",
+      "title": "Warmup Status"
+     },
+     "warmup_today_opened": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Warmup Today Opened"
+     },
+     "warmup_today_replied": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Warmup Today Replied"
+     },
+     "warmup_today_saved": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Warmup Today Saved"
+     },
+     "warmup_today_sent": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": 0,
+      "title": "Warmup Today Sent"
+     }
+    },
+    "required": [
+     "inbox_id",
+     "email_address"
+    ],
+    "title": "SendingInboxResponse",
+    "type": "object"
+   },
+   "SendingInboxUpdate": {
+    "properties": {
+     "daily_limit": {
+      "anyOf": [
+       {
+        "maximum": 100000.0,
+        "minimum": 0.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Daily Limit"
+     },
+     "delay_between_emails": {
+      "anyOf": [
+       {
+        "maximum": 3600.0,
+        "minimum": 0.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Delay Between Emails"
+     },
+     "imap_host": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imap Host"
+     },
+     "imap_password": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imap Password"
+     },
+     "imap_port": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imap Port"
+     },
+     "imap_username": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imap Username"
+     },
+     "max_emails_per_day": {
+      "anyOf": [
+       {
+        "maximum": 100000.0,
+        "minimum": 0.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Emails Per Day"
+     },
+     "provider": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Provider"
+     },
+     "smtp_host": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Smtp Host"
+     },
+     "smtp_password": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Smtp Password"
+     },
+     "smtp_port": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Smtp Port"
+     },
+     "smtp_use_ssl": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Smtp Use Ssl"
+     },
+     "smtp_username": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Smtp Username"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Status"
+     },
+     "warmup_auto_adjust": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Auto Adjust"
+     },
+     "warmup_enabled": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Enabled"
+     },
+     "warmup_identifier": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Identifier"
+     },
+     "warmup_max_target": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Max Target"
+     },
+     "warmup_randomize": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Randomize"
+     },
+     "warmup_reply_rate_target": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Reply Rate Target"
+     },
+     "warmup_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warmup Status"
+     }
+    },
+    "title": "SendingInboxUpdate",
+    "type": "object"
+   },
+   "SentEmailLogEntry": {
+    "properties": {
+     "campaign_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Name"
+     },
+     "from_email": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "From Email"
+     },
+     "message_id": {
+      "title": "Message Id",
+      "type": "string"
+     },
+     "scheduled_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Scheduled At"
+     },
+     "sent_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sent At"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "subject": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subject"
+     },
+     "to_email": {
+      "title": "To Email",
+      "type": "string"
+     }
+    },
+    "required": [
+     "message_id",
+     "to_email",
+     "status"
+    ],
+    "title": "SentEmailLogEntry",
+    "type": "object"
+   },
+   "ValidationError": {
+    "properties": {
+     "ctx": {
+      "title": "Context",
+      "type": "object"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "title": "Location",
+      "type": "array"
+     },
+     "msg": {
+      "title": "Message",
+      "type": "string"
+     },
+     "type": {
+      "title": "Error Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError",
+    "type": "object"
+   },
+   "WarmupOverviewResponse": {
+    "properties": {
+     "accounts_with_issues": {
+      "title": "Accounts With Issues",
+      "type": "integer"
+     },
+     "average_reputation": {
+      "title": "Average Reputation",
+      "type": "number"
+     },
+     "current_pool": {
+      "title": "Current Pool",
+      "type": "string"
+     },
+     "planned_today": {
+      "title": "Planned Today",
+      "type": "integer"
+     },
+     "pool_growth_score": {
+      "title": "Pool Growth Score",
+      "type": "number"
+     },
+     "saved_today": {
+      "title": "Saved Today",
+      "type": "integer"
+     },
+     "total_accounts": {
+      "title": "Total Accounts",
+      "type": "integer"
+     },
+     "warmup_enabled": {
+      "title": "Warmup Enabled",
+      "type": "integer"
+     },
+     "warmup_replied_today": {
+      "title": "Warmup Replied Today",
+      "type": "integer"
+     },
+     "warmup_sent_today": {
+      "title": "Warmup Sent Today",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "total_accounts",
+     "warmup_enabled",
+     "accounts_with_issues",
+     "average_reputation",
+     "current_pool",
+     "pool_growth_score",
+     "planned_today",
+     "warmup_sent_today",
+     "warmup_replied_today",
+     "saved_today"
+    ],
+    "title": "WarmupOverviewResponse",
+    "type": "object"
+   }
+  },
+  "securitySchemes": {
+   "HTTPBearer": {
+    "scheme": "bearer",
+    "type": "http"
+   }
+  }
+ },
+ "info": {
+  "title": "FastAPI",
+  "version": "0.1.0"
+ },
+ "openapi": "3.1.0",
+ "paths": {
+  "/conversations": {
+   "get": {
+    "operationId": "get_conversations_conversations_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "page",
+      "required": false,
+      "schema": {
+       "default": 1,
+       "minimum": 1,
+       "title": "Page",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "page_size",
+      "required": false,
+      "schema": {
+       "default": 20,
+       "maximum": 100,
+       "minimum": 1,
+       "title": "Page Size",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "campaign_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 36,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Campaign Id"
+      }
+     },
+     {
+      "description": "Contact name, email or subject (matched literally)",
+      "in": "query",
+      "name": "search",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 200,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Contact name, email or subject (matched literally)",
+       "title": "Search"
+      }
+     },
+     {
+      "description": "Reply label: POSITIVE / NEUTRAL / NEGATIVE / OUT_OF_OFFICE / UNSUBSCRIBE",
+      "in": "query",
+      "name": "label",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Reply label: POSITIVE / NEUTRAL / NEGATIVE / OUT_OF_OFFICE / UNSUBSCRIBE",
+       "title": "Label"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ConversationListResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Conversations",
+    "tags": [
+     "Conversations"
+    ]
+   }
+  },
+  "/conversations/{conversation_id}": {
+   "get": {
+    "operationId": "get_conversation_thread_conversations__conversation_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "conversation_id",
+      "required": true,
+      "schema": {
+       "title": "Conversation Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ConversationDetailResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Conversation Thread",
+    "tags": [
+     "Conversations"
+    ]
+   }
+  },
+  "/conversations/{conversation_id}/reply": {
+   "post": {
+    "operationId": "reply_to_conversation_conversations__conversation_id__reply_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "conversation_id",
+      "required": true,
+      "schema": {
+       "title": "Conversation Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReplyRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReplyResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Reply To Conversation",
+    "tags": [
+     "Conversations"
+    ]
+   }
+  },
+  "/deliverability/alert-preferences": {
+   "get": {
+    "description": "List current user's alert preferences (global + per-inbox).",
+    "operationId": "get_alert_preferences_deliverability_alert_preferences_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AlertPreferenceOverviewResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Alert Preferences",
+    "tags": [
+     "Deliverability"
+    ]
+   },
+   "put": {
+    "description": "Bulk upsert current user's alert preferences.",
+    "operationId": "upsert_alert_preferences_deliverability_alert_preferences_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AlertPreferenceBulkUpsertRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Upsert Alert Preferences",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/alerts": {
+   "get": {
+    "description": "List the tenant's reputation alerts (default: unresolved only).",
+    "operationId": "list_alerts_deliverability_alerts_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "resolved",
+      "required": false,
+      "schema": {
+       "default": false,
+       "title": "Resolved",
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ReputationAlertResponse"
+         },
+         "title": "Response List Alerts Deliverability Alerts Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List Alerts",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/dashboard-alerts": {
+   "get": {
+    "description": "Unified dashboard alert feed (domain + inbox + campaign + sync).",
+    "operationId": "list_dashboard_alerts_deliverability_dashboard_alerts_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/DashboardAlertResponse"
+         },
+         "title": "Response List Dashboard Alerts Deliverability Dashboard Alerts Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List Dashboard Alerts",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/domains": {
+   "get": {
+    "description": "List the tenant's sending domains with detailed associations.",
+    "operationId": "list_domains_deliverability_domains_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/SendingDomainResponse"
+         },
+         "title": "Response List Domains Deliverability Domains Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List Domains",
+    "tags": [
+     "Deliverability"
+    ]
+   },
+   "post": {
+    "description": "Add a sending domain to the workspace (admins). Validates the hostname, refuses a\nduplicate within the workspace (another workspace may add the same name), starts SES\nDKIM verification when SES is reachable, and returns the DNS records to publish.\nNothing is verified here: \"Run Diagnostics\" (POST .../scans) checks SPF/DKIM/DMARC.",
+    "operationId": "add_domain_deliverability_domains_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DomainCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Add Domain",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/domains/{domain_name}": {
+   "delete": {
+    "description": "Delete the tenant's record of a domain and the tenant's stats for it.\nOther tenants' records for the same domain name are untouched. The SES domain\nidentity in AWS is account-level and is never deleted here.",
+    "operationId": "delete_domain_deliverability_domains__domain_name__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "domain_name",
+      "required": true,
+      "schema": {
+       "title": "Domain Name",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Delete Domain",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/domains/{domain_name}/dns-records": {
+   "get": {
+    "description": "DNS records to publish for this workspace domain and its last checked statuses. With ``live`` (default)\neach record also carries ``status``, ``current_value`` / ``current_values`` (live DNS) and\n``suggested_value`` (what to publish; SPF merged into an existing record), plus ``live_summary``.",
+    "operationId": "get_domain_dns_records_deliverability_domains__domain_name__dns_records_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "domain_name",
+      "required": true,
+      "schema": {
+       "title": "Domain Name",
+       "type": "string"
+      }
+     },
+     {
+      "description": "Compare each record with live DNS (status OK / ADD / UPDATE / UNKNOWN)",
+      "in": "query",
+      "name": "live",
+      "required": false,
+      "schema": {
+       "default": true,
+       "description": "Compare each record with live DNS (status OK / ADD / UPDATE / UNKNOWN)",
+       "title": "Live",
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Domain Dns Records",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/domains/{domain_name}/scans": {
+   "post": {
+    "description": "Trigger a manual compliance scan (SPF/DKIM) of the tenant's domain.",
+    "operationId": "scan_domain_deliverability_domains__domain_name__scans_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "domain_name",
+      "required": true,
+      "schema": {
+       "title": "Domain Name",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Scan Domain",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/domains/{domain_name}/sent-log": {
+   "get": {
+    "description": "Recent outbound emails sent from this domain, with send timestamps.\nSurfaces EmailMessage.sent_at so users can confirm whether/when a send happened.",
+    "operationId": "get_domain_sent_log_deliverability_domains__domain_name__sent_log_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "domain_name",
+      "required": true,
+      "schema": {
+       "title": "Domain Name",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 20,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/SentEmailLogEntry"
+         },
+         "title": "Response Get Domain Sent Log Deliverability Domains  Domain Name  Sent Log Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Domain Sent Log",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/integrations/events": {
+   "get": {
+    "description": "List ingested external feedback events (mainly JMRP-style complaint data).",
+    "operationId": "list_external_events_deliverability_integrations_events_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "provider",
+      "required": true,
+      "schema": {
+       "title": "Provider",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "domain_name",
+      "required": true,
+      "schema": {
+       "title": "Domain Name",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 100,
+       "maximum": 1000,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ExternalFeedbackEventResponse"
+         },
+         "title": "Response List External Events Deliverability Integrations Events Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List External Events",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/integrations/ingest": {
+   "post": {
+    "description": "Read-only ingestion endpoint for Google Postmaster / SNDS / JMRP.\nSafe by design: stores metrics/events only, no campaign/send side effects.\nData is stored for the caller's tenant (its own record of the domain). A platform\nadmin ingests for every tenant that has a record of the domain.",
+    "operationId": "ingest_provider_metrics_deliverability_integrations_ingest_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProviderIngestRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Ingest Provider Metrics",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/integrations/metrics": {
+   "get": {
+    "description": "List ingested external reputation metrics for a provider/domain.",
+    "operationId": "list_external_metrics_deliverability_integrations_metrics_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "provider",
+      "required": true,
+      "schema": {
+       "title": "Provider",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "domain_name",
+      "required": true,
+      "schema": {
+       "title": "Domain Name",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 100,
+       "maximum": 1000,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ExternalMetricResponse"
+         },
+         "title": "Response List External Metrics Deliverability Integrations Metrics Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List External Metrics",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/integrations/status": {
+   "get": {
+    "description": "Get read-only ingestion integration status and the tenant's last run per provider.",
+    "operationId": "get_integration_status_deliverability_integrations_status_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Integration Status",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/snapshots": {
+   "post": {
+    "description": "Manually trigger a health snapshot of the tenant's domains (for testing).",
+    "operationId": "trigger_snapshot_deliverability_snapshots_post",
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Trigger Snapshot",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/statistics": {
+   "get": {
+    "description": "Sending statistics for the caller's tenant, from the local database.\nWith 'domain': the tenant's mail from that domain. Without: all of the tenant's mail.\n(Account-wide AWS SES figures cover every tenant: GET /deliverability/statistics/account,\nplatform admins only.)",
+    "operationId": "get_deliverability_statistics_deliverability_statistics_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "domain",
+      "required": false,
+      "schema": {
+       "title": "Domain",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SESStatisticsResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Deliverability Statistics",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/deliverability/statistics/account": {
+   "get": {
+    "description": "Account-wide AWS SES sending statistics (every tenant's mail): platform admins only.",
+    "operationId": "get_account_statistics_deliverability_statistics_account_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SESStatisticsResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Account Statistics",
+    "tags": [
+     "Deliverability"
+    ]
+   }
+  },
+  "/inboxes": {
+   "get": {
+    "description": "List all available sending inboxes, with pause reason and today's capacity (F-20).",
+    "operationId": "list_inboxes_inboxes_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/SendingInboxResponse"
+         },
+         "title": "Response List Inboxes Inboxes Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "List Inboxes",
+    "tags": [
+     "Inboxes"
+    ]
+   },
+   "post": {
+    "description": "Add a new sending inbox. Automatically triggers domain verification logic.",
+    "operationId": "create_inbox_inboxes_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SendingInboxCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SendingInboxCreatedResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Create Inbox",
+    "tags": [
+     "Inboxes"
+    ]
+   }
+  },
+  "/inboxes/oauth/microsoft/status": {
+   "get": {
+    "operationId": "ms365_status_inboxes_oauth_microsoft_status_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Ms365 Status",
+    "tags": [
+     "Inboxes"
+    ]
+   }
+  },
+  "/inboxes/ses/quota": {
+   "get": {
+    "description": "Live AWS SES account-level sending quota (not per-mailbox \u2014 this is a\nsingle ceiling shared across every sending inbox on this AWS account).\nPlatform admins only: the figures cover every tenant's mail.\n\nReturns Max24HourSend, MaxSendRate and SentLast24Hours straight from\nSES's GetSendQuota API so account-level capacity can be verified\nagainst per-mailbox daily_limit / max_emails_per_day settings, instead\nof assuming AWS allows whatever the app is configured to send.",
+    "operationId": "get_ses_quota_inboxes_ses_quota_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Ses Quota",
+    "tags": [
+     "Inboxes"
+    ]
+   }
+  },
+  "/inboxes/warmup/overview": {
+   "get": {
+    "description": "Get warmup pool summary for the current tenant.",
+    "operationId": "get_warmup_overview_inboxes_warmup_overview_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/WarmupOverviewResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Warmup Overview",
+    "tags": [
+     "Inboxes"
+    ]
+   }
+  },
+  "/inboxes/warmup/run": {
+   "post": {
+    "description": "Run a warmup cycle immediately for the current tenant.",
+    "operationId": "run_warmup_cycle_inboxes_warmup_run_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Run Warmup Cycle",
+    "tags": [
+     "Inboxes"
+    ]
+   }
+  },
+  "/inboxes/{inbox_id}": {
+   "delete": {
+    "description": "Delete an inbox and remove it from system.",
+    "operationId": "delete_inbox_inboxes__inbox_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "inbox_id",
+      "required": true,
+      "schema": {
+       "title": "Inbox Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Delete Inbox",
+    "tags": [
+     "Inboxes"
+    ]
+   },
+   "get": {
+    "description": "Get a single inbox by ID.",
+    "operationId": "get_inbox_inboxes__inbox_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "inbox_id",
+      "required": true,
+      "schema": {
+       "title": "Inbox Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SendingInboxResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Inbox",
+    "tags": [
+     "Inboxes"
+    ]
+   },
+   "put": {
+    "description": "Update inbox details (like IMAP credentials).",
+    "operationId": "update_inbox_inboxes__inbox_id__put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "inbox_id",
+      "required": true,
+      "schema": {
+       "title": "Inbox Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SendingInboxUpdate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SendingInboxResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Update Inbox",
+    "tags": [
+     "Inboxes"
+    ]
+   }
+  },
+  "/inboxes/{inbox_id}/oauth/microsoft/start": {
+   "post": {
+    "description": "Begin connecting a Microsoft 365 mailbox; the browser is sent to the returned URL.",
+    "operationId": "ms365_start_inboxes__inbox_id__oauth_microsoft_start_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "inbox_id",
+      "required": true,
+      "schema": {
+       "title": "Inbox Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Ms365 Start",
+    "tags": [
+     "Inboxes"
+    ]
+   }
+  },
+  "/inboxes/{inbox_id}/resume": {
+   "post": {
+    "description": "Resume sending from a paused mailbox (F-20); logged in its activity. No-op when already active.",
+    "operationId": "resume_inbox_inboxes__inbox_id__resume_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "inbox_id",
+      "required": true,
+      "schema": {
+       "title": "Inbox Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SendingInboxResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Resume Inbox",
+    "tags": [
+     "Inboxes"
+    ]
+   }
+  },
+  "/inboxes/{inbox_id}/sync": {
+   "post": {
+    "description": "Trigger a historical IMAP sync.",
+    "operationId": "sync_inbox_history_inboxes__inbox_id__sync_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "inbox_id",
+      "required": true,
+      "schema": {
+       "title": "Inbox Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "days",
+      "required": false,
+      "schema": {
+       "default": 30,
+       "title": "Days",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Sync Inbox History",
+    "tags": [
+     "Inboxes"
+    ]
+   }
+  },
+  "/inboxes/{inbox_id}/test-imap": {
+   "get": {
+    "description": "Test IMAP connectivity and list recent inbox emails.\nUse this to diagnose why replies are not appearing.",
+    "operationId": "test_imap_connection_inboxes__inbox_id__test_imap_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "inbox_id",
+      "required": true,
+      "schema": {
+       "title": "Inbox Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Test Imap Connection",
+    "tags": [
+     "Inboxes"
+    ]
+   }
+  },
+  "/inboxes/{inbox_id}/test-smtp": {
+   "post": {
+    "description": "Sign in to the inbox's SMTP server (no email is sent) to check the sending credentials.",
+    "operationId": "test_smtp_connection_inboxes__inbox_id__test_smtp_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "inbox_id",
+      "required": true,
+      "schema": {
+       "title": "Inbox Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Test Smtp Connection",
+    "tags": [
+     "Inboxes"
+    ]
+   }
+  },
+  "/inboxes/{inbox_id}/warmup": {
+   "get": {
+    "description": "Return warmup settings, recent metrics, and recent activity for one mailbox.",
+    "operationId": "get_inbox_warmup_detail_inboxes__inbox_id__warmup_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "inbox_id",
+      "required": true,
+      "schema": {
+       "title": "Inbox Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/InboxWarmupDetailResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "summary": "Get Inbox Warmup Detail",
+    "tags": [
+     "Inboxes"
+    ]
+   }
+  }
+ }
+}

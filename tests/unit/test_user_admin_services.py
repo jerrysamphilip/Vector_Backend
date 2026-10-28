@@ -104,12 +104,12 @@ def test_inv_u06_bodies_have_link_and_no_password():
 
 def test_role_defaults_have_one_source_and_agent_manages_campaigns():
     from app.core import auth
-    from app.routers import auth_router
+    from app.domain import identity
 
     assert auth.ROLE_DEFAULT_PERMISSIONS["AGENT"] == ("manage_campaigns",)
     for role, perms in auth.ROLE_DEFAULT_PERMISSIONS.items():
         assert user_admin_service.DEFAULT_PERMISSIONS[role] == list(perms)
-        assert auth_router._DEFAULT_PERMS[role] == list(perms)
+        assert identity.DEFAULT_PERMISSIONS[role] == list(perms)
         assert auth._DEFAULT_PERMS[role] == frozenset(perms)
 
     agent = SimpleNamespace(role="AGENT", custom_permissions=None)

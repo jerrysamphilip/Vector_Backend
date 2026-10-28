@@ -15,23 +15,56 @@ Role hierarchy (highest → lowest):
   AGENT          — Works assigned campaigns.
 """
 
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Protocol, Tuple
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError
 from sqlalchemy.orm import Session
 
 from app.core.auth_cookies import ACCESS_COOKIE, require_csrf
 from app.core.database import get_db
 from app.core.security import decode_access_token
-from app.models.user import User
+from app.core.tokens import TokenError
+from app.domain.identity import BLOCKED_TENANT_STATUSES, ROLE_DEFAULT_PERMISSIONS, tenant_blocked
+
+__all__ = ["AuthStore", "BLOCKED_TENANT_STATUSES", "MFA_SETUP_ALLOWED_ROUTES", "ROLE_DEFAULT_PERMISSIONS",
+           "bearer_scheme", "configure", "ensure_tenant_active", "get_current_user", "require_permission",
+           "require_role"]
+
+User = Any  # app.models.user.User; app.core sits below the models (C-4)
+
+
+class AuthStore(Protocol):
+    """The database reads authentication needs (app/services/auth_store.py; installed by app.main)."""
+
+    def revoked(self, db: Session, jti: Optional[str]) -> bool: ...
+
+    def user(self, db: Session, user_id: str) -> Any: ...
+
+    def tenant_flags(self, db: Session, user: Any) -> Tuple[Optional[str], bool]: ...
+
+    def record_activity(self, db: Session, user: Any) -> None: ...
+
+
+_store: Optional[AuthStore] = None
+
+
+def configure(store: AuthStore) -> None:
+    """Install the store the dependencies read users, revocations and tenant flags from."""
+    global _store
+    _store = store
+
+
+def _auth_store() -> AuthStore:
+    if _store is None:  # fail closed: no request is authenticated without the store
+        raise RuntimeError("app.core.auth is not configured: call app.core.auth.configure() at start-up")
+    return _store
 
 # auto_error=False: the access token may come from the httpOnly cookie instead (app/core/auth_cookies.py)
 bearer_scheme = HTTPBearer(auto_error=False)
 
-# Tenants in these states cannot sign in or call the API (PLATFORM_ADMIN has no tenant and is unaffected)
-BLOCKED_TENANT_STATUSES = frozenset({"SUSPENDED", "INACTIVE", "DELETED"})
+# BLOCKED_TENANT_STATUSES (re-exported from app/domain/identity.py): tenants in these states cannot sign in
+# or call the API (PLATFORM_ADMIN has no tenant and is unaffected)
 
 # While a user must still set up two-factor (tenant requires it), only these routes are allowed:
 # (method or None for any, route path). Everything else answers 403 {"code": "MFA_SETUP_REQUIRED"}.
@@ -48,17 +81,13 @@ def _tenant_flags(db: Session, user: User) -> Tuple[Optional[str], bool]:
     """(status, require_mfa) of the user's tenant; (None, False) for PLATFORM_ADMIN / no tenant."""
     if user.role == "PLATFORM_ADMIN" or not user.tenant_id:
         return None, False
-    from app.models.tenant import Tenant
-    row = db.query(Tenant.status, Tenant.require_mfa).filter(Tenant.tenant_id == user.tenant_id).first()
-    if not row:
-        return None, False
-    return row[0], bool(row[1])
+    return _auth_store().tenant_flags(db, user)
 
 
 def ensure_tenant_active(db: Session, user: User) -> None:
     """Raise 403 "Tenant suspended" when the user's tenant is suspended/inactive."""
     tenant_status, _ = _tenant_flags(db, user)
-    if (tenant_status or "ACTIVE").upper() in BLOCKED_TENANT_STATUSES:
+    if tenant_blocked(tenant_status):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tenant suspended",
@@ -101,7 +130,7 @@ def get_current_user(
         )
     try:
         payload = decode_access_token(token)
-    except JWTError:
+    except TokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
@@ -119,15 +148,15 @@ def get_current_user(
         require_csrf(request)
 
     # Signed out: the access token was revoked at logout (app/services/token_revocation.py)
-    from app.services.token_revocation import is_revoked
-    if is_revoked(db, payload.get("jti")):
+    store = _auth_store()
+    if store.revoked(db, payload.get("jti")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = db.query(User).filter(User.user_id == user_id).first()
+    user = store.user(db, user_id)
     if not user or user.status != "ACTIVE":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -135,7 +164,7 @@ def get_current_user(
         )
 
     tenant_status, require_mfa = _tenant_flags(db, user)
-    if (tenant_status or "ACTIVE").upper() in BLOCKED_TENANT_STATUSES:
+    if tenant_blocked(tenant_status):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant suspended")
 
     if require_mfa and not user.mfa_enabled and not _route_allowed_during_mfa_setup(request):
@@ -145,8 +174,7 @@ def get_current_user(
                     "message": "Your workspace requires two-factor authentication. Set it up to continue."},
         )
     # CRM adoption KPI: one activity row per user per day (cached, so normally a dict lookup)
-    from app.services.user_activity import record_for
-    record_for(db, user)
+    store.record_activity(db, user)
     return user
 
 
@@ -181,18 +209,9 @@ def require_role(*allowed_roles: str) -> Callable[..., Any]:
     return _role_checker
 
 
-# Default feature permissions per role: the single source of truth. require_permission enforces
-# them, /auth/me and the user admin API report them (SUPER_ADMIN always passes the check).
-ROLE_DEFAULT_PERMISSIONS: dict[str, tuple[str, ...]] = {
-    "PLATFORM_ADMIN": ("manage_platform",),          # platform-only
-    "SUPER_ADMIN":    ("manage_campaigns", "manage_templates", "manage_inboxes",
-                       "manage_prospects", "view_analytics", "export_data", "manage_team"),
-    "ADMIN":          ("manage_campaigns", "manage_templates", "manage_inboxes",
-                       "manage_prospects", "view_analytics", "export_data", "manage_team"),
-    "MANAGER":        ("manage_campaigns", "manage_templates", "view_analytics"),
-    "AGENT":          ("manage_campaigns",),
-}
-
+# Default feature permissions per role: ROLE_DEFAULT_PERMISSIONS (app/domain/identity.py) is the single
+# source of truth. require_permission enforces them, /auth/me and the user admin API report them
+# (SUPER_ADMIN always passes the check).
 _DEFAULT_PERMS: dict[str, frozenset[str]] = {
     role: frozenset(perms) for role, perms in ROLE_DEFAULT_PERMISSIONS.items()
 }

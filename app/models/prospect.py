@@ -4,12 +4,15 @@ Prospect and Global Unsubscribe models.
 GDPR compliant with consent tracking and anonymization support.
 """
 
-from sqlalchemy import Column, String, Boolean, Integer, SmallInteger, ForeignKey, JSON, UniqueConstraint, Index, Computed
-from sqlalchemy.orm import relationship
-import uuid
+from datetime import datetime
+from typing import Any, Optional
+
+from sqlalchemy import JSON, Boolean, Computed, ForeignKey, Index, Integer, SmallInteger, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 SEARCH_TEXT_SQL = (
@@ -25,83 +28,85 @@ class Prospect(Base):
     """
     __tablename__ = "prospects"
 
-    prospect_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
+    prospect_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
 
     # Basic Info
-    first_name = Column(String(100), nullable=True)
-    last_name = Column(String(100), nullable=True)
-    email = Column(String(255), nullable=False)
-    email_type = Column(String(50), nullable=True)  # BUSINESS / PERSONAL / UNKNOWN
-    email_provider = Column(String(100), nullable=True)
-    phone = Column(String(50), nullable=True)
-    mobile_phone = Column(String(50), nullable=True)
+    first_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    email_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # BUSINESS / PERSONAL / UNKNOWN
+    email_provider: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    mobile_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Ownership & account (company_name is kept for display, imports and existing queries)
-    owner_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    account_id = Column(String(36), ForeignKey("accounts.account_id"), nullable=True)
+    owner_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=True)
+    account_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("accounts.account_id"), nullable=True)
 
     # CRM lifecycle (BR-CM-06/07), lead source (BR-CM-01) and legal basis (BR-CM-40)
-    lifecycle_stage = Column(String(30), nullable=True)
-    lead_status = Column(String(30), nullable=True)
-    lead_source = Column(String(100), nullable=True)
-    legal_basis = Column(String(40), nullable=True)
+    lifecycle_stage: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    lead_status: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    lead_source: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    legal_basis: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
 
     # Soft delete with 90-day restore (BR-CM-35); merged duplicates point at the kept record
-    deleted_at = Column(UtcDateTime, nullable=True)
-    deleted_by = Column(String(36), nullable=True)
-    merged_into_id = Column(String(36), nullable=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    deleted_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    merged_into_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
 
     # Lower-cased name, email, company, title and phone digits in one column, so a search
     # scans one narrow column instead of six (contact search < 1 s at 100k contacts)
-    search_text = Column(String(1100), Computed(SEARCH_TEXT_SQL, persisted=True))
+    search_text: Mapped[Optional[str]] = mapped_column(String(1100), Computed(SEARCH_TEXT_SQL, persisted=True), nullable=True)
 
     # Tags (JSON list of strings) and tenant-defined custom field values (JSON object)
-    tags = Column(JSON, nullable=True)
-    custom_fields = Column(JSON, nullable=True)
+    tags: Mapped[Any] = mapped_column(JSON, nullable=True)
+    custom_fields: Mapped[Any] = mapped_column(JSON, nullable=True)
 
     # Company Info
-    company_name = Column(String(255), nullable=True)
-    designation = Column(String(150), nullable=True)
-    industry = Column(String(100), nullable=True)
-    emp_band = Column(String(50), nullable=True)  # e.g. "51-200", "10000+"
+    company_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    designation: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    industry: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    emp_band: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # e.g. "51-200", "10000+"
 
     # LinkedIn Integration
-    linkedin_url = Column(String(500), nullable=True)
-    linkedin_data = Column(JSON, nullable=True)
+    linkedin_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    linkedin_data: Mapped[Any] = mapped_column(JSON, nullable=True)
 
     # Location & Timezone
-    poc_city = Column(String(100), nullable=True)
-    poc_state = Column(String(100), nullable=True)
-    poc_country = Column(String(100), nullable=True)
-    timezone = Column(String(50), nullable=True)
+    poc_city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    poc_state: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    poc_country: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    timezone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # GDPR Consent
-    consent_status = Column(String(50), default="OPT_IN")  # OPT_IN / UNSUBSCRIBED
-    consent_source = Column(String(100), nullable=True)
-    consent_timestamp = Column(UtcDateTime, nullable=True)
+    consent_status: Mapped[Optional[str]] = mapped_column(String(50), default="OPT_IN", nullable=True)  # OPT_IN / UNSUBSCRIBED
+    consent_source: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    consent_timestamp: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
 
     # Contact score on fit and engagement (BR-CM-43): 0-100 each, total and grade A-D;
     # NULL until first scored. Kept on the row so list sort / filter stay one indexed query.
-    score = Column(SmallInteger, nullable=True)
-    fit_score = Column(SmallInteger, nullable=True)
-    engagement_score = Column(SmallInteger, nullable=True)
-    score_grade = Column(String(1), nullable=True)
-    scored_at = Column(UtcDateTime, nullable=True)
+    score: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
+    fit_score: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
+    engagement_score: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
+    score_grade: Mapped[Optional[str]] = mapped_column(String(1), nullable=True)
+    scored_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
 
     # Validation & Anonymization
-    is_valid_email = Column(Boolean, default=True)
-    is_anonymized = Column(Boolean, default=False)
-    anonymized_at = Column(UtcDateTime, nullable=True)
+    is_valid_email: Mapped[Optional[bool]] = mapped_column(Boolean, default=True, nullable=True)
+    is_anonymized: Mapped[Optional[bool]] = mapped_column(Boolean, default=False, nullable=True)
+    anonymized_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
 
-    created_at = Column(UtcDateTime, server_default=NOW6)
-    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, onupdate=NOW6, nullable=True)
     # Optimistic concurrency (T-3, app/core/concurrency.py): bumped by every user edit
-    row_version = Column(Integer, nullable=False, default=1, server_default="1")
+    row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     # Relationships
     tenant = relationship("Tenant", back_populates="prospects")
-    list_memberships = relationship("ProspectListMember", back_populates="prospect", lazy="dynamic")
+    list_memberships = relationship("ProspectListMember", back_populates="prospect", lazy="dynamic",
+                                    foreign_keys="ProspectListMember.prospect_id",
+                                    primaryjoin="Prospect.prospect_id == ProspectListMember.prospect_id")
     campaign_enrollments = relationship("CampaignProspect", back_populates="prospect", lazy="dynamic")
     email_messages = relationship("EmailMessage", back_populates="prospect", lazy="dynamic")
     owner = relationship("User", foreign_keys=[owner_id])
@@ -110,6 +115,8 @@ class Prospect(Base):
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "email", name="uq_tenant_email"),
+        # Target of the (tenant_id, prospect_id) foreign keys of the contact's child rows (C-22, 0028_child_tenant_ids)
+        UniqueConstraint("tenant_id", "prospect_id", name="uq_prospects_tenant_prospect"),
         Index("ix_prospects_owner_id", "owner_id"),
         Index("ix_prospects_account_id", "account_id"),
         Index("ix_prospects_deleted_at", "deleted_at"),
@@ -119,6 +126,9 @@ class Prospect(Base):
         Index("ix_prospects_tenant_live_score", "tenant_id", "deleted_at", "score"),
         Index("ix_prospects_tenant_live_grade", "tenant_id", "deleted_at", "score_grade"),
         Index("ix_prospects_scored_at", "scored_at"),
+        # Contact search pre-filter (D7, 0030): ngram tokens of ngram_token_size (server default 2), built
+        # without stopwords (app.core.database.MYSQL_SESSION_INIT_COMMAND); see app/repositories/contacts.py
+        Index("ft_prospects_search_text", "search_text", mysql_prefix="FULLTEXT", mysql_with_parser="ngram"),
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
@@ -138,14 +148,14 @@ class GlobalUnsubscribe(Base):
     """
     __tablename__ = "global_unsubscribes"
 
-    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), primary_key=True)
-    email = Column(String(255), primary_key=True)
-    unsubscribed_at = Column(UtcDateTime, server_default=NOW6)
-    reason = Column(String(255), nullable=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), primary_key=True)
+    unsubscribed_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     # When the suppression period expires. After this datetime, the prospect
     # can be enrolled in new campaigns again.
     # NULL = permanent block (legacy rows or explicitly permanent).
-    suppression_expires_at = Column(UtcDateTime, nullable=True)
+    suppression_expires_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
 
     __table_args__ = (
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},

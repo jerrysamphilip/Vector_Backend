@@ -5,6 +5,7 @@ Adds templates, prospects, and analytics data to existing campaigns.
 import asyncio
 import sys
 import logging
+from app.core.ids import short_id
 
 logger = logging.getLogger(__name__)
 sys.path.insert(0, '.')
@@ -40,7 +41,7 @@ def seed_test_data():
         logger.info("Found %s campaigns", len(campaigns))
         
         for campaign in campaigns:
-            logger.info("\n--- Processing: %s (%s...) ---", campaign.campaign_name, campaign.campaign_id[:8])
+            logger.info("\n--- Processing: %s (%s...) ---", campaign.campaign_name, short_id(campaign.campaign_id))
             
             # 1. Get sequences for this campaign
             sequences = db.query(EmailSequence).filter(

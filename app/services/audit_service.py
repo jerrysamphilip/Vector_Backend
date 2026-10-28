@@ -3,12 +3,11 @@
 Audit logging service for compliance and accountability.
 """
 
-from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
 import uuid
 
 from app.models.audit import AuditLog
+from app.repositories.audit import Session, SqlAlchemyAuditRepository
 
 
 class AuditService:
@@ -32,6 +31,7 @@ class AuditService:
     
     def __init__(self, db: Session) -> None:
         self.db = db
+        self.repo = SqlAlchemyAuditRepository(db)
     
     def log_action(
         self,
@@ -63,10 +63,7 @@ class AuditService:
             entity_id=entity_id,
         )
         
-        self.db.add(log)
-        self.db.flush()  # Get the ID without committing
-        
-        return log
+        return self.repo.add(log)
     
     def get_audit_trail(
         self,
@@ -89,24 +86,8 @@ class AuditService:
         Returns:
             List of AuditLog entries, newest first
         """
-        query = self.db.query(AuditLog).filter(
-            AuditLog.tenant_id == tenant_id
-        )
-        
-        if entity_type:
-            query = query.filter(AuditLog.entity_type == entity_type)
-        
-        if entity_id:
-            query = query.filter(AuditLog.entity_id == entity_id)
-        
-        if user_id:
-            query = query.filter(AuditLog.user_id == user_id)
-        
-        return query.order_by(AuditLog.created_at.desc()).limit(limit).all()
-    
+        return self.repo.trail(tenant_id, entity_type, entity_id, user_id, limit)
+
     def get_campaign_history(self, campaign_id: str, limit: int = 20) -> List[AuditLog]:
         """Get audit history for a specific campaign."""
-        return self.db.query(AuditLog).filter(
-            AuditLog.entity_type == self.ENTITY_CAMPAIGN,
-            AuditLog.entity_id == campaign_id
-        ).order_by(AuditLog.created_at.desc()).limit(limit).all()
+        return self.repo.entity_history(self.ENTITY_CAMPAIGN, campaign_id, limit)

@@ -7,7 +7,10 @@ import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
+from app.domain.ses_events import OUTCOME_STATUSES
 from app.routers import ses_webhook_router as mod
+from app.services import ses_event_service as svc_mod
+from app.services.ses_event_service import SesEventService
 
 
 def _request(body: bytes, *, content_length=True, chunk=64 * 1024, headers=None) -> Request:
@@ -32,6 +35,25 @@ def _request(body: bytes, *, content_length=True, chunk=64 * 1024, headers=None)
 
 
 _READS: dict = {}
+
+
+class _FakeUow:
+    """No database: the handlers under test never reach a repository."""
+
+    events = MagicMock()
+    session = MagicMock()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return None
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
 
 
 def _read(req: Request):
@@ -97,12 +119,13 @@ def test_processing_error_does_not_leak_details(monkeypatch, caplog):
     _raw_unauthenticated_locally(monkeypatch)
     secret = "pymysql.err.OperationalError: (1054, \"Unknown column 'x' in /srv/app/secret.py\")"
 
-    async def boom(message, db):
+    def boom(self, uow, message):
         raise RuntimeError(secret)
-    monkeypatch.setattr(mod, "_handle_delivery", boom)
+    monkeypatch.setattr(SesEventService, "_delivery", boom)
     event = json.dumps({"notificationType": "Delivery", "mail": {}, "delivery": {}}).encode()
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(mod.handle_ses_notification(_request(event), db=MagicMock(), x_amz_sns_message_type=None))
+        asyncio.run(mod.handle_ses_notification(_request(event), service=SesEventService(_FakeUow()),
+                                                x_amz_sns_message_type=None))
     assert exc.value.status_code == 500
     assert secret not in str(exc.value.detail) and "1054" not in str(exc.value.detail)
     assert exc.value.detail == "Error processing notification"
@@ -112,7 +135,7 @@ def test_processing_error_does_not_leak_details(monkeypatch, caplog):
 def test_subscription_confirmation_error_is_generic(monkeypatch):
     monkeypatch.setattr(mod, "verify_sns_signature", lambda body, arn: _true())
     monkeypatch.setattr(type(mod.settings), "is_production", property(lambda self: False))
-    monkeypatch.setattr(mod, "is_sns_url", lambda url: True)
+    monkeypatch.setattr(svc_mod, "is_sns_url", lambda url: True)
 
     class FailingClient:
         def __init__(self, *a, **k):
@@ -130,7 +153,8 @@ def test_subscription_confirmation_error_is_generic(monkeypatch):
     import httpx
     monkeypatch.setattr(httpx, "AsyncClient", FailingClient)
     body = json.dumps({"Type": "SubscriptionConfirmation", "SubscribeURL": "https://sns.example/x"}).encode()
-    out = asyncio.run(mod.handle_ses_notification(_request(body), db=MagicMock(), x_amz_sns_message_type=None))
+    out = asyncio.run(mod.handle_ses_notification(_request(body), service=SesEventService(_FakeUow()),
+                                                  x_amz_sns_message_type=None))
     assert out == {"status": "error", "message": "Subscription confirmation failed"}
 
 
@@ -139,4 +163,4 @@ async def _true():
 
 
 def test_outcome_statuses_include_sending():
-    assert set(mod._OUTCOME_STATUSES) == {"SENT", "SENDING"}
+    assert set(OUTCOME_STATUSES) == {"SENT", "SENDING"}

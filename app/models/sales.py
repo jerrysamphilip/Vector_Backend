@@ -5,81 +5,64 @@ queue, configurable sales stages, opportunities (deals) and proposals.
 
 Every lead and opportunity has exactly one owner and one stage; visibility
 follows the owner through the sales hierarchy (app/services/contact_service.py).
+
+Typed SQLAlchemy 2 declarations (``Mapped[]``). The DDL is pinned by
+tests/unit/test_a3_model_ddl.py. The status vocabularies live in app/domain/sales.py
+and are re-exported here for existing importers.
 """
-import uuid
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any, Optional
 
-from sqlalchemy import (JSON, Boolean, Column, Date, ForeignKey, Index, Integer, Numeric, String,
-                        Text)
+from sqlalchemy import JSON, Boolean, Date, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
 
+from app.domain.sales import (CLIENT_TYPES, DEFAULT_SALES_STAGES, LEAD_STAGES, OPEN_LEAD_STAGES,
+                              PROPOSAL_STATUSES, SQL_CRITERIA)
 from app.models.base import Base
+from app.models.status_checks import status_check
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
-# Lead stages, in order, with the contact lifecycle stage each one implies (BR-LD-02)
-LEAD_STAGES = {
-    "NEW": ("New", "LEAD"),
-    "CONTACTED": ("Contacted", "LEAD"),
-    "ENGAGED": ("Engaged (MQL)", "MQL"),
-    "SQL": ("Sales qualified (SQL)", "SQL"),
-    "CONVERTED": ("Converted to opportunity", "OPPORTUNITY"),
-    "DISQUALIFIED": ("Disqualified", None),
-}
-OPEN_LEAD_STAGES = ("NEW", "CONTACTED", "ENGAGED", "SQL")
-
-# SQL qualification criteria (BR-LD-03): BANT. All must be met to move a lead to SQL.
-SQL_CRITERIA = {
-    "budget": "Budget confirmed",
-    "authority": "Talking to the decision maker",
-    "need": "Clear business need",
-    "timeline": "Buying timeline known",
-}
-
-PROPOSAL_STATUSES = {
-    "DRAFT": "Draft", "SENT": "Sent", "UNDER_REVIEW": "Under review",
-    "ACCEPTED": "Accepted", "REJECTED": "Rejected",
-}
-CLIENT_TYPES = {"NEW": "New client", "EXISTING": "Existing client"}
-
-# Seeded per workspace on first use; admins can rename, re-weight, add or retire stages
-DEFAULT_SALES_STAGES = [
-    ("Qualification", 10, False, False),
-    ("Needs analysis", 25, False, False),
-    ("Proposal", 50, False, False),
-    ("Negotiation", 75, False, False),
-    ("Closed won", 100, True, False),
-    ("Closed lost", 0, False, True),
-]
+__all__ = ["CLIENT_TYPES", "DEFAULT_SALES_STAGES", "LEAD_STAGES", "OPEN_LEAD_STAGES", "PROPOSAL_STATUSES",
+           "SQL_CRITERIA", "Lead", "Opportunity", "Proposal", "SalesStage"]
 
 
 def _uuid():
-    return str(uuid.uuid4())
+    return new_id()
 
 
 class Lead(Base):
     __tablename__ = "leads"
 
-    lead_id = Column(String(36), primary_key=True, default=_uuid)
-    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
-    prospect_id = Column(String(36), ForeignKey("prospects.prospect_id"), nullable=False)
-    account_id = Column(String(36), ForeignKey("accounts.account_id"), nullable=True)
-    owner_id = Column(String(36), ForeignKey("users.user_id"), nullable=False)
-    source = Column(String(100), nullable=True)
-    stage = Column(String(20), nullable=False, default="NEW")
-    qualification = Column(JSON, nullable=True)        # {"budget": true, ..., "notes": "..."}
-    next_step = Column(String(255), nullable=True)
-    next_step_at = Column(UtcDateTime, nullable=True)
-    disqualified_reason = Column(String(255), nullable=True)
-    recycle_at = Column(UtcDateTime, nullable=True)       # a disqualified lead reopens on this date (BR-SF-02)
-    opportunity_id = Column(String(36), nullable=True)
-    campaign_id = Column(String(36), ForeignKey("campaigns.campaign_id"), nullable=True)
-    stage_changed_at = Column(UtcDateTime, server_default=NOW6)
-    qualified_at = Column(UtcDateTime, nullable=True)    # reached SQL
-    converted_at = Column(UtcDateTime, nullable=True)
-    created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    created_at = Column(UtcDateTime, server_default=NOW6)
-    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
-    row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
+    lead_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
+    prospect_id: Mapped[str] = mapped_column(String(36), ForeignKey("prospects.prospect_id"), nullable=False)
+    account_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("accounts.account_id"), nullable=True)
+    owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=False)
+    source: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    stage: Mapped[str] = mapped_column(String(20), nullable=False, default="NEW")
+    # {"budget": true, ..., "notes": "..."}
+    qualification: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    next_step: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    next_step_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    disqualified_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # a disqualified lead reopens on this date (BR-SF-02)
+    recycle_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    opportunity_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    campaign_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("campaigns.campaign_id"), nullable=True)
+    stage_changed_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6)
+    qualified_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)    # reached SQL
+    converted_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6,
+                                                           onupdate=NOW6)
+    # T-3, app/core/concurrency.py
+    row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     __table_args__ = (
+        status_check("leads", "stage"),  # D5, 0029_status_checks
         Index("ix_leads_tenant_stage", "tenant_id", "stage"),
         Index("ix_leads_owner", "owner_id"),
         Index("ix_leads_prospect", "prospect_id"),
@@ -90,14 +73,14 @@ class Lead(Base):
 class SalesStage(Base):
     __tablename__ = "sales_stages"
 
-    stage_id = Column(String(36), primary_key=True, default=_uuid)
-    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
-    name = Column(String(100), nullable=False)
-    probability = Column(Integer, nullable=False, default=0)   # percent
-    sort_order = Column(Integer, nullable=False, default=0)
-    is_won = Column(Boolean, nullable=False, default=False)
-    is_lost = Column(Boolean, nullable=False, default=False)
-    active = Column(Boolean, nullable=False, default=True)
+    stage_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    probability: Mapped[int] = mapped_column(Integer, nullable=False, default=0)   # percent
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_won: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_lost: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     __table_args__ = (
         Index("ix_sales_stages_tenant", "tenant_id", "sort_order"),
@@ -108,34 +91,41 @@ class SalesStage(Base):
 class Opportunity(Base):
     __tablename__ = "opportunities"
 
-    opportunity_id = Column(String(36), primary_key=True, default=_uuid)
-    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
-    name = Column(String(255), nullable=False)
-    account_id = Column(String(36), ForeignKey("accounts.account_id"), nullable=True)
-    prospect_id = Column(String(36), ForeignKey("prospects.prospect_id"), nullable=True)
-    lead_id = Column(String(36), ForeignKey("leads.lead_id"), nullable=True)
-    owner_id = Column(String(36), ForeignKey("users.user_id"), nullable=False)
-    stage_id = Column(String(36), ForeignKey("sales_stages.stage_id"), nullable=False)
-    amount = Column(Numeric(15, 2), nullable=True)
-    close_date = Column(Date, nullable=True)
-    client_type = Column(String(10), nullable=False, default="NEW")   # NEW / EXISTING (BR-SP-04)
-    status = Column(String(10), nullable=False, default="OPEN")       # OPEN / WON / LOST, from the stage
-    closed_reason = Column(String(255), nullable=True)
-    next_step = Column(String(255), nullable=True)
-    description = Column(Text, nullable=True)
+    opportunity_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    account_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("accounts.account_id"), nullable=True)
+    prospect_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("prospects.prospect_id"),
+                                                       nullable=True)
+    lead_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("leads.lead_id"), nullable=True)
+    owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=False)
+    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("sales_stages.stage_id"), nullable=False)
+    amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
+    close_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # NEW / EXISTING (BR-SP-04)
+    client_type: Mapped[str] = mapped_column(String(10), nullable=False, default="NEW")
+    # OPEN / WON / LOST, from the stage
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="OPEN")
+    closed_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    next_step: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # Forecast category (BR-SF-08): PIPELINE / BEST_CASE / COMMIT / CLOSED / OMITTED. Follows the
     # stage's probability unless a user set it by hand (forecast_category_manual).
-    forecast_category = Column(String(12), nullable=True)
-    forecast_category_manual = Column(Boolean, nullable=False, default=False)
+    forecast_category: Mapped[Optional[str]] = mapped_column(String(12), nullable=True)
+    forecast_category_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     # The campaign that sourced the deal, for campaign ROI (BR-SF-11)
-    campaign_id = Column(String(36), ForeignKey("campaigns.campaign_id"), nullable=True)
-    closed_at = Column(UtcDateTime, nullable=True)
-    created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    created_at = Column(UtcDateTime, server_default=NOW6)
-    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
-    row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
+    campaign_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("campaigns.campaign_id"),
+                                                       nullable=True)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6,
+                                                           onupdate=NOW6)
+    # T-3, app/core/concurrency.py
+    row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     __table_args__ = (
+        status_check("opportunities", "status"),  # D5, 0029_status_checks
         Index("ix_opps_tenant_status_close", "tenant_id", "status", "close_date"),
         Index("ix_opps_owner", "owner_id"),
         Index("ix_opps_account", "account_id"),
@@ -146,30 +136,38 @@ class Opportunity(Base):
 class Proposal(Base):
     __tablename__ = "proposals"
 
-    proposal_id = Column(String(36), primary_key=True, default=_uuid)
-    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
-    opportunity_id = Column(String(36), ForeignKey("opportunities.opportunity_id"), nullable=False)
-    title = Column(String(255), nullable=False)
-    amount = Column(Numeric(15, 2), nullable=True)
-    status = Column(String(20), nullable=False, default="DRAFT")
-    valid_until = Column(Date, nullable=True)
-    notes = Column(Text, nullable=True)
-    sent_at = Column(UtcDateTime, nullable=True)
-    decided_at = Column(UtcDateTime, nullable=True)
-    created_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    created_at = Column(UtcDateTime, server_default=NOW6)
-    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
-    row_version = Column(Integer, nullable=False, default=1, server_default="1")  # T-3, app/core/concurrency.py
+    proposal_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
+    opportunity_id: Mapped[str] = mapped_column(String(36), ForeignKey("opportunities.opportunity_id"),
+                                                nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT")
+    valid_until: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    decided_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6,
+                                                           onupdate=NOW6)
+    # T-3, app/core/concurrency.py
+    row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     # Discount approval (BR-SF-17): NOT_REQUIRED / PENDING / APPROVED / REJECTED (app/services/quote_approval.py)
-    approval_status = Column(String(20), nullable=False, default="NOT_REQUIRED", server_default="NOT_REQUIRED")
-    approval_discount_pct = Column(Numeric(5, 2), nullable=True)   # discount submitted / approved
-    approval_requested_by = Column(String(36), nullable=True)
-    approval_requested_at = Column(UtcDateTime, nullable=True)
-    approval_decided_by = Column(String(36), nullable=True)
-    approval_decided_at = Column(UtcDateTime, nullable=True)
-    approval_reason = Column(String(1000), nullable=True)          # approver's reason / submit note
+    approval_status: Mapped[str] = mapped_column(String(20), nullable=False, default="NOT_REQUIRED",
+                                                 server_default="NOT_REQUIRED")
+    # discount submitted / approved
+    approval_discount_pct: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    approval_requested_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    approval_requested_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    approval_decided_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    approval_decided_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
+    # approver's reason / submit note
+    approval_reason: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
 
     __table_args__ = (
+        status_check("proposals", "status"),  # D5, 0029_status_checks
+        status_check("proposals", "approval_status"),
         Index("ix_proposals_tenant_status", "tenant_id", "status"),
         Index("ix_proposals_opp", "opportunity_id"),
         Index("ix_proposals_tenant_approval", "tenant_id", "approval_status"),

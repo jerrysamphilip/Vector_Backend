@@ -2,20 +2,19 @@
 """
 Team management endpoints: list users, invite, change role, deactivate.
 
-Request parsing and auth only; the rules live in app/services/user_admin_service.py
-(roles, permissions, deactivation) and app/services/invitation_service.py (invitations).
-Handlers carry return type hints with ``response_model=None`` where no response model is
-declared, so the OpenAPI schema and serialisation stay as they were.
+Request parsing and auth only (ADR 0009, chunk A5): each handler makes one call to TeamService
+(app/services/user_admin_service.py: roles, permissions, deactivation) or InvitationService
+(app/services/invitation_service.py: invitations), injected through the providers below so tests swap
+them with ``app.dependency_overrides``. Handlers carry return type hints with ``response_model=None``
+where no response model is declared, so the OpenAPI schema and serialisation stay as they were.
 """
 
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, Request, status
-from sqlalchemy.orm import Session
 
 from app.core.auth import require_permission, require_role
 from app.core.database import get_db
-from app.models.user import User
 from app.schemas.user_admin_schema import (
     AcceptInviteRequest,
     ChangeRoleRequest,
@@ -23,8 +22,8 @@ from app.schemas.user_admin_schema import (
     UpdatePermissionsRequest,
     UserOut,
 )
-from app.services import invitation_service as invitations
-from app.services import user_admin_service as team
+from app.services.invitation_service import InvitationService
+from app.services.user_admin_service import TeamService, effective_permissions
 
 router = APIRouter(prefix="/api/users", tags=["User Management"])
 
@@ -33,7 +32,20 @@ super_admin = require_role("SUPER_ADMIN")
 manage_team = [Depends(require_permission("manage_team"))]
 
 
-def _user_out(u: User) -> UserOut:
+# Service providers: one unit of work on the request's session (get_db)
+def team_service(db=Depends(get_db)) -> TeamService:
+    return TeamService.for_session(db)
+
+
+def invitation_service(db=Depends(get_db)) -> InvitationService:
+    return InvitationService.for_session(db)
+
+
+Team = Depends(team_service)
+Invitations = Depends(invitation_service)
+
+
+def _user_out(u: Any) -> UserOut:
     return UserOut(
         user_id=u.user_id,
         tenant_id=u.tenant_id,
@@ -47,82 +59,82 @@ def _user_out(u: User) -> UserOut:
         avatar_url=u.avatar_url,
         created_at=u.created_at,
         last_login_at=u.last_login_at,
-        permissions=team.effective_permissions(u),
+        permissions=effective_permissions(u),
     )
 
 
 @router.get("", response_model=list[UserOut])
 def list_users(
-    current_user: User = Depends(admins),
-    db: Session = Depends(get_db),
+    current_user=Depends(admins),
+    team: TeamService = Team,
 ) -> List[UserOut]:
     """List all team members in the current tenant."""
-    return [_user_out(u) for u in team.list_members(db, current_user)]
+    return [_user_out(u) for u in team.list_members(current_user)]
 
 
 @router.post("/invite", status_code=status.HTTP_201_CREATED, dependencies=manage_team, response_model=None)
 def invite_user(
     body: InviteRequest,
     request: Request,
-    current_user: User = Depends(admins),
-    db: Session = Depends(get_db),
+    current_user=Depends(admins),
+    invitations: InvitationService = Invitations,
 ) -> Dict[str, Any]:
     """Send an invitation to join the tenant workspace."""
-    return invitations.invite_user(db, request, current_user, body.email, body.role)
+    return invitations.invite(current_user, body.email, body.role, request)
 
 
 @router.post("/{user_id}/resend-invite", dependencies=manage_team, response_model=None)
 def resend_invite(
     user_id: str,
     request: Request,
-    current_user: User = Depends(admins),
-    db: Session = Depends(get_db),
+    current_user=Depends(admins),
+    invitations: InvitationService = Invitations,
 ) -> Dict[str, Any]:
     """
     Send a pending invitation again: a new set-password sign-in link (never a password); the
     previous invitation and links stop working. Only for accounts still INVITED, at most
     once a minute per user. Same guards as invite (tenant, role, manage_team).
     """
-    return invitations.resend_invite(db, request, current_user, user_id)
+    return invitations.resend(current_user, user_id, request)
 
 
 @router.post("/accept-invite", status_code=status.HTTP_201_CREATED, response_model=None)
-def accept_invite(body: AcceptInviteRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
+def accept_invite(body: AcceptInviteRequest, invitations: InvitationService = Invitations) -> Dict[str, Any]:
     """Accept an invitation and create a user account."""
-    return invitations.accept_invite(db, body)
+    return invitations.accept(body.token, body.first_name, body.last_name, body.password)
 
 
 @router.put("/{user_id}/role", dependencies=manage_team, response_model=None)
 def change_role(
     user_id: str,
     body: ChangeRoleRequest,
-    current_user: User = Depends(super_admin),
-    db: Session = Depends(get_db),
+    current_user=Depends(super_admin),
+    team: TeamService = Team,
 ) -> Dict[str, Any]:
     """Change a team member's role (SUPER_ADMIN only)."""
-    team.change_role(db, current_user, user_id, body.role)
+    team.change_role(current_user, user_id, body.role)
     return {"message": f"Role updated to {body.role}", "user_id": user_id}
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_200_OK, dependencies=manage_team, response_model=None)
 def deactivate_user(
     user_id: str,
-    current_user: User = Depends(admins),
-    db: Session = Depends(get_db),
+    current_user=Depends(admins),
+    team: TeamService = Team,
 ) -> Dict[str, Any]:
     """Deactivate a team member (SUPER_ADMIN or ADMIN). Sets status to INACTIVE."""
-    team.deactivate(db, current_user, user_id)
+    team.deactivate(current_user, user_id)
     return {"message": "User deactivated", "user_id": user_id}
 
 
 @router.put("/{user_id}/reactivate", status_code=status.HTTP_200_OK, dependencies=manage_team, response_model=None)
 def reactivate_user(
     user_id: str,
-    current_user: User = Depends(admins),
-    db: Session = Depends(get_db),
+    current_user=Depends(admins),
+    team: TeamService = Team,
 ) -> Dict[str, Any]:
     """Reactivate a previously deactivated team member (SUPER_ADMIN or ADMIN)."""
-    team.reactivate(db, current_user, user_id)
+    team.reactivate(current_user, user_id)
     return {"message": "User reactivated", "user_id": user_id}
 
 
@@ -130,33 +142,33 @@ def reactivate_user(
                response_model=None)
 def delete_user_permanent(
     user_id: str,
-    current_user: User = Depends(super_admin),
-    db: Session = Depends(get_db),
+    current_user=Depends(super_admin),
+    team: TeamService = Team,
 ) -> Dict[str, Any]:
     """Permanently delete a deactivated team member (SUPER_ADMIN only)."""
-    team.delete_permanently(db, current_user, user_id)
+    team.delete_permanently(current_user, user_id)
     return {"message": "User permanently deleted", "user_id": user_id}
 
 
 @router.get("/{user_id}/permissions", response_model=None)
 def get_permissions(
     user_id: str,
-    current_user: User = Depends(admins),
-    db: Session = Depends(get_db),
+    current_user=Depends(admins),
+    team: TeamService = Team,
 ) -> Dict[str, Any]:
     """Get effective permissions for a team member."""
-    return team.permissions_view(db, current_user, user_id)
+    return team.permissions_view(current_user, user_id)
 
 
 @router.put("/{user_id}/permissions", status_code=status.HTTP_200_OK, response_model=None)
 def update_permissions(
     user_id: str,
     body: UpdatePermissionsRequest,
-    current_user: User = Depends(super_admin),
-    db: Session = Depends(get_db),
+    current_user=Depends(super_admin),
+    team: TeamService = Team,
 ) -> Dict[str, Any]:
     """Set custom permissions for a team member (SUPER_ADMIN only)."""
-    stored = team.update_permissions(db, current_user, user_id, body.permissions)
+    stored = team.update_permissions(current_user, user_id, body.permissions)
     return {
         "message": "Permissions updated",
         "user_id": user_id,
@@ -167,11 +179,11 @@ def update_permissions(
 @router.delete("/{user_id}/permissions", status_code=status.HTTP_200_OK, response_model=None)
 def reset_permissions(
     user_id: str,
-    current_user: User = Depends(super_admin),
-    db: Session = Depends(get_db),
+    current_user=Depends(super_admin),
+    team: TeamService = Team,
 ) -> Dict[str, Any]:
     """Reset a user's permissions back to their role defaults (SUPER_ADMIN only)."""
-    defaults = team.reset_permissions(db, current_user, user_id)
+    defaults = team.reset_permissions(current_user, user_id)
     return {
         "message": "Permissions reset to role defaults",
         "user_id": user_id,
@@ -181,19 +193,19 @@ def reset_permissions(
 
 @router.get("/invitations", response_model=None)
 def list_invitations(
-    current_user: User = Depends(admins),
-    db: Session = Depends(get_db),
+    current_user=Depends(admins),
+    invitations: InvitationService = Invitations,
 ) -> List[Dict[str, Any]]:
     """List all invitations for the current tenant."""
-    return invitations.list_invitations(db, current_user)
+    return invitations.list(current_user)
 
 
 @router.delete("/invitations/{invitation_id}", dependencies=manage_team, response_model=None)
 def revoke_invitation(
     invitation_id: str,
-    current_user: User = Depends(admins),
-    db: Session = Depends(get_db),
+    current_user=Depends(admins),
+    invitations: InvitationService = Invitations,
 ) -> Dict[str, Any]:
     """Revoke a pending invitation."""
-    invitations.revoke_invitation(db, current_user, invitation_id)
+    invitations.revoke(current_user, invitation_id)
     return {"message": "Invitation revoked"}

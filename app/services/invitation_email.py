@@ -7,18 +7,23 @@ fallback (app/services/invitation_service.py).
 
 import os
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Mapping, Optional, Protocol
 from urllib.parse import quote_plus
-
-from fastapi import Request
 
 from app.core.config import settings
 from app.services.ses_client import get_ses_client
 from app.utils import safe_origin
 from app.utils.safe_origin import is_local_url, resolve_base_url
 
-__all__ = ["build_magic_login_link", "is_local_url", "normalized_origin", "resolve_base_url",
+__all__ = ["HeaderSource", "build_magic_login_link", "is_local_url", "normalized_origin", "resolve_base_url",
            "send_invitation_email"]
+
+
+class HeaderSource(Protocol):
+    """Anything with request headers (a FastAPI ``Request``): the Origin / Referer a link is built for."""
+
+    @property
+    def headers(self) -> Mapping[str, str]: ...
 
 
 def _get_ses_client() -> Any:
@@ -32,7 +37,7 @@ def normalized_origin(raw_url: str | None) -> str:
     return safe_origin.safe_origin(raw_url)
 
 
-def build_magic_login_link(token: str, request: Request | None = None) -> str:
+def build_magic_login_link(token: str, request: Optional[HeaderSource] = None) -> str:
     """The one-click sign-in link for ``token``, on the front end the invite came from if known."""
     request_origin = safe_origin.request_origin(request.headers) if request is not None else ""
 

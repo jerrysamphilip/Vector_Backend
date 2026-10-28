@@ -30,7 +30,7 @@ markdown==3.11
 httpx==0.28.1
 holidays==0.106  # US federal holiday detection
 bcrypt==5.0.0
-python-jose[cryptography]==3.5.0
+PyJWT==2.15.1  # HS256 session / OAuth-state tokens, behind app/core/tokens.py
 # Google sign-in (ID-token verification in app/routers/auth_router.py; endpoints return 501 when
 # GOOGLE_CLIENT_ID is unset or the package is missing)
 google-auth[requests]==2.58.1

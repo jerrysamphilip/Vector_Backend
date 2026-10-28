@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     MYSQL_USER: str = os.getenv("MYSQL_USER", "root")
     MYSQL_PASSWORD: str = os.getenv("MYSQL_PASSWORD", "")
     MYSQL_DATABASE: str = os.getenv("MYSQL_DATABASE", "outreach_ai")
+    # MySQL TLS (D8; off until DEC-01): disabled | required | verify_ca | verify_identity, and the CA bundle
+    # the verify modes check the server certificate against (on RDS: the AWS global bundle, global-bundle.pem)
+    MYSQL_SSL_MODE: str = "disabled"
+    MYSQL_SSL_CA: str = ""
     
     # Connection Pool Settings
     DB_POOL_SIZE: int = 10
@@ -72,6 +76,8 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     AWS_SES_CONFIGURATION_SET: str = ""
     AWS_SNS_TOPIC_ARN: str = ""
+    # Optional comma-separated allow-list of SNS topics; empty = any topic (on top of AWS_SNS_TOPIC_ARN)
+    SNS_ALLOWED_TOPIC_ARNS: str = ""
     AWS_SNS_ENABLED: bool = False
     
     # Email Settings
@@ -432,6 +438,21 @@ settings.JWT_SECRET_KEY = resolve_jwt_secret(settings.JWT_SECRET_KEY)
 # Mailbox passwords must never cross an unverified TLS connection in production
 if not settings.MAIL_TLS_VERIFY and settings.is_production:
     raise RuntimeError("MAIL_TLS_VERIFY=false is for local development only and is refused in production.")
+
+
+
+def database_tls_warning(s: "Settings") -> Optional[str]:
+    """The start-up warning for unencrypted database traffic in production (D8), or None. A warning, not a
+    refusal: TLS stays off until DEC-01 decides it."""
+    if s.is_production and (s.MYSQL_SSL_MODE or "disabled").strip().lower() == "disabled":
+        return ("MYSQL_SSL_MODE=disabled in production: database connections are not encrypted. Set "
+                "MYSQL_SSL_MODE=verify_identity and MYSQL_SSL_CA to the RDS CA bundle once DEC-01 is decided.")
+    return None
+
+
+_db_tls_warning = database_tls_warning(settings)
+if _db_tls_warning:
+    logger.warning(_db_tls_warning)
 
 # Credentialed CORS with a wildcard origin lets any site act as the signed-in user
 if settings.is_production and any(o.strip() == "*" or "*" in o

@@ -9,18 +9,26 @@ Guards for files and rows coming from imports and uploads (CRM import, prospect 
   bytes that are neither are refused instead of being replaced silently.
 - check_xlsx_archive / check_column_count: an XLSX is a zip; a small file can expand to
   gigabytes (zip bomb) or hold thousands of columns, so both are checked before pandas loads it.
+  These file guards live in app/utils/upload_guards.py (shared with app/utils/excel_reader.py) and
+  are re-exported here.
 """
 
-import io
-import zipfile
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
-MAX_COLUMNS = 200
-MAX_XLSX_UNCOMPRESSED_BYTES = 250 * 1024 * 1024
+from app.utils.upload_guards import (
+    MAX_COLUMNS,
+    MAX_XLSX_UNCOMPRESSED_BYTES,
+    FileRejected,
+    check_column_count,
+    check_size,
+    check_xlsx_archive,
+    decode_csv,
+)
 
-
-class FileRejected(ValueError):
-    """The file cannot be imported; the message is safe to show to the user."""
+__all__ = [
+    "MAX_COLUMNS", "MAX_XLSX_UNCOMPRESSED_BYTES", "FileRejected", "check_column_count", "check_size",
+    "check_xlsx_archive", "column_limits", "decode_csv", "oversized_fields",
+]
 
 
 def column_limits(model: Any, fields: Optional[Iterable[str]] = None) -> Dict[str, int]:
@@ -47,33 +55,3 @@ def oversized_fields(values: Mapping[str, Any], limits: Mapping[str, int],
             label = (labels or {}).get(field, field)
             problems.append(f"{label} is too long ({length} characters, maximum {limit})")
     return problems
-
-
-def decode_csv(raw: bytes) -> str:
-    """CSV bytes as text: UTF-8 (BOM optional), else Windows-1252; anything else is refused."""
-    try:
-        return raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        pass
-    try:
-        return raw.decode("cp1252")
-    except UnicodeDecodeError as exc:
-        raise FileRejected("The file is not UTF-8 or Windows-1252 text. Save it as CSV UTF-8 and try again.") from exc
-
-
-def check_xlsx_archive(raw: bytes, max_uncompressed: int = MAX_XLSX_UNCOMPRESSED_BYTES) -> None:
-    """Refuse an XLSX that is not a zip or expands to more than max_uncompressed bytes."""
-    try:
-        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-            total = sum(info.file_size for info in archive.infolist())
-    except (zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
-        raise FileRejected("The file is not a valid .xlsx workbook.") from exc
-    if total > max_uncompressed:
-        raise FileRejected(
-            f"The workbook expands to {total // (1024 * 1024)} MB; the limit is {max_uncompressed // (1024 * 1024)} MB.")
-
-
-def check_column_count(columns: Iterable[Any], max_columns: int = MAX_COLUMNS) -> None:
-    count = len(list(columns))
-    if count > max_columns:
-        raise FileRejected(f"The file has {count} columns; at most {max_columns} can be imported.")

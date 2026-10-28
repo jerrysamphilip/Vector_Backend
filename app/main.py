@@ -27,6 +27,11 @@ from app.core.config import settings
  
 # Import all models FIRST to resolve SQLAlchemy relationships
 import app.models  # noqa: F401
+from app.core import auth as core_auth  # noqa: E402
+from app.services.auth_store import SqlAlchemyAuthStore  # noqa: E402
+
+# Authentication reads users / revocations / tenant flags through this store (app.core is below models)
+core_auth.configure(SqlAlchemyAuthStore())
 # Trigger reload
  
 from app.routers import campaign_router, template_router
@@ -252,11 +257,15 @@ app.include_router(platform_admin_router)
 
 # Contact management (contacts across all lists, accounts, activities)
 from app.routers.contacts_router import router as contacts_router
+from app.routers.duplicates_router import router as duplicates_router
+from app.routers.exports_router import router as exports_router
 from app.routers.accounts_router import router as accounts_router
 # Contact scoring (BR-CM-43): before contacts_router so /contacts/scoring-model is not a contact id
 from app.routers.contact_scoring_router import router as contact_scoring_router
 app.include_router(contact_scoring_router)
 app.include_router(contacts_router)
+app.include_router(duplicates_router)
+app.include_router(exports_router)
 app.include_router(accounts_router)
 from app.routers.tasks_router import router as tasks_router
 from app.routers.lists_router import router as lists_router

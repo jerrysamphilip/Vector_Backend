@@ -17,19 +17,14 @@ from collections import defaultdict
 from datetime import timedelta
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import desc, func
-from sqlalchemy.orm import Session
-
 from app.core.clock import utcnow
-from app.core.auth import BLOCKED_TENANT_STATUSES
 from app.core.config import settings
-from app.models.tenant import Tenant
 from app.core.database import SessionLocal
-from app.models.inbox_warmup_event import InboxWarmupEvent
+from app.domain import sending_warmup as scoring
 from app.models.inbox_warmup_metric import InboxWarmupMetric
-from app.models.provider_reputation import ExternalReputationMetric
 from app.models.sending_inbox import SendingInbox
-from app.services import warmup_imap, warmup_smtp
+from app.repositories.sending_warmup import Session, SqlAlchemyWarmupRepository
+from app.services import ms365_oauth, warmup_imap, warmup_smtp
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +79,7 @@ class WarmupService:
 
         try:
             # Suspended / deleted workspaces do not warm up (no sending at all)
-            inbox_query = db.query(SendingInbox).join(Tenant, Tenant.tenant_id == SendingInbox.tenant_id).filter(
-                func.upper(func.coalesce(Tenant.status, "ACTIVE")).notin_(sorted(BLOCKED_TENANT_STATUSES)))
-            if tenant_id:
-                inbox_query = inbox_query.filter(SendingInbox.tenant_id == tenant_id)
-
-            inboxes = inbox_query.order_by(SendingInbox.tenant_id, SendingInbox.email_address).all()
+            inboxes = SqlAlchemyWarmupRepository(db).inboxes_to_warm(tenant_id)
             if not inboxes:
                 return stats
 
@@ -369,13 +359,13 @@ class WarmupService:
 
         db = SessionLocal()
         try:
-            inbox = db.query(SendingInbox).filter(SendingInbox.inbox_id == inbox_id).first()
-            peer = db.query(SendingInbox).filter(SendingInbox.inbox_id == peer_inbox_id).first()
+            repo = SqlAlchemyWarmupRepository(db)
+            inbox = repo.inbox(inbox_id)
+            peer = repo.inbox(peer_inbox_id)
 
             if not peer or not peer.imap_host or not peer.imap_username:
                 return
-            from app.services.ms365_oauth import imap_secret
-            secret = imap_secret(db, peer)
+            secret = ms365_oauth.imap_secret(db, peer)
             if not secret:
                 return
 
@@ -465,14 +455,11 @@ class WarmupService:
 
     def _get_or_create_metric(self, db: Session, inbox: SendingInbox) -> InboxWarmupMetric:
         metric_date = self._today_key()
-        metric = db.query(InboxWarmupMetric).filter(
-            InboxWarmupMetric.inbox_id == inbox.inbox_id,
-            InboxWarmupMetric.metric_date == metric_date,
-        ).first()
+        repo = SqlAlchemyWarmupRepository(db)
+        metric = repo.metric(inbox.inbox_id, metric_date)
         if metric:
             return metric
-
-        metric = InboxWarmupMetric(
+        return repo.add_metric(
             metric_id=str(uuid.uuid4()),
             tenant_id=inbox.tenant_id,
             inbox_id=inbox.inbox_id,
@@ -480,9 +467,6 @@ class WarmupService:
             reputation_score=inbox.warmup_reputation or 65.0,
             pool_tier=inbox.warmup_pool or "FOUNDATION",
         )
-        db.add(metric)
-        db.flush()
-        return metric
 
     def _assess_health(
         self,
@@ -562,71 +546,16 @@ class WarmupService:
         inbox.warmup_pool = pool
 
     def _score_reputation(self, db: Session, inbox: SendingInbox, metric: InboxWarmupMetric) -> float:
-        # Blend today's metric with the last 7 days of history so that a single
-        # low-activity day (weekend, bank holiday) does not crash the reputation.
-        history = (
-            db.query(InboxWarmupMetric)
-            .filter(
-                InboxWarmupMetric.inbox_id == inbox.inbox_id,
-                InboxWarmupMetric.metric_date != metric.metric_date,
-            )
-            .order_by(desc(InboxWarmupMetric.metric_date))
-            .limit(6)
-            .all()
-        )
-        all_metrics = [metric] + list(history)
-
-        total_sent = sum(max(m.actual_sends, 0) for m in all_metrics)
-        total_opened = sum(m.open_count or 0 for m in all_metrics)
-        total_replied = sum(m.reply_count or 0 for m in all_metrics)
-        total_saved = sum(m.saved_from_spam_count or 0 for m in all_metrics)
-        total_bounced = sum(m.bounce_count or 0 for m in all_metrics)
-        total_complaints = sum(m.complaint_count or 0 for m in all_metrics)
-
-        denom = max(total_sent, 1)
-        open_rate = (total_opened / denom) * 100
-        reply_rate = (total_replied / denom) * 100
-
-        score = 58.0
-        score += min(inbox.warmup_day or 0, 20) * 1.6
-        score += min(open_rate, 95) * 0.18
-        score += min(reply_rate, 40) * 0.25
-        score += min(total_saved, 5) * 1.2
-        score -= total_bounced * 18
-        score -= total_complaints * 22
-
-        if inbox.warmup_issue_code in {"POOL_TOO_SMALL", "SEND_FAILED"}:
-            score -= 10
-        elif inbox.warmup_issue_code in {"SYNC_STALE", "IMAP_NOT_CONFIGURED", "SMTP_NOT_CONFIGURED"}:
-            score -= 4
-
-        domain = inbox.email_address.split("@")[-1].lower() if "@" in inbox.email_address else ""
-        if domain:
-            external_metric = db.query(ExternalReputationMetric).filter(
-                ExternalReputationMetric.tenant_id == inbox.tenant_id,
-                ExternalReputationMetric.domain_name == domain
-            ).order_by(desc(ExternalReputationMetric.metric_date)).first()
-            if external_metric:
-                if external_metric.complaint_rate:
-                    score -= float(external_metric.complaint_rate) * 200
-                if external_metric.bounce_rate:
-                    score -= float(external_metric.bounce_rate) * 120
-                if external_metric.reputation_score:
-                    score = (score * 0.7) + (float(external_metric.reputation_score) * 0.3)
-
-        return max(25.0, min(round(score, 1), 100.0))
+        """Today's metric blended with the last week of history (so one quiet day does not crash the score),
+        the open issue, and the domain's external reputation (app/domain/sending_warmup.py)."""
+        repo = SqlAlchemyWarmupRepository(db)
+        history = repo.recent_metrics(inbox.inbox_id, metric.metric_date, scoring.HISTORY_DAYS)
+        domain = scoring.email_domain(inbox.email_address)
+        external = repo.external_reputation(inbox.tenant_id, domain) if domain else None
+        return scoring.reputation_score([metric] + list(history), inbox.warmup_day, inbox.warmup_issue_code, external)
 
     def _pool_for_score(self, score: float, inbox: SendingInbox) -> str:
-        warmup_day = inbox.warmup_day or 0
-        if inbox.warmup_issue_code in {"POOL_TOO_SMALL", "SEND_FAILED", "MAILBOX_PAUSED", "SMTP_NOT_CONFIGURED"}:
-            return "FOUNDATION"
-        if score >= 99 and warmup_day >= 21:
-            return "ULTRA_PREMIUM"
-        if score >= 97 and warmup_day >= 14:
-            return "PREMIUM"
-        if score >= 92 and warmup_day >= 7:
-            return "GROWTH"
-        return "FOUNDATION"
+        return scoring.pool_for_score(score, inbox.warmup_day, inbox.warmup_issue_code)
 
     def _record_event(
         self,
@@ -639,84 +568,30 @@ class WarmupService:
         metadata: Optional[dict],
         status: str = "SUCCESS",
     ) -> None:
-        db.add(
-            InboxWarmupEvent(
-                event_id=str(uuid.uuid4()),
-                tenant_id=inbox.tenant_id,
-                inbox_id=inbox.inbox_id,
-                peer_inbox_id=peer.inbox_id if peer else None,
-                event_type=event_type,
-                status=status,
-                subject=subject,
-                detail=detail,
-                event_metadata=metadata or {},
-                event_time=utcnow(),
-            )
+        SqlAlchemyWarmupRepository(db).add_event(
+            event_id=str(uuid.uuid4()),
+            tenant_id=inbox.tenant_id,
+            inbox_id=inbox.inbox_id,
+            peer_inbox_id=peer.inbox_id if peer else None,
+            event_type=event_type,
+            status=status,
+            subject=subject,
+            detail=detail,
+            event_metadata=metadata or {},
+            event_time=utcnow(),
         )
 
     def get_overview(self, db: Session, tenant_id: str) -> dict:
-        inboxes = db.query(SendingInbox).filter(SendingInbox.tenant_id == tenant_id).all()
-        if not inboxes:
-            return {
-                "total_accounts": 0,
-                "warmup_enabled": 0,
-                "accounts_with_issues": 0,
-                "average_reputation": 0,
-                "current_pool": "FOUNDATION",
-                "pool_growth_score": 0,
-                "planned_today": 0,
-                "warmup_sent_today": 0,
-                "warmup_replied_today": 0,
-                "saved_today": 0,
-            }
-
-        enabled = [i for i in inboxes if i.warmup_enabled]
-        reputations = [i.warmup_reputation or 0 for i in enabled]
-        issue_count = sum(1 for i in enabled if i.warmup_issue_code)
-        pool = self._dominant_pool(enabled)
-        avg_reputation = round(sum(reputations) / len(reputations), 1) if reputations else 0
-        planned_today = sum(i.warmup_daily_target or 0 for i in enabled)
-        sent_today = sum(i.warmup_today_sent or 0 for i in enabled)
-        replied_today = sum(i.warmup_today_replied or 0 for i in enabled)
-        saved_today = sum(i.warmup_today_saved or 0 for i in enabled)
-
-        pool_score = min(
-            100,
-            round(avg_reputation + (sum(i.warmup_day or 0 for i in enabled) / max(len(enabled), 1)), 0),
-        )
-
-        return {
-            "total_accounts": len(inboxes),
-            "warmup_enabled": len(enabled),
-            "accounts_with_issues": issue_count,
-            "average_reputation": avg_reputation,
-            "current_pool": pool,
-            "pool_growth_score": pool_score,
-            "planned_today": planned_today,
-            "warmup_sent_today": sent_today,
-            "warmup_replied_today": replied_today,
-            "saved_today": saved_today,
-        }
+        return scoring.warmup_overview(SqlAlchemyWarmupRepository(db).tenant_inboxes(tenant_id))
 
     def get_inbox_activity(self, db: Session, inbox_id: str, tenant_id: str, limit: int = 25) -> dict:
-        inbox = db.query(SendingInbox).filter(
-            SendingInbox.inbox_id == inbox_id,
-            SendingInbox.tenant_id == tenant_id,
-        ).first()
+        repo = SqlAlchemyWarmupRepository(db)
+        inbox = repo.tenant_inbox(tenant_id, inbox_id)
         if not inbox:
             raise ValueError("Inbox not found")
-
         metric = self._get_or_create_metric(db, inbox)
-        events = db.query(InboxWarmupEvent).filter(
-            InboxWarmupEvent.inbox_id == inbox_id,
-            InboxWarmupEvent.tenant_id == tenant_id,
-        ).order_by(desc(InboxWarmupEvent.event_time)).limit(limit).all()
-
-        history = db.query(InboxWarmupMetric).filter(
-            InboxWarmupMetric.inbox_id == inbox_id,
-            InboxWarmupMetric.tenant_id == tenant_id,
-        ).order_by(desc(InboxWarmupMetric.metric_date)).limit(14).all()
-
+        events = repo.tenant_events(tenant_id, inbox_id, limit)
+        history = repo.tenant_metric_history(tenant_id, inbox_id, 14)
         return {
             "inbox": inbox,
             "today_metric": metric,
@@ -741,16 +616,10 @@ class WarmupService:
         self.is_running = False
 
     def _display_name(self, email_address: str) -> str:
-        local = email_address.split("@")[0]
-        return " ".join(chunk.capitalize() for chunk in local.replace("_", ".").split(".") if chunk)
+        return scoring.display_name(email_address)
 
     def _dominant_pool(self, inboxes: List[SendingInbox]) -> str:
-        ranking = ["FOUNDATION", "GROWTH", "PREMIUM", "ULTRA_PREMIUM"]
-        highest = "FOUNDATION"
-        for inbox in inboxes:
-            if ranking.index(inbox.warmup_pool or "FOUNDATION") > ranking.index(highest):
-                highest = inbox.warmup_pool
-        return highest
+        return scoring.dominant_pool(inbox.warmup_pool for inbox in inboxes)
 
     def _today_key(self) -> str:
         return utcnow().strftime("%Y-%m-%d")

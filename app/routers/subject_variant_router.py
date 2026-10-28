@@ -15,18 +15,15 @@ permission. Promotion: the campaign's owner (creator) or a workspace admin, with
 manage_campaigns. Another workspace's campaign is 404.
 """
 
-from typing import Annotated, List, Optional
+from typing import Annotated, Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy.orm import Session
 
 from app.core.auth import require_permission, require_role
 from app.core.database import get_db
-from app.models.campaign import Campaign
-from app.models.user import User
 from app.services import ab_testing
-from app.services.subject_variant_service import SubjectVariantError, SubjectVariantService
+from app.services.subject_variant_routes import SubjectVariantRoutesService
 
 router = APIRouter(prefix="/campaigns", tags=["Subject A/B tests"])
 
@@ -68,62 +65,21 @@ class VariantUpdate(BaseModel):
         return v
 
 
-class VariantOut(BaseModel):
-    variant_id: str
-    label: str
-    subject: str
-    weight: int
-    is_winner: bool
-    promoted_at: Optional[str] = None
+def subject_variant_service(db=Depends(get_db)) -> SubjectVariantRoutesService:
+    return SubjectVariantRoutesService.for_session(db)
 
 
-def _out(v) -> dict:
-    return VariantOut(variant_id=v.variant_id, label=v.label, subject=v.subject, weight=v.weight,
-                      is_winner=bool(v.is_winner),
-                      promoted_at=v.promoted_at.isoformat() if v.promoted_at else None).model_dump()
-
-
-def _campaign(db: Session, campaign_id: str, user: User) -> Campaign:
-    campaign = db.query(Campaign).filter(Campaign.campaign_id == campaign_id).first()
-    if not campaign or campaign.tenant_id != user.tenant_id:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-    return campaign
-
-
-def _fail(e: SubjectVariantError, db: Session):
-    db.rollback()
-    raise HTTPException(status_code=e.status_code, detail=e.detail)
-
-
-def _listing(svc: SubjectVariantService, seq) -> dict:
-    variants = svc.list_variants(seq.sequence_id)
-    winner = svc.promoted(variants)
-    return {
-        "step": seq.step_number,
-        "sequence_id": seq.sequence_id,
-        "variants": [_out(v) for v in variants],
-        "ab_active": len(variants) >= ab_testing.MIN_VARIANTS,
-        "promoted_label": winner.label if winner else None,
-        "min_variants": ab_testing.MIN_VARIANTS,
-        "max_variants": ab_testing.MAX_VARIANTS,
-        "min_sends_per_variant": ab_testing.MIN_SENDS_PER_VARIANT,
-    }
+Service = Depends(subject_variant_service)
 
 
 @router.get(BASE)
 def list_subject_variants(
     campaign_id: CampaignParam,
     step: StepParam,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(*READ_ROLES)),
+    service: SubjectVariantRoutesService = Service,
+    current_user: Any = Depends(require_role(*READ_ROLES)),
 ):
-    campaign = _campaign(db, campaign_id, current_user)
-    svc = SubjectVariantService(db)
-    try:
-        seq = svc.get_step(campaign.campaign_id, step)
-    except SubjectVariantError as e:
-        _fail(e, db)
-    return _listing(svc, seq)
+    return service.listing(campaign_id, step, current_user)
 
 
 @router.post(BASE, status_code=201, dependencies=[Depends(require_permission("manage_campaigns"))])
@@ -131,34 +87,20 @@ def create_subject_variant(
     data: VariantCreate,
     campaign_id: CampaignParam,
     step: StepParam,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(*WRITE_ROLES)),
+    service: SubjectVariantRoutesService = Service,
+    current_user: Any = Depends(require_role(*WRITE_ROLES)),
 ):
-    campaign = _campaign(db, campaign_id, current_user)
-    svc = SubjectVariantService(db)
-    try:
-        seq = svc.get_step(campaign.campaign_id, step)
-        variant, warnings, moved = svc.create(campaign, seq, data.subject, data.weight, current_user.user_id)
-        db.commit()
-    except SubjectVariantError as e:
-        _fail(e, db)
-    return {**_out(variant), "warnings": warnings, "updated_messages": moved, "listing": _listing(svc, seq)}
+    return service.create(campaign_id, step, data.subject, data.weight, current_user)
 
 
 @router.get(BASE + "/stats")
 def subject_variant_stats(
     campaign_id: CampaignParam,
     step: StepParam,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(*READ_ROLES)),
+    service: SubjectVariantRoutesService = Service,
+    current_user: Any = Depends(require_role(*READ_ROLES)),
 ):
-    campaign = _campaign(db, campaign_id, current_user)
-    svc = SubjectVariantService(db)
-    try:
-        seq = svc.get_step(campaign.campaign_id, step)
-    except SubjectVariantError as e:
-        _fail(e, db)
-    return svc.stats(seq)
+    return service.stats(campaign_id, step, current_user)
 
 
 @router.get(BASE + "/messages")
@@ -168,16 +110,10 @@ def subject_variant_messages(
     label: Optional[str] = Query(None, pattern="^[A-Da-d]$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0, le=100000),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(*READ_ROLES)),
+    service: SubjectVariantRoutesService = Service,
+    current_user: Any = Depends(require_role(*READ_ROLES)),
 ):
-    campaign = _campaign(db, campaign_id, current_user)
-    svc = SubjectVariantService(db)
-    try:
-        seq = svc.get_step(campaign.campaign_id, step)
-    except SubjectVariantError as e:
-        _fail(e, db)
-    return svc.messages(seq, label.upper() if label else None, limit, offset)
+    return service.messages(campaign_id, step, label, limit, offset, current_user)
 
 
 @router.patch(BASE + "/{label}", dependencies=[Depends(require_permission("manage_campaigns"))])
@@ -186,20 +122,10 @@ def update_subject_variant(
     campaign_id: CampaignParam,
     step: StepParam,
     label: LabelParam,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(*WRITE_ROLES)),
+    service: SubjectVariantRoutesService = Service,
+    current_user: Any = Depends(require_role(*WRITE_ROLES)),
 ):
-    if data.subject is None and data.weight is None:
-        raise HTTPException(status_code=422, detail="Nothing to update: give subject and/or weight")
-    campaign = _campaign(db, campaign_id, current_user)
-    svc = SubjectVariantService(db)
-    try:
-        seq = svc.get_step(campaign.campaign_id, step)
-        variant, warnings, moved = svc.update(campaign, seq, label, data.subject, data.weight, current_user.user_id)
-        db.commit()
-    except SubjectVariantError as e:
-        _fail(e, db)
-    return {**_out(variant), "warnings": warnings, "updated_messages": moved}
+    return service.update(campaign_id, step, label, data.subject, data.weight, current_user)
 
 
 @router.delete(BASE + "/{label}", status_code=204, dependencies=[Depends(require_permission("manage_campaigns"))])
@@ -207,17 +133,10 @@ def delete_subject_variant(
     campaign_id: CampaignParam,
     step: StepParam,
     label: LabelParam,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(*WRITE_ROLES)),
+    service: SubjectVariantRoutesService = Service,
+    current_user: Any = Depends(require_role(*WRITE_ROLES)),
 ):
-    campaign = _campaign(db, campaign_id, current_user)
-    svc = SubjectVariantService(db)
-    try:
-        seq = svc.get_step(campaign.campaign_id, step)
-        svc.delete(campaign, seq, label, current_user.user_id)
-        db.commit()
-    except SubjectVariantError as e:
-        _fail(e, db)
+    service.delete(campaign_id, step, label, current_user)
     return None
 
 
@@ -226,20 +145,10 @@ def promote_subject_variant(
     campaign_id: CampaignParam,
     step: StepParam,
     label: LabelParam,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(*WRITE_ROLES)),
+    service: SubjectVariantRoutesService = Service,
+    current_user: Any = Depends(require_role(*WRITE_ROLES)),
 ):
-    campaign = _campaign(db, campaign_id, current_user)
-    if current_user.role not in ("SUPER_ADMIN", "ADMIN") and campaign.created_by != current_user.user_id:
-        raise HTTPException(status_code=403, detail="Only the campaign owner or an admin can promote a variant")
-    svc = SubjectVariantService(db)
-    try:
-        seq = svc.get_step(campaign.campaign_id, step)
-        result = svc.promote(campaign, seq, label, current_user.user_id)
-        db.commit()
-    except SubjectVariantError as e:
-        _fail(e, db)
-    return result
+    return service.promote(campaign_id, step, label, current_user)
 
 
 __all__: List[str] = ["router"]

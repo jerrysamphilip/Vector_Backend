@@ -92,9 +92,9 @@ export async function run(rec, browser) {
     const values = [];
     for (let i = 0; i < 30; i++) {
       const c = await must(t.token, 'POST', '/contacts', { email: `sn${i}.${t.rid}@bf.example`, first_name: `Sn${i}`, consent_status: 'UNSUBSCRIBED' });
-      values.push(`(${[crypto.randomUUID(), cid, c.prospect_id, seq, tpl, 'OUTBOUND', 'QUEUED', `sn${i}.${t.rid}@bf.example`, 'BF'].map(sq).join(',')}, UTC_TIMESTAMP())`);
+      values.push(`(${[crypto.randomUUID(), cid, c.prospect_id, t.tenantId, seq, tpl, 'OUTBOUND', 'QUEUED', `sn${i}.${t.rid}@bf.example`, 'BF'].map(sq).join(',')}, UTC_TIMESTAMP())`);
     }
-    sql(`INSERT INTO email_messages (message_id, campaign_id, prospect_id, sequence_id, template_id, direction, status, to_email, subject, scheduled_at) VALUES ${values.join(',')}`);
+    sql(`INSERT INTO email_messages (message_id, campaign_id, prospect_id, tenant_id, sequence_id, template_id, direction, status, to_email, subject, scheduled_at) VALUES ${values.join(',')}`);
     sql(`UPDATE campaigns SET status='ACTIVE' WHERE campaign_id='${cid}'`);
 
     const calls = [];

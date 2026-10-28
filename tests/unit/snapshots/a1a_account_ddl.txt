@@ -1,0 +1,76 @@
+CREATE TABLE accounts (
+	account_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	name VARCHAR(255) NOT NULL, 
+	domain VARCHAR(255), 
+	website VARCHAR(500), 
+	phone VARCHAR(50), 
+	industry VARCHAR(100), 
+	emp_band VARCHAR(50), 
+	city VARCHAR(100), 
+	state VARCHAR(100), 
+	country VARCHAR(100), 
+	description TEXT, 
+	street VARCHAR(255), 
+	postal_code VARCHAR(20), 
+	annual_revenue NUMERIC(18, 2), 
+	lifecycle_stage VARCHAR(30), 
+	deleted_at DATETIME(6), 
+	deleted_by VARCHAR(36), 
+	owner_id VARCHAR(36), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	row_version INTEGER NOT NULL DEFAULT '1', 
+	PRIMARY KEY (account_id), 
+	CONSTRAINT uq_account_tenant_name UNIQUE (tenant_id, name), 
+	CONSTRAINT uq_account_tenant_domain UNIQUE (tenant_id, domain), 
+	CONSTRAINT uq_accounts_tenant_account UNIQUE (tenant_id, account_id), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(owner_id) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE INDEX ix_accounts_tenant_id ON accounts (tenant_id)
+
+accounts.account_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.tenant_id: type=String(length=36) nullable=False pk=False index=True unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.name: type=String(length=255) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.domain: type=String(length=255) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.website: type=String(length=500) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.phone: type=String(length=50) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.industry: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.emp_band: type=String(length=50) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.city: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.state: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.country: type=String(length=100) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.description: type=Text() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.street: type=String(length=255) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.postal_code: type=String(length=20) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.annual_revenue: type=Numeric(precision=18, scale=2) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.lifecycle_stage: type=String(length=30) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.deleted_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.deleted_by: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.owner_id: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+accounts.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+accounts.updated_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=CURRENT_TIMESTAMP(6) server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+accounts.row_version: type=Integer() nullable=False pk=False index=None unique=None autoincrement='auto' default=1 onupdate=None server_default=1 server_onupdate=None computed=False

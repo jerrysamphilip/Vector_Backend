@@ -19,7 +19,7 @@ introduced (2026-10-18), the gate enforces a checked-in, dated **baseline** inst
 
 | Rule | Gate | Job / step | Baseline / config | Baseline size (2026-10-18) |
 |---|---|---|---|---|
-| C-1 complexity | `scripts/ci/check_complexity.py` (radon): no function over cyclomatic complexity 20; baselined functions may not rise; average < 5 | unit | `ci/complexity_baseline.json` (function -> score; `average_ceiling`) | 115 functions; average 4.89 (under the target of 5, so the fixed limit applies; no ceiling) |
+| C-1 complexity | `scripts/ci/check_complexity.py` (radon): no function over cyclomatic complexity 20; baselined functions may not rise; average < 5 | unit | `ci/complexity_baseline.json` (function -> score; `average_ceiling`) | 80 functions; average 3.39 (under the target of 5, so the fixed limit applies; no ceiling) |
 | C-2 typing | mypy (`mypy.ini`, unchanged) plus `scripts/ci/check_type_ignores.py`: count of `# type: ignore` in app/ may not grow | unit | `ci/type_ignore_baseline.txt` | 35 |
 | C-3 no `assert` in app code | ruff `S101` for `app/**` (`ruff.toml`; test code exempt) and `bandit -r app -t B101` | unit | none (0 hits) | 0 |
 | C-4 layering | `lint-imports`, contract "layered architecture": main/worker > jobs > routers / db > services > schemas / prompts > utils > models > core | unit | `.importlinter` `ignore_imports` (BASELINE section, each with a TODO) | 7 imports |
@@ -31,8 +31,8 @@ introduced (2026-10-18), the gate enforces a checked-in, dated **baseline** inst
 | Release identity | `scripts/ci/check_version.py`: `VERSION` is SemVer, is the newest `CHANGELOG.md` section, not hard-coded in config, app images in `manifests/` are the placeholder or tagged with it, docs mention no other release | unit | `VERSION` (1.1.0) | - |
 | I-11 fail closed | `tests/unit/test_production_guards.py` (subprocess start-ups): default/missing JWT secret, `MAIL_TLS_VERIFY=false`, missing `ENVIRONMENT` in Kubernetes, wildcard CORS origin and missing `METRICS_TOKEN` are refused in production; `/docs` off and self sign-up off by default | unit (unit layer) | - | - |
 | Route consistency | `system_tests/contract/check_contract.py`: every frontend API call has a backend route with that method (OpenAPI generated from the commit) | contract | needs read access to Vector_Frontend: secret `FRONTEND_REPO_TOKEN` (contents:read), else the workflow token (public repo only); without access the job passes with a **warning annotation** | 0 unmatched |
-| Coverage (unit) | pytest-cov on the unit layer (`.coveragerc`: `app`, branch coverage on), then `scripts/ci/check_coverage.py --layer unit`: line % and branch % for `app` and per package may not fall more than 0.1 pp below the floor | unit | `ci/coverage_floor.json` (`layers.unit`) | app 40.33 % line / 13.78 % branch |
-| Coverage (functional) | the same on the functional layer (`--layer functional`) | test | `ci/coverage_floor.json` (`layers.functional`) | app 61.93 % line / 39.37 % branch |
+| Coverage (unit) | pytest-cov on the unit layer (`.coveragerc`: `app`, branch coverage on), then `scripts/ci/check_coverage.py --layer unit`: line % and branch % for `app` and per package may not fall more than 0.1 pp below the floor | unit | `ci/coverage_floor.json` (`layers.unit`) | app 62.88 % line / 40.48 % branch |
+| Coverage (functional) | the same on the functional layer (`--layer functional`) | test | `ci/coverage_floor.json` (`layers.functional`) | app 77.97 % line / 55.70 % branch |
 | Dependency audit | `scripts/ci/run_pip_audit.py` (pip-audit on requirements.txt) | test | `ci/pip_audit_ignore.txt` (id, package, added, review by, reason) | 2 (python-jose, ecdsa; review 2026-12-31) |
 | Secrets | gitleaks | secrets | `.gitleaks.toml` | - |
 
@@ -56,6 +56,12 @@ delete the line from `.importlinter` / an ignore list by hand. For the ADR 0009 
 blocks (it refuses to add entries; `--allow-new` needs a reviewer's approval). Every `lint-imports`
 contract fails on an ignore that no longer matches an import (`unmatched_ignore_imports_alerting` is
 left at its default, `error`).
+
+Status after round 4 (2026-10-28): import-linter exceptions 0 (9 contracts kept, no `ignore_imports`
+left); complexity 74 functions over 20 baselined, average 3.31; `# type: ignore` 20; local imports 82. Coverage
+floors: unit app 65.83 % line / 45.36 % branch, functional app 78.85 % line / 57.28 % branch (the functional
+`app.core` branch and `app.domain` floors were lowered with the reason recorded in `ci/coverage_floor.json`;
+`app.domain` stays at 100 % in the unit layer).
 
 ## Coverage
 

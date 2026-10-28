@@ -4,10 +4,10 @@ Audit Log model for compliance and accountability.
 """
 
 from sqlalchemy import Column, String, ForeignKey
-import uuid
 
 from app.models import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class AuditLog(Base):
@@ -17,7 +17,7 @@ class AuditLog(Base):
     """
     __tablename__ = "audit_logs"
 
-    log_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    log_id = Column(String(36), primary_key=True, default=new_id)
     tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
     user_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)  # NULL once the user is deleted
     

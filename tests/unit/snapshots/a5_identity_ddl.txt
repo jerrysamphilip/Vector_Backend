@@ -1,0 +1,281 @@
+CREATE TABLE users (
+	user_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36), 
+	first_name VARCHAR(100) NOT NULL, 
+	last_name VARCHAR(100) NOT NULL, 
+	email VARCHAR(255) NOT NULL, 
+	`role` VARCHAR(50) NOT NULL, 
+	status VARCHAR(50), 
+	active_email VARCHAR(255) GENERATED ALWAYS AS (CASE WHEN status IN ('ACTIVE','INVITED') THEN email ELSE NULL END) STORED, 
+	password_hash VARCHAR(255), 
+	auth_provider VARCHAR(50), 
+	google_id VARCHAR(255), 
+	email_verified BOOL, 
+	avatar_url VARCHAR(500), 
+	invited_by VARCHAR(36), 
+	custom_permissions JSON, 
+	last_login_at DATETIME(6), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	sales_level INTEGER, 
+	manager_id VARCHAR(36), 
+	notify_email BOOL NOT NULL DEFAULT '1', 
+	mfa_enabled BOOL NOT NULL DEFAULT false, 
+	mfa_secret VARCHAR(1024), 
+	mfa_recovery_codes TEXT, 
+	mfa_enabled_at DATETIME(6), 
+	mfa_last_step BIGINT, 
+	PRIMARY KEY (user_id), 
+	CONSTRAINT ck_users_status CHECK (status IN ('ACTIVE', 'INVITED', 'INACTIVE', 'SUSPENDED')), 
+	CONSTRAINT uq_user_tenant_email UNIQUE (tenant_id, email), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	UNIQUE (google_id), 
+	FOREIGN KEY(invited_by) REFERENCES users (user_id), 
+	FOREIGN KEY(manager_id) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE UNIQUE INDEX uq_users_active_email ON users (active_email)
+
+users kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+
+users.user_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+users.tenant_id: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.first_name: type=String(length=100) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.last_name: type=String(length=100) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.email: type=String(length=255) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.role: type=String(length=50) nullable=False pk=False index=None unique=None autoincrement='auto' default='AGENT' onupdate=None server_default=None server_onupdate=None computed=False
+
+users.status: type=String(length=50) nullable=True pk=False index=None unique=None autoincrement='auto' default='ACTIVE' onupdate=None server_default=None server_onupdate=None computed=False
+
+users.active_email: type=String(length=255) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=Computed(CASE WHEN status IN ('ACTIVE','INVITED') THEN email ELSE NULL END, persisted=True) server_onupdate=Computed(CASE WHEN status IN ('ACTIVE','INVITED') THEN email ELSE NULL END, persisted=True) computed=True
+
+users.password_hash: type=String(length=255) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.auth_provider: type=String(length=50) nullable=True pk=False index=None unique=None autoincrement='auto' default='local' onupdate=None server_default=None server_onupdate=None computed=False
+
+users.google_id: type=String(length=255) nullable=True pk=False index=None unique=True autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.email_verified: type=Boolean() nullable=True pk=False index=None unique=None autoincrement='auto' default=False onupdate=None server_default=None server_onupdate=None computed=False
+
+users.avatar_url: type=String(length=500) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.invited_by: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.custom_permissions: type=JSON() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.last_login_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+users.sales_level: type=Integer() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.manager_id: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.notify_email: type=Boolean() nullable=False pk=False index=None unique=None autoincrement='auto' default=True onupdate=None server_default=1 server_onupdate=None computed=False
+
+users.mfa_enabled: type=Boolean() nullable=False pk=False index=None unique=None autoincrement='auto' default=False onupdate=None server_default=false server_onupdate=None computed=False
+
+users.mfa_secret: type=EncryptedString(length=1024) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.mfa_recovery_codes: type=Text() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.mfa_enabled_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users.mfa_last_step: type=BigInteger() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+users rel approved_templates: target=EmailTemplate lazy=dynamic back_populates=approver uselist=True
+
+users rel created_campaigns: target=Campaign lazy=dynamic back_populates=creator uselist=True
+
+users rel owned_groups: target=CampaignGroup lazy=dynamic back_populates=owner uselist=True
+
+users rel template_versions: target=EmailTemplateVersion lazy=dynamic back_populates=creator uselist=True
+
+users rel tenant: target=Tenant lazy=select back_populates=users uselist=False
+
+users rel uploaded_lists: target=ProspectList lazy=dynamic back_populates=uploader uselist=True
+
+CREATE TABLE tenants (
+	tenant_id VARCHAR(36) NOT NULL, 
+	tenant_name VARCHAR(255) NOT NULL, 
+	status VARCHAR(50), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	require_mfa BOOL NOT NULL DEFAULT false, 
+	PRIMARY KEY (tenant_id), 
+	CONSTRAINT ck_tenants_status CHECK (status IN ('ACTIVE', 'SUSPENDED', 'INACTIVE', 'DELETED'))
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+tenants kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+
+tenants.tenant_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+tenants.tenant_name: type=String(length=255) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+tenants.status: type=String(length=50) nullable=True pk=False index=None unique=None autoincrement='auto' default='ACTIVE' onupdate=None server_default=None server_onupdate=None computed=False
+
+tenants.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+tenants.updated_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=CURRENT_TIMESTAMP(6) server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+tenants.require_mfa: type=Boolean() nullable=False pk=False index=None unique=None autoincrement='auto' default=False onupdate=None server_default=false server_onupdate=None computed=False
+
+tenants rel campaign_groups: target=CampaignGroup lazy=dynamic back_populates=tenant uselist=True
+
+tenants rel campaigns: target=Campaign lazy=dynamic back_populates=tenant uselist=True
+
+tenants rel prospect_lists: target=ProspectList lazy=dynamic back_populates=tenant uselist=True
+
+tenants rel prospects: target=Prospect lazy=dynamic back_populates=tenant uselist=True
+
+tenants rel sending_inboxes: target=SendingInbox lazy=dynamic back_populates=tenant uselist=True
+
+tenants rel users: target=User lazy=dynamic back_populates=tenant uselist=True
+
+CREATE TABLE invitations (
+	invitation_id VARCHAR(36) NOT NULL, 
+	tenant_id VARCHAR(36) NOT NULL, 
+	invited_by VARCHAR(36) NOT NULL, 
+	email VARCHAR(255) NOT NULL, 
+	`role` VARCHAR(50) NOT NULL, 
+	token VARCHAR(255) NOT NULL, 
+	status VARCHAR(50), 
+	expires_at DATETIME(6) NOT NULL, 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (invitation_id), 
+	CONSTRAINT ck_invitations_status CHECK (status IN ('PENDING', 'ACCEPTED', 'EXPIRED', 'REVOKED')), 
+	FOREIGN KEY(tenant_id) REFERENCES tenants (tenant_id), 
+	FOREIGN KEY(invited_by) REFERENCES users (user_id), 
+	UNIQUE (token)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+invitations kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+
+invitations.invitation_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+invitations.tenant_id: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+invitations.invited_by: type=String(length=36) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+invitations.email: type=String(length=255) nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+invitations.role: type=String(length=50) nullable=False pk=False index=None unique=None autoincrement='auto' default='AGENT' onupdate=None server_default=None server_onupdate=None computed=False
+
+invitations.token: type=String(length=255) nullable=False pk=False index=None unique=True autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+invitations.status: type=String(length=50) nullable=True pk=False index=None unique=None autoincrement='auto' default='PENDING' onupdate=None server_default=None server_onupdate=None computed=False
+
+invitations.expires_at: type=DateTime() nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+invitations.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+CREATE TABLE refresh_tokens (
+	token_id VARCHAR(36) NOT NULL, 
+	user_id VARCHAR(36) NOT NULL, 
+	token_hash VARCHAR(255) NOT NULL, 
+	device_info VARCHAR(255), 
+	expires_at DATETIME(6) NOT NULL, 
+	revoked_at DATETIME(6), 
+	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
+	session_id VARCHAR(36), 
+	session_started_at DATETIME(6), 
+	last_activity_at DATETIME(6), 
+	revoked_reason VARCHAR(16), 
+	PRIMARY KEY (token_id), 
+	FOREIGN KEY(user_id) REFERENCES users (user_id), 
+	UNIQUE (token_hash)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE INDEX ix_refresh_tokens_session_id ON refresh_tokens (session_id)
+
+CREATE INDEX ix_refresh_tokens_user_id ON refresh_tokens (user_id)
+
+refresh_tokens kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+
+refresh_tokens.token_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+refresh_tokens.user_id: type=String(length=36) nullable=False pk=False index=True unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+refresh_tokens.token_hash: type=String(length=255) nullable=False pk=False index=None unique=True autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+refresh_tokens.device_info: type=String(length=255) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+refresh_tokens.expires_at: type=DateTime() nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+refresh_tokens.revoked_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+refresh_tokens.created_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+refresh_tokens.session_id: type=String(length=36) nullable=True pk=False index=True unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+refresh_tokens.session_started_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+refresh_tokens.last_activity_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+refresh_tokens.revoked_reason: type=String(length=16) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+CREATE TABLE magic_login_tokens (
+	token_id VARCHAR(36) NOT NULL, 
+	user_id VARCHAR(36) NOT NULL, 
+	token_hash VARCHAR(255) NOT NULL, 
+	expires_at DATETIME(6) NOT NULL, 
+	used_at DATETIME(6), 
+	created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (token_id), 
+	FOREIGN KEY(user_id) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE UNIQUE INDEX ix_magic_login_tokens_token_hash ON magic_login_tokens (token_hash)
+
+CREATE INDEX ix_magic_login_tokens_user_id ON magic_login_tokens (user_id)
+
+magic_login_tokens kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+
+magic_login_tokens.token_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+magic_login_tokens.user_id: type=String(length=36) nullable=False pk=False index=True unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+magic_login_tokens.token_hash: type=String(length=255) nullable=False pk=False index=True unique=True autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+magic_login_tokens.expires_at: type=DateTime() nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+magic_login_tokens.used_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+magic_login_tokens.created_at: type=DateTime() nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+magic_login_tokens rel user: target=User lazy=select back_populates=None uselist=False
+
+CREATE TABLE password_reset_tokens (
+	token_id VARCHAR(36) NOT NULL, 
+	user_id VARCHAR(36) NOT NULL, 
+	token_hash VARCHAR(255) NOT NULL, 
+	expires_at DATETIME(6) NOT NULL, 
+	used_at DATETIME(6), 
+	created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), 
+	PRIMARY KEY (token_id), 
+	FOREIGN KEY(user_id) REFERENCES users (user_id)
+)ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
+
+CREATE UNIQUE INDEX ix_password_reset_tokens_token_hash ON password_reset_tokens (token_hash)
+
+CREATE INDEX ix_password_reset_tokens_user_id ON password_reset_tokens (user_id)
+
+password_reset_tokens kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), ('mysql_engine', 'InnoDB')]
+
+password_reset_tokens.token_id: type=String(length=36) nullable=False pk=True index=None unique=None autoincrement='auto' default=<callable> onupdate=None server_default=None server_onupdate=None computed=False
+
+password_reset_tokens.user_id: type=String(length=36) nullable=False pk=False index=True unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+password_reset_tokens.token_hash: type=String(length=255) nullable=False pk=False index=True unique=True autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+password_reset_tokens.expires_at: type=DateTime() nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+password_reset_tokens.used_at: type=DateTime() nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
+
+password_reset_tokens.created_at: type=DateTime() nullable=False pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=CURRENT_TIMESTAMP(6) server_onupdate=None computed=False
+
+password_reset_tokens rel user: target=User lazy=select back_populates=None uselist=False

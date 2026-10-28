@@ -39,11 +39,19 @@ current violations sit in a shrinking baseline.
 | 0019 | team-review P0 | One live account per email (`users.active_email` unique) |
 | 0020 | team-review P1 | Send integrity keys: one email per step, (inbox_id, sent_at) index |
 | 0021 | team-review P1 | `automation_rule_runs`: once per rule and contact |
-| 0022 | D3 | tenant_id on child tables + backfill + tenant-first indexes |
-| 0023 | D5 | CHECK constraints on status columns |
-| 0024 | D7 | FULLTEXT ngram index for contact search |
-| 0025 | D6 | Retention bookkeeping (archive tables / purge log) |
-| 0026+ | later | Assigned when a decision-gated chunk starts |
+| 0022 | P2 campaigns | `campaigns.source_campaign_id` (duplicate campaign) |
+| 0023 | P2 inbox | Reply classification columns on email_messages |
+| 0024 | A1 (accounts) | Company custom properties, backfill runs/items |
+| 0025 | A1 (lists) | Contact identifiers, duplicate pairs, merge logs, export logs, unique list names |
+| 0026 | A7 ✅ | Background import jobs + saved mappings |
+| 0027 | A2 ✅ | `campaigns.wait_business_days` (edit after launch) |
+| 0028 | D3 ✅ | tenant_id on child tables + backfill + tenant-first indexes |
+| 0029 | D5 ✅ | CHECK constraints on status columns |
+| 0030 | D7 ✅ | FULLTEXT ngram index for contact search |
+| 0031 | C-17 ✅ | Custom-property safety (`is_active`, `is_system`, `max_length`) |
+| 0032 | V1 prep ✅ | Server-side column defaults a fresh build lacked (`0032_server_defaults`) |
+| 0033 | D6 | Retention bookkeeping (archive tables / purge log) |
+| 0034+ | later | Assigned when a decision-gated chunk starts |
 
 ## Waves and chunks
 
@@ -61,31 +69,31 @@ current violations sit in a shrinking baseline.
 |---|---|---|---|
 | D1 ✅ | One collation (0017); `scripts/test.py` and compose use it. Done: `app/core/db_charset.py`, every table and connection declares it | migration, `app/db/*` charset settings | S |
 | D2 ✅ | DATETIME(6) everywhere (0018); `app/core/clock.py` `utcnow()` (naive UTC: the columns hold UTC without a zone) replaces 224 `datetime.utcnow()`; ruff DTZ003 bans new ones | all models' time columns, every `utcnow` call site | L (mechanical) |
-| D3 | `tenant_id` on email_messages, email_events, campaign_prospects, email_templates, email_sequences, email_template_versions, prospect_list_members, proposal_lines, campaign_state_events, … (0022) with backfill, tenant-first indexes, writers set it, per-table isolation tests | those models + their writers | L |
-| D4 | UUIDv7 default for new primary keys (`app/core/ids.py`), no data change | `app/core/ids.py`, model defaults | S |
-| D5 | CHECK constraints for email/campaign/deal/proposal/lead status machines (0023); shared status enums in `app/domain/status.py` | migration, `app/domain/status.py` | M |
-| D7 | Contact search on FULLTEXT ngram (0024) + 100k-contact seed + timing test | `contact_query_service` search, seed script | M |
-| D8 | MySQL TLS via `connect_args` (off until DEC-01), RDS CA bundle path | `app/core/database.py`, config, docs | S |
-| D6 ⏸ | Retention: archive/purge job for events, messages, activities, webhook deliveries (0025), default off (DEC-14) | new `app/services/retention.py`, jobs | M |
+| D3 ✅ | `tenant_id` on email_messages, email_events, campaign_prospects, email_templates, email_sequences, email_template_versions, prospect_list_members, proposal_lines, campaign_state_events, … (0028) with backfill, tenant-first indexes, writers set it, per-table isolation tests | those models + their writers | L |
+| D4 ✅ | UUIDv7 default for new primary keys (`app/core/ids.py`), no data change | `app/core/ids.py`, model defaults | S |
+| D5 ✅ | CHECK constraints for email/campaign/deal/proposal/lead status machines (0029); shared status enums in `app/domain/status.py` | migration, `app/domain/status.py` | M |
+| D7 ✅ | Contact search on FULLTEXT ngram (0030) + 100k-contact seed + timing test | `contact_query_service` search, seed script | M |
+| D8 ✅ | MySQL TLS via `connect_args` (off until DEC-01), RDS CA bundle path | `app/core/database.py`, config, docs | S |
+| D6 ⏸ | Retention: archive/purge job for events, messages, activities, webhook deliveries (0033), default off (DEC-14) | new `app/services/retention.py`, jobs | M |
 
 ### Wave 2 — layering pattern (one agent, then review before wave 3)
 
 | ID | Chunk | Size |
 |---|---|---|
-| L1 | **Contacts aggregate** as the reference: typed `Mapped[]` models for prospects/accounts link; `app/domain/contacts.py` (ContactFilter, sort, paging); `app/repositories/contacts.py`; services call the repository Protocol; routers thin; UUID path IDs; response models; unit tests per layer; remove the aggregate's baseline entries | L |
+| L1 ✅ | **Contacts aggregate** (done; pattern in [LAYER_PATTERN.md](LAYER_PATTERN.md)) as the reference: typed `Mapped[]` models for prospects/accounts link; `app/domain/contacts.py` (ContactFilter, sort, paging); `app/repositories/contacts.py`; services call the repository Protocol; routers thin; UUID path IDs; response models; unit tests per layer; remove the aggregate's baseline entries | L |
 
 ### Wave 3 — aggregates in parallel (same pattern as L1; disjoint files)
 
 | ID | Aggregate (routers / services) | Size |
 |---|---|---|
-| A1 | Accounts, lists, prospect lists, recycle bin | M |
+| A1 ✅ | Accounts, lists, prospect lists, recycle bin | M |
 | A2 | Campaigns, sequences, templates, wizard, subject variants | L |
-| A3 | Sales: leads, opportunities, proposals, quotes, sales admin, sales reports | L |
-| A4 | Inbox: conversations, IMAP sync, SES webhook, deliverability, sending inboxes | L |
-| A5 | Auth, users, invitations, platform admin, tenants | M |
-| A6 | Reports, custom reports, CRM KPIs, analytics | M |
+| A3 ✅ | Sales: leads, opportunities, proposals, quotes, sales admin, sales reports | L |
+| A4 ✅ | Inbox: conversations, IMAP sync, SES webhook, deliverability, sending inboxes | L |
+| A5 ✅ | Auth, users, invitations, platform admin, tenants | M |
+| A6 ✅ | Reports, custom reports, CRM KPIs, analytics | M |
 | A7 | Import, automation rules, webhooks, contact scoring, notifications | M |
-| A8 | Worker side: email scheduler, sender, warmup, send-now — split the complexity hotspots (93/80/55) | L |
+| A8 ✅ | Worker side: email scheduler, sender, warmup, send-now — split the complexity hotspots (93/80/55) | L |
 
 Each A-chunk also: parameter objects for long filter lists (C-6), UUID-typed IDs (C-7), response models (C-8),
 shrink complexity / local-import / import-linter baselines (C-1, C-4, C-5).
@@ -94,13 +102,13 @@ shrink complexity / local-import / import-linter baselines (C-1, C-4, C-5).
 
 | ID | Chunk | Size |
 |---|---|---|
-| S1 | Session framework: replace hand-rolled JWT on python-jose with PyJWT + Authlib (or fastapi-users), keep CSRF / idle / absolute / reuse policies on top; drop the python-jose audit accept | M |
-| S2 | Adapters behind Protocols (SES, IMAP/SMTP, OpenAI, storage, M365) + DI providers; tests use `dependency_overrides`, not module patching (C-9) | M |
-| F1 | Frontend read hook (react-query + AbortController, drops late answers); move the 13 `useEffect` fetchers (W-9) | M |
-| F2 | Errors shown with the request reference everywhere; remove console-only catches (W-10) | S |
-| F3a/F3b | Render tests for the 49 pages, two halves (W-11) | M + M |
-| F4 | Frontend session: http.js refresh/CSRF/idle on react-query + one auth context | S |
-| F5 | UI component framework: keep Tailwind 4; move dialogs, menus, selects, tabs, toasts onto Radix UI primitives (shadcn/ui style) and retire the hand-rolled `useDialog`; visual output unchanged | M |
+| S1 ✅ | Session framework (done: PyJWT behind `app/core/tokens.py`; Authlib not needed): replace hand-rolled JWT on python-jose with PyJWT + Authlib (or fastapi-users), keep CSRF / idle / absolute / reuse policies on top; drop the python-jose audit accept | M |
+| S2 ✅ | Adapters behind Protocols (SES, IMAP/SMTP, OpenAI, storage, M365) + DI providers; tests use `dependency_overrides`, not module patching (C-9) | M |
+| F1 ✅ | Frontend read hook (react-query + AbortController, drops late answers); move the 13 `useEffect` fetchers (W-9) | M |
+| F2 ✅ | Errors shown with the request reference everywhere; remove console-only catches (W-10) | S |
+| F3a/F3b ✅ | Render tests for the 49 pages, two halves (W-11) | M + M |
+| F4 ✅ | Frontend session: http.js refresh/CSRF/idle on react-query + one auth context | S |
+| F5 ✅ | UI component framework: keep Tailwind 4; move dialogs, menus, selects, tabs, toasts onto Radix UI primitives (shadcn/ui style) and retire the hand-rolled `useDialog`; visual output unchanged | M |
 
 ### Wave 5 — decision-gated ⏸
 

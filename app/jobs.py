@@ -14,16 +14,21 @@ HEARTBEATS holds, per loop, the last time (time.time()) the loop was alive; the 
 """
 import asyncio
 import logging
+import os
+import socket
 import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Dict, List, Optional
 
-from sqlalchemy import create_engine, pool, text
+from sqlalchemy import text
 
 import app.models  # noqa: F401  (resolve SQLAlchemy relationships before any query)
 from app.core.config import settings
+from app.core.job_locks import release, try_acquire
 from app.core.observability import record_job_heartbeat
 from app.core.database import SessionLocal
+from app.services import domain_health_jobs, duplicate_scan, import_service, reply_classifier, sending_alerts
+from app.services.alert_center_service import alert_center_service as sending_alert_center
 
 logger = logging.getLogger("app.jobs")
 
@@ -51,48 +56,8 @@ class Job:
 
 
 # ---------------------------------------------------------------------------
-# Named locks (leader election per iteration)
+# Named locks (leader election per iteration): app/core/job_locks.py
 # ---------------------------------------------------------------------------
-_lock_engine = None
-
-
-def _get_lock_engine():
-    # Own connections (not the app pool): a lock lives exactly as long as its connection
-    global _lock_engine
-    if _lock_engine is None:
-        _lock_engine = create_engine(settings.DATABASE_URL, poolclass=pool.NullPool,
-                                     connect_args={"connect_timeout": 10})
-    return _lock_engine
-
-
-def lock_name(job_name: str) -> str:
-    # Scoped to the database so environments sharing a MySQL server do not block each other
-    database = _get_lock_engine().url.database or ""
-    return f"vector:job:{job_name}:{database}"[:64]
-
-
-def try_acquire(job_name: str):
-    """Return an open connection holding the job's lock, or None if another process holds it."""
-    conn = _get_lock_engine().connect()
-    try:
-        got = conn.execute(text("SELECT GET_LOCK(:n, 0)"), {"n": lock_name(job_name)}).scalar()
-    except Exception:
-        conn.close()
-        raise
-    if got == 1:
-        return conn
-    conn.close()
-    return None
-
-
-def release(conn, job_name: str) -> None:
-    try:
-        conn.execute(text("SELECT RELEASE_LOCK(:n)"), {"n": lock_name(job_name)})
-    except Exception as e:
-        # Closing the connection below releases the lock anyway
-        logger.warning("Job %s: RELEASE_LOCK failed (%s)", job_name, type(e).__name__)
-    finally:
-        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +75,8 @@ async def scheduler_iteration() -> Optional[float]:
         return None  # paused through POST /scheduler/stop (shared by every process)
     stats = await email_scheduler.process_scheduled_emails() or {}
     # Come straight back while there is work, so pace is set by the inboxes (BR-DF-01)
-    return 2 if stats.get("processed") else None
+    # Straight back while there is work, else when the soonest paced mailbox is ready (A8)
+    return stats.get("next_run_in")
 
 
 async def imap_iteration() -> None:
@@ -243,6 +209,43 @@ async def webhooks_iteration() -> Optional[float]:
     return 2 if sent >= webhooks.BATCH_SIZE else None
 
 
+async def reply_classification_iteration() -> None:
+    # Reply labels (S-09): replies of the last 30 days still unlabelled (LLM error, crash between
+    # steps, stored before labelling existed); LLM spend stays under the daily budget (llm_budget)
+    stats = await _run_in_thread(reply_classifier.classify_pending)
+    if stats.get("pending"):
+        logger.info("Reply classification: %s", stats)
+
+
+async def sending_alerts_iteration() -> None:
+    # Sending-pipeline alerts (S-11): copy the SES breaker state for every process, compute each
+    # workspace's sending alerts and e-mail admins who asked for them (cooldown per alert)
+    result = await _run_in_thread(sending_alerts.run_job)
+    tenants = result.get("tenants_with_alerts") or []
+    if not tenants:
+        return
+    with SessionLocal() as db:
+        for tenant_id in tenants:
+            await sending_alert_center.dispatch_alert_emails_for_tenant(
+                db, tenant_id, only_types=sending_alerts.SENDING_ALERT_TYPES)
+
+
+async def duplicate_scan_iteration() -> None:
+    # Stored duplicate suggestions (C-08): rescan every workspace; dismissed pairs are never re-suggested
+    await _run_in_thread(duplicate_scan.run_scan_job, SessionLocal)
+
+
+async def imports_iteration() -> Optional[float]:
+    # Background CRM imports (C-03, F-16): queued jobs, and RUNNING ones whose heartbeat went stale
+    # (the process running them died), continue from their checkpoint in chunks; each pass works for
+    # at most import_service.WORKER_BUDGET_SECONDS and comes straight back while work is left
+    worker = f"{socket.gethostname()}:{os.getpid()}"
+    stats = await _run_in_thread(import_service.run_background, SessionLocal, worker)
+    if stats.get("claimed"):
+        logger.info("Imports: %s", stats)
+    return 2 if stats.get("pending") else None
+
+
 def all_jobs() -> List[Job]:
     return [
         Job("scheduler", 30, scheduler_iteration),
@@ -255,6 +258,11 @@ def all_jobs() -> List[Job]:
         Job("sales_jobs", 60, sales_jobs_iteration),
         Job("contact_scoring", 300, contact_scoring_iteration),
         Job("webhooks", 15, webhooks_iteration),
+        Job("reply_classification", 300, reply_classification_iteration),
+        Job("sending_alerts", 60, sending_alerts_iteration),
+        Job("imports", 5, imports_iteration),
+        Job("duplicate_scan", 6 * 3600, duplicate_scan_iteration),
+        Job("domain_health_snapshots", 3600, domain_health_jobs.snapshot_iteration),
     ]
 
 

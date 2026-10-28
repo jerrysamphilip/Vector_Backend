@@ -1,6 +1,6 @@
 """IMAP sync never holds a DB transaction across external calls (T-1), in-process against MySQL.
 
-imaplib is replaced by an in-memory mailbox and the OpenAI reply classifier by a stub; both assert
+The mail connector (``providers.override(mail_connector=...)``) hands out an in-memory mailbox and the OpenAI reply classifier by a stub; both assert
 that the sync's session has no open transaction (and no pooled connection is checked out) while
 they run. Each message is committed on its own together with the UID position, so a failure on
 message N keeps messages 1..N-1 and the next sync resumes from there.
@@ -128,12 +128,27 @@ def _messages(env, thread, n, prefix="Re: Hello"):
                         f"{prefix} {uid}") for uid in range(1, n + 1)}
 
 
+class FakeConnector:
+    """The mail connector (app/adapters/mail.py) handing out the in-memory mailbox."""
+
+    def __init__(self, box):
+        self.box = box
+        self.opened: list = []
+
+    def open_imap(self, host, port, *, timeout=None, starttls=None):
+        self.opened.append((host, port, timeout))
+        return self.box
+
+    def open_smtp(self, host, port, *, use_ssl, timeout):
+        raise AssertionError("the IMAP sync never opens SMTP")
+
+
 def _run_sync(monkeypatch, env, box_factory, classifier=None):
+    from app.adapters import providers
     from app.models.sending_inbox import SendingInbox
     from app.services import imap_sync_service as mod
     with SessionLocal() as db:
         box = box_factory(db)
-        monkeypatch.setattr(mod, "open_imap", lambda host, port, timeout=None: box)
         calls: list = []
 
         def classify(subject, body):
@@ -143,7 +158,10 @@ def _run_sync(monkeypatch, env, box_factory, classifier=None):
         monkeypatch.setattr(mod, "classify_reply_intent", classify)
         svc = mod.IMAPSyncService(db)
         inbox = db.query(SendingInbox).filter(SendingInbox.inbox_id == env["inbox_id"]).one()
-        ok = svc.sync_inbox(inbox, days_back=7)
+        connector = FakeConnector(box)
+        with providers.override(mail_connector=connector):
+            ok = svc.sync_inbox(inbox, days_back=7)
+        assert connector.opened == [("127.0.0.1", 993, mod.IMAPSyncService.IMAP_TIMEOUT_SECONDS)]
         return ok, box, calls
 
 
@@ -219,3 +237,32 @@ def test_duplicate_messages_are_stored_once(monkeypatch, mailbox_env, thread):
     assert ok is True and box.fetched == [1, 2]
     assert calls == []  # deduplicated before any classification
     assert _stored(thread) == 2
+
+
+def test_reply_from_retired_address_goes_to_the_contact(client, monkeypatch, mailbox_env, thread):
+    """C-11: the contact changed address; a reply from the old (retired) one is still theirs."""
+    h = mailbox_env["tenant"]["headers"]
+    r = client.patch(f"/contacts/{thread['prospect_id']}", headers=h,
+                     json={"email": f"moved-{uuid.uuid4().hex[:8]}@client{RUN}.example.com"})
+    assert r.status_code == 200, r.text
+    msgs = _messages(mailbox_env, thread, 1)  # From: the old address
+    ok, box, _ = _run_sync(monkeypatch, mailbox_env, lambda db: FakeMailbox(msgs, db))
+    assert ok is True and box.fetched == [1]
+    assert _stored(thread) == 1
+    assert sql("SELECT COUNT(*) FROM email_events WHERE message_id = :m AND event_type = 4", m=thread["out_id"]) == 1
+
+
+def test_reply_from_merged_address_goes_to_the_surviving_contact(client, monkeypatch, mailbox_env, thread):
+    """C-11: a duplicate merged into the contact; its address now resolves to the survivor."""
+    h = mailbox_env["tenant"]["headers"]
+    dup_email = f"dup-{uuid.uuid4().hex[:8]}@client{RUN}.example.com"
+    r = client.post("/contacts", headers=h, json={"email": dup_email, "first_name": "Ima"})
+    assert r.status_code == 201, r.text
+    dup_id = r.json()["prospect_id"]
+    r = client.post("/contacts/merge", headers=h, json={"primary_id": thread["prospect_id"], "duplicate_ids": [dup_id]})
+    assert r.status_code == 200, r.text
+    msgs = {1: _reply(1, dup_email, mailbox_env["inbox_email"], thread["provider_id"], "Re: Hello 1")}
+    ok, box, _ = _run_sync(monkeypatch, mailbox_env, lambda db: FakeMailbox(msgs, db))
+    assert ok is True and box.fetched == [1]
+    assert _stored(thread) == 1
+    assert sql("SELECT COUNT(*) FROM email_messages WHERE prospect_id = :p", p=dup_id) == 0

@@ -2,37 +2,39 @@
 Daily warmup summary metrics per inbox.
 """
 
-import uuid
+from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import Column, String, Integer, Float, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy import String, Integer, Float, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.types import NOW6, UtcDateTime
+from app.core.ids import new_id
 
 
 class InboxWarmupMetric(Base):
     __tablename__ = "inbox_warmup_metrics"
 
-    metric_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
-    inbox_id = Column(String(36), ForeignKey("sending_inboxes.inbox_id"), nullable=False)
-    metric_date = Column(String(10), nullable=False)  # YYYY-MM-DD
+    metric_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id, nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=False)
+    inbox_id: Mapped[str] = mapped_column(String(36), ForeignKey("sending_inboxes.inbox_id"), nullable=False)
+    metric_date: Mapped[str] = mapped_column(String(10), nullable=False)  # YYYY-MM-DD
 
-    planned_sends = Column(Integer, default=0)
-    actual_sends = Column(Integer, default=0)
-    received_count = Column(Integer, default=0)
-    open_count = Column(Integer, default=0)
-    reply_count = Column(Integer, default=0)
-    saved_from_spam_count = Column(Integer, default=0)
-    bounce_count = Column(Integer, default=0)
-    complaint_count = Column(Integer, default=0)
-    reputation_score = Column(Float, default=65.0)
-    pool_tier = Column(String(50), default="FOUNDATION")
-    issue_code = Column(String(100), nullable=True)
+    planned_sends: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    actual_sends: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    received_count: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    open_count: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    reply_count: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    saved_from_spam_count: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    bounce_count: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    complaint_count: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    reputation_score: Mapped[Optional[float]] = mapped_column(Float, default=65.0, nullable=True)
+    pool_tier: Mapped[Optional[str]] = mapped_column(String(50), default="FOUNDATION", nullable=True)
+    issue_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
-    created_at = Column(UtcDateTime, server_default=NOW6)
-    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, onupdate=NOW6, nullable=True)
 
     inbox = relationship("SendingInbox", back_populates="warmup_metrics")
 

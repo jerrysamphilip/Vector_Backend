@@ -47,12 +47,13 @@ def _contact(client, h, local, **kw):
 def _positive_reply(prospect_id, when: datetime):
     """An outbound email to the contact and a POSITIVE_REPLY event on it (what IMAP sync writes)."""
     mid = str(uuid.uuid4())
-    sql("INSERT INTO email_messages (message_id, prospect_id, direction, status, to_email, subject, sent_at) "
-        "VALUES (:m, :p, 'OUTBOUND', 'SENT', 'x@example.com', 'Hi', :t)", m=mid, p=prospect_id, t=when - timedelta(days=1))
-    sql("INSERT INTO email_events (event_id, message_id, event_type, event_time) VALUES (:e, :m, 4, :t)",
-        e=str(uuid.uuid4()), m=mid, t=when)
-    sql("INSERT INTO email_events (event_id, message_id, event_type, event_time) VALUES (:e, :m, 8, :t)",
-        e=str(uuid.uuid4()), m=mid, t=when)
+    sql("INSERT INTO email_messages (message_id, prospect_id, tenant_id, direction, status, to_email, subject, "
+        "sent_at) SELECT :m, prospect_id, tenant_id, 'OUTBOUND', 'SENT', 'x@example.com', 'Hi', :t FROM prospects "
+        "WHERE prospect_id = :p", m=mid, p=prospect_id, t=when - timedelta(days=1))
+    for event_type in (4, 8):
+        sql("INSERT INTO email_events (event_id, message_id, tenant_id, event_type, event_time) "
+            "SELECT :e, message_id, tenant_id, :k, :t FROM email_messages WHERE message_id = :m",
+            e=str(uuid.uuid4()), m=mid, k=event_type, t=when)
     return mid
 
 
@@ -182,9 +183,9 @@ def test_reply_to_lead_conversion(client, ws):
     _positive_reply(p5, utcnow() - timedelta(days=200))   # outside the period
     # The reply's inbound message, so the one-click flow has something to turn into a lead
     inbound = str(uuid.uuid4())
-    sql("INSERT INTO email_messages (message_id, prospect_id, direction, status, to_email, subject, body_text, sent_at) "
-        "VALUES (:m, :p, 'INBOUND', 'RECEIVED', 'me@example.com', 'Re: Hi', 'Yes, lets talk', :t)",
-        m=inbound, p=p1, t=recent)
+    sql("INSERT INTO email_messages (message_id, prospect_id, tenant_id, direction, status, to_email, subject, "
+        "body_text, sent_at) SELECT :m, prospect_id, tenant_id, 'INBOUND', 'RECEIVED', 'me@example.com', 'Re: Hi', "
+        "'Yes, lets talk', :t FROM prospects WHERE prospect_id = :p", m=inbound, p=p1, t=recent)
     r = client.post("/leads/from-message", headers=h, json={"message_id": inbound})
     assert r.status_code == 201, r.text
     assert r.json()["source"] == "Campaign reply"
