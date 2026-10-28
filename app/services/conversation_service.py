@@ -8,7 +8,7 @@ may see (owner / team scope, BR-SH-02, same rule as the contacts list).
 """
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from app.core.clock import utcnow
 from app.domain.inbox import ConversationQuery, OwnerScope
@@ -69,6 +69,14 @@ def build_activity(message: EmailMessage, events: Iterable[Tuple[int, Optional[d
     return steps
 
 
+def owner_scope_for(session: Any, user: User) -> OwnerScope:
+    """Contacts whose conversations the user may see (everyone's, or their own / team's)."""
+    ids = visible_user_ids(session, user)
+    if ids is None:
+        return OwnerScope()
+    return OwnerScope(frozenset(ids), include_unowned=can_manage_contacts(user))
+
+
 def _list_item(row: ConversationRow, last: Optional[LastMessage], campaign: Optional[Tuple[str, str]],
                label: Optional[Tuple[Optional[str], bool]]) -> ConversationListItem:
     return ConversationListItem(
@@ -93,19 +101,20 @@ def _list_item(row: ConversationRow, last: Optional[LastMessage], campaign: Opti
 
 
 class ConversationService:
-    def __init__(self, db: Any) -> None:
-        self._db = db
-        self._uow = InboxUnitOfWork.for_session(db)
+    """``ConversationService.for_session(db)`` for a request; a fake unit of work in unit tests.
+    ``scope_of(session, user)`` resolves the owner / team scope (contacts' rule, BR-SH-02)."""
 
-    def owner_scope(self, user: User) -> OwnerScope:
-        ids = visible_user_ids(self._db, user)
-        if ids is None:
-            return OwnerScope()
-        return OwnerScope(frozenset(ids), include_unowned=can_manage_contacts(user))
+    def __init__(self, uow: Any, *, scope_of: Optional[Callable[[Any, User], OwnerScope]] = None) -> None:
+        self._uow = uow
+        self._scope_of = scope_of or owner_scope_for
+
+    @classmethod
+    def for_session(cls, db: Any) -> "ConversationService":
+        return cls(InboxUnitOfWork.for_session(db))
 
     def list_conversations(self, user: User, query: ConversationQuery) -> ConversationListResponse:
-        scope = self.owner_scope(user)
         with self._uow as uow:
+            scope = self._scope_of(uow.session, user)
             repo = uow.conversations
             rows, total = repo.page(user.tenant_id, query, scope)
             ids = [r.id for r in rows]
@@ -118,16 +127,16 @@ class ConversationService:
             has_more=query.paging.offset + len(items) < total,
         )
 
-    def _visible(self, user: User, conversation: Conversation) -> bool:
+    def _visible(self, session: Any, user: User, conversation: Conversation) -> bool:
         prospect = conversation.prospect
-        return prospect is not None and self.owner_scope(user).allows(prospect.owner_id)
+        return prospect is not None and self._scope_of(session, user).allows(prospect.owner_id)
 
     def get_conversation_thread(self, user: User, conversation_id: str) -> Optional[ConversationDetailResponse]:
         """The thread with each email's activity; marks it read. None when missing or not visible."""
         with self._uow as uow:
             repo = uow.conversations
             conversation = repo.get(user.tenant_id, conversation_id)
-            if conversation is None or not self._visible(user, conversation):
+            if conversation is None or not self._visible(uow.session, user, conversation):
                 return None
             messages = repo.thread_messages(conversation.id)
             outbound_ids = [m.message_id for m in messages if (m.direction or "OUTBOUND") == "OUTBOUND"]
@@ -161,7 +170,7 @@ class ConversationService:
         with self._uow as uow:
             repo = uow.conversations
             conv = repo.get(user.tenant_id, conversation_id)
-            if conv is None or not self._visible(user, conv):
+            if conv is None or not self._visible(uow.session, user, conv):
                 return None
             now = utcnow()
             new_msg = repo.add_message(EmailMessage(

@@ -30,7 +30,8 @@ import re
 from datetime import timedelta
 from typing import Any, Callable, Mapping, Optional, Protocol, Tuple, Union
 
-from app.adapters.openai_chat import ChatClient, chat_client
+from app.adapters import providers
+from app.adapters.openai_chat import ChatClient
 from app.core.clock import utcnow
 from app.core.database import SessionLocal
 from app.domain import inbox_reply_rules as rules
@@ -100,7 +101,7 @@ def llm_classify(subject: str, body: str, *, client: Optional[ChatClient] = None
                  budget: Optional[Budget] = None) -> Optional[ReplyClassification]:
     """One budgeted LLM call. None when no key is configured or the daily budget is spent;
     ReplyLLMError when the call fails or the answer is unusable."""
-    client = client if client is not None else chat_client()
+    client = client if client is not None else providers.chat_client()
     spend: Any = budget if budget is not None else llm_budget
     if client is None or not (body or "").strip():
         return None

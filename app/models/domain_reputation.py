@@ -4,8 +4,10 @@
 Models for tracking Sending Domain Health, Reputation, and Deliverability Alerts.
 """
 
-from sqlalchemy import Column, String, Integer, Boolean, Float, Text, ForeignKey, JSON, Index, UniqueConstraint
-from sqlalchemy.orm import relationship
+from datetime import datetime
+from typing import Any, Optional
+from sqlalchemy import String, Integer, Boolean, Float, Text, ForeignKey, JSON, Index, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 
 from app.models.base import Base
@@ -26,37 +28,37 @@ class SendingDomain(Base):
         Index("ix_sending_domains_domain_name", "domain_name"),
     )
 
-    domain_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=True)
-    domain_name = Column(String(255), nullable=False)
+    domain_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), nullable=False)
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=True)
+    domain_name: Mapped[str] = mapped_column(String(255), nullable=False)
     
     # Authentication Status
-    spf_status = Column(String(50), default="UNKNOWN")  # PASS, FAIL, UNKNOWN
-    dkim_status = Column(String(50), default="UNKNOWN")
-    dmarc_status = Column(String(50), default="UNKNOWN")
+    spf_status: Mapped[Optional[str]] = mapped_column(String(50), default="UNKNOWN", nullable=True)  # PASS, FAIL, UNKNOWN
+    dkim_status: Mapped[Optional[str]] = mapped_column(String(50), default="UNKNOWN", nullable=True)
+    dmarc_status: Mapped[Optional[str]] = mapped_column(String(50), default="UNKNOWN", nullable=True)
     
     # Reputation Metrics
-    current_reputation_score = Column(Integer, default=100) # 0 to 100
-    safety_threshold = Column(Integer, default=70) # Pause campaigns if score drops below this
+    current_reputation_score: Mapped[Optional[int]] = mapped_column(Integer, default=100, nullable=True) # 0 to 100
+    safety_threshold: Mapped[Optional[int]] = mapped_column(Integer, default=70, nullable=True) # Pause campaigns if score drops below this
     
     # Deliverability Status
-    is_blacklisted = Column(Boolean, default=False)
-    warmup_status = Column(String(50), default="COLD") # COLD, WARMING, ACTIVE, PAUSED
+    is_blacklisted: Mapped[Optional[bool]] = mapped_column(Boolean, default=False, nullable=True)
+    warmup_status: Mapped[Optional[str]] = mapped_column(String(50), default="COLD", nullable=True) # COLD, WARMING, ACTIVE, PAUSED
     
     # AWS SES v2 Specific Metrics
-    ses_reputation_status = Column(String(50), default="UNKNOWN") # HEALTHY, UNHEALTHY, PENDING, UNKNOWN
-    sesv2_enabled = Column(Boolean, default=False) # Virtual Deliverability Manager status
-    account_reputation_score = Column(Float, default=1.0) # 0.0 to 1.0 (AWS Reputation)
+    ses_reputation_status: Mapped[Optional[str]] = mapped_column(String(50), default="UNKNOWN", nullable=True) # HEALTHY, UNHEALTHY, PENDING, UNKNOWN
+    sesv2_enabled: Mapped[Optional[bool]] = mapped_column(Boolean, default=False, nullable=True) # Virtual Deliverability Manager status
+    account_reputation_score: Mapped[Optional[float]] = mapped_column(Float, default=1.0, nullable=True) # 0.0 to 1.0 (AWS Reputation)
 
     # Rolling 24h health, recomputed hourly and on every bounce/complaint (BR-DF-07)
-    sends_24h = Column(Integer, default=0)
-    bounce_rate_24h = Column(Float, default=0.0)
-    complaint_rate_24h = Column(Float, default=0.0)
-    health_checked_at = Column(UtcDateTime, nullable=True)
+    sends_24h: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    bounce_rate_24h: Mapped[Optional[float]] = mapped_column(Float, default=0.0, nullable=True)
+    complaint_rate_24h: Mapped[Optional[float]] = mapped_column(Float, default=0.0, nullable=True)
+    health_checked_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
     
     # Metadata
-    created_at = Column(UtcDateTime, server_default=NOW6)
-    updated_at = Column(UtcDateTime, server_default=NOW6, onupdate=NOW6)
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, onupdate=NOW6, nullable=True)
 
     # Relationships
     snapshots = relationship("DomainHealthSnapshot", back_populates="domain", cascade="all, delete-orphan")
@@ -72,22 +74,22 @@ class DomainHealthSnapshot(Base):
     """
     __tablename__ = "domain_health_snapshots"
 
-    snapshot_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    domain_id = Column(String(36), ForeignKey("sending_domains.domain_id", ondelete="CASCADE"),
+    snapshot_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), nullable=False)
+    domain_id: Mapped[str] = mapped_column(String(36), ForeignKey("sending_domains.domain_id", ondelete="CASCADE"),
                        nullable=False, index=True)
-    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=True, index=True)
-    domain_name = Column(String(255), nullable=False)  # denormalised for display
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=True, index=True)
+    domain_name: Mapped[str] = mapped_column(String(255), nullable=False)  # denormalised for display
     
-    snapshot_at = Column(UtcDateTime, server_default=NOW6)
+    snapshot_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
     
     # Key Metrics at time of snapshot
-    reputation_score = Column(Integer, nullable=False)
-    bounce_rate_24h = Column(Float, default=0.0)
-    complaint_rate_24h = Column(Float, default=0.0)
-    open_rate_24h = Column(Float, default=0.0)
+    reputation_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    bounce_rate_24h: Mapped[Optional[float]] = mapped_column(Float, default=0.0, nullable=True)
+    complaint_rate_24h: Mapped[Optional[float]] = mapped_column(Float, default=0.0, nullable=True)
+    open_rate_24h: Mapped[Optional[float]] = mapped_column(Float, default=0.0, nullable=True)
     
     # Detailed raw data
-    raw_metrics = Column(JSON, nullable=True) # {"sent": 100, "bounced": 2, ...}
+    raw_metrics: Mapped[Any] = mapped_column(JSON, nullable=True) # {"sent": 100, "bounced": 2, ...}
 
     # Relationships
     domain = relationship("SendingDomain", back_populates="snapshots")
@@ -102,21 +104,21 @@ class ReputationAlert(Base):
     """
     __tablename__ = "reputation_alerts"
 
-    alert_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    domain_id = Column(String(36), ForeignKey("sending_domains.domain_id", ondelete="CASCADE"),
+    alert_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), nullable=False)
+    domain_id: Mapped[str] = mapped_column(String(36), ForeignKey("sending_domains.domain_id", ondelete="CASCADE"),
                        nullable=False, index=True)
-    tenant_id = Column(String(36), ForeignKey("tenants.tenant_id"), nullable=True, index=True)
-    domain_name = Column(String(255), nullable=False)  # denormalised for display
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.tenant_id"), nullable=True, index=True)
+    domain_name: Mapped[str] = mapped_column(String(255), nullable=False)  # denormalised for display
     
-    alert_type = Column(String(50), nullable=False) # BOUNCE_SPIKE, REPUTATION_DROP, BLACKLIST
-    severity = Column(String(20), default="WARNING") # INFO, WARNING, CRITICAL
+    alert_type: Mapped[str] = mapped_column(String(50), nullable=False) # BOUNCE_SPIKE, REPUTATION_DROP, BLACKLIST
+    severity: Mapped[Optional[str]] = mapped_column(String(20), default="WARNING", nullable=True) # INFO, WARNING, CRITICAL
     
-    details = Column(Text, nullable=True)
-    is_resolved = Column(Boolean, default=False)
-    resolution_notes = Column(Text, nullable=True)
+    details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_resolved: Mapped[Optional[bool]] = mapped_column(Boolean, default=False, nullable=True)
+    resolution_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
-    created_at = Column(UtcDateTime, server_default=NOW6)
-    resolved_at = Column(UtcDateTime, nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
 
     # Relationships
     domain = relationship("SendingDomain", back_populates="alerts")
