@@ -8,6 +8,7 @@ import re
 import time
 import uuid
 from datetime import date, timedelta
+from system_tests.common import CASES
 
 from .flows import (CSV_HEAD, add_missing_step_templates, captured_for, contact_by_email, create_campaign, detach_imap,
                     dt, enroll, generate_content, launch, mk_inbox, msgs, sequences, travel_due, upload_list, utc_now,
@@ -925,6 +926,14 @@ def phase_followups(R, C):
     gaps = [(b - a).total_seconds() for ts in lanes.values() for a, b in zip(sorted(ts), sorted(ts)[1:])]
     R.check("E2E-J1-102", "Resume does not burst: overdue step-3 messages are re-spread from now, one per slot per mailbox lane (>= campaign min gap of 120 s apart)",
             s == 200 and len(pend3) >= 7 and gaps and min(gaps) >= 119, f"resume={s} n={len(pend3)} lanes={ {k[:6]: len(v) for k, v in lanes.items()} } min_gap_in_lane={min(gaps) if gaps else None}")
+    _step3_after_resume(R, cid, pend3, lanes)
+
+
+def _step3_after_resume(R, cid, pend3, lanes):
+    """J1-103: every re-spread step-3 email goes out once. A tier that leaves J1-103 out skips this ~10 min wait
+    (one send per 120 s per mailbox lane); nothing later in J1 depends on step 3."""
+    if not CASES.wants("E2E-J1-103"):
+        return
     ok = wait_until(lambda: len(msgs(cid, 3, "SENT")) >= len(pend3) - 1, timeout=int(max(len(v) for v in lanes.values()) * 125 + 300), interval=8)
     sent3 = msgs(cid, 3, "SENT")
     ts = sorted(dt(m["sent_at"]) for m in sent3)

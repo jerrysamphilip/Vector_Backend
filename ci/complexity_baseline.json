@@ -42,7 +42,7 @@
     "system_tests/contacts/run_contacts.py::_#48": 22,
     "system_tests/e2e/j1_outreach_to_revenue.py::phase_campaign": 53,
     "system_tests/e2e/j1_outreach_to_revenue.py::phase_events": 49,
-    "system_tests/e2e/j1_outreach_to_revenue.py::phase_followups": 59,
+    "system_tests/e2e/j1_outreach_to_revenue.py::phase_followups": 53,
     "system_tests/e2e/j1_outreach_to_revenue.py::phase_gdpr": 21,
     "system_tests/e2e/j1_outreach_to_revenue.py::phase_replies": 26,
     "system_tests/e2e/j1_outreach_to_revenue.py::phase_reports": 56,
