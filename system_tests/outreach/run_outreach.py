@@ -658,10 +658,9 @@ def t_pause_resume():
 # ═════════════════════════ BR-DF-08 unsubscribe ═════════════════════════
 
 @safe("OUT-081", "Unsubscribe stops every campaign in the workspace")
-def t_unsubscribe():
-    p = mk_contact(A, em("uns-main"))
-    # A contact still mid-sequence in an ACTIVE campaign is refused by another one (active_elsewhere), so
-    # enrol it in both while they are drafts, then launch both: the contact is live in two campaigns.
+def _live_in_two_campaigns(p):
+    """A contact still mid-sequence in an ACTIVE campaign is refused by another one (active_elsewhere), so
+    enrol it in both while they are drafts, then launch both: the contact is live in two campaigns."""
     c1 = mk_campaign(A, "Unsub one", [IN1], waits=(0, 2))
     c2 = mk_campaign(A, "Unsub two", [IN2], waits=(0,))
     for c in (c1, c2):
@@ -671,6 +670,12 @@ def t_unsubscribe():
     for c in (c1, c2):
         s, b = launch(A, c)
         assert s == 200, ("launch", s, b)
+    return c1, c2
+
+
+def t_unsubscribe():
+    p = mk_contact(A, em("uns-main"))
+    c1, c2 = _live_in_two_campaigns(p)
     m1 = msg(c1, p)[0]
     mark_sent(m1)
     s, page = req("GET", f"/tracking/unsubscribe/{m1}")
