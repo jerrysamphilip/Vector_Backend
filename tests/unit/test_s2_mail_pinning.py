@@ -20,16 +20,41 @@ from app.core.config import settings
 PUBLIC, PRIVATE = "93.184.216.34", "10.0.0.7"
 
 
+class _Stream(io.RawIOBase):
+    """A read stream the fake server can append to after the client sends a command."""
+
+    def __init__(self, data=b""):
+        self._buf, self._pos = bytearray(data), 0
+
+    def readable(self):
+        return True
+
+    def append(self, data):
+        self._buf += data
+
+    def readinto(self, b):
+        chunk = self._buf[self._pos:self._pos + len(b)]
+        b[:len(chunk)] = chunk
+        self._pos += len(chunk)
+        return len(chunk)
+
+
 class FakeSocket:
     def __init__(self, address, script=b""):
         self.address, self.sent = address, []
-        self._file = io.BytesIO(script)
+        self._stream = _Stream(script)
+        self._file = io.BufferedReader(self._stream)
 
     def makefile(self, mode="rb"):
         return self._file
 
     def sendall(self, data):
         self.sent.append(data)
+        # Python 3.12's imaplib always asks for CAPABILITY after the greeting (3.13 reads it from the
+        # greeting): answer it like a server so the connection completes on both versions
+        tag, _, command = data.partition(b" ")
+        if command.strip() == b"CAPABILITY":
+            self._stream.append(b"* CAPABILITY IMAP4rev1 AUTH=PLAIN\r\n" + tag + b" OK CAPABILITY completed\r\n")
 
     def close(self):
         pass
