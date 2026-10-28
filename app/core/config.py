@@ -190,6 +190,10 @@ class Settings(BaseSettings):
     SSO_LINK_ALLOWED_DOMAINS: str = ""
     # Number of reverse proxies in front of the API that append to X-Forwarded-For (rate limiting)
     TRUSTED_PROXY_HOPS: int = 1
+    # Test stacks only (app/core/rate_limit.py): multiplies the per-client-IP limits (login attempts,
+    # sign-ups, reset/magic-link and two-factor requests, the global ceiling) so the live suites can share
+    # one IP. Account lockouts (per email / per email+IP) are unchanged. Refused in production.
+    RATE_LIMIT_TEST_MULTIPLIER: int = 1
     BASE_URL: str = "https://outreach360.neutrinoaistudio.com"
 
     # Unsubscribe Suppression
@@ -233,6 +237,9 @@ class Settings(BaseSettings):
     # Test/staging aid: let the scheduler send on weekends and holidays (the send window HOURS still apply).
     # Ignored when ENVIRONMENT=production.
     SEND_ON_ANY_DAY: bool = False
+    # Scheduler retry backoff unit: a temporarily failed send is retried after unit * 2^attempt seconds
+    # (default: 2, 4, 8 minutes). Test stacks shorten it; production refuses a value below the default.
+    SEND_RETRY_BASE_SECONDS: int = 60
     WORKER_HEALTH_PORT: int = 8002
 
     # Observability (app/core/observability.py). LOG_FORMAT=json is read from the environment.
@@ -438,6 +445,25 @@ settings.JWT_SECRET_KEY = resolve_jwt_secret(settings.JWT_SECRET_KEY)
 # Mailbox passwords must never cross an unverified TLS connection in production
 if not settings.MAIL_TLS_VERIFY and settings.is_production:
     raise RuntimeError("MAIL_TLS_VERIFY=false is for local development only and is refused in production.")
+
+
+def refused_test_settings(s: "Settings") -> List[str]:
+    """Test-stack switches that production refuses (start-up fails with these messages)."""
+    if not s.is_production:
+        return []
+    errors = []
+    if (s.RATE_LIMIT_TEST_MULTIPLIER or 1) != 1:
+        errors.append("RATE_LIMIT_TEST_MULTIPLIER relaxes sign-in and sign-up rate limits; it is for test stacks "
+                      "only and is refused in production (unset it or set it to 1).")
+    if (s.SEND_RETRY_BASE_SECONDS or 0) < 60:
+        errors.append("SEND_RETRY_BASE_SECONDS below 60 retries failed sends within seconds; it is for test stacks "
+                      "only and is refused in production (unset it or use 60 or more).")
+    return errors
+
+
+_refused_test_settings = refused_test_settings(settings)
+if _refused_test_settings:
+    raise RuntimeError(" ".join(_refused_test_settings))
 
 
 

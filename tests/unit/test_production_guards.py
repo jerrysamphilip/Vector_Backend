@@ -58,6 +58,26 @@ def test_mail_tls_verify_false_is_refused():
     _refused(_run("import app.core.config", {**GOOD_PROD, "MAIL_TLS_VERIFY": "false"}), "MAIL_TLS_VERIFY")
 
 
+@pytest.mark.parametrize("key,value", [("RATE_LIMIT_TEST_MULTIPLIER", "100"), ("RATE_LIMIT_TEST_MULTIPLIER", "2"),
+                                       ("SEND_RETRY_BASE_SECONDS", "1"), ("SEND_RETRY_BASE_SECONDS", "59")])
+def test_test_stack_speed_ups_are_refused_in_production(key, value):
+    _refused(_run("import app.core.config", {**GOOD_PROD, key: value}), key)
+
+
+@pytest.mark.parametrize("key,value", [("RATE_LIMIT_TEST_MULTIPLIER", "1"), ("SEND_RETRY_BASE_SECONDS", "60"),
+                                       ("SEND_RETRY_BASE_SECONDS", "120")])
+def test_production_accepts_the_default_test_stack_values(key, value):
+    proc = _run("import app.core.config", {**GOOD_PROD, key: value})
+    assert proc.returncode == 0, proc.stderr[-2000:]
+
+
+def test_test_stack_speed_ups_are_accepted_outside_production():
+    env = {**GOOD_PROD, "ENVIRONMENT": "development", "RATE_LIMIT_TEST_MULTIPLIER": "100", "SEND_RETRY_BASE_SECONDS": "1"}
+    proc = _run("from app.core.config import settings as s; print(s.RATE_LIMIT_TEST_MULTIPLIER, s.SEND_RETRY_BASE_SECONDS)", env)
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert proc.stdout.strip().endswith("100 1")
+
+
 @pytest.mark.parametrize("missing", [None, ""])
 def test_missing_environment_when_deployed_is_refused(missing):
     env = {**GOOD_PROD, "KUBERNETES_SERVICE_HOST": "10.0.0.1"}

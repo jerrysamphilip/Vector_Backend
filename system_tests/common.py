@@ -18,6 +18,40 @@ WEB = os.environ.get("WEB_URL", "http://localhost:8190/vector")
 MYSQL_CONTAINER = os.environ.get("MYSQL_CONTAINER", "vector-mysql-1")
 DB = os.environ.get("MYSQL_DATABASE", "outreach_ai")
 
+
+
+def _load_tierlib():
+    """scripts/tierlib.py (pattern matching shared with the runner), loaded by path: suites run from their own folder."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts", "tierlib.py")
+    spec = importlib.util.spec_from_file_location("tierlib", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class CaseFilter:
+    """The case selection of a test tier (docs/TESTING.md, "Tiers"): TEST_CASES holds comma-separated case-id
+    patterns (fnmatch). Inactive (everything wanted) when the variable is empty. Results.record() drops unwanted
+    rows; suites call wants_prefix() to skip a whole phase / journey whose ids share a prefix."""
+
+    def __init__(self, spec=None):
+        self.lib = _load_tierlib()
+        self.patterns = self.lib.patterns_from(os.environ.get("TEST_CASES", "") if spec is None else spec)
+
+    @property
+    def active(self):
+        return bool(self.patterns)
+
+    def wants(self, case_id):
+        return not self.patterns or self.lib.matches(case_id, self.patterns)
+
+    def wants_prefix(self, prefix):
+        return not self.patterns or any(self.lib.could_match_prefix(p, prefix) for p in self.patterns)
+
+
+CASES = CaseFilter()
+
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
@@ -143,6 +177,8 @@ class Results:
     def record(self, case_id: str, title: str, passed, detail: str = "", category: str = None):
         """passed: True | False | None (blocked/not implemented). category for failures:
         'defect' (product bug), 'not-implemented' (BRD requirement missing), 'test-issue'."""
+        if not CASES.wants(case_id):
+            return  # not selected by this run's tier (TEST_CASES)
         status = "PASS" if passed is True else ("BLOCKED" if passed is None else "FAIL")
         self.rows.append({"id": case_id, "title": title, "status": status,
                           "category": category or ("" if passed else "defect"), "detail": str(detail)[:500]})
@@ -152,12 +188,26 @@ class Results:
         self.record(case_id, title, bool(cond), "" if cond else detail, category)
         return bool(cond)
 
+    def carried_over(self):
+        """With a tier filter active: the previous results.json rows this run did not select, marked
+        carried_over, so results.json stays the suite's full case list (the runner reports only fresh rows)."""
+        if not CASES.active:
+            return []
+        try:
+            with open(os.path.join(self.out_dir, "results.json")) as f:
+                prev = json.load(f).get("cases") or []
+        except (OSError, ValueError):
+            return []
+        fresh = {r["id"] for r in self.rows}
+        return [{**r, "carried_over": True} for r in prev if r.get("id") not in fresh and not CASES.wants(r.get("id", ""))]
+
     def write(self):
         os.makedirs(self.out_dir, exist_ok=True)
         counts = {k: sum(1 for r in self.rows if r["status"] == k) for k in ("PASS", "FAIL", "BLOCKED")}
+        rows = self.rows + self.carried_over()
         with open(os.path.join(self.out_dir, "results.json"), "w") as f:
             json.dump({"suite": self.suite, "counts": counts, "seconds": round(time.time() - self.started, 1),
-                       "cases": self.rows}, f, indent=2)
+                       "cases": rows}, f, indent=2)
         lines = [f"# {self.suite} results", "",
                  f"PASS {counts['PASS']} · FAIL {counts['FAIL']} · BLOCKED {counts['BLOCKED']}", "",
                  "| ID | Test case | Status | Category | Detail |", "|---|---|---|---|---|"]
@@ -171,7 +221,9 @@ class Results:
 
 def run_job(name, timeout=240):
     """Run one background-job iteration now (fresh process in the API container, so hourly parts run too) via
-    system_tests/e2e/helpers.run_job. Lets suites check hourly jobs without waiting an hour. Returns (ok, output)."""
+    system_tests/e2e/helpers.run_job. Lets suites check hourly jobs without waiting an hour, and wait for "one
+    worker cycle" deterministically: it holds the loop's lock, so when it returns ok everything due when it was
+    called has been handled. Returns (ok, output)."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "e2e_helpers_jobs", os.path.join(os.path.dirname(os.path.abspath(__file__)), "e2e", "helpers.py"))

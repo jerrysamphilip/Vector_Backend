@@ -141,3 +141,88 @@ def test_success_clears_the_pair_only(monkeypatch, clock):
     _fail(9, "6.6.6.6")                                                     # pair counter started again
     rl.check_login_allowed(_request(host="6.6.6.6"), "victim@x.example")
     assert rl.limiter.blocked("login-fail:victim@x.example", 18, 900) > 0   # backstop kept all 18
+
+
+# ── RATE_LIMIT_TEST_MULTIPLIER (test stacks only) ──
+
+def test_multiplier_defaults_to_one():
+    assert settings.RATE_LIMIT_TEST_MULTIPLIER == 1
+    assert rl.ip_limit_multiplier() == 1
+
+
+def test_multiplier_relaxes_per_ip_limits(monkeypatch, clock):
+    monkeypatch.setattr(rl, "limiter", rl.SlidingWindowLimiter())
+    monkeypatch.setattr(settings, "RATE_LIMIT_TEST_MULTIPLIER", 3)
+    req = _request(host="5.5.5.5")
+    for _ in range(3):
+        rl.check(req, "unit", (1, 60))
+    with pytest.raises(HTTPException) as exc:
+        rl.check(req, "unit", (1, 60))
+    assert exc.value.status_code == 429
+
+
+def test_multiplier_never_relaxes_per_email_limits(monkeypatch, clock):
+    monkeypatch.setattr(rl, "limiter", rl.SlidingWindowLimiter())
+    monkeypatch.setattr(settings, "RATE_LIMIT_TEST_MULTIPLIER", 100)
+    rl.check(_request(host="1.0.0.1"), "unit", (1, 60), "pat@x.example", (1, 60))
+    with pytest.raises(HTTPException):
+        rl.check(_request(host="1.0.0.2"), "unit", (1, 60), "pat@x.example", (1, 60))
+
+
+def test_multiplier_keeps_the_sign_in_lockout(monkeypatch, clock):
+    monkeypatch.setattr(rl, "limiter", rl.SlidingWindowLimiter())
+    monkeypatch.setattr(settings, "RATE_LIMIT_TEST_MULTIPLIER", 100)
+    _fail(10, "6.6.6.6")
+    with pytest.raises(HTTPException) as exc:
+        rl.check_login_allowed(_request(host="6.6.6.6"), "victim@x.example")
+    assert exc.value.status_code == 429
+    assert 800 <= int(exc.value.headers["Retry-After"]) <= 901
+
+
+def test_relaxed_login_ip_limit_and_default_limits_header(monkeypatch, clock):
+    """Relaxed: 61 attempts pass. With the header the real 60 / 5 min applies, in a bucket of its own."""
+    monkeypatch.setattr(rl, "limiter", rl.SlidingWindowLimiter())
+    monkeypatch.setattr(settings, "RATE_LIMIT_TEST_MULTIPLIER", 100)
+    plain = _request(host="8.8.8.8")
+    for i in range(61):
+        rl.check_login_allowed(plain, f"n{i}@x.example")
+    strict = SimpleNamespace(headers={rl.DEFAULT_LIMITS_HEADER: "1"}, client=SimpleNamespace(host="8.8.8.8"))
+    for i in range(60):
+        rl.check_login_allowed(strict, f"s{i}@x.example")
+    with pytest.raises(HTTPException) as exc:
+        rl.check_login_allowed(strict, "s-last@x.example")
+    assert exc.value.status_code == 429
+    rl.check_login_allowed(plain, "after@x.example")   # the relaxed bucket is separate
+
+
+def test_default_limits_header_changes_nothing_without_the_multiplier(monkeypatch, clock):
+    monkeypatch.setattr(rl, "limiter", rl.SlidingWindowLimiter())
+    strict = SimpleNamespace(headers={rl.DEFAULT_LIMITS_HEADER: "1"}, client=SimpleNamespace(host="4.4.4.4"))
+    rl.check(strict, "unit", (1, 60))
+    with pytest.raises(HTTPException):
+        rl.check(_request(host="4.4.4.4"), "unit", (1, 60))   # same bucket as a request without the header
+
+
+@pytest.mark.parametrize("environment", ["production", "prod"])
+def test_multiplier_is_ignored_in_production(monkeypatch, clock, environment):
+    monkeypatch.setattr(rl, "limiter", rl.SlidingWindowLimiter())
+    monkeypatch.setattr(settings, "RATE_LIMIT_TEST_MULTIPLIER", 100)
+    monkeypatch.setattr(settings, "ENVIRONMENT", environment)
+    assert rl.ip_limit_multiplier() == 1
+    rl.check(_request(host="3.3.3.3"), "unit", (1, 60))
+    with pytest.raises(HTTPException):
+        rl.check(_request(host="3.3.3.3"), "unit", (1, 60))
+
+
+@pytest.mark.parametrize("value", [0, -5, None])
+def test_multiplier_below_one_counts_as_one(monkeypatch, value):
+    monkeypatch.setattr(settings, "RATE_LIMIT_TEST_MULTIPLIER", value)
+    assert rl.ip_limit_multiplier() == 1
+
+
+def test_global_ceiling_is_relaxed_too(monkeypatch, clock):
+    monkeypatch.setattr(rl, "limiter", rl.SlidingWindowLimiter())
+    monkeypatch.setattr(settings, "RATE_LIMIT_TEST_MULTIPLIER", 2)
+    req = _request(host="2.2.2.2")
+    key, limit = rl._ip_bucket(req, "global:2.2.2.2", rl.GLOBAL_PER_IP)
+    assert (key, limit) == ("global:2.2.2.2", (rl.GLOBAL_PER_IP[0] * 2, rl.GLOBAL_PER_IP[1]))

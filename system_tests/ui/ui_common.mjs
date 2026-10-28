@@ -123,9 +123,70 @@ export function watch(page) {
   };
 }
 
+// ── Tier case filter (docs/TESTING.md "Tiers"; same rules as scripts/tierlib.py) ──
+// TEST_CASES = comma-separated case-id patterns (fnmatch: * ? [0-9] [!x]). Empty = every case.
+// Rows of a crash / setup failure are always kept.
+const ALWAYS_KEEP = ['*-CRASH', '*-EXC', '*-SETUP', '*-SETUP-*'];
+function globTokens(p) {
+  const out = [];
+  for (let i = 0; i < p.length; i++) {
+    const ch = p[i], end = ch === '[' ? p.indexOf(']', i + 2) : -1;
+    if (ch === '*' || ch === '?') out.push({ k: ch });
+    else if (end > 0) { const b = p.slice(i + 1, end), neg = b.startsWith('!'); out.push({ k: 'set', chars: expandSet(neg ? b.slice(1) : b), neg }); i = end; }
+    else out.push({ k: 'lit', ch });
+  }
+  return out;
+}
+function expandSet(b) {
+  const chars = new Set();
+  for (let i = 0; i < b.length; i++) {
+    if (i + 2 < b.length && b[i + 1] === '-') { for (let c = b.charCodeAt(i); c <= b.charCodeAt(i + 2); c++) chars.add(String.fromCharCode(c)); i += 2; }
+    else chars.add(b[i]);
+  }
+  return chars;
+}
+const stepOk = (t, ch) => t.k === 'lit' ? t.ch === ch : t.k === 'set' ? t.chars.has(ch) !== t.neg : true;
+function closure(states, toks) { const out = new Set(states); for (let s of states) { while (s < toks.length && toks[s].k === '*') out.add(++s); } return out; }
+/** Can some id starting with `prefix` match glob `p`? (used to skip a whole sub-suite / area) */
+export function couldMatchPrefix(p, prefix) {
+  const toks = globTokens(p); let states = closure(new Set([0]), toks);
+  for (const ch of prefix) {
+    const nxt = new Set();
+    for (const s of states) { if (s < toks.length && toks[s].k === '*') nxt.add(s); else if (s < toks.length && stepOk(toks[s], ch)) nxt.add(s + 1); }
+    states = closure(nxt, toks); if (!states.size) return false;
+  }
+  return true;
+}
+export function globMatch(p, id) {
+  const toks = globTokens(p); let states = closure(new Set([0]), toks);
+  for (const ch of String(id)) {
+    const nxt = new Set();
+    for (const s of states) { if (s < toks.length && toks[s].k === '*') nxt.add(s); else if (s < toks.length && stepOk(toks[s], ch)) nxt.add(s + 1); }
+    states = closure(nxt, toks); if (!states.size) return false;
+  }
+  return states.has(toks.length);
+}
+const CASE_PATTERNS = String(process.env.TEST_CASES || '').split(',').map(x => x.trim()).filter(Boolean);
+export const caseFilter = {
+  patterns: CASE_PATTERNS,
+  active: CASE_PATTERNS.length > 0,
+  wants: id => !CASE_PATTERNS.length || [...CASE_PATTERNS, ...ALWAYS_KEEP].some(p => globMatch(p, id)),
+  wantsPrefix: prefix => !CASE_PATTERNS.length || CASE_PATTERNS.some(p => couldMatchPrefix(p, prefix)),
+};
+
 export class Recorder {
   constructor(suite, outDir) { this.suite = suite; this.outDir = outDir; this.cases = []; this.started = Date.now(); }
+  /** With a tier filter: the previous results.json rows this run did not select (carried_over: true), so the
+   *  file stays the suite's full case list; the runner reports only fresh rows. */
+  carriedOver() {
+    if (!caseFilter.active) return [];
+    let prev = [];
+    try { prev = JSON.parse(fs.readFileSync(path.join(this.outDir, 'results.json'), 'utf8')).cases || []; } catch { return []; }
+    const fresh = new Set(this.cases.map(c => c.id));
+    return prev.filter(c => !fresh.has(c.id) && !caseFilter.wants(c.id)).map(c => ({ ...c, carried_over: true }));
+  }
   record(id, title, passed, detail = '', category = '') {
+    if (!caseFilter.wants(id)) return; // not selected by this run's tier (TEST_CASES)
     const status = passed === true ? 'PASS' : passed === null ? 'BLOCKED' : 'FAIL';
     this.cases.push({ id, title, status, category: category || (passed === true ? '' : passed === null ? 'blocked' : 'defect'), detail: String(detail).slice(0, 500) });
     console.log(`${status.padEnd(7)} ${id} ${title}${passed === true ? '' : '  -> ' + String(detail).slice(0, 200)}`);
@@ -134,7 +195,8 @@ export class Recorder {
   write() {
     fs.mkdirSync(this.outDir, { recursive: true });
     const counts = { PASS: 0, FAIL: 0, BLOCKED: 0 }; this.cases.forEach(c => counts[c.status]++);
-    fs.writeFileSync(path.join(this.outDir, 'results.json'), JSON.stringify({ suite: this.suite, counts, seconds: Math.round((Date.now() - this.started) / 1000), cases: this.cases }, null, 2));
+    const rows = [...this.cases, ...this.carriedOver()];
+    fs.writeFileSync(path.join(this.outDir, 'results.json'), JSON.stringify({ suite: this.suite, counts, seconds: Math.round((Date.now() - this.started) / 1000), cases: rows }, null, 2));
     const lines = [`# ${this.suite} results`, '', `PASS ${counts.PASS} · FAIL ${counts.FAIL} · BLOCKED ${counts.BLOCKED}`, '',
       '| ID | Test case | Status | Category | Detail |', '|---|---|---|---|---|',
       ...this.cases.map(c => `| ${c.id} | ${c.title} | ${c.status} | ${c.category} | ${c.detail.replace(/\|/g, '\\|').replace(/\n/g, ' ')} |`)];

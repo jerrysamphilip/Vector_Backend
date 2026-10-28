@@ -14,7 +14,7 @@ import uuid
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 import common  # noqa: E402
-from common import API, sql, login, run_id, Workspace, Results  # noqa: E402,F401
+from common import API, CASES, sql, login, run_id, Workspace, Results  # noqa: E402,F401
 
 
 # Values that must never be written to committed result files (they are credentials of throwaway test
@@ -348,6 +348,8 @@ class Recorder:
     def rec(self, ep_id, method, path, check, kind, ok, detail="", category=None, evidence=None, title=None):
         """check: AUTH|ROLE|HAPPY|VAL|ISO|HIER|IDEM|SCHEMA ; kind: sub-id suffix"""
         cid = f"API-{slug(method, path)}-{check}" + (f"-{kind}" if kind else "")
+        if not CASES.wants(cid):
+            return ok  # not selected by this run's tier (TEST_CASES)
         with self._lk:
             base, i = cid, 2
             while cid in self.seen_ids:

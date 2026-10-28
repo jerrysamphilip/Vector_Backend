@@ -5,7 +5,9 @@ worker containers reach at http://WEBHOOK_RX_HOST:PORT (default 172.18.0.1, the 
 gateway). The stack runs with ENVIRONMENT=development, where http:// and private receivers are
 allowed; metadata / link-local / unspecified addresses are refused everywhere.
 
-Event delivery is done by the worker's "webhooks" loop (every 15 s); waits are bounded.
+Event delivery is done by the worker's "webhooks" loop (every 15 s); waits are bounded. WH-007 waits for the
+worker itself; the other cases flush the outbox with one "webhooks" iteration under the worker's own lock
+(common.run_job -> app.jobs.run_once), so "nothing arrived" is checked after a full pass instead of a 35 s sleep.
 Signatures are verified here independently of the app code (HMAC-SHA256 over "<t>.<body>").
 
     python3 system_tests/webhooks/run_webhooks.py
@@ -20,7 +22,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from common import Results, Workspace, req, sql  # noqa: E402
+from common import Results, Workspace, req, run_job, sql  # noqa: E402
 
 RX_PORT = int(os.environ.get("WEBHOOK_RX_PORT", "18765"))
 RX_HOST = os.environ.get("WEBHOOK_RX_HOST", "172.18.0.1")
@@ -75,13 +77,35 @@ def got(path_part, event_type=None):
     return rows
 
 
-def wait_for(fn, timeout=WAIT, step=2):
+def wait_for(fn, timeout=WAIT, step=0.5):
     end = time.time() + timeout
     while True:
         value = fn()
         if value or time.time() > end:
             return value
         time.sleep(step)
+
+
+def flush(fallback_sleep=0):
+    """One webhooks pass now, under the worker loop's lock: when it returns True every delivery that was due when
+    it was called has been attempted and recorded. On an image without app.jobs.run_once, sleep fallback_sleep s
+    (the previous fixed wait: a little over two worker cycles) instead."""
+    ok, out = run_job("webhooks", timeout=60)
+    if not ok:
+        print(f"note: webhooks flush unavailable ({out.strip()[-160:]!r}); waiting {fallback_sleep}s instead")
+        time.sleep(fallback_sleep)
+    return ok
+
+
+def latest_delivery(eid, done, timeout=15):
+    """Newest delivery of the endpoint once done(d) holds (bounded poll; the attempt is committed after the send)."""
+    end = time.time() + timeout
+    while True:
+        s, log = deliveries(eid)
+        d = (log or {}).get("items", [{}])[0] if s == 200 else {}
+        if done(d) or time.time() > end:
+            return d
+        time.sleep(0.5)
 
 
 def signed_ok(secret, row, tolerance=300):
@@ -180,6 +204,7 @@ R.check("WH-007", "contact.created reaches the receiver via the worker, signed, 
         (len(rows), ev))
 
 req("PATCH", f"/contacts/{c['prospect_id']}", {"first_name": "Changed"}, OWNER)
+flush()
 rows = wait_for(lambda: [r for r in got(f"main-{rid}", "contact.updated") if event(r)["data"].get("contact_id") == c["prospect_id"]])
 R.check("WH-008", "contact.updated carries the changed field (from / to)",
         rows and event(rows[0])["data"]["changes"].get("first_name") == {"from": "Hook", "to": "Changed"},
@@ -189,6 +214,7 @@ s, lead = req("POST", "/leads", {"prospect_id": c["prospect_id"]}, OWNER)
 lid = (lead or {}).get("lead_id")
 s2, _ = req("PATCH", f"/leads/{lid}", {"qualification": {"budget": True, "authority": True, "need": True, "timeline": True},
                                         "stage": "SQL"}, OWNER)
+flush()
 rows_c = wait_for(lambda: [r for r in got(f"main-{rid}", "lead.created") if event(r)["data"].get("lead_id") == lid])
 rows_q = wait_for(lambda: [r for r in got(f"main-{rid}", "lead.qualified") if event(r)["data"].get("lead_id") == lid])
 R.check("WH-009", "lead.created and lead.qualified (SQL) are delivered", s == 201 and s2 == 200 and rows_c and rows_q,
@@ -206,6 +232,7 @@ def deal_rows(t):
     return [r for r in got(f"main-{rid}", t) if event(r)["data"].get("deal_id") == oid]
 
 
+flush()
 rows_w = wait_for(lambda: deal_rows("deal.won"))
 R.check("WH-010", "deal.created, deal.stage_changed and deal.won are delivered",
         s == 201 and s2 == 200 and deal_rows("deal.created") and deal_rows("deal.stage_changed") and rows_w
@@ -214,7 +241,7 @@ R.check("WH-010", "deal.created, deal.stage_changed and deal.won are delivered",
 before = len(got(f"main-{rid}"))
 contact("deleted-unsubscribed")  # contact.created is subscribed; contact.deleted is not
 s, _ = req("DELETE", f"/contacts/{c['prospect_id']}", None, OWNER)
-time.sleep(35)
+flush(fallback_sleep=35)
 R.check("WH-011", "Events the endpoint is not subscribed to are not sent (contact.deleted)",
         not got(f"main-{rid}", "contact.deleted") and len(got(f"main-{rid}")) > before, (s, len(got(f"main-{rid}")) - before))
 
@@ -222,25 +249,24 @@ R.check("WH-011", "Events the endpoint is not subscribed to are not sent (contac
 s, flaky = create(f"{RX}/flip/flaky-{rid}", ["contact.created"])
 FID = flaky.get("endpoint_id")
 contact("flaky")
+flush()
 first = wait_for(lambda: got(f"flaky-{rid}"))
-time.sleep(3)
-s, log = deliveries(FID)
-d = (log or {}).get("items", [{}])[0]
+d = latest_delivery(FID, lambda x: (x.get("attempts") or 0) >= 1)
 R.check("WH-012", "A 500 answer is recorded and retried later (attempt 1 of 6, next attempt ~1 min)",
         first and d.get("status") == "PENDING" and d.get("attempts") == 1 and d.get("response_code") == 500
         and d.get("next_attempt_at"), d)
 
 FLIP[f"flaky-{rid}"] = 200
 sql(f"UPDATE webhook_deliveries SET next_attempt_at = UTC_TIMESTAMP() WHERE delivery_id = '{d.get('delivery_id')}'")
+flush()
 wait_for(lambda: len(got(f"flaky-{rid}")) >= 2)
-time.sleep(3)
-s, log = deliveries(FID)
-d2 = (log or {}).get("items", [{}])[0]
+d2 = latest_delivery(FID, lambda x: (x.get("attempts") or 0) >= 2)
 R.check("WH-013", "The retry succeeds once the receiver recovers (same event id)",
         d2.get("status") == "SUCCEEDED" and d2.get("attempts") == 2
         and len({event(r).get("id") for r in got(f"flaky-{rid}")}) == 1, d2)
 
 s, r1 = req("POST", f"{BASE}/{FID}/deliveries/{d2.get('delivery_id')}/redeliver", None, OWNER)
+flush()
 wait_for(lambda: len(got(f"flaky-{rid}")) >= 3)
 R.check("WH-014", "Redeliver queues the same event again and the worker sends it",
         s == 201 and r1.get("redelivery_of") == d2.get("delivery_id") and len(got(f"flaky-{rid}")) >= 3
@@ -250,6 +276,7 @@ s, broken = create(f"{RX}/fail/broken-{rid}", ["contact.created"])
 BID = broken.get("endpoint_id")
 sql(f"UPDATE webhook_endpoints SET consecutive_failures = 19 WHERE endpoint_id = '{BID}'")
 contact("broken")
+flush()
 wait_for(lambda: req("GET", f"{BASE}/{BID}", None, OWNER)[1].get("active") is False)
 s, b = req("GET", f"{BASE}/{BID}", None, OWNER)
 s2, notes = req("GET", "/notifications", None, OWNER)
@@ -260,7 +287,7 @@ R.check("WH-015", "After 20 consecutive failures the endpoint is switched off an
 
 n = len(got(f"broken-{rid}"))
 contact("after-disable")
-time.sleep(35)
+flush(fallback_sleep=35)
 R.check("WH-016", "A disabled endpoint receives nothing", len(got(f"broken-{rid}")) == n, len(got(f"broken-{rid}")) - n)
 
 # ── WH-017..019 no redirects, timeout, rotation ──────────────
@@ -298,7 +325,7 @@ R.check("WH-020", "Another workspace gets 404 on every endpoint operation", all(
 
 n = len(got(f"main-{rid}", "contact.created"))
 s, other_c = req("POST", "/contacts", {"email": f"other.{rid}@wh-b-{rid}.io"}, W2.token)
-time.sleep(35)
+flush(fallback_sleep=35)
 R.check("WH-021", "Events of another workspace never reach this workspace's endpoint",
         s == 201 and len(got(f"main-{rid}", "contact.created")) == n, (s, len(got(f"main-{rid}", "contact.created")) - n))
 

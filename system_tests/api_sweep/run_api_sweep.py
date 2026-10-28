@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exhaustive API sweep (see FINDINGS.md). Usage: run_api_sweep.py [--fresh] [--phases a,b,c]"""
+import fnmatch
 import json
 import os
 import sys
@@ -8,10 +9,24 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from sweeplib import Recorder, COUNT  # noqa: E402
+from common import CASES  # noqa: E402
 import coverage  # noqa: E402
 import fixtures  # noqa: E402
 from engine import Engine  # noqa: E402
 import scenario, generic, hier  # noqa: E402
+
+
+# Case-id check names each phase records (Recorder.rec builds API-<method>-<path>-<CHECK>-<kind>).
+PHASE_CHECKS = {"AUTH": "AUTH", "ROLE": "ROLE", "HIER": "HIER", "VAL": "VAL", "DUP": "IDEM", "ISO": "ISO"}
+
+
+def phase_wanted(name):
+    """A tier filter (TEST_CASES) skips a phase when no pattern can select one of its check's ids."""
+    if not CASES.active:
+        return True
+    check = PHASE_CHECKS[name]
+    return any(fnmatch.fnmatchcase(f"API-x-{check}-x", p) or f"-{check}-" in p or p.endswith(f"-{check}")
+               for p in CASES.patterns)
 
 
 def main():
@@ -32,7 +47,8 @@ def main():
     for name, fn in (("AUTH", lambda: generic.auth_checks(E, A)), ("ROLE", lambda: generic.role_checks(E, A)),
                      ("HIER", lambda: hier.hier_checks(E, A)), ("VAL", lambda: generic.val_checks(E, A)),
                      ("DUP", lambda: generic.dup_checks(E, A)), ("ISO", lambda: generic.iso_checks(E, A, B))):
-        if only and name not in only:
+        if (only and name not in only) or not phase_wanted(name):
+            print(f"phase {name} skipped", flush=True)
             continue
         t1 = time.time(); fn(); print(f"phase {name} {time.time()-t1:.0f}s", flush=True)
     for fn in (scenario.tail_phase, scenario.auth_phase):

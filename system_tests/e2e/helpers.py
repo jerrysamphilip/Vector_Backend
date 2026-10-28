@@ -203,14 +203,52 @@ JOBS = {
 }
 
 
-def run_job(name, timeout=240):
+_RUN_ONCE = """
+import asyncio, sys
+try:
+    from app.jobs import run_once
+except ImportError:
+    sys.exit(3)
+ok = asyncio.run(run_once({name!r}, wait_seconds={wait}))
+print('RAN' if ok else 'LOCK_BUSY')
+sys.exit(0 if ok else 4)
+"""
+
+
+def run_job(name, timeout=240, lock_wait=120):
     """Run one background-job iteration now, in a fresh process inside the API container (same code the worker
-    loop runs; a fresh process also triggers the hourly parts of send_safety / sales_jobs). Returns (ok, output)."""
+    loop runs; a fresh process also triggers the hourly parts of send_safety / sales_jobs). Returns (ok, output).
+
+    It takes the worker loop's named lock (app.jobs.run_once), waiting up to lock_wait s for an iteration that is
+    running in the worker to finish: so it never runs alongside the worker, and when it returns ok every item that
+    was due when it was called has been handled (a deterministic "flush" instead of sleeping for worker cycles).
+    An image without run_once falls back to running the iteration function directly (jobs in JOBS only)."""
+    code = _RUN_ONCE.format(name=name, wait=int(lock_wait))
+    try:
+        out = subprocess.run(["docker", "exec", API_CONTAINER, "python", "-c", code], capture_output=True, text=True,
+                             timeout=timeout + lock_wait)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"docker exec failed: {exc}"
+    if out.returncode != 3:
+        return out.returncode == 0, (out.stdout + out.stderr)[-1500:]
+    if name not in JOBS:
+        return False, f"the API image predates app.jobs.run_once and cannot run {name!r}"
     fn = JOBS[name]
     code = f"import asyncio; from app.jobs import {fn}; print('RET', asyncio.run({fn}()))"
     out = subprocess.run(["docker", "exec", API_CONTAINER, "python", "-c", code], capture_output=True, text=True,
                          timeout=timeout)
     return out.returncode == 0, (out.stdout + out.stderr)[-1500:]
+
+
+def scheduler_pass(fallback_sleep):
+    """Barrier for "the worker had its chance to send": one scheduler pass now under the worker loop's lock, so every
+    message due when this was called has been considered once. On an image without app.jobs.run_once (or if the
+    lock stays busy) sleep fallback_sleep s instead (the previous fixed wait, a little over two 30 s cycles)."""
+    ok, out = run_job("scheduler", timeout=180)
+    if not ok:
+        print(f"note: scheduler pass unavailable ({out.strip()[-160:]!r}); waiting {fallback_sleep}s instead")
+        time.sleep(fallback_sleep)
+    return ok
 
 
 def py_in_api(code, timeout=120):

@@ -16,7 +16,6 @@ app/core/observability.py:init_sentry:sentry_sdk.integrations.starlette
 app/core/observability.py:install_observability:app.core.config
 app/core/observability.py:install_observability:hmac
 app/core/observability.py:start_metrics_server:prometheus_client
-app/core/rate_limit.py:client_ip:app.core.config
 app/core/security.py:sign_tracking_url:hmac
 app/core/security.py:verify_tracking_url:hmac
 app/core/tls.py:tls_context:app.core.config

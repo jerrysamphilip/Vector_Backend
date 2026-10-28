@@ -4,15 +4,19 @@ Outreach 360 test runner: one command per layer, results captured and compared b
 
     python3 scripts/test.py list [--layer L] [--json]
     python3 scripts/test.py doctor [--layer L]
-    python3 scripts/test.py run unit|functional|system|e2e|ui|all [--suite ID[,ID]] [--only X] [--report-dir DIR]
+    python3 scripts/test.py run smoke|core|full|all|unit|functional|system|e2e|ui [--suite ID[,ID]] [--only X]
+                                   [--jobs N] [--skip ID[,ID]] [--timings RUN_DIR] [--report-dir DIR]
                                    [--keep-going] [--dry-run] [--restart-api-between] [--pause S]
                                    [--where auto|host|docker] [--keep-db] [--extra="ARGS"] [--force]
+    python3 scripts/test.py tiers [--check] [--jobs N]    case counts / estimates per tier; validate TIERS.json
     python3 scripts/test.py report [RUN_DIR]          re-aggregate a run directory (summary + comparison)
     python3 scripts/test.py collect                   snapshot the suites' current results files (no tests run)
     python3 scripts/test.py env up|down|status [--e2e] [--build] [--execute]
     python3 scripts/test.py db create|drop|reset|status
     python3 scripts/test.py trace [--brd FILE] [--out docs/TRACEABILITY.md] [--from-run DIR] [--check]
 
+Tiers (system_tests/TIERS.json): smoke (every deploy) < core (nightly / before UAT) < full (= all: every suite,
+every case). A tier names suites and, for suites it cuts down, case-id patterns passed to them as TEST_CASES.
 Layers: unit (pure logic) -> functional (TestClient + MySQL) -> system (live stack) -> e2e (worker + SES
 stand-in + fake IMAP) -> ui (Playwright). Suites come from tests/registry.json plus discovery of new
 tests/unit/test_*.py, tests/test_*.py, system_tests/*/run_*.py and system_tests/ui_features/*.mjs.
@@ -40,7 +44,12 @@ import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor
+from concurrent.futures import wait as futures_wait
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import tierlib  # noqa: E402  (scripts/tierlib.py: tier selection, standard library only)
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY_FILE = Path(os.environ.get("TEST_REGISTRY") or ROOT / "tests" / "registry.json")
@@ -49,6 +58,7 @@ RESULTS_DIR = REPORTS_DIR / "test-results"
 WORK_DIR = REPORTS_DIR / ".work"
 LOCK_FILE = REPORTS_DIR / ".runner.lock"
 LEDGER_FILE = REPORTS_DIR / ".ratelimit.json"
+TIERS_FILE = Path(os.environ.get("TEST_TIERS") or ROOT / "system_tests" / "TIERS.json")
 LAYERS = ["unit", "functional", "system", "e2e", "ui"]
 LIVE_LAYERS = {"system", "e2e", "ui"}
 STATUSES = ("PASS", "FAIL", "BLOCKED")
@@ -567,12 +577,13 @@ def chk_rate_limits():
     regs = sum(e.get("registers", 0) for e in ledger if e.get("ts", 0) >= since)
     lock = [e for e in ledger if e.get("locks_logins") and e.get("ts", 0) >= max(started or 0, time.time() - 900)]
     msgs, level = [], "ok"
-    budget = 10 - regs
-    msgs.append(f"~{regs} sign-ups by this runner since the API started / in the last hour (limit 10 per hour per IP; "
-                f"other tools and agents on this machine share it)")
+    mult = rate_limit_multiplier()
+    budget = 10 * mult - regs
+    msgs.append(f"~{regs} sign-ups by this runner since the API started / in the last hour (limit {10 * mult} per hour per IP"
+                + (f", {RATE_LIMIT_SETTING}={mult}" if mult > 1 else "") + "; other tools and agents on this machine share it)")
     if budget <= 3:
         level = "warn"
-    if lock:
+    if lock and mult == 1:
         level = "warn"
         msgs.append("reports_platform ran in the last 15 minutes: logins from this IP may be locked")
     if started:
@@ -646,8 +657,9 @@ def cmd_doctor(args):
                 say(c(f"           fix: {ch.fix}", "dim"))
             missing += ch.level == "missing"
     say("")
-    say("Order constraints: suites run one at a time; reports_platform always last (locks logins ~15 min);"
-        " UI suites sequentially. Use `run ... --restart-api-between` when the sign-up budget is short.")
+    say("Order constraints: suites run one at a time unless --jobs N (parallel-safe suites from system_tests/TIERS.json);"
+        " reports_platform alone and last unless the stack runs with RATE_LIMIT_TEST_MULTIPLIER > 1."
+        " Use `run ... --restart-api-between` when the sign-up budget is short (not needed with the multiplier).")
     say(c(f"{missing} prerequisite(s) missing." if missing else "All prerequisites present.", "yellow" if missing else "green"))
     return 1 if missing else 0
 
@@ -824,7 +836,8 @@ def parse_results_json(path):
         st = str(r.get("status", "")).upper()
         cases.append({"id": str(r.get("id", "?")), "title": str(r.get("title", ""))[:300],
                       "status": st if st in STATUSES else "FAIL", "category": r.get("category") or "",
-                      "detail": str(r.get("note") or r.get("detail") or "")[:500]})
+                      "detail": str(r.get("note") or r.get("detail") or "")[:500],
+                      **({"carried_over": True} if r.get("carried_over") else {})})
     return cases, data.get("seconds"), data.get("suite")
 
 
@@ -991,7 +1004,18 @@ def command_plan(suite, args, report_dir):
     if args.extra:
         argv += shlex.split(args.extra)
     cwd = str(ROOT / _subst(suite.get("cwd", "."), ctx))
-    return argv, cwd, child_env(suite, args.only)
+    return argv + list((suite.get("_tier") or {}).get("args") or []), cwd, tier_env(suite, child_env(suite, args.only))
+
+
+def tier_env(suite, e):
+    """A tier entry's env plus its case selection as TEST_CASES (system_tests/common.py CaseFilter, ui_common caseFilter)."""
+    entry = suite.get("_tier") or {}
+    e.update(entry.get("env") or {})
+    if entry.get("cases"):
+        e[tierlib.CASES_ENV] = ",".join(entry["cases"])
+    else:
+        e.pop(tierlib.CASES_ENV, None)  # never inherit a stale selection from the caller's shell
+    return e
 
 
 def stream(argv, cwd, env_, log_path, timeout, quiet):
@@ -1006,29 +1030,44 @@ def stream(argv, cwd, env_, log_path, timeout, quiet):
         except (FileNotFoundError, PermissionError) as exc:
             log.write(f"cannot start: {exc}\n")
             return 127, False
-
-        def pump():
-            for line in proc.stdout:
-                log.write(line)
-                if not quiet:
-                    sys.stdout.write("   " + line)
-                    sys.stdout.flush()
-        t = threading.Thread(target=pump, daemon=True)
-        t.start()
-        timed_out = False
+        RUNNING.add(proc)
         try:
-            proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            _kill(proc)
-        except KeyboardInterrupt:
-            _kill(proc)
-            t.join(5)
-            raise
-        t.join(10)
-        if timed_out:
-            log.write(f"\n[runner] killed after the {timeout}s timeout\n")
-        return proc.returncode, timed_out
+            return _wait_streamed(proc, log, timeout, quiet)
+        finally:
+            RUNNING.discard(proc)
+
+
+RUNNING = set()  # child processes of suites that are running (parallel pools have several)
+
+
+def kill_running():
+    for proc in list(RUNNING):
+        _kill(proc)
+
+
+def _wait_streamed(proc, log, timeout, quiet):
+    def pump():
+        for line in proc.stdout:
+            log.write(line)
+            if not quiet:
+                sys.stdout.write("   " + line)
+                sys.stdout.flush()
+    t = threading.Thread(target=pump, daemon=True)
+    t.start()
+    timed_out = False
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        _kill(proc)
+    except KeyboardInterrupt:
+        _kill(proc)
+        t.join(5)
+        raise
+    t.join(10)
+    if timed_out:
+        log.write(f"\n[runner] killed after the {timeout}s timeout\n")
+    return proc.returncode, timed_out
 
 
 def _kill(proc):
@@ -1179,25 +1218,197 @@ def plan_warnings(suites, args):
     regs = sum(int(s.get("registers") or 0) for s in live)
     budget_check = check("rate_limits")
     used = int(re.search(r"~(\d+)", budget_check.message).group(1)) if re.search(r"~(\d+)", budget_check.message) else 0
-    if regs + used > 10 and not args.restart_api_between:
-        warns.append(f"the selected suites make ~{regs} sign-ups (+~{used} already this hour); the API allows 10 per hour "
+    budget = 10 * rate_limit_multiplier()
+    if regs + used > budget and not args.restart_api_between:
+        warns.append(f"the selected suites make ~{regs} sign-ups (+~{used} already this hour); the API allows {budget} per hour "
                      f"per IP. Add --restart-api-between (restarts {CFG['API_CONTAINER']} between live suites) or run fewer suites.")
     if any(s.get("weekday_sensitive") for s in live):
         ch = check("weekday")
         if ch.level != "ok":
             warns.append(ch.message)
-    if any(s.get("locks_logins") for s in live) and live[-1].get("locks_logins") is not True:
+    if any(s.get("locks_logins") for s in live) and live[-1].get("locks_logins") is not True and not rate_limits_relaxed():
         warns.append("reports_platform is not last in this plan; later suites may hit the login lockout")
     if check("openai").level == "warn":
         warns.append(check("openai").message)
-    return warns
+    return warns + parallel_warnings(live, args)
 
 
-def cmd_run(args):
+def parallel_warnings(live, args):
+    if args.jobs <= 1 or len(live) < 2 or rate_limits_relaxed():
+        return []
+    return [f"--jobs {args.jobs} runs live suites at the same time, and the API's per-IP limits (60 logins / 5 min, "
+            f"10 sign-ups / hour) are shared by all of them. Run the stack with {RATE_LIMIT_SETTING}=100 "
+            f"(docs/TESTING.md section 7) or expect 429s; --restart-api-between only "
+            "restarts between steps, never while a pool is running."]
+
+
+# ── Rate-limit multiplier of the stack ──
+# A test stack may run the API with RATE_LIMIT_TEST_MULTIPLIER > 1 (app/core/rate_limit.py; refused in production):
+# the per-client-IP limits (logins 60 / 5 min, sign-ups 10 / hour) are multiplied, per-email lockouts never change.
+# Then the runner needs no --restart-api-between / --pause (skipped), scales the sign-up budget, runs --jobs pools
+# without the 429 warning and does not force reports_platform last (its RP-140..142 send X-Test-Default-Rate-Limits
+# and count against the real limits in a bucket of their own). Multiplier 1 (the default) keeps the old behaviour.
+# TEST_RATE_LIMIT_MULTIPLIER=<n> states the value for a stack the runner cannot inspect (e.g. a remote one).
+RATE_LIMIT_SETTING = "RATE_LIMIT_TEST_MULTIPLIER"
+_RELAXED = {}
+
+
+def rate_limit_multiplier():
+    if "m" not in _RELAXED:
+        _RELAXED["m"] = _probe_multiplier()
+    return _RELAXED["m"]
+
+
+def rate_limits_relaxed():
+    return rate_limit_multiplier() > 1
+
+
+def _probe_multiplier():
+    raw = env("TEST_RATE_LIMIT_MULTIPLIER")
+    if not raw and docker_ok()[0]:
+        rc, out = sh(["docker", "exec", CFG["API_CONTAINER"], "printenv", RATE_LIMIT_SETTING], timeout=15)
+        raw = out.strip() if rc == 0 else ""
+    try:
+        return max(1, int(raw or 1))
+    except ValueError:
+        return 1
+
+
+# ── Tiers (system_tests/TIERS.json, scripts/tierlib.py) ──
+
+def load_tiers(required):
+    """The tiers file, or None when it is missing and not required (layer runs then plan everything serial)."""
+    if not TIERS_FILE.exists() and not required:
+        return None
+    try:
+        return tierlib.load(TIERS_FILE)
+    except tierlib.TierError as exc:
+        die(str(exc))
+
+
+def is_tier(name):
+    return name in tierlib.TIER_NAMES or name in tierlib.ALIASES
+
+
+def tier_suites(args, all_suites, data):
+    """(suites of the tier with their entry in s['_tier'], ids left out of it). Dies on an invalid tier."""
+    try:
+        sel = tierlib.resolve(data, args.layer, all_suites)
+    except tierlib.TierError as exc:
+        die(str(exc))
+    picked = [dict(s, _tier=sel[s["id"]]) for s in ordered(all_suites) if s["id"] in sel]
+    bad = [s["id"] for s in picked if s.get("kind") == "pytest" and s["_tier"].get("cases")]
+    if bad:
+        die(f"{rel(TIERS_FILE)}: pytest suites cannot be cut by case ids ({', '.join(bad)}); list them whole")
+    left_out = [s["id"] for s in ordered(all_suites) if s["id"] not in sel]
+    return picked, left_out
+
+
+def skip_suites(suites, skip):
+    names = [w.strip() for part in (skip or []) for w in part.split(",") if w.strip()]
+    return [s for s in suites if not any(s["id"] == n or fnmatch.fnmatch(s["id"], n) for n in names)]
+
+
+def unpin_last(suites):
+    """With relaxed per-IP limits reports_platform's lockout probes use their own bucket: no need to run it last."""
+    if not rate_limits_relaxed():
+        return suites
+    return ordered([{**s, "run_last": False} for s in suites])
+
+
+def tier_patterns(suite):
+    return (suite.get("_tier") or {}).get("cases")
+
+
+def default_timing_dirs():
+    return sorted((p for p in RESULTS_DIR.glob("*") if p.is_dir() and not p.is_symlink() and (p / "summary.json").exists()),
+                  key=lambda p: p.name, reverse=True) if RESULTS_DIR.is_dir() else []
+
+
+def load_timings(dirs):
+    """{suite id: {"seconds", "cases": [ids], "filtered", "run"}} from run directories (or summary.json files):
+    each suite takes its newest run where it finished (not SKIPPED / NOT_RUN / ERROR)."""
+    runs = []
+    for d in dirs:
+        p = Path(d)
+        data = load_json(p if p.is_file() else p / "summary.json")
+        if isinstance(data, dict):
+            runs.append(data)
+    runs.sort(key=lambda r: str(r.get("finished") or ""), reverse=True)
+    out = {}
+    for data in runs:
+        for r in data.get("suites", []):
+            if r["id"] in out or not r.get("seconds") or r.get("status") in ("SKIPPED", "NOT_RUN", "ERROR"):
+                continue
+            out[r["id"]] = {"seconds": r["seconds"], "cases": [cs["id"] for cs in r.get("cases", [])],
+                            "filtered": bool((r.get("tier") or {}).get("patterns")), "run": data.get("run_id")}
+    return out
+
+
+def case_catalog(suite, timing):
+    """Every case id known for a suite: the timing run's cases plus the suite's results files (carried-over rows
+    included, so a file written by a cut run still lists the whole suite)."""
+    ids = list((timing or {}).get("cases") or [])
+    if suite.get("kind") != "pytest" and not suite.get("result", {}).get("written_by_runner"):
+        for p in result_paths(suite):
+            data = load_json(p) if p.exists() else None
+            if isinstance(data, dict) and isinstance(data.get("cases"), list):
+                ids += [str(cs.get("id")) for cs in data["cases"] if cs.get("id")]
+    return list(dict.fromkeys(ids))
+
+
+def suite_safety(data, suite):
+    if not data:
+        return {"parallel": False, "locks": [], "reason": f"no {rel(TIERS_FILE)}"}
+    return tierlib.safety(data, suite["id"], suite.get("_tier"))
+
+
+def plan_rows(suites, data, timings):
+    """Per suite: safety, catalog, selected / excluded case ids and the estimated seconds."""
+    rows = {}
+    for s in suites:
+        timing = timings.get(s["id"])
+        catalog = case_catalog(s, timing)
+        selected, excluded = tierlib.split_cases(catalog, tier_patterns(s))
+        secs, src = tierlib.estimate(s.get("_tier") or {}, timing, catalog, s.get("duration_s"))
+        rows[s["id"]] = {"safety": suite_safety(data, s), "catalog": catalog, "selected": selected,
+                         "excluded": excluded, "est": secs, "est_src": src}
+    return rows
+
+
+def estimate_steps(steps, rows, jobs):
+    total = 0.0
+    for st in steps:
+        items = [(rows[s["id"]]["est"], rows[s["id"]]["safety"]["locks"]) for s in st["suites"]]
+        st["est"] = tierlib.simulate(items, jobs) if st["parallel"] else sum(i[0] for i in items)
+        total += st["est"]
+    return total
+
+
+def build_plan(args):
     reg = load_registry()
-    suites = select_suites(discover(reg), args.layer, args.suite)
+    all_suites = discover(reg)
+    tier = is_tier(args.layer)
+    data = load_tiers(required=tier)
+    if tier:
+        suites, left_out = tier_suites(args, all_suites, data)
+        suites = select_suites(suites, "all", args.suite) if args.suite else suites
+    else:
+        suites, left_out = select_suites(all_suites, args.layer, args.suite), []
+    suites = unpin_last(skip_suites(suites, args.skip))
     if not suites:
-        die(f"no suites selected for layer '{args.layer}'")
+        die(f"no suites selected for '{args.layer}'")
+    timings = load_timings(list(args.timings or []) + default_timing_dirs())
+    rows = plan_rows(suites, data, timings)
+    steps = tierlib.plan_steps(suites, lambda s: rows[s["id"]]["safety"], args.jobs)
+    plan = {"tier": tierlib.ALIASES.get(args.layer, args.layer) if tier else None, "data": data, "suites": suites,
+            "left_out": left_out, "rows": rows, "steps": steps, "all_suites": all_suites, "timings": timings,
+            "index": {s["id"]: i for i, s in enumerate(suites, 1)}}
+    plan["est_total"] = estimate_steps(steps, rows, args.jobs)
+    return plan
+
+
+def resolve_pytest_where(args, suites):
     where = resolve_where(args) if any(s.get("kind") == "pytest" for s in suites) else None
     if where == "host" and not host_pytest_ok()[0]:
         _CHECK_CACHE["pytest_runtime"] = Check("pytest_runtime", "missing", f"--where host, but {python_for_tests()} cannot "
@@ -1206,100 +1417,324 @@ def cmd_run(args):
     elif where == "docker" and not (docker_ok()[0] and image_exists(CFG["PY_IMAGE"])):
         _CHECK_CACHE["pytest_runtime"] = Check("pytest_runtime", "missing", f"--where docker, but docker or the image "
                                                f"{CFG['PY_IMAGE']} is not available", FIX_DOCKER + "; docker compose build api")
-    report_dir = new_run_dir(args, label="" if args.layer == "all" else args.layer)
-    total = sum(int(s.get("duration_s") or 0) for s in suites)
-    say(c(f"Plan: {len(suites)} suite(s), typically {fmt_secs(total)}", "bold") +
+    return where
+
+
+def _cases_cell(row, suite):
+    if tier_patterns(suite) is None:
+        return f"all {len(row['catalog'])}" if row["catalog"] else "all"
+    return f"{len(row['selected'])}/{len(row['catalog'])}"
+
+
+def print_plan(plan, args, report_dir):
+    head = f"Plan: {plan['tier'] or args.layer}" + (" tier" if plan["tier"] else "") + f", {len(plan['suites'])} suite(s), "
+    say(c(head + f"estimated {fmt_secs(plan['est_total'])} with --jobs {args.jobs}", "bold") +
         c(f"   -> {rel(report_dir)}" if not args.dry_run else "   (dry run)", "dim"))
-    for i, s in enumerate(suites, 1):
+    say(c(f"  {'#':>2}  {'layer':10} {'suite':28} {'mode':22} {'cases':>10} {'estimate':>9}  source", "dim"))
+    for s in plan["suites"]:
+        row, sf = plan["rows"][s["id"]], plan["rows"][s["id"]]["safety"]
+        mode = ("parallel" + (f" [{','.join(sf['locks'])}]" if sf["locks"] else "")) if sf["parallel"] else "serial"
         flags = " ".join(x for x in ["[discovered]" if s.get("discovered") else "", "[last]" if s.get("run_last") else ""] if x)
-        say(f"  {i:2}. {s['layer']:10} {s['id']:28} ~{fmt_secs(s.get('duration_s')):>6}  {flags}")
-    for w in plan_warnings(suites, args):
+        say(f"  {plan['index'][s['id']]:2}. {s['layer']:10} {s['id']:28} {mode:22} {_cases_cell(row, s):>10} "
+            f"{fmt_secs(row['est']):>9}  {row['est_src']} {flags}".rstrip())
+    print_steps(plan, args)
+    if plan["left_out"]:
+        say(c(f"  not in this tier (they run in full): {', '.join(plan['left_out'])}", "dim"))
+    for w in plan_warnings(plan["suites"], args):
         say(c("  warning: ", "yellow") + w)
     if args.only:
-        for s in suites:
+        for s in plan["suites"]:
             if not (s.get("only") or {}).get("mode"):
                 say(c("  note: ", "yellow") + f"{s['id']} has no case filter; --only is ignored for it")
 
-    if args.dry_run:
-        say("")
-        for s in suites:
-            say(c(f"== {s['id']}", "bold") + c(f"  ({s['layer']}{', discovered' if s.get('discovered') else ''})", "dim"))
-            if s.get("kind") == "pytest":
-                argv, cwd, _, _, final = pytest_plan(s, args, report_dir, where)
-                say(f"   runs on: {where}")
-                if s.get("needs_test_db") and not args.keep_db and uses_container_db(where):
-                    say(f"   before:  python3 scripts/test.py db reset   (database '{CFG['TEST_DB']}' in {CFG['MYSQL_CONTAINER']})")
-                results = [final]
-            else:
-                argv, cwd, _ = command_plan(s, args, report_dir)
-                results = result_paths(s, report_dir)
-            say(f"   cwd:     {rel(cwd)}")
-            say(f"   command: {' '.join(shlex.quote(a) for a in argv)}")
-            say(f"   results: {', '.join(rel(p) for p in results)}  ({s.get('result', {}).get('format')})")
-            for key in s.get("prereqs", []) + s.get("soft_prereqs", []):
-                ch = check(key)
-                soft = key in s.get("soft_prereqs", [])
-                tag = "ok" if ch.level == "ok" else ("warn" if ch.level == "warn" or soft else "MISSING")
-                say(f"   prereq:  {tag:7} {key:16} {ch.message[:110]}")
-            if s.get("notes"):
-                say(c(f"   notes:   {s['notes']}", "dim"))
-        return 0
 
+def print_steps(plan, args):
+    say(c("  steps:", "dim"))
+    for i, st in enumerate(plan["steps"], 1):
+        ids = [s["id"] for s in st["suites"]]
+        kind = f"parallel pool (up to {args.jobs} at once)" if st["parallel"] else "serial"
+        say(f"    {i:2}. {kind:30} ~{fmt_secs(st['est']):>7}  {', '.join(ids)}")
+
+
+def print_tier_overview(plan, args):
+    """Case counts and estimates of every tier (so a dry run shows what smoke / core / full cost side by side)."""
+    data = plan["data"]
+    if not data:
+        return
+    say(c("\nTiers overview", "bold") + c(f"   (estimates with --jobs {args.jobs}; per-suite times from earlier runs scaled "
+                                          "by the share of cases selected)", "dim"))
+    for name in tierlib.TIER_NAMES:
+        try:
+            sel = tierlib.resolve(data, name, plan["all_suites"])
+        except tierlib.TierError as exc:
+            say(f"  {name:6} invalid: {exc}")
+            continue
+        suites = skip_suites([dict(s, _tier=sel[s["id"]]) for s in ordered(plan["all_suites"]) if s["id"] in sel], args.skip)
+        rows = plan_rows(suites, data, plan["timings"])
+        steps = tierlib.plan_steps(suites, lambda s: rows[s["id"]]["safety"], args.jobs)
+        total = estimate_steps(steps, rows, args.jobs)
+        n_sel = sum(len(r["selected"]) for r in rows.values())
+        n_all = sum(len(r["catalog"]) for r in rows.values())
+        target = data["tiers"][name].get("target_s")
+        say(f"  {name:6} {len(suites):3} suites  {n_sel:6} of {n_all} known cases  ~{fmt_secs(total):>7}"
+            + (f"  (target {fmt_secs(target)})" if target else ""))
+
+
+def print_dry_details(plan, args, report_dir, where):
+    say("")
+    for s in plan["suites"]:
+        say(c(f"== {s['id']}", "bold") + c(f"  ({s['layer']}{', discovered' if s.get('discovered') else ''})", "dim"))
+        if s.get("kind") == "pytest":
+            argv, cwd, _, _, final = pytest_plan(s, args, report_dir, where)
+            say(f"   runs on: {where}")
+            if s.get("needs_test_db") and not args.keep_db and uses_container_db(where):
+                say(f"   before:  python3 scripts/test.py db reset   (database '{CFG['TEST_DB']}' in {CFG['MYSQL_CONTAINER']})")
+            results = [final]
+        else:
+            argv, cwd, _ = command_plan(s, args, report_dir)
+            results = result_paths(s, report_dir)
+        say(f"   cwd:     {rel(cwd)}")
+        say(f"   command: {' '.join(shlex.quote(a) for a in argv)}")
+        if tier_patterns(s) is not None:
+            say(f"   cases:   {tierlib.CASES_ENV}={','.join(tier_patterns(s))[:300]}")
+        say(f"   results: {', '.join(rel(p) for p in results)}  ({s.get('result', {}).get('format')})")
+        say(f"   safety:  {plan['rows'][s['id']]['safety']['reason']}")
+        for key in s.get("prereqs", []) + s.get("soft_prereqs", []):
+            ch = check(key)
+            soft = key in s.get("soft_prereqs", [])
+            tag = "ok" if ch.level == "ok" else ("warn" if ch.level == "warn" or soft else "MISSING")
+            say(f"   prereq:  {tag:7} {key:16} {ch.message[:110]}")
+        if s.get("notes"):
+            say(c(f"   notes:   {s['notes']}", "dim"))
+
+
+# ── Execution: steps run one after another; a parallel step is a pool of suites ──
+
+_PRINT_LOCK = threading.Lock()
+_LEDGER_LOCK = threading.Lock()
+
+
+def run_checked(s, plan, args, state, report_dir, where):
+    """Prerequisites, test-db reset, the suite itself, ledger and the result line. Thread-safe."""
+    n = f"[{plan['index'][s['id']]}/{len(plan['suites'])}]"
+    missing = [check(k) for k in s.get("prereqs", []) if not check(k).ok]
+    with _PRINT_LOCK:
+        say(c(f"\n{n} {s['id']} ({s['layer']})", "bold"))
+        for ch in [check(k) for k in s.get("soft_prereqs", []) if check(k).level != "ok"]:
+            say(c("   warning: ", "yellow") + f"{ch.key}: {ch.message} (part of the suite will be BLOCKED or fail)")
+        for ch in (missing if not args.force else []):
+            say(c("   missing: ", "red") + f"{ch.key}: {ch.message}" + (f"\n            fix: {ch.fix}" if ch.fix else ""))
+    if missing and not args.force:
+        state["records"][s["id"]] = {"id": s["id"], "layer": s["layer"], "status": "SKIPPED", "counts": {k: 0 for k in STATUSES},
+                                     "cases": [], "error": None,
+                                     "skipped": [{"prereq": ch.key, "message": ch.message, "fix": ch.fix} for ch in missing]}
+        return
+    if s.get("needs_test_db") and not args.keep_db and uses_container_db(where):
+        if db_action("reset", quiet=True) != 0:
+            say(c("   warning: ", "yellow") + "could not reset the test database; running against it as it is")
+    rec = apply_tier_filter(s, run_one(s, args, report_dir, where), plan)
+    if s["layer"] in LIVE_LAYERS:
+        with _LEDGER_LOCK:
+            ledger_add(s)
+    state["records"][s["id"]] = rec
+    report_result(s, rec, n, args, state)
+
+
+def apply_tier_filter(s, rec, plan):
+    """Keep only the cases the tier selected (a suite may have merged older rows into its results file) and note
+    which known cases the tier excluded."""
+    patterns = tier_patterns(s)
+    if patterns is None:
+        return rec
+    kept, dropped = tierlib.filter_cases(rec["cases"], patterns)
+    row = plan["rows"][s["id"]]
+    rec["cases"] = kept
+    rec["counts"] = normalize_counts(kept)
+    rec["status"] = suite_status(kept, rec.get("error"))
+    rec["tier"] = {"tier": plan["tier"], "patterns": patterns, "known_cases": len(row["catalog"]),
+                   "excluded": row["excluded"], "dropped_rows": len(dropped)}
+    return rec
+
+
+def report_result(s, rec, n, args, state):
+    col = {"PASS": "green", "FAIL": "red", "ERROR": "red", "BLOCKED": "yellow"}.get(rec["status"], "yellow")
+    with _PRINT_LOCK:
+        say(c(f"   {n} {s['id']} => {rec['status']}", col) + f"  PASS {rec['counts']['PASS']} FAIL {rec['counts']['FAIL']} "
+            f"BLOCKED {rec['counts']['BLOCKED']}  ({fmt_secs(rec['seconds'])})" + (f"  {rec['error']}" if rec.get("error") else ""))
+    if rec["status"] in ("FAIL", "ERROR") and not args.keep_going and not state["stop"]:
+        state["stop"] = f"stopped after {s['id']} ({rec['status']}); use --keep-going to run the remaining suites"
+        with _PRINT_LOCK:
+            say(c("   " + state["stop"], "yellow"))
+
+
+def between_steps(step, args, state):
+    """--restart-api-between / --pause, only between steps (never while a pool runs) and only when needed."""
+    live = any(s["layer"] in LIVE_LAYERS for s in step["suites"])
+    if not (live and state["last_live"] and (args.restart_api_between or args.pause)):
+        state["last_live"] = state["last_live"] or live
+        return
+    if rate_limits_relaxed():
+        if not state.get("relaxed_noted"):
+            say(c(f"   rate limits relaxed on the stack ({RATE_LIMIT_SETTING}={rate_limit_multiplier()}): "
+                  "--restart-api-between / --pause are not needed and are skipped", "dim"))
+            state["relaxed_noted"] = True
+        return
+    if args.restart_api_between:
+        restart_api()
+    if args.pause:
+        say(c(f"   pausing {args.pause}s between live suites", "dim"))
+        time.sleep(args.pause)
+
+
+def run_pool(step, plan, args, state, report_dir, where):
+    pool_args = argparse.Namespace(**{**vars(args), "quiet": True})  # interleaved output is unreadable: logs only
+    pending, running = list(step["suites"]), {}
+    with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as ex:
+        try:
+            while pending or running:
+                if not state["stop"]:
+                    launch_ready(pending, running, ex, plan, pool_args, state, report_dir, where)
+                if not running:
+                    break
+                done, _ = futures_wait(list(running), timeout=1, return_when=FIRST_COMPLETED)
+                for f in done:
+                    running.pop(f)
+                    f.result()
+        except KeyboardInterrupt:
+            kill_running()
+            raise
+
+
+def launch_ready(pending, running, ex, plan, args, state, report_dir, where):
+    for s in list(pending):
+        held = [lk for locks in running.values() for lk in locks]
+        locks = plan["rows"][s["id"]]["safety"]["locks"]
+        if len(running) >= max(1, args.jobs):
+            return
+        if tierlib.can_start(locks, held):
+            pending.remove(s)
+            running[ex.submit(run_checked, s, plan, args, state, report_dir, where)] = locks
+
+
+def execute(plan, args, report_dir, where):
+    state = {"records": {}, "stop": None, "last_live": False}
+    for k in sorted({k for s in plan["suites"] for k in s.get("prereqs", []) + s.get("soft_prereqs", [])}):
+        check(k)  # warm the cache once, before suites start in parallel
+    try:
+        for step in plan["steps"]:
+            if state["stop"]:
+                break
+            between_steps(step, args, state)
+            if step["parallel"] and len(step["suites"]) > 1:
+                run_pool(step, plan, args, state, report_dir, where)
+            else:
+                run_checked(step["suites"][0], plan, args, state, report_dir, where)
+    except KeyboardInterrupt:
+        kill_running()
+        state["stop"] = "interrupted (Ctrl-C)"
+        say(c("\n" + state["stop"], "yellow"))
+    return state
+
+
+def tier_meta(plan):
+    if not plan["tier"]:
+        return None
+    return {"name": plan["tier"], "file": rel(TIERS_FILE), "left_out": plan["left_out"],
+            "estimate_s": round(plan["est_total"]), "steps": [{"parallel": st["parallel"], "suites": [s["id"] for s in st["suites"]]}
+                                                             for st in plan["steps"]]}
+
+
+def cmd_run(args):
+    plan = build_plan(args)
+    where = resolve_pytest_where(args, plan["suites"])
+    report_dir = new_run_dir(args, label="" if args.layer == "all" else args.layer)
+    print_plan(plan, args, report_dir)
+    if args.dry_run:
+        print_tier_overview(plan, args)
+        print_dry_details(plan, args, report_dir, where)
+        return 0
     acquire_lock()
     started, t0 = now_iso(), time.time()
-    records, stop_reason = [], None
     try:
-        last_live = False
-        for i, s in enumerate(suites, 1):
-            say(c(f"\n[{i}/{len(suites)}] {s['id']} ({s['layer']})", "bold"))
-            missing = [check(k) for k in s.get("prereqs", []) if not check(k).ok]
-            soft = [check(k) for k in s.get("soft_prereqs", []) if check(k).level != "ok"]
-            for ch in soft:
-                say(c("   warning: ", "yellow") + f"{ch.key}: {ch.message} (part of the suite will be BLOCKED or fail)")
-            if missing and not args.force:
-                for ch in missing:
-                    say(c("   missing: ", "red") + f"{ch.key}: {ch.message}" + (f"\n            fix: {ch.fix}" if ch.fix else ""))
-                records.append({"id": s["id"], "layer": s["layer"], "status": "SKIPPED", "counts": {k: 0 for k in STATUSES},
-                                "cases": [], "error": None, "skipped": [{"prereq": ch.key, "message": ch.message, "fix": ch.fix}
-                                                                         for ch in missing]})
-                continue
-            live = s["layer"] in LIVE_LAYERS
-            if live and last_live and args.restart_api_between:
-                restart_api()
-            if live and last_live and args.pause:
-                say(c(f"   pausing {args.pause}s between live suites", "dim"))
-                time.sleep(args.pause)
-            if s.get("needs_test_db") and not args.keep_db and uses_container_db(where):
-                if db_action("reset", quiet=True) != 0:
-                    say(c("   warning: ", "yellow") + "could not reset the test database; running against it as it is")
-            rec = run_one(s, args, report_dir, where)
-            if live:
-                ledger_add(s)
-                last_live = True
-            records.append(rec)
-            col = {"PASS": "green", "FAIL": "red", "ERROR": "red", "BLOCKED": "yellow"}.get(rec["status"], "yellow")
-            say(c(f"   => {rec['status']}", col) + f"  PASS {rec['counts']['PASS']} FAIL {rec['counts']['FAIL']} "
-                f"BLOCKED {rec['counts']['BLOCKED']}  ({fmt_secs(rec['seconds'])})" + (f"  {rec['error']}" if rec.get("error") else ""))
-            if rec["status"] in ("FAIL", "ERROR") and not args.keep_going and i < len(suites):
-                stop_reason = f"stopped after {s['id']} ({rec['status']}); use --keep-going to run the remaining suites"
-                say(c("   " + stop_reason, "yellow"))
-                break
-    except KeyboardInterrupt:
-        stop_reason = "interrupted (Ctrl-C)"
-        say(c("\n" + stop_reason, "yellow"))
+        state = execute(plan, args, report_dir, where)
     finally:
         release_lock()
-    done = {r["id"] for r in records}
-    for s in suites:
-        if s["id"] not in done:
-            records.append({"id": s["id"], "layer": s["layer"], "status": "NOT_RUN", "counts": {k: 0 for k in STATUSES},
-                            "cases": [], "error": None})
+    records = [state["records"].get(s["id"]) or {"id": s["id"], "layer": s["layer"], "status": "NOT_RUN",
+                                                 "counts": {k: 0 for k in STATUSES}, "cases": [], "error": None}
+               for s in plan["suites"]]
     meta = {"mode": "run", "layer": args.layer, "started": started, "finished": now_iso(), "seconds": round(time.time() - t0, 1),
-            "argv": sys.argv[1:], "where": where, "stop_reason": stop_reason}
+            "argv": sys.argv[1:], "where": where, "stop_reason": state["stop"], "jobs": args.jobs, "tier": tier_meta(plan)}
     summary = write_summary(report_dir, records, meta)
-    if stop_reason == "interrupted (Ctrl-C)":
-        return 130
-    return summary["exit_code"]
+    return 130 if state["stop"] == "interrupted (Ctrl-C)" else summary["exit_code"]
+
+
+# ── tiers: overview and static check of system_tests/TIERS.json ──
+
+def tier_check_problems(data, all_suites):
+    """Static problems: unknown suites, pytest suites cut by case, patterns that select no known case, a tier that
+    is not a superset of the tiers it includes, suites without a parallel-safety entry."""
+    problems, warnings = [], []
+    timings = load_timings(default_timing_dirs())
+    resolved = {}
+    for name in data["tiers"]:
+        try:
+            resolved[name] = tierlib.resolve(data, name, all_suites)
+        except tierlib.TierError as exc:
+            problems.append(str(exc))
+    by_id = {s["id"]: s for s in all_suites}
+    for name, sel in resolved.items():
+        problems += _dead_patterns(name, sel, by_id, timings)
+        for inc in data["tiers"][name].get("include", []):
+            problems += _superset_problems(name, inc, sel, resolved.get(inc, {}), by_id, timings)
+    for s in all_suites:
+        if (data.get("suites") or {}).get(s["id"]) is None and tierlib.safety(data, s["id"])["reason"].startswith("not classified"):
+            warnings.append(f"{s['id']}: no parallel-safety entry in 'suites' (runs serial)")
+    return problems, warnings
+
+
+def _dead_patterns(name, sel, by_id, timings):
+    out = []
+    for sid, entry in sel.items():
+        if by_id[sid].get("kind") == "pytest" and entry.get("cases"):
+            out.append(f"tier {name} / {sid}: pytest suites cannot be cut by case ids")
+            continue
+        catalog = case_catalog(by_id[sid], timings.get(sid))
+        for p in entry.get("cases") or []:
+            if catalog and not any(fnmatch.fnmatchcase(cid, p) for cid in catalog):
+                out.append(f"tier {name} / {sid}: pattern {p!r} selects none of the {len(catalog)} known case ids")
+    return out
+
+
+def _superset_problems(name, inc, sel, inc_sel, by_id, timings):
+    out = []
+    for sid, entry in inc_sel.items():
+        if sid not in sel:
+            out.append(f"tier {name} includes {inc} but leaves out suite {sid}")
+            continue
+        catalog = case_catalog(by_id[sid], timings.get(sid))
+        mine, _ = tierlib.split_cases(catalog, sel[sid].get("cases"))
+        theirs, _ = tierlib.split_cases(catalog, entry.get("cases"))
+        missing = sorted(set(theirs) - set(mine))
+        if missing:
+            out.append(f"tier {name} / {sid}: misses {len(missing)} case(s) of {inc}: {', '.join(missing[:5])}")
+    return out
+
+
+def cmd_tiers(args):
+    data = load_tiers(required=True)
+    all_suites = discover(load_registry())
+    run_args = argparse.Namespace(layer="full", suite=None, skip=args.skip, timings=args.timings, jobs=args.jobs)
+    plan = {"data": data, "all_suites": all_suites, "timings": load_timings(list(args.timings or []) + default_timing_dirs())}
+    print_tier_overview(plan, run_args)
+    if not args.check:
+        return 0
+    problems, warnings = tier_check_problems(data, all_suites)
+    for w in warnings:
+        say(c("  warning: ", "yellow") + w)
+    for p in problems:
+        say(c("  problem: ", "red") + p)
+    say(f"tiers --check: {len(problems)} problem(s), {len(warnings)} warning(s) in {rel(TIERS_FILE)}")
+    return 1 if problems else 0
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -1373,7 +1808,7 @@ def write_summary(report_dir, records, meta):
                "config": {k: CFG[k] for k in ("API_URL", "WEB_URL", "TEST_DB", "PY_IMAGE")},
                "totals": totals, "layers": layers, "comparison": cmp_, "suites": records}
     write_json(report_dir / "summary.json", summary)
-    (report_dir / "summary.md").write_text(render_md(summary), encoding="utf-8")
+    (report_dir / "summary.md").write_text(render_md(summary) + render_tier_md(summary), encoding="utf-8")
     if str(report_dir.resolve()).startswith(str(RESULTS_DIR.resolve()) + os.sep):
         update_latest(report_dir)
     say("")
@@ -1459,6 +1894,29 @@ def render_md(s):
     return "\n".join(L) + "\n"
 
 
+def render_tier_md(s):
+    """The tier section of summary.md: what the tier ran per suite and which known cases it left out."""
+    t = s.get("tier")
+    if not t:
+        return ""
+    L = ["", f"## Tier {t['name']}", "", f"Selection from `{t.get('file')}`; estimated {fmt_secs(t.get('estimate_s'))} "
+         f"with --jobs {s.get('jobs', 1)}. Excluded cases still run in the full tier.", "",
+         "| Suite | Cases run | Known cases | Excluded | Patterns |", "|---|---|---|---|---|"]
+    for r in s["suites"]:
+        x = r.get("tier")
+        n = sum(r["counts"].values())
+        L.append(f"| {r['id']} | {n} | {x['known_cases'] if x else 'all'} | {len(x['excluded']) if x else 0} | "
+                 + (_md(", ".join(x["patterns"]), 200) if x else "whole suite") + " |")
+    if t.get("left_out"):
+        L += ["", f"Suites not in this tier ({len(t['left_out'])}): {', '.join(t['left_out'])}"]
+    for r in s["suites"]:
+        ex = (r.get("tier") or {}).get("excluded") or []
+        if ex:
+            L += ["", f"<details><summary>{r['id']}: {len(ex)} excluded case(s)</summary>", "",
+                  ", ".join(ex[:400]) + (f" ... (+{len(ex) - 400} more in summary.json)" if len(ex) > 400 else ""), "", "</details>"]
+    return "\n".join(L) + "\n"
+
+
 def render_console(s, report_dir):
     out = [c(f"Result: {s['overall']}", "green" if s["overall"] == "PASS" else ("red" if s["overall"] == "FAIL" else "yellow"))
            + f"   PASS {s['totals']['PASS']}  FAIL {s['totals']['FAIL']}  BLOCKED {s['totals']['BLOCKED']}"]
@@ -1479,7 +1937,8 @@ def cmd_report(args):
     data = load_json(d / "summary.json")
     if not data:
         die(f"no summary.json in {d}")
-    meta = {k: data.get(k) for k in ("mode", "layer", "started", "finished", "seconds", "argv", "where", "stop_reason")}
+    meta = {k: data.get(k) for k in ("mode", "layer", "started", "finished", "seconds", "argv", "where", "stop_reason", "jobs",
+                                     "tier")}
     s = write_summary(d, data["suites"], meta)
     return s["exit_code"]
 
@@ -1738,6 +2197,43 @@ def trace_check(path, req_cases):
     return 1 if uncovered or bad_status or unknown else 0
 
 
+def requirement_case_pairs(suites):
+    """{(requirement, suite id, case id)} from the case catalogues and the BR comments in suite scripts (the static
+    sources `trace --check` uses), so a tier's coverage can be counted per suite and case."""
+    pairs, explicit = set(), set()
+    for path in sorted(glob.glob(str(ROOT / "system_tests" / "*" / "TEST_CASES.md"))):
+        d = Path(path).parent.name
+        sid = next((s["id"] for s in suites if s.get("cwd") == f"system_tests/{d}" or s["id"] == d), d)
+        for cid, info in parse_catalogue(path).items():
+            pairs.update((r, sid, cid) for r in info["refs"] + info["sections"])
+            explicit.update([cid] if info["refs"] else [])
+    for s in suites:
+        if s.get("script", "").endswith(".py") and (ROOT / s["script"]).exists():
+            pairs.update((r, s["id"], cid) for r, cid in code_section_refs(ROOT / s["script"]) if cid not in explicit)
+    return pairs
+
+
+def trace_tier_coverage(brd_path, suites):
+    """How many in-scope requirements each tier exercises (a requirement counts when one of its cases is selected)."""
+    register = requirements_register(brd_path)
+    data = load_tiers(required=False)
+    if not register or not data:
+        return
+    in_scope = {r for r, (_t, st) in register.items() if st.lower() in IN_SCOPE_STATUSES}
+    pairs = requirement_case_pairs(suites)
+    parts = []
+    for name in tierlib.TIER_NAMES:
+        try:
+            sel = tierlib.resolve(data, name, suites)
+        except tierlib.TierError as exc:
+            parts.append(f"{name}: invalid ({exc})")
+            continue
+        covered = {r for r, sid, cid in pairs if r in in_scope and sid in sel
+                   and (sel[sid].get("cases") is None or tierlib.matches(cid, sel[sid]["cases"]))}
+        parts.append(f"{name} {len(covered)}")
+    say(f"tiers: in-scope requirements with a case in the tier (of {len(in_scope)}): " + ", ".join(parts))
+
+
 def cmd_trace(args):
     reg = load_registry()
     suites = {s["id"]: s for s in discover(reg)}
@@ -1782,7 +2278,9 @@ def cmd_trace(args):
                     if r not in code_refs[cid]:
                         code_refs[cid].append(r)
     if args.check:
-        return trace_check(brd_path, req_cases)
+        rc = trace_check(brd_path, req_cases)
+        trace_tier_coverage(brd_path, list(suites.values()))
+        return rc
 
     def st(cid):
         return all_status[cid][1]["status"] if cid in all_status else "no result"
@@ -1871,6 +2369,14 @@ def cmd_trace(args):
 #  CLI
 # ════════════════════════════════════════════════════════════════════════
 
+def add_plan_options(p):
+    p.add_argument("--jobs", type=int, default=1, help="run up to N parallel-safe suites at once (system_tests/TIERS.json "
+                                                        "'suites'); serial suites always run alone. Default 1")
+    p.add_argument("--skip", action="append", help="suite id(s) / globs to leave out, e.g. --skip unit,functional")
+    p.add_argument("--timings", action="append", help="run directory (or summary.json) whose per-suite times feed the "
+                                                      "estimates; newest first, then reports/test-results/*")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="scripts/test.py", description="Outreach 360 test runner (docs/TESTING.md)",
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1882,8 +2388,8 @@ def main(argv=None):
     p.add_argument("-v", "--verbose", action="store_true")
     p.set_defaults(fn=cmd_list)
 
-    p = sub.add_parser("run", help="run a layer (or all) and write a report")
-    p.add_argument("layer", choices=LAYERS + ["all"])
+    p = sub.add_parser("run", help="run a tier (smoke, core, full = all) or a layer and write a report")
+    p.add_argument("layer", choices=list(tierlib.TIER_NAMES) + ["all"] + LAYERS)
     p.add_argument("--suite", action="append", help="suite id(s), comma separated or repeated; glob patterns allowed")
     p.add_argument("--only", help="case filter passed to suites that support one (syntax per suite: list -v)")
     p.add_argument("--report-dir", help="write the report here instead of reports/test-results/<timestamp>")
@@ -1897,7 +2403,14 @@ def main(argv=None):
     p.add_argument("--extra", help="extra arguments appended to every selected suite's command; use the = form: --extra=\"--no-ui --no-perf\"")
     p.add_argument("--force", action="store_true", help="run suites even when a hard prerequisite is missing")
     p.add_argument("-q", "--quiet", action="store_true", help="do not echo suite output (it is still in logs/)")
+    add_plan_options(p)
     p.set_defaults(fn=cmd_run)
+
+    p = sub.add_parser("tiers", help="case counts and estimates of smoke / core / full; --check validates TIERS.json")
+    p.add_argument("--check", action="store_true", help="fail on unknown suites, dead patterns or a tier that drops "
+                                                        "cases of a tier it includes (static; runs nothing)")
+    add_plan_options(p)
+    p.set_defaults(fn=cmd_tiers)
 
     p = sub.add_parser("doctor", help="check the prerequisites of every layer (changes nothing)")
     p.add_argument("--layer", choices=LAYERS)

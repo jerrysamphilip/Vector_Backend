@@ -9,6 +9,11 @@ import common  # noqa: E402
 from common import req, sql, Workspace  # noqa: E402,F401
 
 
+# Sent by the rate-limit cases (RP-140..142): a test stack with RATE_LIMIT_TEST_MULTIPLIER > 1 then counts the request
+# against the real (production) limits, in a bucket of its own; without the multiplier the header changes nothing.
+DEFAULT_LIMITS_HEADER = "X-Test-Default-Rate-Limits"
+
+
 def xff_headers(ip):
     return {"X-Forwarded-For": ip}
 

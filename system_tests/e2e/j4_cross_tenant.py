@@ -6,7 +6,7 @@ import time
 from .flows import (CSV_HEAD, add_missing_step_templates, captured_for, contact_by_email, create_campaign, detach_imap,
                     enroll, generate_content, launch, mk_inbox, msgs, travel_due, upload_list, wait_status)
 from .helpers import (FakeImap, SCRATCH, ev_bounce, ev_delivery, ev_open, follow, new_workspace, q, reply_mime, req, rows,
-                      scalar, ses_post, sql, wait_until)
+                      scalar, scheduler_pass, ses_post, sql, wait_until)
 
 
 def _prep(ws, tag, rid, emails, inbox, imap_addr):
@@ -110,7 +110,7 @@ def run(R):
         travel_due(cx, 3)
         travel_due(cy, 3)
         ok = wait_until(lambda: len(msgs(cy, 3, "SENT")) == 5, timeout=300, interval=4)
-        time.sleep(35)
+        scheduler_pass(fallback_sleep=35)
         x3 = msgs(cx, 3, "SENT")
         R.check("E2E-J4-08", f"Independent daily limits: X's mailbox is capped at {sent_today_x}/day so its step 3 is held, while Y (same domain) sends all 5",
                 ok and len(x3) == 0 and len(msgs(cx, 3, ["SCHEDULED", "QUEUED"])) == 4,

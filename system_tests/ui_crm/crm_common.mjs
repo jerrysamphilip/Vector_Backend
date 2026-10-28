@@ -1,11 +1,11 @@
 // Shared helpers for the CRM/Sales functional UI suites (extends ../ui/ui_common.mjs without editing it).
-import { Workspace, launch, session, watch, Recorder, api as rawApi, loginToken, API, WEB } from '../ui/ui_common.mjs';
+import { Workspace, launch, session, watch, Recorder, api as rawApi, loginToken, API, WEB, caseFilter } from '../ui/ui_common.mjs';
 import { onConfirm } from '../ui/confirm_dialogs.mjs';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-export { Workspace, launch, watch, Recorder, API, WEB };
+export { Workspace, launch, watch, Recorder, API, WEB, caseFilter };
 /** Quiet MySQL helper (no password warning on stderr). */
 export function sql(qy) {
   return execFileSync('docker', ['exec', process.env.MYSQL_CONTAINER || 'vector-mysql-1', 'mysql', '-uvector', '-pvector', process.env.MYSQL_DATABASE || 'outreach_ai', '-N', '-e', qy],
@@ -149,7 +149,7 @@ try { CLASS = JSON.parse(fs.readFileSync(path.join(HERE, 'classify.json'), 'utf8
 /** Run one named UI test case. fn(ctx) may throw or return a string (failure). u = ui() object whose watcher is checked. */
 const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
 export async function tc(rec, id, title, fn, { u, allow = [], noBody = false } = {}) {
-  if (ONLY && !ONLY.test(id)) return;
+  if ((ONLY && !ONLY.test(id)) || !caseFilter.wants(id)) return; // ONLY regex, or not in this run's tier (TEST_CASES)
   try {
     if (u) { u.w.drain(); }
     const r = await fn();

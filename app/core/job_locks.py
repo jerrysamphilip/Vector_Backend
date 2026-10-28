@@ -31,11 +31,13 @@ def lock_name(job_name: str) -> str:
     return f"vector:job:{job_name}:{database}"[:64]
 
 
-def try_acquire(job_name: str) -> Any:
-    """Return an open connection holding the job's lock, or None if another process holds it."""
+def try_acquire(job_name: str, wait_seconds: float = 0) -> Any:
+    """Return an open connection holding the job's lock, or None if another process holds it
+    (after waiting up to wait_seconds for it to be released; 0 = do not wait)."""
     conn = _get_lock_engine().connect()
     try:
-        got = conn.execute(text("SELECT GET_LOCK(:n, 0)"), {"n": lock_name(job_name)}).scalar()
+        got = conn.execute(text("SELECT GET_LOCK(:n, :w)"),
+                           {"n": lock_name(job_name), "w": max(0, int(wait_seconds))}).scalar()
     except Exception:
         conn.close()
         raise

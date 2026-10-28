@@ -275,9 +275,10 @@ def fail(msg: Any, reason: Optional[str], now: datetime, *, final: bool = True) 
         msg.final_status, msg.final_status_at = "FAILED", now
 
 
-def retry_delay(retry_count: int) -> timedelta:
-    """Exponential backoff before the next attempt."""
-    return timedelta(minutes=2 ** retry_count)
+def retry_delay(retry_count: int, base_seconds: float = 60) -> timedelta:
+    """Exponential backoff before the next attempt: base_seconds * 2^retry_count (default 2, 4, 8 minutes;
+    SEND_RETRY_BASE_SECONDS shortens it on test stacks)."""
+    return timedelta(seconds=float(base_seconds) * 2 ** retry_count)
 
 
 def retries_exhausted(retry_count: int, max_retries: Optional[int]) -> bool:

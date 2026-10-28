@@ -24,6 +24,18 @@ The E2E stand-ins are not ready. Bring them up (see system_tests/e2e/README.md):
 """
 
 
+JOURNEYS = ("J1", "J2", "J3", "J4", "J5", "J6")
+
+
+def selected_journeys(only_arg, cases):
+    """The journeys to run: --only (default all), narrowed by a tier's case filter (TEST_CASES) to those it can select."""
+    only = {x.strip().upper() for x in only_arg.split(",") if x.strip()} or set(JOURNEYS)
+    if cases.active:
+        only = {k for k in only if cases.wants_prefix(f"E2E-{k}-")}
+        print("journeys selected by TEST_CASES:", ",".join(sorted(only)) or "none")
+    return only
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="", help="comma list of J1..J6")
@@ -38,9 +50,9 @@ def main():
         print(INSTRUCTIONS)
         sys.exit(2)
     H.ses_verify(H.PLATFORM_SENDER)
-    from system_tests.common import Results
+    from system_tests.common import CASES, Results
     R = Results("E2E journeys (real worker + SES stand-in + fake IMAP)", HERE)
-    only = {x.strip().upper() for x in args.only.split(",") if x.strip()}
+    only = selected_journeys(args.only, CASES)
     if args.merge and only:
         import json
         try:
@@ -56,7 +68,7 @@ def main():
             traceback.print_exc()
             R.record(f"E2E-{prefix}-EXC", f"{prefix} aborted: {fn.__name__}", False, f"exception: {exc!r}", "test-issue")
 
-    if not only or "J1" in only:
+    if "J1" in only:
         from system_tests.e2e import j1_outreach_to_revenue as J1
         C = {}
         try:
@@ -70,7 +82,7 @@ def main():
                 detach_imap(C["w"])
     for key, mod, fn in (("J2", "j2_deliverability", "run"), ("J3", "j3_accounts_access", "run"), ("J4", "j4_cross_tenant", "run"),
                          ("J5", "j5_crm_chain", "run"), ("J6", "j6_automation", "run")):
-        if only and key not in only:
+        if key not in only:
             continue
         m = __import__(f"system_tests.e2e.{mod}", fromlist=["run"])
         guard(key, getattr(m, fn), R)

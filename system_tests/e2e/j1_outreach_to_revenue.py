@@ -13,7 +13,7 @@ from .flows import (CSV_HEAD, add_missing_step_templates, captured_for, contact_
                     dt, enroll, generate_content, launch, mk_inbox, msgs, sequences, travel_due, upload_list, utc_now,
                     wait_status)
 from .helpers import (timed, ev_bounce, ev_click, ev_delivery, ev_open, iso, FakeImap, HOST_FROM_CONTAINERS, SCRATCH, add_user, follow, new_workspace, q, reply_mime, req,
-                      rows, run_job, scalar, ses_bounce, ses_captured, ses_count, ses_delivery, ses_post, sql, user_token,
+                      rows, run_job, scalar, scheduler_pass, ses_bounce, ses_captured, ses_count, ses_delivery, ses_post, sql, user_token,
                       utcnow, wait_until)
 
 NAMES = ["Ann Adler", "Bo Brandt", "Cy Cole", "Di Dunn", "Ed Egan", "Flo Fry", "Gus Gray", "Hal Hart", "Ida Ives",
@@ -520,7 +520,7 @@ def phase_unsub(R, C):
             r0["status"] == "REJECTED" and "unsubscribed" in (r0["reason"] or "").lower(), f"{r0['status']} {r0['reason']}")
     # the scheduler never sends to them: pull their remaining steps due anyway
     travel_due(cid, 2, emails=[u1, u2])
-    time.sleep(70)
+    scheduler_pass(fallback_sleep=70)
     leaked = captured_for(emails=[u1, u2], domain=C["dom"])
     R.check("E2E-J1-56", "Worker sends nothing further to unsubscribed contacts even when their follow-up is forced due (only the step-1 email exists)",
             len(leaked) == 2, f"captured={[(c.to, c.subject) for c in leaked]}")
@@ -908,7 +908,7 @@ def phase_followups(R, C):
     s, p, pause_secs = timed("POST", f"/campaigns/{cid}/pause", None, ws.token)
     R.check("E2E-J1-101a", "Pause answers promptly (< 20 s) while the scheduler is working the campaign", s == 200 and pause_secs < 20,
             f"{s} took {pause_secs}s", "defect")
-    time.sleep(75)
+    scheduler_pass(fallback_sleep=75)
     sent3_paused = len(msgs(cid, 3, "SENT"))
     R.check("E2E-J1-101", "Paused campaign: step 3 forced due, yet nothing is sent while PAUSED",
             s == 200 and sent3_paused == 0, f"pause={s} {str(p)[:100]} sent_while_paused={sent3_paused}")

@@ -21,7 +21,6 @@
     "diagnose_duplicate_conversations.py::main": 25,
     "scripts/ci/check_complexity.py::main": 29,
     "scripts/test.py::cmd_list": 27,
-    "scripts/test.py::cmd_run": 70,
     "scripts/test.py::cmd_trace": 74,
     "scripts/test.py::parse_catalogue": 22,
     "scripts/test.py::pytest_plan": 23,

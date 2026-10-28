@@ -1,5 +1,5 @@
 // Shared helpers for the ui_outreach suites (extends ../ui/ui_common.mjs without editing it).
-import { Workspace, launch, session, watch, Recorder, step, api, sql, loginToken, API, WEB } from '../ui/ui_common.mjs';
+import { Workspace, launch, session, watch, Recorder, step, api, sql, loginToken, API, WEB, caseFilter } from '../ui/ui_common.mjs';
 import { onConfirm } from '../ui/confirm_dialogs.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -40,9 +40,11 @@ export async function startSuite(name) {
   S.shot = async (page, id) => { try { await page.screenshot({ path: path.join(SHOTS, `${name}-${id}.png`), fullPage: false }); } catch {} };
   /** Run a step; failure takes a screenshot of `getPage()`. */
   // ONLY=<regex>: run just the matching case ids; results are merged into the suite's previous results.json.
+  // TEST_CASES (a tier's selection, see ../ui/ui_common.mjs caseFilter) narrows the same way; the Recorder
+  // then carries the unselected previous rows over itself, so the ONLY merge below is not used for it.
   const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
   S.only = ONLY;
-  S.want = id => !ONLY || ONLY.test(id);
+  S.want = id => (!ONLY || ONLY.test(id)) && caseFilter.wants(id);
   S.t = async (id, title, fn, page) => { if (!S.want(id)) return; return step(rec, id, title, fn, page ? (i) => S.shot(typeof page === 'function' ? page() : page, i) : undefined); };
   S.done = async () => {
     for (const c of ctxs) await c.close().catch(() => {}); await browser.close().catch(() => {});

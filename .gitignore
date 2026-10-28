@@ -7,6 +7,7 @@ __pycache__/
 # local helper scripts stay untracked, except the test runner
 scripts/*
 !scripts/test.py
+!scripts/tierlib.py
 # CI gate scripts (docs/CI_GATES.md)
 !scripts/ci/
 !scripts/load/
