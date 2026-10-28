@@ -4,6 +4,7 @@ A2 (campaigns): the campaign, sequence, template, draft and subject-variant mode
 ``Column`` models before the conversion (CREATE TABLE / CREATE INDEX for MySQL plus every column's
 nullability, defaults and on-update values). The only intended difference is the column that migration
 0027_campaign_edit adds (``campaigns.wait_business_days``, F-04 edit after launch). No database needed.
+Snapshot re-rendered for alembic/versions/0032_server_defaults.py (server DEFAULTs only).
 """
 from pathlib import Path
 

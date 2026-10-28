@@ -31,7 +31,7 @@ class Campaign(Base):
     # Why the campaign is paused; auto_paused marks a pause by the deliverability guard (BR-DF-07)
     paused_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     paused_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
-    auto_paused: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
+    auto_paused: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False, server_default="0")
     # Health checks only count sends after this (set when a user resumes after an auto-pause)
     health_baseline_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
 

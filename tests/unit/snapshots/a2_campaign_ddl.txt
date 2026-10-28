@@ -93,7 +93,7 @@ CREATE TABLE campaigns (
 	status VARCHAR(50), 
 	paused_reason TEXT, 
 	paused_at DATETIME(6), 
-	auto_paused BOOL, 
+	auto_paused BOOL DEFAULT '0', 
 	health_baseline_at DATETIME(6), 
 	created_by VARCHAR(36) NOT NULL, 
 	sender_name VARCHAR(100), 
@@ -130,7 +130,7 @@ col campaign_description Text null   default=None onupdate=None server_default=N
 col status String null   default='DRAFT' onupdate=None server_default=None server_onupdate=None
 col paused_reason Text null   default=None onupdate=None server_default=None server_onupdate=None
 col paused_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
-col auto_paused Boolean null   default='False' onupdate=None server_default=None server_onupdate=None
+col auto_paused Boolean null   default='False' onupdate=None server_default='0' server_onupdate=None
 col health_baseline_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
 col created_by String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col sender_name String null   default=None onupdate=None server_default=None server_onupdate=None
@@ -188,8 +188,8 @@ CREATE TABLE email_subject_variants (
 	sequence_id VARCHAR(36) NOT NULL, 
 	label VARCHAR(1) NOT NULL, 
 	subject VARCHAR(500) NOT NULL, 
-	weight INTEGER NOT NULL, 
-	is_winner BOOL NOT NULL, 
+	weight INTEGER NOT NULL DEFAULT '1', 
+	is_winner BOOL NOT NULL DEFAULT '0', 
 	promoted_at DATETIME(6), 
 	promoted_by VARCHAR(36), 
 	created_by VARCHAR(36), 
@@ -211,8 +211,8 @@ col campaign_id String notnull  idx default=None onupdate=None server_default=No
 col sequence_id String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col label String notnull   default=None onupdate=None server_default=None server_onupdate=None
 col subject String notnull   default=None onupdate=None server_default=None server_onupdate=None
-col weight Integer notnull   default='1' onupdate=None server_default=None server_onupdate=None
-col is_winner Boolean notnull   default='False' onupdate=None server_default=None server_onupdate=None
+col weight Integer notnull   default='1' onupdate=None server_default='1' server_onupdate=None
+col is_winner Boolean notnull   default='False' onupdate=None server_default='0' server_onupdate=None
 col promoted_at DateTime null   default=None onupdate=None server_default=None server_onupdate=None
 col promoted_by String null   default=None onupdate=None server_default=None server_onupdate=None
 col created_by String null   default=None onupdate=None server_default=None server_onupdate=None

@@ -112,7 +112,7 @@ class Opportunity(Base):
     # Forecast category (BR-SF-08): PIPELINE / BEST_CASE / COMMIT / CLOSED / OMITTED. Follows the
     # stage's probability unless a user set it by hand (forecast_category_manual).
     forecast_category: Mapped[Optional[str]] = mapped_column(String(12), nullable=True)
-    forecast_category_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    forecast_category_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     # The campaign that sourced the deal, for campaign ROI (BR-SF-11)
     campaign_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("campaigns.campaign_id"),
                                                        nullable=True)

@@ -2,6 +2,7 @@
 
 snapshots/a4_inbox_ddl.txt was generated from the classic models before the conversion: CREATE TABLE /
 CREATE INDEX for MySQL plus every column's nullability, defaults and on-update values. No database needed.
+Snapshot re-rendered for alembic/versions/0032_server_defaults.py (server DEFAULTs only).
 """
 from pathlib import Path
 

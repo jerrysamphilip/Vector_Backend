@@ -51,9 +51,9 @@ class SendingDomain(Base):
     account_reputation_score: Mapped[Optional[float]] = mapped_column(Float, default=1.0, nullable=True) # 0.0 to 1.0 (AWS Reputation)
 
     # Rolling 24h health, recomputed hourly and on every bounce/complaint (BR-DF-07)
-    sends_24h: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
-    bounce_rate_24h: Mapped[Optional[float]] = mapped_column(Float, default=0.0, nullable=True)
-    complaint_rate_24h: Mapped[Optional[float]] = mapped_column(Float, default=0.0, nullable=True)
+    sends_24h: Mapped[Optional[int]] = mapped_column(Integer, default=0, server_default="0", nullable=True)
+    bounce_rate_24h: Mapped[Optional[float]] = mapped_column(Float, default=0.0, server_default="0", nullable=True)
+    complaint_rate_24h: Mapped[Optional[float]] = mapped_column(Float, default=0.0, server_default="0", nullable=True)
     health_checked_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
     
     # Metadata

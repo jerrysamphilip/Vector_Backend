@@ -32,7 +32,7 @@ class ContactFieldDefinition(Base):
     options: Mapped[Any] = mapped_column(JSON, nullable=True)  # choices for SELECT / RADIO / MULTI_CHECKBOX
     group_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # property group (BR-CM-10)
     required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")  # required on create
-    sort_order: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    sort_order: Mapped[Optional[int]] = mapped_column(Integer, default=0, server_default="0", nullable=True)
 
     created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
 

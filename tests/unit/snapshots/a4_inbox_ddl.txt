@@ -150,7 +150,7 @@ CREATE TABLE imap_sync_state (
 	inbox_id VARCHAR(36) NOT NULL, 
 	folder VARCHAR(255) NOT NULL, 
 	uidvalidity BIGINT, 
-	last_uid BIGINT NOT NULL, 
+	last_uid BIGINT NOT NULL DEFAULT '0', 
 	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
 	PRIMARY KEY (inbox_id, folder)
 )ENGINE=InnoDB CHARSET=utf8mb4 COLLATE utf8mb4_0900_ai_ci
@@ -158,7 +158,7 @@ kwargs [('mysql_charset', 'utf8mb4'), ('mysql_collate', 'utf8mb4_0900_ai_ci'), (
 col inbox_id String notnull pk   default=None onupdate=None server_default=None server_onupdate=None
 col folder String notnull pk   default=None onupdate=None server_default=None server_onupdate=None
 col uidvalidity BigInteger null    default=None onupdate=None server_default=None server_onupdate=None
-col last_uid BigInteger notnull    default='0' onupdate=None server_default=None server_onupdate=None
+col last_uid BigInteger notnull    default='0' onupdate=None server_default='0' server_onupdate=None
 col updated_at DateTime null    default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
 -- InboxWarmupEvent
 CREATE TABLE inbox_warmup_events (
@@ -279,9 +279,9 @@ CREATE TABLE sending_domains (
 	ses_reputation_status VARCHAR(50), 
 	sesv2_enabled BOOL, 
 	account_reputation_score FLOAT, 
-	sends_24h INTEGER, 
-	bounce_rate_24h FLOAT, 
-	complaint_rate_24h FLOAT, 
+	sends_24h INTEGER DEFAULT '0', 
+	bounce_rate_24h FLOAT DEFAULT '0', 
+	complaint_rate_24h FLOAT DEFAULT '0', 
 	health_checked_at DATETIME(6), 
 	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
 	updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
@@ -304,9 +304,9 @@ col warmup_status String null    default='COLD' onupdate=None server_default=Non
 col ses_reputation_status String null    default='UNKNOWN' onupdate=None server_default=None server_onupdate=None
 col sesv2_enabled Boolean null    default='False' onupdate=None server_default=None server_onupdate=None
 col account_reputation_score Float null    default='1.0' onupdate=None server_default=None server_onupdate=None
-col sends_24h Integer null    default='0' onupdate=None server_default=None server_onupdate=None
-col bounce_rate_24h Float null    default='0.0' onupdate=None server_default=None server_onupdate=None
-col complaint_rate_24h Float null    default='0.0' onupdate=None server_default=None server_onupdate=None
+col sends_24h Integer null    default='0' onupdate=None server_default='0' server_onupdate=None
+col bounce_rate_24h Float null    default='0.0' onupdate=None server_default='0' server_onupdate=None
+col complaint_rate_24h Float null    default='0.0' onupdate=None server_default='0' server_onupdate=None
 col health_checked_at DateTime null    default=None onupdate=None server_default=None server_onupdate=None
 col created_at DateTime null    default=None onupdate=None server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
 col updated_at DateTime null    default=None onupdate='CURRENT_TIMESTAMP(6)' server_default='CURRENT_TIMESTAMP(6)' server_onupdate=None
@@ -323,7 +323,7 @@ CREATE TABLE sending_inboxes (
 	smtp_username VARCHAR(255), 
 	smtp_password VARCHAR(1024), 
 	smtp_use_ssl BOOL, 
-	auth_type VARCHAR(30), 
+	auth_type VARCHAR(30) DEFAULT 'PASSWORD', 
 	oauth_refresh_token TEXT, 
 	oauth_access_token TEXT, 
 	oauth_expires_at DATETIME(6), 
@@ -375,7 +375,7 @@ col smtp_port Integer null    default='587' onupdate=None server_default=None se
 col smtp_username String null    default=None onupdate=None server_default=None server_onupdate=None
 col smtp_password EncryptedString null    default=None onupdate=None server_default=None server_onupdate=None
 col smtp_use_ssl Boolean null    default='False' onupdate=None server_default=None server_onupdate=None
-col auth_type String null    default='PASSWORD' onupdate=None server_default=None server_onupdate=None
+col auth_type String null    default='PASSWORD' onupdate=None server_default='PASSWORD' server_onupdate=None
 col oauth_refresh_token EncryptedText null    default=None onupdate=None server_default=None server_onupdate=None
 col oauth_access_token EncryptedText null    default=None onupdate=None server_default=None server_onupdate=None
 col oauth_expires_at DateTime null    default=None onupdate=None server_default=None server_onupdate=None

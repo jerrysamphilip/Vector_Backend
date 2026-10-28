@@ -106,7 +106,7 @@ class ImportJob(Base):
     # status also takes UPLOADED / QUEUED / CANCELLED (app/domain/imports.py JobStatus)
     mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # CREATE / UPDATE_ONLY / CREATE_AND_UPDATE
     processed_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    skipped_count: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    skipped_count: Mapped[Optional[int]] = mapped_column(Integer, default=0, server_default="0", nullable=True)
     file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # relative to IMPORT_STORAGE_DIR
     file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     sheet_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -141,7 +141,7 @@ class ContactCompany(Base):
     prospect_id: Mapped[str] = mapped_column(String(36), ForeignKey("prospects.prospect_id", ondelete="CASCADE"), nullable=False)
     account_id: Mapped[str] = mapped_column(String(36), ForeignKey("accounts.account_id", ondelete="CASCADE"), nullable=False)
     label: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     created_by: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
     updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, onupdate=NOW6, nullable=True)

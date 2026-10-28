@@ -31,9 +31,9 @@ class EmailSubjectVariant(Base):
 
     label: Mapped[str] = mapped_column(String(1), nullable=False)          # A / B / C / D
     subject: Mapped[str] = mapped_column(String(500), nullable=False)
-    weight: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # relative share of traffic, 1-100
+    weight: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")  # relative share of traffic, 1-100
 
-    is_winner: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # set when promoted
+    is_winner: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")  # set when promoted
     promoted_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
     promoted_by: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=True)
 

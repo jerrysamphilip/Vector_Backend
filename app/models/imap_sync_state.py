@@ -26,7 +26,7 @@ class ImapSyncState(Base):
     inbox_id: Mapped[str] = mapped_column(String(36), primary_key=True, nullable=False)
     folder: Mapped[str] = mapped_column(String(255), primary_key=True, nullable=False)
     uidvalidity: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-    last_uid: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    last_uid: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
     updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, onupdate=NOW6, nullable=True)
 
     __table_args__ = (

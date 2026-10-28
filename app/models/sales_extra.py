@@ -221,16 +221,16 @@ class ForecastSnapshot(Base):
     period_end: Mapped[date] = mapped_column(Date, nullable=False)           # exclusive
     owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.user_id", ondelete="CASCADE"),
                                           nullable=False)
-    won: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False, default=0)
-    weighted: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False, default=0)
-    forecast: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False, default=0)
-    open_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    won: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False, default=0, server_default="0")
+    weighted: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False, default=0, server_default="0")
+    forecast: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False, default=0, server_default="0")
+    open_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # Committed forecast (BR-SF-08, BRD section 8 forecast accuracy): open deals in the Commit
     # category closing in the period, and closed won + that. NULL on snapshots from before 0014.
     commit_open: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
     committed: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
     # SCHEDULED / MANUAL
-    source: Mapped[str] = mapped_column(String(10), nullable=False, default="SCHEDULED")
+    source: Mapped[str] = mapped_column(String(10), nullable=False, default="SCHEDULED", server_default="SCHEDULED")
     taken_by: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=True)
     taken_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True, server_default=NOW6)
 

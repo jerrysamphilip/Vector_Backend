@@ -30,6 +30,9 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
   - IMAP settings derived from SMTP when not set (S-26), DNS records compared with live DNS with a suggested
     value (SPF merged) (S-25), and the scheduler parks messages until the sending window opens and moves a new
     contact to the campaign mailbox with the most room when one hits its daily cap (S-17).
+  - Migration 0032 and model `server_default`s give a freshly built database the same 23 column defaults as an
+    upgraded one (users.notify_email, webhook counters, forecast snapshot totals and others), so raw-SQL
+    writers (scripts, system tests) work on both.
   - All remaining import-linter exceptions removed (57 -> 0); `app/core/auth.py` reads users through an
     `AuthStore` that `app/main.py` installs (fails closed when none is installed).
 - Layered architecture applied to every remaining aggregate (wave 3: accounts, lists, identity/auth, import,

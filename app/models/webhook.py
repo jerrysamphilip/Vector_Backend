@@ -27,8 +27,8 @@ class WebhookEndpoint(Base):
     description = Column(String(255), nullable=True)
     secret = Column(EncryptedString, nullable=False)        # encrypted at rest; shown once on create / rotate
     event_types = Column(JSON, nullable=False)              # ["contact.created", ...]
-    active = Column(Boolean, nullable=False, default=True)
-    consecutive_failures = Column(Integer, nullable=False, default=0)
+    active = Column(Boolean, nullable=False, default=True, server_default="1")
+    consecutive_failures = Column(Integer, nullable=False, default=0, server_default="0")
     disabled_reason = Column(String(255), nullable=True)    # set when switched off automatically
     disabled_at = Column(UtcDateTime, nullable=True)
     last_success_at = Column(UtcDateTime, nullable=True)
@@ -57,15 +57,15 @@ class WebhookDelivery(Base):
     event_id = Column(String(36), nullable=False)           # same id for every endpoint that gets the event
     event_type = Column(String(50), nullable=False)
     payload = Column(Text().with_variant(MEDIUMTEXT(), "mysql"), nullable=False)  # the exact JSON body that is signed and sent
-    status = Column(String(12), nullable=False, default="PENDING")
-    attempts = Column(Integer, nullable=False, default=0)
+    status = Column(String(12), nullable=False, default="PENDING", server_default="PENDING")
+    attempts = Column(Integer, nullable=False, default=0, server_default="0")
     response_code = Column(Integer, nullable=True)
     last_error = Column(String(500), nullable=True)
     next_attempt_at = Column(UtcDateTime, nullable=True)
     last_attempt_at = Column(UtcDateTime, nullable=True)
     delivered_at = Column(UtcDateTime, nullable=True)
     duration_ms = Column(Integer, nullable=True)
-    is_test = Column(Boolean, nullable=False, default=False)
+    is_test = Column(Boolean, nullable=False, default=False, server_default="0")
     redelivery_of = Column(String(36), nullable=True)
     created_at = Column(UtcDateTime, server_default=NOW6)
 

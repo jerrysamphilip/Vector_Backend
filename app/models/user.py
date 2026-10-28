@@ -75,7 +75,7 @@ class User(Base):
     sales_level: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     manager_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.user_id"), nullable=True)
     # Also send in-app notifications by email (BR-SF-07)
-    notify_email: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notify_email: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
 
     # Two-factor sign-in (TOTP, app/core/totp.py; migration 0004_user_mfa). mfa_secret is encrypted at
     # rest and set by /api/auth/mfa/setup before mfa_enabled turns on. mfa_recovery_codes is a JSON list

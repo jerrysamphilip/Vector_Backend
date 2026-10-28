@@ -18,7 +18,7 @@ CREATE TABLE users (
 	created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6), 
 	sales_level INTEGER, 
 	manager_id VARCHAR(36), 
-	notify_email BOOL NOT NULL, 
+	notify_email BOOL NOT NULL DEFAULT '1', 
 	mfa_enabled BOOL NOT NULL DEFAULT false, 
 	mfa_secret VARCHAR(1024), 
 	mfa_recovery_codes TEXT, 
@@ -75,7 +75,7 @@ users.sales_level: type=Integer() nullable=True pk=False index=None unique=None 
 
 users.manager_id: type=String(length=36) nullable=True pk=False index=None unique=None autoincrement='auto' default=None onupdate=None server_default=None server_onupdate=None computed=False
 
-users.notify_email: type=Boolean() nullable=False pk=False index=None unique=None autoincrement='auto' default=True onupdate=None server_default=None server_onupdate=None computed=False
+users.notify_email: type=Boolean() nullable=False pk=False index=None unique=None autoincrement='auto' default=True onupdate=None server_default=1 server_onupdate=None computed=False
 
 users.mfa_enabled: type=Boolean() nullable=False pk=False index=None unique=None autoincrement='auto' default=False onupdate=None server_default=false server_onupdate=None computed=False
 
