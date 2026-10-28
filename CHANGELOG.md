@@ -12,6 +12,26 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 `docs/REQUIREMENTS.md`; test traceability: `docs/TRACEABILITY.md`.
 
 ### Added
+- Round 4 (database and team-review leftovers):
+  - `tenant_id` on 14 child tables, filled from the parent by one flush listener (`app/models/tenant_fill.py`),
+    with tenant-first indexes and database-enforced tenant integrity (composite keys, one primary company per
+    contact) (D3, C-22; migration 0028). CHECK constraints on status columns, vocabularies in
+    `app/domain/status.py` (D5; 0029).
+  - Contact and global search use a FULLTEXT ngram pre-filter with identical results (D7; 0030): at 100k
+    contacts p95 drops from 0.6-1.1 s to 0.01-0.21 s. Timing test `tests/test_dbb_contact_search_perf.py`
+    (`PERF=1`).
+  - Optional MySQL TLS (`MYSQL_SSL_MODE`, `MYSQL_SSL_CA`; D8) and time-ordered UUIDv7 primary keys for new rows
+    (`app/core/ids.py`; D4). Short ids in file names, PDF references and logs now use an id's last 8
+    characters (`short_id`), because UUIDv7s made in the same minute share their first 8.
+  - Custom-property safety (C-17; 0031): properties are deactivated instead of deleted (values kept, still
+    exported, reactivation), system properties protected, type fixed after creation, option renames keep stored
+    values (`{value, label}`), new BOOLEAN and LONG_TEXT types and `max_length`. Inactive properties are hidden
+    from import mapping.
+  - IMAP settings derived from SMTP when not set (S-26), DNS records compared with live DNS with a suggested
+    value (SPF merged) (S-25), and the scheduler parks messages until the sending window opens and moves a new
+    contact to the campaign mailbox with the most room when one hits its daily cap (S-17).
+  - All remaining import-linter exceptions removed (57 -> 0); `app/core/auth.py` reads users through an
+    `AuthStore` that `app/main.py` installs (fails closed when none is installed).
 - Layered architecture applied to every remaining aggregate (wave 3: accounts, lists, identity/auth, import,
   automation, webhooks, scoring, notifications, campaigns, inbox, deliverability, worker): routers thin, services own
   the unit of work, SQL in repositories, `Mapped[]` models with identical DDL, OpenAPI unchanged for existing paths.
@@ -75,6 +95,10 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - `domain_error_handler` guards its input with an explicit type check instead of `assert` (kept under `python -O`).
 
 ### Security
+- SNS webhook hardening (C-04/C-09): signed timestamp window (24 h back, 15 min ahead), RSA certificates within
+  their validity only, certificate cache with TTL and size limit, no redirects, no userinfo or non-443 ports in
+  certificate and subscribe URLs, optional `SNS_ALLOWED_TOPIC_ARNS`, 503 when the certificate cannot be fetched
+  so SNS retries. Positive tests sign real SignatureVersion 1 and 2 messages.
 - SMTP/IMAP connections resolve the host once, check it (no private/loopback/metadata addresses when deployed) and
   connect to that address with the hostname kept for TLS verification, closing the DNS-rebinding gap (S2).
 - Session tokens on PyJWT 2.15.1 behind `app/core/tokens.py` (S1): python-jose and ecdsa removed, so the

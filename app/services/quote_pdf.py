@@ -9,6 +9,7 @@ from typing import Any, List, Optional
 
 from app.core.config import settings
 from app.utils.pdf import Document
+from app.core.ids import short_id
 
 W, H = 595.28, 841.89
 LEFT, RIGHT = 50, W - 50
@@ -42,7 +43,7 @@ def _header(page: Any, data: QuotePdfData) -> None:
     page.rect(0, H - 8, W, 8, fill=BLUE)
     page.text(LEFT, H - 60, getattr(data.tenant, "tenant_name", None) or "Proposal", 18, bold=True)
     page.text(RIGHT, H - 60, "QUOTE", 18, bold=True, color=BLUE, align="right")
-    page.text(RIGHT, H - 78, f"Ref {p.proposal_id[:8].upper()}", 9, color=GREY, align="right")
+    page.text(RIGHT, H - 78, f"Ref {short_id(p.proposal_id).upper()}", 9, color=GREY, align="right")
     page.text(RIGHT, H - 91, f"Date {date.today():%d %b %Y}", 9, color=GREY, align="right")
     if p.valid_until:
         page.text(RIGHT, H - 104, f"Valid until {p.valid_until:%d %b %Y}", 9, color=GREY, align="right")

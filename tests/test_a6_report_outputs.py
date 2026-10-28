@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from app.core.ids import short_id
 from tests.conftest import RUN, SessionLocal, auth, login, register_tenant, sql
 
 GOLDEN = Path(__file__).with_name("test_a6_report_outputs.golden.json")
@@ -141,7 +142,7 @@ def _seed_campaigns(c):
              ("Delta", "fay", "ACTIVE", 1), ("Echo", "gus", "ACTIVE", 1)]
     for cname, pname, status, step in enrol:
         _insert("campaign_prospects", id=ids.new("<cp>"), campaign_id=camps[cname], prospect_id=prospects[pname],
-                status=status, current_step=step, enrolled_at=D)
+                tenant_id=tenant, status=status, current_step=step, enrolled_at=D)
     c["camps"] = camps
 
 
@@ -171,10 +172,10 @@ def _seed_mail(c):
         mid = ids.new("<msg>")
         sent_at = D.replace(hour=hour) + timedelta(days=day)
         _insert("email_messages", message_id=mid, prospect_id=prospects[pname], campaign_id=camps[cname],
-                inbox_id=inboxes[inbox], direction=direction, status=status, to_email="x@example.com", subject="Hi",
+                tenant_id=tenant, inbox_id=inboxes[inbox], direction=direction, status=status, to_email="x@example.com", subject="Hi",
                 sent_at=None if status == "QUEUED" else sent_at)
         for etype, after in events:
-            _insert("email_events", event_id=ids.new("<event>"), message_id=mid, event_type=etype,
+            _insert("email_events", event_id=ids.new("<event>"), message_id=mid, tenant_id=tenant, event_type=etype,
                     event_time=sent_at + timedelta(hours=after))
 
 
@@ -269,8 +270,8 @@ def _normalise(value, ids):
         return [_normalise(v, ids) for v in value]
     if isinstance(value, str):
         value = _UUID.sub(lambda m: ids.labels.get(m.group(0), "<uuid>"), value)
-        for full, label in ids.labels.items():   # file names carry an id's first 8 characters
-            value = value.replace(f"_{full[:8]}.", f"_{label}.")
+        for full, label in ids.labels.items():   # file names carry an id's short form (last 8 characters)
+            value = value.replace(f"_{short_id(full)}.", f"_{label}.")
         return value.replace(RUN, "<RUN>").replace(today, "<today>")
     return value
 

@@ -57,6 +57,7 @@ from app.schemas.reports_schema import (
 from app.services import reports_docx
 from app.services.crm import csv_safe_row
 from app.services.reports_access import ReportAccess, SessionReportAccess
+from app.core.ids import short_id
 
 logger = logging.getLogger(__name__)
 
@@ -413,7 +414,7 @@ class ReportFile:
 
 
 def _owner_suffix(owners: Owners) -> str:
-    return "_" + owners[:8] if isinstance(owners, str) else ""
+    return "_" + short_id(owners) if isinstance(owners, str) else ""
 
 
 class ViewerReports:
@@ -472,11 +473,11 @@ class ViewerReports:
     def campaign_comparison_csv(self, viewer: ReportViewer, user_id: Optional[str]) -> ReportFile:
         owners = self.reports.scope(viewer, user_id)
         buf = self.reports.export_campaign_comparison_csv(viewer.tenant_id, user_id=owners)
-        suffix = "".join(c for c in owners[:8] if c.isalnum() or c in "-_") if isinstance(owners, str) else ""
+        suffix = "".join(c for c in short_id(owners) if c.isalnum() or c in "-_") if isinstance(owners, str) else ""
         return ReportFile(buf, f"campaign_comparison{'_' + suffix if suffix else ''}.csv")
 
     def prospects_csv(self, viewer: ReportViewer, campaign_id: str) -> ReportFile:
-        return ReportFile(self.reports.export_prospects_csv_for(viewer, campaign_id), f"prospects_{campaign_id[:8]}.csv")
+        return ReportFile(self.reports.export_prospects_csv_for(viewer, campaign_id), f"prospects_{short_id(campaign_id)}.csv")
 
     def deliverability_csv(self, viewer: ReportViewer) -> ReportFile:
         return ReportFile(self.reports.export_deliverability_csv(viewer.tenant_id), "mailbox_health_report.csv")

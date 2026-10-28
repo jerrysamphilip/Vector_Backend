@@ -57,6 +57,12 @@ blocks (it refuses to add entries; `--allow-new` needs a reviewer's approval). E
 contract fails on an ignore that no longer matches an import (`unmatched_ignore_imports_alerting` is
 left at its default, `error`).
 
+Status after round 4 (2026-10-28): import-linter exceptions 0 (9 contracts kept, no `ignore_imports`
+left); complexity 74 functions over 20 baselined, average 3.31; `# type: ignore` 20; local imports 82. Coverage
+floors: unit app 65.83 % line / 45.36 % branch, functional app 78.85 % line / 57.28 % branch (the functional
+`app.core` branch and `app.domain` floors were lowered with the reason recorded in `ci/coverage_floor.json`;
+`app.domain` stays at 100 % in the unit layer).
+
 ## Coverage
 
 Introduced 2026-10-25 (refactor plan chunk Q0). Coverage of `app/` is measured per test layer, separately,

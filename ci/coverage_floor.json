@@ -16,62 +16,62 @@
   "layers": {
     "unit": {
       "app": {
-        "line": 62.88,
-        "branch": 40.47
+        "line": 65.82,
+        "branch": 45.36
       },
       "app.core": {
         "line": 79.79,
-        "branch": 57.72
+        "branch": 60.0
       },
       "app.routers": {
-        "line": 64.07,
-        "branch": 16.11
+        "line": 80.87,
+        "branch": 63.09
       },
       "app.services": {
-        "line": 53.13,
-        "branch": 34.32
+        "line": 55.84,
+        "branch": 37.65
       },
       "app.utils": {
-        "line": 80.88,
-        "branch": 76.85
+        "line": 85.49,
+        "branch": 81.72
       },
       "app.domain": {
         "line": 100.0,
         "branch": 100.0
       },
       "app.repositories": {
-        "line": 46.66,
-        "branch": 5.31
+        "line": 48.29,
+        "branch": 6.81
       }
     },
     "functional": {
       "app": {
-        "line": 77.97,
-        "branch": 55.69
+        "line": 78.85,
+        "branch": 57.27
       },
       "app.core": {
         "line": 81.26,
-        "branch": 57.72
+        "branch": 56.33
       },
       "app.routers": {
-        "line": 76.83,
-        "branch": 35.52
+        "line": 86.15,
+        "branch": 57.14
       },
       "app.services": {
         "line": 71.86,
-        "branch": 54.39
+        "branch": 54.58
       },
       "app.utils": {
-        "line": 68.88,
-        "branch": 55.24
+        "line": 73.17,
+        "branch": 60.04
       },
       "app.domain": {
-        "line": 87.2,
-        "branch": 66.83
+        "line": 86.43,
+        "branch": 66.17
       },
       "app.repositories": {
-        "line": 91.0,
-        "branch": 71.4
+        "line": 91.92,
+        "branch": 72.85
       }
     }
   },
@@ -156,6 +156,33 @@
       "from": 69.4,
       "to": 66.83,
       "reason": "app.core: S2's IP-pinned SMTP/IMAP classes in tls.py need live mail servers (functional tests use fake connectors; unit-tested in test_s2_mail_pinning). app.routers branch: routers are thin now (304 branches left); the covered logic moved to services. app.domain: fully covered by unit tests (100 %); the functional figure is incidental"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.core",
+      "metric": "branch",
+      "from": 57.72,
+      "to": 56.33,
+      "reason": "Round 4: new pure rules (custom properties, DNS compare, SES events, sending window) and MySQL TLS/UUIDv7 option branches are covered by unit tests (app.domain unit 100%); the API layer does not reach their error branches"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.domain",
+      "metric": "line",
+      "from": 87.2,
+      "to": 86.43,
+      "reason": "Round 4: new pure rules (custom properties, DNS compare, SES events, sending window) and MySQL TLS/UUIDv7 option branches are covered by unit tests (app.domain unit 100%); the API layer does not reach their error branches"
+    },
+    {
+      "date": "2026-10-28",
+      "layer": "functional",
+      "key": "app.domain",
+      "metric": "branch",
+      "from": 66.83,
+      "to": 66.17,
+      "reason": "Round 4: new pure rules (custom properties, DNS compare, SES events, sending window) and MySQL TLS/UUIDv7 option branches are covered by unit tests (app.domain unit 100%); the API layer does not reach their error branches"
     }
   ]
 }

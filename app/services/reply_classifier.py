@@ -40,6 +40,7 @@ from app.domain.inbox import (CLASSIFY_LOOKBACK_DAYS, MAX_CLASSIFY_ATTEMPTS, Lab
 from app.models.email_message import EmailEvent, EmailMessage
 from app.repositories.inbox_replies import ReplyRepository, ReplyUnitOfWork
 from app.services import llm_budget, suppression
+from app.core.ids import short_id
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +195,7 @@ class ReplyClassificationService:
         try:
             result = classify_reply(subject, body, llm=self._llm, attempt=attempts + 1)
         except ClassificationDeferred as exc:
-            logger.info("[ReplyClassifier] %s deferred (attempt %s): %s", message_id[:8], attempts + 1, exc)
+            logger.info("[ReplyClassifier] %s deferred (attempt %s): %s", short_id(message_id), attempts + 1, exc)
             self._count_attempt(message_id)
             return None
         with self._uow as uow:
@@ -225,7 +226,7 @@ class ReplyClassificationService:
             self._suppress(repo, reply, outbound)
         elif result.needs_review:
             logger.warning("[ReplyClassifier] Reply %s may be an opt-out (confidence %.2f): flagged for review",
-                           message_id[:8], result.confidence)
+                           short_id(message_id), result.confidence)
         return result.label
 
     @staticmethod
@@ -241,7 +242,7 @@ class ReplyClassificationService:
         if outbound is not None and not repo.event_exists(outbound.message_id, EmailEvent.EVENT_UNSUBSCRIBE, reply):
             repo.add_event(outbound.message_id, EmailEvent.EVENT_UNSUBSCRIBE, reply.sent_at,
                            {"reply_message_id": reply.message_id})
-        logger.info("[ReplyClassifier] Unsubscribed %s from reply %s", prospect.email, reply.message_id[:8])
+        logger.info("[ReplyClassifier] Unsubscribed %s from reply %s", prospect.email, short_id(reply.message_id))
 
 
 def classify_pending(limit: int = JOB_BATCH, llm: Optional[LlmHook] = None,
@@ -255,7 +256,7 @@ def classify_pending(limit: int = JOB_BATCH, llm: Optional[LlmHook] = None,
         try:
             label = ReplyClassificationService(uow_factory(), llm).classify_and_store(message_id)
         except Exception:  # one bad row must not stop the batch
-            logger.warning("[ReplyClassifier] Could not classify reply %s", message_id[:8], exc_info=True)
+            logger.warning("[ReplyClassifier] Could not classify reply %s", short_id(message_id), exc_info=True)
             stats["failed"] += 1
             continue
         stats["classified"] += label is not None

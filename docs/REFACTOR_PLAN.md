@@ -45,11 +45,12 @@ current violations sit in a shrinking baseline.
 | 0025 | A1 (lists) | Contact identifiers, duplicate pairs, merge logs, export logs, unique list names |
 | 0026 | A7 ✅ | Background import jobs + saved mappings |
 | 0027 | A2 ✅ | `campaigns.wait_business_days` (edit after launch) |
-| 0028 | D3 | tenant_id on child tables + backfill + tenant-first indexes |
-| 0029 | D5 | CHECK constraints on status columns |
-| 0030 | D7 | FULLTEXT ngram index for contact search |
-| 0031 | D6 | Retention bookkeeping (archive tables / purge log) |
-| 0032+ | later | Assigned when a decision-gated chunk starts |
+| 0028 | D3 ✅ | tenant_id on child tables + backfill + tenant-first indexes |
+| 0029 | D5 ✅ | CHECK constraints on status columns |
+| 0030 | D7 ✅ | FULLTEXT ngram index for contact search |
+| 0031 | C-17 ✅ | Custom-property safety (`is_active`, `is_system`, `max_length`) |
+| 0032 | D6 | Retention bookkeeping (archive tables / purge log) |
+| 0033+ | later | Assigned when a decision-gated chunk starts |
 
 ## Waves and chunks
 
@@ -67,12 +68,12 @@ current violations sit in a shrinking baseline.
 |---|---|---|---|
 | D1 ✅ | One collation (0017); `scripts/test.py` and compose use it. Done: `app/core/db_charset.py`, every table and connection declares it | migration, `app/db/*` charset settings | S |
 | D2 ✅ | DATETIME(6) everywhere (0018); `app/core/clock.py` `utcnow()` (naive UTC: the columns hold UTC without a zone) replaces 224 `datetime.utcnow()`; ruff DTZ003 bans new ones | all models' time columns, every `utcnow` call site | L (mechanical) |
-| D3 | `tenant_id` on email_messages, email_events, campaign_prospects, email_templates, email_sequences, email_template_versions, prospect_list_members, proposal_lines, campaign_state_events, … (0028) with backfill, tenant-first indexes, writers set it, per-table isolation tests | those models + their writers | L |
-| D4 | UUIDv7 default for new primary keys (`app/core/ids.py`), no data change | `app/core/ids.py`, model defaults | S |
-| D5 | CHECK constraints for email/campaign/deal/proposal/lead status machines (0029); shared status enums in `app/domain/status.py` | migration, `app/domain/status.py` | M |
-| D7 | Contact search on FULLTEXT ngram (0030) + 100k-contact seed + timing test | `contact_query_service` search, seed script | M |
-| D8 | MySQL TLS via `connect_args` (off until DEC-01), RDS CA bundle path | `app/core/database.py`, config, docs | S |
-| D6 ⏸ | Retention: archive/purge job for events, messages, activities, webhook deliveries (0031), default off (DEC-14) | new `app/services/retention.py`, jobs | M |
+| D3 ✅ | `tenant_id` on email_messages, email_events, campaign_prospects, email_templates, email_sequences, email_template_versions, prospect_list_members, proposal_lines, campaign_state_events, … (0028) with backfill, tenant-first indexes, writers set it, per-table isolation tests | those models + their writers | L |
+| D4 ✅ | UUIDv7 default for new primary keys (`app/core/ids.py`), no data change | `app/core/ids.py`, model defaults | S |
+| D5 ✅ | CHECK constraints for email/campaign/deal/proposal/lead status machines (0029); shared status enums in `app/domain/status.py` | migration, `app/domain/status.py` | M |
+| D7 ✅ | Contact search on FULLTEXT ngram (0030) + 100k-contact seed + timing test | `contact_query_service` search, seed script | M |
+| D8 ✅ | MySQL TLS via `connect_args` (off until DEC-01), RDS CA bundle path | `app/core/database.py`, config, docs | S |
+| D6 ⏸ | Retention: archive/purge job for events, messages, activities, webhook deliveries (0032), default off (DEC-14) | new `app/services/retention.py`, jobs | M |
 
 ### Wave 2 — layering pattern (one agent, then review before wave 3)
 
