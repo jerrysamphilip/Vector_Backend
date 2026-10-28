@@ -3,6 +3,9 @@ Per-inbox SMTP sender for warmup emails.
 
 Tries per-inbox SMTP credentials first; falls back to the SES relay
 when no SMTP credentials are configured on the inbox.
+
+The SMTP connection comes from the mail connector (app/adapters/mail.py: verified TLS, and when
+deployed the host is resolved once, checked and pinned, so DNS rebinding cannot redirect it).
 """
 import asyncio
 import email.utils
@@ -11,10 +14,12 @@ import smtplib
 import uuid
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Optional
+from typing import Optional, cast
 
-from app.core.tls import open_smtp
+from app.adapters import providers
 from app.models.sending_inbox import SendingInbox
+from app.repositories.sending import Session, session_or_none
+from app.services import ms365_oauth
 from app.services.email_sender_service import email_sender
 
 logger = logging.getLogger(__name__)
@@ -61,12 +66,12 @@ def _smtp_send_blocking(inbox: SendingInbox, to_email: str, msg: MIMEMultipart, 
     password = secret if secret is not None else inbox.smtp_password
     use_ssl = inbox.smtp_use_ssl or False
 
-    # Verified TLS (implicit, or a required STARTTLS) before any credentials are sent
-    smtp = open_smtp(host, port, use_ssl=use_ssl, timeout=30)
+    # Verified TLS (implicit, or a required STARTTLS) before any credentials are sent; the connector
+    # checks the host and pins the checked address when deployed
+    smtp = providers.mail_connector().open_smtp(host, port, use_ssl=use_ssl, timeout=30)
 
     try:
-        from app.services.ms365_oauth import smtp_login
-        smtp_login(smtp, username, password)  # XOAUTH2 when password is an OAuthToken
+        ms365_oauth.smtp_login(smtp, username, password)  # XOAUTH2 when password is an OAuthToken
         smtp.sendmail(inbox.email_address, [to_email], msg.as_bytes())
     finally:
         try:
@@ -103,9 +108,8 @@ async def send_via_inbox(
         try:
             secret = None
             if oauth:
-                from sqlalchemy.orm import object_session
-                from app.services.ms365_oauth import smtp_secret
-                secret = smtp_secret(object_session(inbox), inbox)  # type: ignore[arg-type]  # loaded inbox has a session
+                # A loaded inbox has its session (the token refresh writes in its own session)
+                secret = ms365_oauth.smtp_secret(cast(Session, session_or_none(inbox)), inbox)
             await asyncio.to_thread(_smtp_send_blocking, inbox, to_email, msg, secret)
             logger.debug(
                 "[WarmupSMTP] Sent via per-inbox SMTP %s → %s", inbox.email_address, to_email

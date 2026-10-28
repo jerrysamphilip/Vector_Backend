@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from app.schemas.inbox_schema import MAX_DELAY_BETWEEN_EMAILS, SendingInboxCreate, SendingInboxUpdate
 from app.services import email_scheduler_service as sched_mod
 from app.services.email_scheduler_service import EmailSchedulerService
+from app.domain.sending import PassStats
 from app.services.send_pacing import next_gap, seconds_until_ready
 
 NOW = datetime(2026, 10, 27, 12, 0, 0)
@@ -92,17 +93,20 @@ def test_send_lane_stops_when_the_breaker_is_open(monkeypatch):
     assert not any(stats.values())
 
 
-def test_send_pacing_pass_counts_as_work_only_when_an_inbox_is_ready_soon(monkeypatch):
+def test_send_pacing_pass_wakes_the_loop_when_the_soonest_inbox_is_ready(monkeypatch):
+    """A8: a pass held back only by pacing is not counted as processed; it sets next_run_in instead."""
     s = EmailSchedulerService()
     monkeypatch.setattr(sched_mod._time, "monotonic", lambda: 1000.0)
     s._ready_at = {"a": 1010.0}
-    stats = {"processed": 0, "paced": 1}
+    stats = PassStats(paced=1)
     s._note_pacing(stats)
-    assert stats["recheck_in"] == 10 and stats["processed"] == 1
+    out = stats.as_dict()
+    assert out["recheck_in"] == 10 and out["processed"] == 0 and out["next_run_in"] == 10
     s._ready_at = {"a": 1600.0}
-    stats = {"processed": 0, "paced": 1}
+    stats = PassStats(paced=1)
     s._note_pacing(stats)
-    assert stats["recheck_in"] == 600 and stats["processed"] == 0
+    out = stats.as_dict()
+    assert out["recheck_in"] == 600 and out["processed"] == 0 and out["next_run_in"] is None
 
 
 def test_send_inbox_delay_bounds():

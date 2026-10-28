@@ -13,7 +13,7 @@ Flow:
 Prompts: app/prompts/llm_system_prompts.py
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 from sqlalchemy.orm import Session
 import uuid
@@ -42,6 +42,48 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # BATCH CLASSIFICATION
 # ============================================================
+
+def _persona_of(prospect: Prospect, persona_by_prospect_id: Dict[str, ProspectPersona],
+                new_personas: List[ProspectPersona]) -> Tuple[str, float]:
+    """(persona type, confidence): the stored classification, else a new AUTO_BATCH one (staged in new_personas)."""
+    existing = persona_by_prospect_id.get(prospect.prospect_id)
+    if existing:
+        return existing.persona_type, existing.confidence_score
+    persona_type, confidence = classify_prospect(
+        designation=prospect.designation or "",
+        company_name=prospect.company_name or ""
+    )
+    new_persona = ProspectPersona(
+        persona_id=str(uuid.uuid4()),
+        prospect_id=prospect.prospect_id,
+        persona_type=persona_type,
+        confidence_score=confidence,
+        classification_method="AUTO_BATCH",
+    )
+    new_personas.append(new_persona)
+    persona_by_prospect_id[prospect.prospect_id] = new_persona
+    return persona_type, confidence
+
+
+def _preview_row(prospect: Prospect, confidence: float) -> Dict[str, Any]:
+    """All of the contact's data, for the wizard's preview."""
+    return {
+        "prospect_id": prospect.prospect_id,
+        "first_name": prospect.first_name or "",
+        "last_name": prospect.last_name or "",
+        "email": prospect.email,
+        "company_name": prospect.company_name or "",
+        "designation": prospect.designation or "",
+        "industry": prospect.industry or "technology",
+        "linkedin_url": prospect.linkedin_url or "",
+        "poc_city": prospect.poc_city or "",
+        "poc_state": prospect.poc_state or "",
+        "poc_country": prospect.poc_country or "",
+        "emp_band": prospect.emp_band or "",
+        "timezone": prospect.timezone or "",
+        "confidence": confidence,
+    }
+
 
 def batch_classify_prospects(
     db: Session,
@@ -89,52 +131,12 @@ def batch_classify_prospects(
         for persona in existing_personas
     }
 
-    # Group by persona
+    # Group by persona; contacts not yet classified are classified now (saved by the caller's commit)
     grouped = defaultdict(list)
-    new_personas = []
-    
+    new_personas: List[ProspectPersona] = []
     for prospect in prospects:
-        # Check if already classified
-        existing_persona = persona_by_prospect_id.get(prospect.prospect_id)
-        
-        if existing_persona:
-            persona_type = existing_persona.persona_type
-            confidence = existing_persona.confidence_score
-        else:
-            # Classify using AI
-            persona_type, confidence = classify_prospect(
-                designation=prospect.designation or "",
-                company_name=prospect.company_name or ""
-            )
-            
-            # Save classification
-            new_persona = ProspectPersona(
-                persona_id=str(uuid.uuid4()),
-                prospect_id=prospect.prospect_id,
-                persona_type=persona_type,
-                confidence_score=confidence,
-                classification_method="AUTO_BATCH",
-            )
-            new_personas.append(new_persona)
-            persona_by_prospect_id[prospect.prospect_id] = new_persona
-        
-        # Include ALL prospect data for preview functionality
-        grouped[persona_type].append({
-            "prospect_id": prospect.prospect_id,
-            "first_name": prospect.first_name or "",
-            "last_name": prospect.last_name or "",
-            "email": prospect.email,
-            "company_name": prospect.company_name or "",
-            "designation": prospect.designation or "",
-            "industry": prospect.industry or "technology",
-            "linkedin_url": prospect.linkedin_url or "",
-            "poc_city": prospect.poc_city or "",
-            "poc_state": prospect.poc_state or "",
-            "poc_country": prospect.poc_country or "",
-            "emp_band": prospect.emp_band or "",
-            "timezone": prospect.timezone or "",
-            "confidence": confidence,
-        })
+        persona_type, confidence = _persona_of(prospect, persona_by_prospect_id, new_personas)
+        grouped[persona_type].append(_preview_row(prospect, confidence))
 
     if new_personas:
         db.add_all(new_personas)

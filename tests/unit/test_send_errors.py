@@ -9,6 +9,8 @@ from botocore.exceptions import (
 )
 from urllib3.exceptions import ProtocolError
 
+from app.adapters import providers
+from app.adapters import ses as ses_adapter
 from app.services import email_sender_service as sender_mod
 from app.services.email_sender_service import (
     AmbiguousEmailFailure, PermanentEmailFailure, PlatformEmailFailure, SenderEmailFailure,
@@ -63,19 +65,21 @@ def test_send_connection_errors_before_vs_after_the_request(exc, expected):
 
 
 def test_send_ses_client_never_retries_itself():
-    retries = email_sender.ses_client.meta.config.retries
+    retries = ses_adapter.build_ses_client().meta.config.retries
     assert retries.get("total_max_attempts") == 1
     assert sender_mod.SES_CLIENT_CONFIG.retries["total_max_attempts"] == 1
 
 
-def test_send_raw_maps_a_truncated_response_to_outcome_unknown(monkeypatch):
-    def broken(**kwargs):
+class _BrokenTransport:
+    def send_raw(self, **kwargs):
         raise ResponseStreamingError(error="IncompleteRead(0 bytes read)")
 
-    monkeypatch.setattr(email_sender.ses_client, "send_raw_email", broken)
+
+def test_send_raw_maps_a_truncated_response_to_outcome_unknown():
     msg = SimpleNamespace(message_id="m1")
-    with pytest.raises(AmbiguousEmailFailure):
-        asyncio.run(email_sender._send_raw({}, msg, "a@b.example.com"))
+    with providers.override(email_transport=_BrokenTransport()):
+        with pytest.raises(AmbiguousEmailFailure):
+            asyncio.run(email_sender._send_raw({}, msg, "a@b.example.com"))
 
 
 def test_send_with_retry_never_retries_a_deferred_failure(monkeypatch):
