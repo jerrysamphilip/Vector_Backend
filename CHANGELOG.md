@@ -131,6 +131,18 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - API sweep results are redacted before they are recorded; cached test tokens and raw captures are untracked.
 
 ### Fixed
+- Handover pass:
+  - Campaign wizard drafts are owner-scoped: a draft id outside the caller's visibility scope returns 404 on read
+    and delete (creator, admins, and managers over their team keep access; lists show only your own drafts).
+  - Launch requires a template on every sequence step; a step without one is refused with a 400 naming the step
+    (counting templates let a step with none pass when another step had several persona versions, and that step
+    was silently skipped).
+  - DEC-20: the background IMAP sync and webhook delivery skip suspended / deleted workspaces like the scheduler and
+    warm-up; held webhook deliveries stay PENDING and go out after reactivation.
+  - Removed the stray repo-root scripts `check_db.py`, `diagnose_duplicate_conversations.py` and
+    `test_warmup_e2e.py` (the last contained real staff e-mail addresses and ran against the live session factory).
+  - Docs refreshed for handover: REFACTOR_PLAN, OPERATIONS, DECISIONS (DEC-24..27 proposed), REVIEW_RESPONSES,
+    CI_GATES, TRACEABILITY (regenerated), e2e FINDINGS.
 - Warm-up now reads peer mailboxes with the effective IMAP settings (S-26) like the IMAP sync: a mailbox with
   SMTP settings but blank IMAP fields takes part in open/spam-rescue engagement (derived host, SMTP password
   reused) and is no longer flagged `IMAP_NOT_CONFIGURED`; saved IMAP settings still win, Microsoft 365

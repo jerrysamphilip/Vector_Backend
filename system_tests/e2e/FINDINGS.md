@@ -3,6 +3,31 @@
 Stack (first runs): tree at commit 68c8d7e in image `vector-api:e2e`, SES = moto, IMAP = fake server, worker = the real worker.
 Evidence for each item is in `results.json` (case id given) and was reproduced through the API plus read-only DB queries.
 
+## Status at handover (29 Oct 2026)
+Checked against the code on branch `claude/eager-gates-s6yb8g` and the newest e2e run in `reports/test-results/20261028-100221-e2e`
+(backend 00b8d47 plus the uncommitted round-4 tree, frontend b7ab1dd): **188 pass / 0 fail / 0 blocked**. The commit given is the one that
+introduced the fix (found with `git log -S`). The sections below this one are the history and are not updated.
+
+| ID | Status | Fix | Evidence |
+|---|---|---|---|
+| D1 | Fixed + verified | b000fa9 (wizard builds a fallback template for every step without an LLM). The launch gate's per-step coverage check is being reworked in the handover pass (see CHANGELOG) | E2E-J1-15, -18, -19 pass (every step has a template; launch with the fallback templates only -> ACTIVE); pytest `tests/test_behaviour_fixes.py::test_bf_f04_wizard_builds_template_for_every_step_without_ai`, `tests/unit/test_behaviour_fixes.py::test_bf_u06_every_step_count_is_covered` |
+| D2 | Fixed + verified | 258ff78 | E2E-J1-63 pass; pytest `test_unsubscribe_only_reply_is_recognised` |
+| D3 | Fixed + verified | 258ff78 | E2E-J6-04 pass |
+| D4 | Fixed + verified | adc98b7 (unique clickers on every screen) | E2E-J1-44 pass (16 sent, 10 opened, 4 clicked, 1 bounced); pytest `tests/test_metrics_inbox_fixes.py::test_clicked_is_unique_prospects_on_every_screen` |
+| D5 | Fixed + verified | 258ff78 | E2E-J4-12 pass |
+| D6 | Fixed + verified | b51812a | E2E-J1-31 pass |
+| D7 | Fixed + verified | b51812a | E2E-J1-23 pass (step 2 >= step 1 + 2 d, step 3 >= step 2 + 3 d); pytest `test_planned_follow_ups_follow_shifted_first_step` |
+| D8 | Fixed (unit tests); E2E does not send a request without `Origin` | 258ff78 | `build_reset_link` falls back to the first `FRONTEND_URL` entry (`app/services/password_reset_email.py:39`); `tests/unit/test_sec_safe_origin.py::test_sec_reset_link_malicious_origin_falls_back`; E2E-J3-10 pass |
+| D9 | Fixed (pytest); E2E does not call `accept-invite` | b51812a | Invitations are stored `PENDING` (`app/services/invitation_service.py:163`) and `POST /api/users/accept-invite` accepts a pending token; the invite e-mail carries a set-password link and no password (I-13, E2E-J3-06 pass). pytest `tests/test_defect_fixes.py::test_accept_invite_completes_invited_account`. The "unreachable by design" and "temporary password in clear text" notes in the 12 Oct write-up no longer apply |
+| D10 | Fixed + verified | b51812a | E2E-J6-03 pass; pytest `test_automation_send_is_not_a_duplicate_of_step_one` |
+| NI-1 | Implemented + verified | 47e693c | Deal won / lost / stage change notifies the owner and the owner's manager, never the actor (`app/domain/sales.py:153-175`, `stage_change_recipients`, `stage_change_message`); E2E-J1-87b pass |
+| NI-2 | Implemented + verified | 47e693c | Auto-pause notifies the campaign owner and the workspace's active admins (`app/services/send_safety.py:117-121`, `notify_auto_pause`); E2E-J2-09 pass |
+| NI-3 | Resolved (S-09) | - | unchanged, see below |
+| EV-D1 | Fixed + verified | 00b8d47 (migration `0033`: index `(tenant_id, merged_into_id)`, tenant-scoped update by key, lock retry on 1213/1205) | Wave-6 defect D1 in [docs/EVIDENCE_2026-10-28.md](../../docs/EVIDENCE_2026-10-28.md) §2.2 (merge / erasure / purge deadlocks); CM-063, -064, -068, -069, -080, -080b pass in the system rerun `20261028-094050-system` |
+| EV-D2 | Fixed in code + pytest; **not re-verified live** | 00b8d47 | Wave-6 defect D2 (upload confirmations / revalidations use the path id), EVIDENCE §2.2. The routes now use the path id and refuse a differing body id with 400 (`app/routers/prospect_list_router.py:258-305`); pytest `tests/test_dlock_upload_ids.py`. The api_sweep cases `API-POST-uploads-upload-id-confirmations-VAL-path-nonexistent-id` and `-ISO-path-foreign-id` still answered 200 in the system rerun `20261028-094050-system` (the stack image of that rerun may predate the fix), and run B stopped before api_sweep: re-run api_sweep before closing it |
+
+Still to do: a live api_sweep run that shows EV-D2 passing; E2E coverage for D8 (no `Origin`) and D9 (`accept-invite`) if wanted. Otherwise nothing from this register is open; the stand-in limits under "What the stand-ins cannot prove" remain.
+
 ## Status after the development round (re-run 13 Oct, Tuesday)
 Run: image `vector-api:e2e` built 13 Oct 07:14 from the tree after commit b51812a. Result **183 pass / 4 fail / 1 blocked** of 188
 (was 174 / 13 / 1). Fixed and now passing: E2E-J1-23, -31, -42, -43, -46, -47, -63, J4-12, J6-04.

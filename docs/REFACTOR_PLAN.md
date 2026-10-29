@@ -1,6 +1,6 @@
 # Refactor plan: database design, layering, session framework, UI, tests
 
-Status: proposed, 2026-10-25. Source findings: the database review, the architect's layering feedback
+Status: proposed 2026-10-25; ticks updated 2026-10-29 (✅ = landed on the branch). Source findings: the database review, the architect's layering feedback
 (route / service / repository / domain-query / UI / session framework / unit-test isolation), and the open
 items in [REVIEW_RESPONSES.md](REVIEW_RESPONSES.md) and [DECISIONS.md](DECISIONS.md).
 
@@ -28,7 +28,7 @@ items in [REVIEW_RESPONSES.md](REVIEW_RESPONSES.md) and [DECISIONS.md](DECISIONS
 
 Unit tests per layer: route (fake service), service (fake repository + fake adapters), domain (pure).
 Repositories and queries are tested against MySQL in the functional layer. Import-linter enforces the table;
-current violations sit in a shrinking baseline.
+the baseline is empty since round 4 (no `ignore_imports` left in `.importlinter`, no SQLAlchemy in `app/services`).
 
 ## Migration numbers (reserved)
 
@@ -53,8 +53,9 @@ current violations sit in a shrinking baseline.
 | 0033 | UAT/V1 fix ✅ | Tenant-first index on `prospects.merged_into_id` (merge / erasure deadlocks) |
 | 0034 | D7 revert ✅ | Drop the FULLTEXT index (`0034_drop_contact_fulltext`): search missed committed contacts under concurrent writes |
 | 0035 | V1 prep ✅ | Fresh-vs-upgraded schema parity (`0035_schema_parity`): NOT NULL, ON UPDATE, missing FKs, legacy indexes |
-| 0036 | D6 | Retention bookkeeping (archive tables / purge log) |
-| 0037+ | later | Assigned when a decision-gated chunk starts |
+| 0036 | handover (in progress) | Drop the unused `campaign_metrics_realtime` table (`0036`, being written in the handover pass; tick when merged) |
+| 0037 | D6 | Retention bookkeeping (archive tables / purge log) |
+| 0038+ | later | Assigned when a decision-gated chunk starts |
 
 ## Waves and chunks
 
@@ -62,9 +63,9 @@ current violations sit in a shrinking baseline.
 
 | ID | Chunk | Owns | Size |
 |---|---|---|---|
-| L0 | ADR 0009 layering; `app/domain`, `app/repositories`, `app/adapters` skeletons; base `Repository`/`UnitOfWork` Protocols; import-linter contracts for the table above with today's violations baselined | `docs/adr/0009*`, `.importlinter`, new packages | S |
-| Q0 | Coverage gate: pytest-cov on unit + functional, ratcheting floor file `ci/coverage_floor.json` | `.github/workflows/ci.yml`, `scripts/ci/` | S |
-| DEC | DECISIONS.md: DEC-22 stay on MySQL 8.4 vs PostgreSQL (default: MySQL) | `docs/DECISIONS.md` | XS |
+| L0 ✅ | ADR 0009 layering; `app/domain`, `app/repositories`, `app/adapters` skeletons; base `Repository`/`UnitOfWork` Protocols; import-linter contracts for the table above with today's violations baselined | `docs/adr/0009*`, `.importlinter`, new packages | S |
+| Q0 ✅ | Coverage gate: pytest-cov on unit + functional, ratcheting floor file `ci/coverage_floor.json` | `.github/workflows/ci.yml`, `scripts/ci/` | S |
+| DEC ✅ | DECISIONS.md: DEC-22 stay on MySQL 8.4 vs PostgreSQL (default: MySQL) | `docs/DECISIONS.md` | XS |
 
 ### Wave 1 — database (D1, D2 sequential; then D3, D4, D5, D7, D8 in parallel)
 
@@ -77,7 +78,7 @@ current violations sit in a shrinking baseline.
 | D5 ✅ | CHECK constraints for email/campaign/deal/proposal/lead status machines (0029); shared status enums in `app/domain/status.py` | migration, `app/domain/status.py` | M |
 | D7 ↩ | Contact search on FULLTEXT ngram (0030) + 100k-contact seed + timing test. **Reverted** (0034): under concurrent inserts from another workspace some committed contacts never matched the pre-filter; search is the plain LIKE scan again (ADR 0003) | `contact_query_service` search, seed script | M |
 | D8 ✅ | MySQL TLS via `connect_args` (off until DEC-01), RDS CA bundle path | `app/core/database.py`, config, docs | S |
-| D6 ⏸ | Retention: archive/purge job for events, messages, activities, webhook deliveries (0036), default off (DEC-14) | new `app/services/retention.py`, jobs | M |
+| D6 ⏸ | Retention: archive/purge job for events, messages, activities, webhook deliveries (0037), default off (DEC-14) | new `app/services/retention.py`, jobs | M |
 
 ### Wave 2 — layering pattern (one agent, then review before wave 3)
 
@@ -90,12 +91,12 @@ current violations sit in a shrinking baseline.
 | ID | Aggregate (routers / services) | Size |
 |---|---|---|
 | A1 ✅ | Accounts, lists, prospect lists, recycle bin | M |
-| A2 | Campaigns, sequences, templates, wizard, subject variants | L |
+| A2 ✅ | Campaigns, sequences, templates, wizard, subject variants (`032f11b`) | L |
 | A3 ✅ | Sales: leads, opportunities, proposals, quotes, sales admin, sales reports | L |
 | A4 ✅ | Inbox: conversations, IMAP sync, SES webhook, deliverability, sending inboxes | L |
 | A5 ✅ | Auth, users, invitations, platform admin, tenants | M |
 | A6 ✅ | Reports, custom reports, CRM KPIs, analytics | M |
-| A7 | Import, automation rules, webhooks, contact scoring, notifications | M |
+| A7 ✅ | Import, automation rules, webhooks, contact scoring, notifications (`875c97d`) | M |
 | A8 ✅ | Worker side: email scheduler, sender, warmup, send-now — split the complexity hotspots (93/80/55) | L |
 
 Each A-chunk also: parameter objects for long filter lists (C-6), UUID-typed IDs (C-7), response models (C-8),
@@ -129,8 +130,8 @@ shrink complexity / local-import / import-linter baselines (C-1, C-4, C-5).
 
 | ID | Chunk |
 |---|---|
-| V1 | Live regression on one commit (all levels) → `docs/EVIDENCE_<date>.md` |
-| V2 | Load test (100k contacts, 2 API replicas) and restore drill write-up |
+| V1 (partly) | Live regression on one commit (all levels) → `docs/EVIDENCE_<date>.md`. [EVIDENCE_2026-10-28.md](EVIDENCE_2026-10-28.md): run A complete on 6fb5f0f; run B of the fixes stopped after 6 of 31 suites |
+| V2 (harness only) | Load test (100k contacts, 2 API replicas) and restore drill write-up. Harness built (`scripts/load/`: seed, `run_load.py`, `restore_drill.py`); not run for the evidence (skipped at the user's request, EVIDENCE §6) |
 
 ## Suggested order under usage limits
 

@@ -10,9 +10,10 @@ from __future__ import annotations
 from contextlib import AbstractContextManager
 from typing import Any, List, Optional, Sequence
 
-from sqlalchemy import desc, or_
+from sqlalchemy import desc, func, or_
 from sqlalchemy.orm import Session
 
+from app.core.auth import BLOCKED_TENANT_STATUSES
 from app.domain.inbox_sync import OUTBOUND, STOPPABLE_STATUSES, SUBJECT_MATCH_WINDOW, SyncPosition
 from app.models.campaign import CampaignProspect
 from app.models.conversation import Conversation
@@ -20,6 +21,7 @@ from app.models.email_message import EmailMessage
 from app.models.imap_sync_state import ImapSyncState
 from app.models.prospect import Prospect
 from app.models.sending_inbox import SendingInbox
+from app.models.tenant import Tenant
 from app.repositories.base import SqlAlchemyUnitOfWork
 from app.repositories.contacts import SqlAlchemyContactRepository
 
@@ -32,8 +34,11 @@ class ImapSyncRepository:
 
     # ── Inboxes and positions ─────────────────────────────────────────────
     def inboxes_to_sync(self) -> List[SendingInbox]:
-        """Every inbox with an IMAP host (all tenants: the background job)."""
-        return list(self._session.query(SendingInbox).filter(SendingInbox.imap_host.isnot(None)).all())
+        """Every inbox with an IMAP host (all tenants: the background job), except those of suspended /
+        deleted workspaces (DEC-20): their mail stays on the server and is picked up after reactivation."""
+        return list(self._session.query(SendingInbox).join(Tenant, Tenant.tenant_id == SendingInbox.tenant_id).filter(
+            SendingInbox.imap_host.isnot(None),
+            func.upper(func.coalesce(Tenant.status, "ACTIVE")).notin_(sorted(BLOCKED_TENANT_STATUSES))).all())
 
     def get_inbox(self, inbox_id: str) -> Optional[SendingInbox]:
         return self._session.query(SendingInbox).filter(SendingInbox.inbox_id == inbox_id).first()

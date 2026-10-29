@@ -183,6 +183,22 @@ def persona_gaps(
     return gaps
 
 
+def uncovered_steps(steps: Iterable[tuple[int, str]], template_sequence_ids: Iterable[Optional[str]]) -> list[int]:
+    """
+    Step numbers of ``steps`` ((step_number, sequence_id) pairs) without a single template. Launch needs one
+    per step: a persona lacking its own falls back to the step's generic or any other template (see
+    ``persona_gaps``), but a step with none would be skipped for every contact.
+    """
+    covered = set(template_sequence_ids)
+    return sorted(number for number, sequence_id in steps if sequence_id not in covered)
+
+
+def missing_templates_message(missing: Sequence[int]) -> str:
+    """The launch refusal for steps without a template (400)."""
+    label = "step" if len(missing) == 1 else "steps"
+    return f"Missing email templates for {label} {', '.join(str(n) for n in missing)}"
+
+
 # ── Campaign list (GET /campaigns) ───────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True, slots=True)

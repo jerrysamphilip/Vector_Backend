@@ -18,7 +18,7 @@ from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
 from app.core.clock import utcnow
 from app.core.config import settings
-from app.domain.campaigns import REMOVED_BY_USER
+from app.domain.campaigns import REMOVED_BY_USER, missing_templates_message, uncovered_steps
 from app.domain.campaigns_edit import (ScheduleSettings, build_template_map, contact_timezone, launch_times,
                                        passed_step, pick_template, schedule_base)
 from app.models.campaign import Campaign, CampaignProspect
@@ -284,12 +284,15 @@ class CampaignEmailService(CampaignServiceBase):
         require_postal_address(self.uow.session, campaign.tenant_id)
 
         content = self.uow.content
-        step_count = content.step_count(campaign_id)
-        if step_count == 0:
+        steps = content.steps(campaign_id)
+        if not steps:
             raise ValueError("Cannot launch campaign without sequence steps")
-        template_count = content.template_count(campaign_id)
-        if template_count < step_count:
-            raise ValueError(f"Missing email templates. Defined: {step_count}, Found: {template_count}")
+        # Every step needs a template of its own (a count of templates let a step with none pass when
+        # another step had several persona versions; that step was then silently skipped)
+        missing = uncovered_steps(((s.step_number, s.sequence_id) for s in steps),
+                                  (t.sequence_id for t in content.templates(campaign_id)))
+        if missing:
+            raise ValueError(missing_templates_message(missing))
         for t in content.unapproved_templates(campaign_id):
             t.approved_by = user_id
             t.approved_at = utcnow()
