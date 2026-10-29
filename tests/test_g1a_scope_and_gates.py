@@ -210,7 +210,7 @@ def test_g1a_webhooks_are_held_for_suspended_workspaces(client, ws):
     tenant = register_tenant(client, "goned")
     with SessionLocal() as db:
         ep = WebhookEndpoint(tenant_id=tenant["tenant_id"], url="https://hooks.example.com/g1a",
-                             secret="whsec_g1a_fixture", event_types=["contact.created"], active=True)
+                             secret=f"whsec_{uuid.uuid4().hex}", event_types=["contact.created"], active=True)
         db.add(ep)
         db.flush()
         d = WebhookDelivery(tenant_id=tenant["tenant_id"], endpoint_id=ep.endpoint_id, event_id=str(uuid.uuid4()),
