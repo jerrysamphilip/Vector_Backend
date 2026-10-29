@@ -33,7 +33,6 @@ from app.models.email_attachment import EmailAttachment
 from app.models.email_message import EmailEvent, EmailMessage
 from app.models.email_sequence import EmailSequence
 from app.models.email_template import EmailTemplate, EmailTemplateVersion
-from app.models.metrics import CampaignMetricsRealtime
 from app.models.prospect import Prospect
 from app.models.prospect_list import ProspectListMember
 from app.models.prospect_persona import ProspectPersona
@@ -144,7 +143,6 @@ class CampaignsRepository:
         s.query(EmailTemplate).filter(EmailTemplate.campaign_id == cid).delete()
         s.query(EmailSequence).filter(EmailSequence.campaign_id == cid).delete()
         s.query(CampaignProspect).filter(CampaignProspect.campaign_id == cid).delete()
-        s.query(CampaignMetricsRealtime).filter(CampaignMetricsRealtime.campaign_id == cid).delete()
         s.query(CampaignStateEvent).filter(CampaignStateEvent.campaign_id == cid).delete()
         s.query(CampaignGroupMember).filter(CampaignGroupMember.campaign_id == cid).delete()
         s.query(AutomationRule).filter(AutomationRule.campaign_id == cid).delete()

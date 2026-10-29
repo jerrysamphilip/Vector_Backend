@@ -26,7 +26,6 @@ from app.models import (
     GlobalUnsubscribe,
     CampaignGroup,
     CampaignGroupMember,
-    CampaignMetricsRealtime,
     AuditLog,
     ComplianceCheck,
 )
@@ -52,7 +51,6 @@ def cleanup_all_dummy_data(db: Session, confirm: bool = False) -> dict:
     - email_template_versions
     - email_templates
     - email_sequences
-    - campaign_metrics_realtime
     - campaign_state_events
     - campaign_prospects
     - campaign_group_members
@@ -83,7 +81,6 @@ def cleanup_all_dummy_data(db: Session, confirm: bool = False) -> dict:
         ("email_template_versions", EmailTemplateVersion),
         ("email_templates", EmailTemplate),
         ("email_sequences", EmailSequence),
-        ("campaign_metrics_realtime", CampaignMetricsRealtime),
         ("campaign_state_events", CampaignStateEvent),
         ("campaign_prospects", CampaignProspect),
         ("campaign_group_members", CampaignGroupMember),

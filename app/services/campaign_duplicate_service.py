@@ -96,7 +96,6 @@ class CampaignDuplicateService:
             repo.add(tenant_id, campaign)
             repo.flush()
             copied = self._copy_content(repo, tenant_id, source.campaign_id, campaign.campaign_id, opts)
-            self._crud.metrics.get_or_create_metrics(campaign.campaign_id)
             result = DuplicateResult(campaign.campaign_id, source.campaign_id, copied, skipped)
             if opts.enrols:
                 self._enrol(repo, tenant_id, user_id, source.campaign_id, campaign.campaign_id, opts, result)

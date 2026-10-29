@@ -30,7 +30,6 @@ from app.models.email_message import EmailEvent, EmailMessage
 from app.repositories.email_events import Session, EmailEventsUnitOfWork, SqlAlchemyEmailEventsUnitOfWork
 from app.services.automation_rule_service import automation_service
 from app.services.domain_tenancy import tenant_for_message, tenant_for_sender
-from app.services.metrics_service import MetricsService
 from app.services.send_safety import on_risk_event, set_final_status
 from app.services.sequence_stop import stop_pending_steps
 from app.services.suppression import suppress
@@ -58,12 +57,6 @@ async def confirm_subscription(subscribe_url: Optional[str]) -> dict:
     except Exception:
         logger.exception("[SES-WEBHOOK] Error confirming subscription")
         return {"status": "error", "message": "Subscription confirmation failed"}
-
-
-def _count_metric(session: Session, campaign_id: Optional[str], event_type: int) -> None:
-    """Campaign counters; an email of no campaign (a reply sent from the inbox) has none."""
-    if campaign_id:
-        MetricsService(session).process_event(campaign_id, event_type)
 
 
 def _trigger_automation(session: Session, trigger: TriggerType, email_message: EmailMessage,
@@ -173,7 +166,6 @@ class SesEventService:
             "diagnostic_code": recipient.get("diagnosticCode"),
             "ses_message_id": ses_message_id,
         }, at=when)
-        _count_metric(uow.session, email_message.campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
 
     def _record_hard_bounce(self, uow: EmailEventsUnitOfWork, message: dict, email_message: EmailMessage,
                             recipient: dict, email: Optional[str], ses_message_id: Optional[str],
@@ -203,10 +195,8 @@ class SesEventService:
         # EVENT_BOUNCE, so total bounce_rate is unaffected.
         if is_sender_attributable_bounce(bounce_type, recipient.get("diagnosticCode")):
             uow.events.add_event(email_message.message_id, EmailEvent.EVENT_SENDER_BOUNCE, detail, at=when)
-            _count_metric(uow.session, email_message.campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
         if email_message.conversation_id:
             self._bounce_note(uow, email_message, recipient, bounce_type, bounce_subtype, when)
-        _count_metric(uow.session, email_message.campaign_id, EmailEvent.EVENT_BOUNCE)
 
     @staticmethod
     def _bounce_note(uow: EmailEventsUnitOfWork, email_message: EmailMessage, recipient: dict,

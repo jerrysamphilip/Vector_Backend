@@ -87,7 +87,7 @@ def _message(**kw):
 
 @pytest.fixture
 def world(monkeypatch):
-    log = {"suppress": [], "risk": [], "metric": [], "stop": [], "automation": []}
+    log = {"suppress": [], "risk": [], "stop": [], "automation": []}
     monkeypatch.setattr(svc, "suppress", lambda db, t, e, reason, kind="UNSUBSCRIBE", source=None:
                         log["suppress"].append((t, e, kind, source)))
     monkeypatch.setattr(svc, "on_risk_event", lambda db, c, d, trigger, tenant_id=None: log["risk"].append((c, d, trigger, tenant_id)))
@@ -95,14 +95,6 @@ def world(monkeypatch):
     monkeypatch.setattr(svc, "tenant_for_sender", lambda db, e: "t-sender")
     monkeypatch.setattr(svc, "stop_pending_steps", lambda db, c, p, why: log["stop"].append((c, p, why)))
     monkeypatch.setattr(svc, "record_ses_event", lambda kind: None)
-
-    class Metrics:
-        def __init__(self, db):
-            pass
-
-        def process_event(self, campaign_id, event_type):
-            log["metric"].append((campaign_id, event_type))
-    monkeypatch.setattr(svc, "MetricsService", Metrics)
 
     class Automation:
         def process_event(self, **kw):

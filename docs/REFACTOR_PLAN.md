@@ -53,7 +53,7 @@ the baseline is empty since round 4 (no `ignore_imports` left in `.importlinter`
 | 0033 | UAT/V1 fix ✅ | Tenant-first index on `prospects.merged_into_id` (merge / erasure deadlocks) |
 | 0034 | D7 revert ✅ | Drop the FULLTEXT index (`0034_drop_contact_fulltext`): search missed committed contacts under concurrent writes |
 | 0035 | V1 prep ✅ | Fresh-vs-upgraded schema parity (`0035_schema_parity`): NOT NULL, ON UPDATE, missing FKs, legacy indexes |
-| 0036 | handover (in progress) | Drop the unused `campaign_metrics_realtime` table (`0036`, being written in the handover pass; tick when merged) |
+| 0036 | handover ✅ | Drop the unused `campaign_metrics_realtime` counter table (`0036_drop_metrics_realtime`); writers and model removed, metrics are computed from events |
 | 0037 | D6 | Retention bookkeeping (archive tables / purge log) |
 | 0038+ | later | Assigned when a decision-gated chunk starts |
 

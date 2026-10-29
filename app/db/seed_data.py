@@ -15,7 +15,6 @@ from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.campaign import Campaign, CampaignStateEvent, CampaignProspect
 from app.models.email_sequence import EmailSequence
 from app.models.email_template import AIPrompt, EmailTemplate
-from app.models.metrics import CampaignMetricsRealtime
 from app.models.audit import AuditLog
 import logging
 
@@ -265,25 +264,6 @@ def seed_database():
                 tmpl = EmailTemplate(**tmpl_data)
                 db.add(tmpl)
         logger.info("[OK] Created email templates")
-        
-        # =====================
-        # 6. Create Metrics
-        # =====================
-        metrics_data = [
-            {"campaign_id": "c0000000-0000-0000-0000-000000000001", "sent_count": 1250, "opened_count": 475, "replied_count": 87, "bounced_count": 23},
-            {"campaign_id": "c0000000-0000-0000-0000-000000000002", "sent_count": 0, "opened_count": 0, "replied_count": 0, "bounced_count": 0},
-            {"campaign_id": "c0000000-0000-0000-0000-000000000003", "sent_count": 5000, "opened_count": 2100, "replied_count": 312, "bounced_count": 145},
-            {"campaign_id": "c0000000-0000-0000-0000-000000000004", "sent_count": 320, "opened_count": 98, "replied_count": 12, "bounced_count": 8},
-        ]
-        
-        for metrics in metrics_data:
-            existing = db.query(CampaignMetricsRealtime).filter(
-                CampaignMetricsRealtime.campaign_id == metrics["campaign_id"]
-            ).first()
-            if not existing:
-                m = CampaignMetricsRealtime(row_version=0, **metrics)
-                db.add(m)
-        logger.info("[OK] Created campaign metrics")
         
         # =====================
         # 7. Create Audit Logs

@@ -141,6 +141,12 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
     warm-up; held webhook deliveries stay PENDING and go out after reactivation.
   - Removed the stray repo-root scripts `check_db.py`, `diagnose_duplicate_conversations.py` and
     `test_warmup_e2e.py` (the last contained real staff e-mail addresses and ran against the live session factory).
+  - One footer implementation: the send-time postal address line, unsubscribe line, `{{unsubscribe_link}}` URL and
+    sign-off are built by `app.services.email_render.compliance_body`, called by both the sender and the preview,
+    so the preview equals what is sent by construction (output unchanged byte for byte).
+  - Removed the `campaign_metrics_realtime` counter table (written by the scheduler, SES webhook, manual tracking
+    and campaign create/duplicate; read by nothing — metrics and reports compute from messages/events), its model,
+    repository and writers; migration `0036_drop_metrics_realtime` drops it. No API change.
   - Docs refreshed for handover: REFACTOR_PLAN, OPERATIONS, DECISIONS (DEC-24..27 proposed), REVIEW_RESPONSES,
     CI_GATES, TRACEABILITY (regenerated), e2e FINDINGS.
 - Warm-up now reads peer mailboxes with the effective IMAP settings (S-26) like the IMAP sync: a mailbox with

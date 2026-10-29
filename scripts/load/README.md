@@ -38,7 +38,7 @@ Options: `--contacts`, `--accounts` (default contacts/50), `--lists`, `--campaig
   a second address, some with a shared phone), which is what `/contacts/duplicates` looks for.
 - **Campaigns**: 20 (ACTIVE / PAUSED / COMPLETED / DRAFT), 3-5 sequence steps, enrolments, messages
   SENT / BOUNCED / FAILED / QUEUED / CANCELLED, open / click / reply / bounce events, replies as unified-inbox
-  conversations, `campaign_metrics_realtime`.
+  conversations.
 - **Sales**: default sales stages, leads for 3 % of contacts, opportunities for converted leads.
 
 The seed is deterministic for a given `--seed` (ids, names, mixes); only timestamps are relative to the day it

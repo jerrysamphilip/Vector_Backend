@@ -30,7 +30,6 @@ from app.models.inbox_warmup_metric import InboxWarmupMetric
 from app.models.inbox_warmup_event import InboxWarmupEvent
 from app.models.email_message import EmailMessage, EmailEvent
 from app.models.campaign_group import CampaignGroup, CampaignGroupMember
-from app.models.metrics import CampaignMetricsRealtime
 from app.models.audit import AuditLog
 from app.models.persona_blueprint import PersonaBlueprint
 from app.models.prospect_persona import ProspectPersona
@@ -98,7 +97,6 @@ __all__ = [
     "EmailEvent",
     "CampaignGroup",
     "CampaignGroupMember",
-    "CampaignMetricsRealtime",
     "AuditLog",
     "PersonaBlueprint",
     "ProspectPersona",

@@ -95,7 +95,6 @@ class Campaign(Base):
     sequences = relationship("EmailSequence", back_populates="campaign", lazy="dynamic", cascade="all, delete-orphan")
     templates = relationship("EmailTemplate", back_populates="campaign", lazy="dynamic", cascade="all, delete-orphan")
     messages = relationship("EmailMessage", back_populates="campaign", lazy="dynamic", cascade="all, delete-orphan")
-    metrics = relationship("CampaignMetricsRealtime", back_populates="campaign", uselist=False, cascade="all, delete-orphan")
     group_memberships = relationship("CampaignGroupMember", back_populates="campaign", lazy="dynamic")
     automation_rules = relationship("AutomationRule", back_populates="campaign", lazy="dynamic", cascade="all, delete-orphan")
     inboxes = relationship("SendingInbox", secondary="campaign_inboxes", back_populates="campaigns")

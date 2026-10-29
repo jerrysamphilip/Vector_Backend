@@ -366,7 +366,6 @@ class CampaignRows:
     messages: List[Dict[str, Any]] = field(default_factory=list)
     events: List[Dict[str, Any]] = field(default_factory=list)
     conversations: List[Dict[str, Any]] = field(default_factory=list)
-    metrics: List[Dict[str, Any]] = field(default_factory=list)
     campaign_inboxes: List[Dict[str, Any]] = field(default_factory=list)
     conversation_index: Dict[tuple, Dict[str, Any]] = field(default_factory=dict)
 
@@ -392,7 +391,7 @@ def _message(rng: random.Random, camp: Dict[str, Any], seq: Dict[str, Any], cont
 
 
 def _enrol_one(rng: random.Random, world: World, out: CampaignRows, camp: Dict[str, Any],
-               seqs: List[Dict[str, Any]], contact: Dict[str, Any], now: datetime, tally: Dict[str, int]) -> int:
+               seqs: List[Dict[str, Any]], contact: Dict[str, Any], now: datetime) -> int:
     """Messages for one contact's journey through one campaign; returns how many were written."""
     inbox = rng.choice(world.inboxes)
     done = rng.randint(1, len(seqs)) if camp["status"] != "COMPLETED" else len(seqs)
@@ -407,16 +406,14 @@ def _enrol_one(rng: random.Random, world: World, out: CampaignRows, camp: Dict[s
             out.events.append({"event_id": new_id(rng), "message_id": msg["message_id"],
                                "tenant_id": msg["tenant_id"], "event_type": 5,
                                "event_time": when + timedelta(minutes=1)})
-            tally["bounced"] += 1
             status_cp = "BOUNCED"
             break
         if status == "SENT":
-            tally["sent"] += 1
             last_sent = msg
-            _engagement(rng, out, msg, when, tally)
+            _engagement(rng, out, msg, when)
         when += timedelta(days=seq["wait_days"] or 2)
     if status_cp == "ACTIVE" and last_sent is not None and rng.random() < 0.04:
-        written += _reply(rng, world, out, camp, last_sent, contact, inbox, tally)
+        written += _reply(rng, world, out, camp, last_sent, contact, inbox)
         status_cp = "REPLIED"
     elif status_cp == "ACTIVE" and done < len(seqs):
         nxt = seqs[done]
@@ -434,14 +431,12 @@ def _enrol_one(rng: random.Random, world: World, out: CampaignRows, camp: Dict[s
     return written
 
 
-def _engagement(rng: random.Random, out: CampaignRows, msg: Dict[str, Any], when: datetime,
-                tally: Dict[str, int]) -> None:
+def _engagement(rng: random.Random, out: CampaignRows, msg: Dict[str, Any], when: datetime) -> None:
     """Open (35 %) and click (15 % of opens) events for a delivered message."""
     if rng.random() < 0.35:
         out.events.append({"event_id": new_id(rng), "message_id": msg["message_id"],
                            "tenant_id": msg["tenant_id"], "event_type": 2,
                            "event_time": when + timedelta(hours=rng.randint(1, 48))})
-        tally["opened"] += 1
         if rng.random() < 0.15:
             out.events.append({"event_id": new_id(rng), "message_id": msg["message_id"],
                                "tenant_id": msg["tenant_id"], "event_type": 3,
@@ -449,7 +444,7 @@ def _engagement(rng: random.Random, out: CampaignRows, msg: Dict[str, Any], when
 
 
 def _reply(rng: random.Random, world: World, out: CampaignRows, camp: Dict[str, Any], sent: Dict[str, Any],
-           contact: Dict[str, Any], inbox: str, tally: Dict[str, int]) -> int:
+           contact: Dict[str, Any], inbox: str) -> int:
     reply_at = sent["sent_at"] + timedelta(hours=rng.randint(1, 72))
     key = (contact["prospect_id"], inbox)  # one conversation per (contact, inbox): uq_conversations_prospect_inbox
     conv = out.conversation_index.get(key)
@@ -478,7 +473,6 @@ def _reply(rng: random.Random, world: World, out: CampaignRows, camp: Dict[str, 
     out.events.append({"event_id": new_id(rng), "message_id": sent["message_id"],
                        "tenant_id": sent["tenant_id"], "event_type": 4,
                        "event_time": reply_at})
-    tally["replied"] += 1
     return 1
 
 
@@ -516,17 +510,13 @@ def gen_campaigns(rng: random.Random, world: World, n: int, target_messages: int
         out.sequences.extend(seqs)
         for inbox in rng.sample(world.inboxes, 2):
             out.campaign_inboxes.append({"campaign_id": camp["campaign_id"], "inbox_id": inbox})
-        tally = {"sent": 0, "opened": 0, "replied": 0, "bounced": 0}
         if camp["status"] != "DRAFT" and eligible:
             written = 0
             pool = rng.sample(eligible, min(len(eligible), quota))  # upper bound; usually far fewer used
             for contact in pool:
                 if written >= quota:
                     break
-                written += _enrol_one(rng, world, out, camp, seqs, contact, now, tally)
-        out.metrics.append({"campaign_id": camp["campaign_id"], "sent_count": tally["sent"],
-                            "opened_count": tally["opened"], "replied_count": tally["replied"],
-                            "bounced_count": tally["bounced"]})
+                written += _enrol_one(rng, world, out, camp, seqs, contact, now)
     return out
 
 
@@ -646,7 +636,6 @@ def seed(conn, cfg: Config, log: Callable[[str], None]) -> World:
                             Conversation, EmailEvent, EmailMessage, EmailSequence, Lead, Opportunity, Prospect,
                             ProspectList, ProspectListMember, SalesStage, SendingInbox, Tenant, User)
     from app.models.join_tables import campaign_inboxes
-    from app.models.metrics import CampaignMetricsRealtime
 
     rng = random.Random(cfg.seed)
     now = utcnow().replace(microsecond=0)
@@ -676,7 +665,6 @@ def seed(conn, cfg: Config, log: Callable[[str], None]) -> World:
     world.counts["conversations"] = ins(Conversation, camp.conversations)
     world.counts["email_messages"] = ins(EmailMessage, camp.messages)
     world.counts["email_events"] = ins(EmailEvent, camp.events)
-    world.counts["campaign_metrics_realtime"] = ins(CampaignMetricsRealtime, camp.metrics)
     world.stages = gen_stages(rng, world)
     world.counts["sales_stages"] = ins(SalesStage, world.stages)
     leads, opps = gen_sales(rng, world, now)
