@@ -31,7 +31,7 @@ class Campaign(Base):
     # Why the campaign is paused; auto_paused marks a pause by the deliverability guard (BR-DF-07)
     paused_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     paused_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
-    auto_paused: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False, server_default="0")
+    auto_paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     # Health checks only count sends after this (set when a user resumes after an auto-pause)
     health_baseline_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, nullable=True)
 
@@ -95,7 +95,6 @@ class Campaign(Base):
     sequences = relationship("EmailSequence", back_populates="campaign", lazy="dynamic", cascade="all, delete-orphan")
     templates = relationship("EmailTemplate", back_populates="campaign", lazy="dynamic", cascade="all, delete-orphan")
     messages = relationship("EmailMessage", back_populates="campaign", lazy="dynamic", cascade="all, delete-orphan")
-    metrics = relationship("CampaignMetricsRealtime", back_populates="campaign", uselist=False, cascade="all, delete-orphan")
     group_memberships = relationship("CampaignGroupMember", back_populates="campaign", lazy="dynamic")
     automation_rules = relationship("AutomationRule", back_populates="campaign", lazy="dynamic", cascade="all, delete-orphan")
     inboxes = relationship("SendingInbox", secondary="campaign_inboxes", back_populates="campaigns")

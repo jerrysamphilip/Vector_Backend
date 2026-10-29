@@ -1,2 +1,3 @@
 # Test-only password literals in already-pushed commits (replaced by runtime values afterwards)
 9b5a790bfd3896b0dc71a4e7dafc68a6368d5b0e:tests/test_sec_identity_and_hosts.py:generic-api-key:96
+105a5000309f3825067609a42fecae0ac40a2fb9:tests/test_g1a_scope_and_gates.py:generic-api-key:213

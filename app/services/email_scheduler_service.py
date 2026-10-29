@@ -38,7 +38,7 @@ from app.domain.sending import (
     DUE_STATUSES, FAILED, PACED, SENT, SKIPPED, SUPPRESSED, ClaimResult, PacingState, PassStats, SendAttempt,
     SendKeyConflict, fail, lane_queues, next_gap, requeue, retries_exhausted, retry_delay, tally_outcome,
 )
-from app.models import EmailEvent, EmailMessage, Prospect
+from app.models import EmailMessage, Prospect
 from app.models.campaign import Campaign
 from app.repositories.sending import Session, SqlAlchemySendingQueueRepository
 from app.repositories.sending_context import SqlAlchemySendingContextRepository
@@ -52,7 +52,6 @@ from app.services.email_sender_service import (
     PermanentEmailFailure,
     AmbiguousEmailFailure,
 )
-from app.services.metrics_service import MetricsService
 from app.services.notifications import notify
 from app.services.inbox_rotation import inbox_weight
 from app.services.send_guards import NO_INBOX_RETRY_MINUTES, active_inboxes
@@ -801,8 +800,6 @@ class EmailSchedulerService:
         # Commit the send immediately, so no later re-queue guard in this batch can
         # overwrite it through session state.
         db.commit()
-        if email_msg.campaign_id:
-            MetricsService(db).process_event(email_msg.campaign_id, EmailEvent.EVENT_SENT)
         await self._update_prospect_step(email_msg, db)
         logger.info(f"[Scheduler] Email sent to {prospect.email}, SES ID: {attempt.ses_message_id}")
         return SENT

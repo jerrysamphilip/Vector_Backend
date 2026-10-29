@@ -93,15 +93,71 @@ def test_plain_body_is_unchanged(sender):
     assert text == body
 
 
-@pytest.mark.parametrize("mode", ["plain", "html"])
-def test_preview_matches_the_sender(sender, mode):
-    service, _ = sender
-    sent = service._compliance_body(HTML_BODY, SimpleNamespace(message_id="m1", campaign=SimpleNamespace(
-        unsubscribe_mode=mode)), SimpleNamespace(tenant_id="t1"), IDENTITY, False, UNSUB, "Ann Lee", "CEO")
-    preview = finalize_for_send("Quick question", HTML_BODY, "bob@client.example.com", SendContext(
+def _preview(body, mode, recipient="bob@client.example.com"):
+    return finalize_for_send("Quick question", body, recipient, SendContext(
         message_id="m1", sender_email="ann@acme.example.com", base_url="https://app.example.com",
         sender_name="Ann Lee", sender_title="CEO", unsubscribe_mode=mode, postal_address=IDENTITY.postal_address,
         footer_line=IDENTITY.footer_line, company_name=IDENTITY.company_name))
+
+
+def _sent(service, body, mode, is_internal=False):
+    return service._compliance_body(body, SimpleNamespace(message_id="m1", campaign=SimpleNamespace(
+        unsubscribe_mode=mode)), SimpleNamespace(tenant_id="t1"), IDENTITY, is_internal, UNSUB, "Ann Lee", "CEO")
+
+
+@pytest.mark.parametrize("mode", ["plain", "html"])
+def test_preview_matches_the_sender(sender, mode):
+    service, _ = sender
+    sent = _sent(service, HTML_BODY, mode)
+    preview = _preview(HTML_BODY, mode)
     assert preview.body == sent and preview.is_html
     assert sent.startswith(HTML_BODY + "<p>Acme &amp; Co, 1 Main St, Springfield</p><p>Please ")
     assert sent.endswith("<p>Regards,<br>Ann Lee<br>CEO<br>Acme &amp; Co</p>")
+
+
+PLAIN_BODIES = [
+    PLAIN_BODY,
+    "Hi {{unsubscribe_link}}\n\nBest,\nAnn",  # placeholder filled in, own sign-off kept
+    "Hello Bob,\n\nAcme & Co, 1 Main St, Springfield\n\nThanks,\nAnn",  # address already there
+    "Hello Bob,\n\nOpt out: https://x.example.com/api/tracking/unsubscribe/m1",  # link already there
+]
+
+
+@pytest.mark.parametrize("mode", ["plain", "html"])
+@pytest.mark.parametrize("body", PLAIN_BODIES)
+def test_preview_matches_the_sender_on_plain_text(sender, mode, body):
+    service, _ = sender
+    sent = _sent(service, body, mode)
+    assert _preview(body, mode).body == sent
+    assert "<p>" not in sent  # a plain-text body keeps plain lines
+    # Same-domain (internal) mail: no postal / unsubscribe lines, still one sign-off, on both paths
+    internal = _sent(service, body, mode, is_internal=True)
+    assert _preview(body, mode, recipient="colleague@acme.example.com").body == internal
+    assert IDENTITY.footer_line not in internal or IDENTITY.footer_line in body
+
+
+def test_plain_text_footer_is_byte_identical_to_before(sender):
+    """The exact lines the sender appended before the footer moved into email_render.compliance_body."""
+    service, _ = sender
+    assert _sent(service, PLAIN_BODY, "html") == (
+        PLAIN_BODY + "\n\nAcme & Co, 1 Main St, Springfield\nPlease click on <a href=\"" + UNSUB
+        + "\">unsubscribe</a> in case you do not wish to receive such business communication emails in the future."
+        "\n\nRegards,\nAnn Lee\nCEO\nAcme & Co")
+
+
+def test_sender_uses_the_shared_footer_function(sender, monkeypatch):
+    """send_email builds the footer with email_render.compliance_body, the function the preview calls."""
+    service, transport = sender
+    calls = []
+
+    def spy(body, ctx, *, is_internal):
+        calls.append((body, ctx, is_internal))
+        return body + "\n\n[shared footer]\n\nRegards,\nAnn"
+
+    monkeypatch.setattr(sender_mod, "compliance_body", spy)
+    html, text = _send(service, transport, PLAIN_BODY, "plain")
+    [(body, ctx, is_internal)] = calls
+    assert body == PLAIN_BODY and is_internal is False
+    assert (ctx.unsubscribe_url, ctx.unsubscribe_mode, ctx.footer_line, ctx.sender_name, ctx.sender_title,
+            ctx.company_name) == (UNSUB, "plain", IDENTITY.footer_line, "Ann Lee", "CEO", "Acme & Co")
+    assert "[shared footer]" in text

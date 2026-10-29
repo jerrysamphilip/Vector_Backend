@@ -107,10 +107,6 @@ class CampaignContentRepository:
     def first_template_of_step(self, sequence_id: str) -> Optional[EmailTemplate]:
         return self._s.execute(select(EmailTemplate).where(EmailTemplate.sequence_id == sequence_id)).scalars().first()
 
-    def template_count(self, campaign_id: str) -> int:
-        return int(self._s.execute(select(func.count(EmailTemplate.template_id)).where(
-            EmailTemplate.campaign_id == campaign_id)).scalar() or 0)
-
     def unapproved_templates(self, campaign_id: str) -> list[EmailTemplate]:
         return list(self._s.execute(select(EmailTemplate).where(
             EmailTemplate.campaign_id == campaign_id, EmailTemplate.approved_by.is_(None))).scalars())

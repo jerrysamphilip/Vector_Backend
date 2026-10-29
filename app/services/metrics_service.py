@@ -1,140 +1,25 @@
 # app/services/metrics_service.py
 """
-Real-time metrics service for campaign dashboard.
+Campaign metrics for GET /campaigns/{id}/metrics, computed from messages and events.
 """
 
 from typing import Any
 
 from app.domain.reports import delivered
-from app.models.metrics import CampaignMetricsRealtime
-from app.models.email_message import EmailEvent
-from app.repositories.campaign_metrics import Session, campaign_metrics_repo
 
 
 class MetricsService:
-    """Service for campaign metrics management."""
-    
-    def __init__(self, db: Session) -> None:
+    """Campaign metrics (read only)."""
+
+    def __init__(self, db: Any) -> None:
         self.db = db
-        self.repo = campaign_metrics_repo(db)
-    
-    def get_or_create_metrics(self, campaign_id: str) -> CampaignMetricsRealtime:
-        """
-        Get existing metrics or create new ones for a campaign.
-        
-        Args:
-            campaign_id: Campaign ID
-        
-        Returns:
-            CampaignMetricsRealtime instance
-        """
-        metrics = self.repo.get(campaign_id)
-
-        if not metrics:
-            metrics = CampaignMetricsRealtime(
-                campaign_id=campaign_id,
-                sent_count=0,
-                opened_count=0,
-                replied_count=0,
-                bounced_count=0,
-                row_version=0,
-            )
-            self.repo.add(metrics)
-            self.repo.flush()
-        
-        return metrics
-    
-    def increment_sent(self, campaign_id: str, count: int = 1) -> CampaignMetricsRealtime:
-        """Increment sent count."""
-        metrics = self.get_or_create_metrics(campaign_id)
-        metrics.sent_count += count
-        metrics.row_version += 1
-        self.repo.flush()
-        return metrics
-    
-    def increment_opened(self, campaign_id: str, count: int = 1) -> CampaignMetricsRealtime:
-        """Increment opened count."""
-        metrics = self.get_or_create_metrics(campaign_id)
-        metrics.opened_count += count
-        metrics.row_version += 1
-        self.repo.flush()
-        return metrics
-    
-    def increment_replied(self, campaign_id: str, count: int = 1) -> CampaignMetricsRealtime:
-        """Increment replied count."""
-        metrics = self.get_or_create_metrics(campaign_id)
-        metrics.replied_count += count
-        metrics.row_version += 1
-        self.repo.flush()
-        return metrics
-    
-    def increment_bounced(self, campaign_id: str, count: int = 1) -> CampaignMetricsRealtime:
-        """Increment bounced count."""
-        metrics = self.get_or_create_metrics(campaign_id)
-        metrics.bounced_count += count
-        metrics.row_version += 1
-        self.repo.flush()
-        return metrics
-
-    def increment_sender_bounced(self, campaign_id: str, count: int = 1) -> CampaignMetricsRealtime:
-        """Increment sender-attributable bounced count."""
-        metrics = self.get_or_create_metrics(campaign_id)
-        metrics.sender_bounced_count += count
-        metrics.row_version += 1
-        self.repo.flush()
-        return metrics
-
-    def increment_positive_replied(self, campaign_id: str, count: int = 1) -> CampaignMetricsRealtime:
-        """Increment AI-classified positive-intent reply count."""
-        metrics = self.get_or_create_metrics(campaign_id)
-        metrics.positive_replied_count += count
-        metrics.row_version += 1
-        self.repo.flush()
-        return metrics
-
-    def increment_ooo(self, campaign_id: str, count: int = 1) -> CampaignMetricsRealtime:
-        """Increment out-of-office/auto-response reply count."""
-        metrics = self.get_or_create_metrics(campaign_id)
-        metrics.ooo_count += count
-        metrics.row_version += 1
-        self.repo.flush()
-        return metrics
-
-    def process_event(self, campaign_id: str, event_type: int) -> CampaignMetricsRealtime:
-        """
-        Process an email event and update metrics.
-        
-        Args:
-            campaign_id: Campaign ID
-            event_type: Event type from EmailEvent constants
-        
-        Returns:
-            Updated metrics
-        """
-        if event_type == EmailEvent.EVENT_SENT:
-            return self.increment_sent(campaign_id)
-        elif event_type == EmailEvent.EVENT_OPEN:
-            return self.increment_opened(campaign_id)
-        elif event_type == EmailEvent.EVENT_REPLY:
-            return self.increment_replied(campaign_id)
-        elif event_type == EmailEvent.EVENT_BOUNCE:
-            return self.increment_bounced(campaign_id)
-        elif event_type == EmailEvent.EVENT_SENDER_BOUNCE:
-            return self.increment_sender_bounced(campaign_id)
-        elif event_type == EmailEvent.EVENT_POSITIVE_REPLY:
-            return self.increment_positive_replied(campaign_id)
-        elif event_type == EmailEvent.EVENT_REPLY_OOO:
-            return self.increment_ooo(campaign_id)
-
-        return self.get_or_create_metrics(campaign_id)
 
     def get_metrics_dict(self, campaign_id: str) -> dict:
         """Get metrics as a dictionary for API response.
 
         Computed from messages/events with the same definitions as the campaign
-        detail page (CampaignAnalyticsService) so every screen agrees; the
-        realtime counter table is not kept up to date by every event source
-        (e.g. open tracking), so it is not read here.
+        detail page (CampaignAnalyticsService) so every screen agrees. (There is no
+        counter table: campaign_metrics_realtime was dropped in 0036.)
         """
         from app.services.campaign_analytics_service import CampaignAnalyticsService
 
@@ -158,36 +43,3 @@ class MetricsService:
             "reply_rate": rate(m["replied_count"]),
             "bounce_rate": rate(m["bounced_count"], sent),
         }
-
-    def sync_campaign_metrics(self, campaign_id: str) -> Any:
-        """
-        Force sync metrics from raw message and event data.
-        Use this to fix out-of-sync or historical metrics.
-        """
-        repo = self.repo
-        sent_count = repo.sent(campaign_id)
-        # Opened / replied: unique messages with the event, or at least the contacts whose status shows it
-        opened_count = max(repo.messages_with_event(campaign_id, EmailEvent.EVENT_OPEN),
-                           repo.enrolments_in(campaign_id, ["OPENED", "REPLIED"]))
-        replied_count = max(repo.messages_with_event(campaign_id, EmailEvent.EVENT_REPLY),
-                            repo.enrolments_in(campaign_id, ["REPLIED"]))
-        bounced_count = repo.messages_with_event(campaign_id, EmailEvent.EVENT_BOUNCE)
-        sender_bounced_count = repo.messages_with_event(campaign_id, EmailEvent.EVENT_SENDER_BOUNCE)
-        positive_replied_count = repo.messages_with_event(campaign_id, EmailEvent.EVENT_POSITIVE_REPLY)
-        ooo_count = repo.messages_with_event(campaign_id, EmailEvent.EVENT_REPLY_OOO)
-
-        # Update table
-        metrics = self.get_or_create_metrics(campaign_id)
-        metrics.sent_count = sent_count
-        metrics.opened_count = opened_count
-        metrics.replied_count = replied_count
-        metrics.bounced_count = bounced_count
-        metrics.sender_bounced_count = sender_bounced_count
-        metrics.positive_replied_count = positive_replied_count
-        metrics.ooo_count = ooo_count
-        metrics.row_version += 1
-        
-        self.repo.add(metrics)
-        self.repo.flush()
-
-        return metrics

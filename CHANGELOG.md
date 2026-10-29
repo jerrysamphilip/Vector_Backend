@@ -96,6 +96,10 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - `domain_error_handler` guards its input with an explicit type check instead of `assert` (kept under `python -O`).
 
 ### Security
+- Test runs no longer read the git-ignored `.env` (a developer's real OpenAI / AWS keys; one in-process test had
+  made a real SES call). `app/core/config.py` skips `.env` when `OUTREACH_IGNORE_DOTENV=1` (set by both test
+  conftests, `scripts/test.py` and CI) or, with the flag unset, whenever pytest is loaded; `OUTREACH_IGNORE_DOTENV=0`
+  opts back in. Production and dev processes still read `.env`.
 - SNS webhook hardening (C-04/C-09): signed timestamp window (24 h back, 15 min ahead), RSA certificates within
   their validity only, certificate cache with TTL and size limit, no redirects, no userinfo or non-443 ports in
   certificate and subscribe URLs, optional `SNS_ALLOWED_TOPIC_ARNS`, 503 when the certificate cannot be fetched
@@ -127,6 +131,28 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - API sweep results are redacted before they are recorded; cached test tokens and raw captures are untracked.
 
 ### Fixed
+- Handover pass:
+  - Campaign wizard drafts are owner-scoped: a draft id outside the caller's visibility scope returns 404 on read
+    and delete (creator, admins, and managers over their team keep access; lists show only your own drafts).
+  - Launch requires a template on every sequence step; a step without one is refused with a 400 naming the step
+    (counting templates let a step with none pass when another step had several persona versions, and that step
+    was silently skipped).
+  - DEC-20: the background IMAP sync and webhook delivery skip suspended / deleted workspaces like the scheduler and
+    warm-up; held webhook deliveries stay PENDING and go out after reactivation.
+  - Removed the stray repo-root scripts `check_db.py`, `diagnose_duplicate_conversations.py` and
+    `test_warmup_e2e.py` (the last contained real staff e-mail addresses and ran against the live session factory).
+  - One footer implementation: the send-time postal address line, unsubscribe line, `{{unsubscribe_link}}` URL and
+    sign-off are built by `app.services.email_render.compliance_body`, called by both the sender and the preview,
+    so the preview equals what is sent by construction (output unchanged byte for byte).
+  - Removed the `campaign_metrics_realtime` counter table (written by the scheduler, SES webhook, manual tracking
+    and campaign create/duplicate; read by nothing — metrics and reports compute from messages/events), its model,
+    repository and writers; migration `0036_drop_metrics_realtime` drops it. No API change.
+  - Docs refreshed for handover: REFACTOR_PLAN, OPERATIONS, DECISIONS (DEC-24..27 proposed), REVIEW_RESPONSES,
+    CI_GATES, TRACEABILITY (regenerated), e2e FINDINGS.
+- Warm-up now reads peer mailboxes with the effective IMAP settings (S-26) like the IMAP sync: a mailbox with
+  SMTP settings but blank IMAP fields takes part in open/spam-rescue engagement (derived host, SMTP password
+  reused) and is no longer flagged `IMAP_NOT_CONFIGURED`; saved IMAP settings still win, Microsoft 365
+  mailboxes keep signing in with their OAuth token, send-only relays (SES, SendGrid...) are never read.
 - UAT 1: step bodies saved by the rich-text editor (one line of HTML) were wiped by the line-based CTA and
   footer cleanup, so emails went out with only the footer and sign-off and the inbox showed "(No content)".
   The cleanup now works per HTML block (links unwrapped, text kept); rendering keeps the body if cleanup
@@ -140,6 +166,17 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - UAT 3-5: open and reply rates divide by delivered (sent − bounced) everywhere (campaign analytics, steps,
   reports, exports); the daily chart's last day no longer adds lifetime opens; "sent today" counts only sent
   emails; enrolments marked OPENED advance and complete (campaigns can auto-complete). Frontend labels fixed.
+- A/B subject-variant stats divided open and reply rates by sent: they now use delivered (sent − bounced) like
+  every other screen (bounce rate stays bounced / sent, click rate clicked / opened). Each variant row gains
+  `bounced`, `delivered` and `bounce_rate`; the winner rule uses the same open-over-delivered rate (the minimum
+  sample still counts sent emails), so a variant with more bounces can now win where it lost before.
+- Fresh-vs-upgraded schema parity (`0035_schema_parity`): five columns NOT NULL in upgraded databases but
+  NULLable in fresh builds (`campaigns.auto_paused`, `sending_domains.sends_24h` / `bounce_rate_24h` /
+  `complaint_rate_24h`, `sending_inboxes.auth_type`) are NOT NULL everywhere (NULLs set to the default first);
+  `updated_at` of `imap_sync_state`, `import_mappings` and `webhook_endpoints` refreshes on UPDATE in fresh builds
+  too; upgraded databases get the five foreign keys the models declare and lose four legacy single-column
+  indexes and a duplicate `users.invited_by` foreign key. information_schema of a fresh build and an upgraded copy
+  is now identical (columns, indexes, keys).
 - Contact and global search missed committed contacts: while another workspace was committing inserts, some
   contacts never matched the FULLTEXT pre-filter (D7, 0030) and so never appeared in search. Search is the
   plain `search_text LIKE` scan again (always exact) and `0034_drop_contact_fulltext` drops

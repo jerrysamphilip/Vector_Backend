@@ -128,7 +128,7 @@ class CampaignCRUDService(CampaignServiceBase):
     # =============================
 
     def create(self, tenant_id: str, user_id: str, data: CampaignCreate) -> Campaign:
-        """Create a DRAFT campaign with its mailboxes and metrics row."""
+        """Create a DRAFT campaign with its mailboxes."""
         campaign = Campaign(
             campaign_id=str(uuid.uuid4()), tenant_id=tenant_id, campaign_name=data.campaign_name,
             sender_name=data.sender_name, sender_title=data.sender_title, cta_link=normalize_cta_link(data.cta_link),
@@ -145,7 +145,6 @@ class CampaignCRUDService(CampaignServiceBase):
         if data.inbox_ids:
             campaign.inboxes = self._validate_and_load_inboxes(tenant_id, data.inbox_ids)
         repo.flush()
-        self.metrics.get_or_create_metrics(campaign.campaign_id)
         self.log(campaign, user_id, AuditService.ACTION_CREATE)
         return campaign
 

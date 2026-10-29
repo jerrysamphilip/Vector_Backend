@@ -13,12 +13,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional, Protocol
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.auth import BLOCKED_TENANT_STATUSES
 from app.domain.webhooks import DeliveryFilter
 from app.models.campaign import Campaign
 from app.models.prospect import Prospect
 from app.models.sales import Lead, Opportunity, SalesStage
+from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.webhook import WebhookDelivery, WebhookEndpoint
 from app.repositories.base import SqlAlchemyUnitOfWork, TenantId
@@ -110,11 +113,15 @@ class SqlAlchemyWebhookRepository:
         return self._session.get(WebhookDelivery, delivery_id)
 
     def due(self, now: datetime, limit: int) -> list[tuple[WebhookDelivery, WebhookEndpoint]]:
+        """Due PENDING deliveries of active endpoints. Those of suspended / deleted workspaces (DEC-20) stay
+        PENDING, untouched, and go out once the workspace is reactivated."""
         rows = self._session.query(WebhookDelivery, WebhookEndpoint).join(
             WebhookEndpoint, WebhookEndpoint.endpoint_id == WebhookDelivery.endpoint_id
-        ).filter(WebhookDelivery.status == "PENDING", WebhookDelivery.next_attempt_at <= now,
-                 WebhookEndpoint.active.is_(True)
-                 ).order_by(WebhookDelivery.next_attempt_at, WebhookDelivery.created_at).limit(limit).all()
+        ).join(Tenant, Tenant.tenant_id == WebhookEndpoint.tenant_id
+               ).filter(WebhookDelivery.status == "PENDING", WebhookDelivery.next_attempt_at <= now,
+                        WebhookEndpoint.active.is_(True),
+                        func.upper(func.coalesce(Tenant.status, "ACTIVE")).notin_(sorted(BLOCKED_TENANT_STATUSES))
+                        ).order_by(WebhookDelivery.next_attempt_at, WebhookDelivery.created_at).limit(limit).all()
         return [(d, ep) for d, ep in rows]
 
     def cancel_pending(self, endpoint_id: str, reason: str) -> int:

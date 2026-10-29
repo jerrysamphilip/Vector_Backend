@@ -11,11 +11,11 @@ meaningless and the sync falls back to a date window once.
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, BigInteger
+from sqlalchemy import BigInteger, FetchedValue, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
-from app.models.types import NOW6, UtcDateTime
+from app.models.types import NOW6, NOW6_ON_UPDATE, UtcDateTime
 from app.core.ids import short_id
 
 
@@ -27,7 +27,8 @@ class ImapSyncState(Base):
     folder: Mapped[str] = mapped_column(String(255), primary_key=True, nullable=False)
     uidvalidity: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     last_uid: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
-    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, onupdate=NOW6, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6_ON_UPDATE, onupdate=NOW6,
+                                                           server_onupdate=FetchedValue(), nullable=True)
 
     __table_args__ = (
         {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},

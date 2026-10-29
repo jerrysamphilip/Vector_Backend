@@ -238,13 +238,22 @@ class CampaignMessagesRepository:
                 EmailEvent.event_type == event_type).group_by(EmailMessage.subject_variant)).all()
         return {label: int(n) for label, n in rows}
 
-    def variant_replied(self, sequence_id: str) -> dict[str, int]:
+    def variant_messages_with_event(self, sequence_id: str, event_type: int) -> dict[str, int]:
+        """Distinct emails per variant with at least one event of the type (replied, bounced)."""
         rows = self._s.execute(select(
             EmailMessage.subject_variant, func.count(func.distinct(EmailEvent.message_id))
         ).join(EmailEvent, EmailEvent.message_id == EmailMessage.message_id).where(
             EmailMessage.sequence_id == sequence_id, EmailMessage.subject_variant.isnot(None),
-            EmailEvent.event_type == EmailEvent.EVENT_REPLY).group_by(EmailMessage.subject_variant)).all()
+            EmailEvent.event_type == event_type).group_by(EmailMessage.subject_variant)).all()
         return {label: int(n) for label, n in rows}
+
+    def variant_replied(self, sequence_id: str) -> dict[str, int]:
+        return self.variant_messages_with_event(sequence_id, EmailEvent.EVENT_REPLY)
+
+    def variant_bounced(self, sequence_id: str) -> dict[str, int]:
+        """Recipient bounces per variant (EVENT_BOUNCE; sender-side bounces are not the subject's fault and,
+        as in the campaign analytics, do not reduce delivered)."""
+        return self.variant_messages_with_event(sequence_id, EmailEvent.EVENT_BOUNCE)
 
     def unassigned_sent(self, sequence_id: str) -> int:
         return int(self._s.execute(select(func.count(EmailMessage.message_id)).where(

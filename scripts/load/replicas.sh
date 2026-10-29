@@ -43,7 +43,7 @@ start() {
     fi
     cd "$ROOT"
     # nohup and env exec in place, so $! is the uvicorn process itself (stop kills exactly that PID)
-    nohup env OPENAI_API_KEY= RUN_BACKGROUND_JOBS=false JWT_SECRET_KEY="$secret" \
+    nohup env OPENAI_API_KEY= AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= OUTREACH_IGNORE_DOTENV=1 RUN_BACKGROUND_JOBS=false JWT_SECRET_KEY="$secret" \
       CREDENTIALS_ENCRYPTION_KEY="$credkey" LOG_LEVEL="${LOG_LEVEL:-WARNING}" \
       "$PY" -m uvicorn app.main:app --host 127.0.0.1 --port "$port" --workers 1 --no-access-log \
       > "$PID_DIR/api_$port.log" 2>&1 < /dev/null &

@@ -2,20 +2,19 @@
 """
 Manual engagement tracking: a user marks a contact (or one message) as replied / opened when the
 event happened outside the tracked channels. Records the event, moves the contact's campaign
-status and, for prospect-level marks, updates the campaign's metrics. Each action is one unit of
+status. Campaign metrics are computed from the events (CampaignAnalyticsService). Each action is one unit of
 work (SQL in app/repositories/campaigns_messages.py); the ``*_for`` methods scope the campaign first.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from app.core.clock import utcnow
 from app.core.errors import NotFoundError
 from app.models.email_message import EmailEvent, EmailMessage
 from app.repositories.campaigns import CampaignsUnitOfWork
 from app.services.campaign_common import require_campaign
-from app.services.metrics_service import MetricsService
 from app.utils.campaign_prospect_status import set_prospect_status
 
 logger = logging.getLogger(__name__)
@@ -24,20 +23,13 @@ NO_SENT_MESSAGE = "No sent message found for this prospect"
 
 
 class CampaignTrackingService:
-    def __init__(self, db: Any = None, metrics: Optional[MetricsService] = None, *, uow: Any = None) -> None:
+    def __init__(self, db: Any = None, *, uow: Any = None) -> None:
         self.uow = uow if uow is not None else CampaignsUnitOfWork.for_session(db)
         self.db = db
-        self._metrics = metrics
 
     @classmethod
     def for_session(cls, db: Any) -> "CampaignTrackingService":
         return cls(db)
-
-    @property
-    def metrics(self) -> MetricsService:
-        if self._metrics is None:
-            self._metrics = MetricsService(self.uow.session)
-        return self._metrics
 
     # ── Lookups ──────────────────────────────────────────────────────────────
 
@@ -82,7 +74,6 @@ class CampaignTrackingService:
                         "replied_at": existing_reply.event_time}
             event = self._manual_event(message.message_id, EmailEvent.EVENT_REPLY, user_id)
             self._set_enrollment_status(campaign_id, prospect_id, "REPLIED")
-            self.metrics.process_event(campaign_id, EmailEvent.EVENT_REPLY)
             uow.commit()
             logger.info(f"[Reply] Manually marked prospect {prospect_id} as replied in campaign {campaign_id}")
             return {"status": "success", "message_id": message.message_id, "prospect_id": prospect_id,
@@ -94,7 +85,6 @@ class CampaignTrackingService:
             message = self._latest_sent_message(campaign_id, prospect_id)
             event = self._manual_event(message.message_id, EmailEvent.EVENT_OPEN, user_id)
             self._set_enrollment_status(campaign_id, prospect_id, "OPENED")
-            self.metrics.process_event(campaign_id, EmailEvent.EVENT_OPEN)
             uow.commit()
             logger.info(f"[Open] Manually marked prospect {prospect_id} as opened in campaign {campaign_id}")
             return {"status": "success", "message_id": message.message_id, "prospect_id": prospect_id,

@@ -18,7 +18,6 @@
     "app/services/sequence_generator.py::generate_sequence_with_llm": 40,
     "app/utils/business_calendar.py::schedule_email_in_window": 40,
     "app/utils/webhooks.py::parse_url": 27,
-    "diagnose_duplicate_conversations.py::main": 25,
     "scripts/ci/check_complexity.py::main": 29,
     "scripts/test.py::cmd_list": 27,
     "scripts/test.py::cmd_trace": 74,

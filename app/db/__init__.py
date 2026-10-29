@@ -19,7 +19,6 @@ from app.models.email_template import AIPrompt, EmailTemplate, EmailTemplateVers
 from app.models.sending_inbox import SendingInbox
 from app.models.email_message import EmailMessage, EmailEvent
 from app.models.campaign_group import CampaignGroup, CampaignGroupMember
-from app.models.metrics import CampaignMetricsRealtime
 from app.models.audit import AuditLog
 import logging
 

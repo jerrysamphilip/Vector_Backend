@@ -27,13 +27,12 @@ from app.core.config import settings
 from app.models import EmailMessage, EmailTemplate, Prospect
 from app.repositories.sending import session_or_none
 from app.services import compliance_service
+from app.services.email_render import SIGN_OFF_PATTERN, FooterContext, compliance_body, html_to_plain_text
+from app.services.email_render import has_sign_off as _has_sign_off
+from app.services.email_render import with_unsubscribe_line as with_unsubscribe_line  # re-exported for callers
 from app.services.sender_identity import get_sender_identity
 from app.services.send_errors import PERMANENT_CODES, SENDER_CODES, FailureKind, classify_ses_error
 from app.utils.email_utils import (
-    UNSUBSCRIBE_REPLY_LINE,
-    append_footer,
-    is_html_body,
-    unsubscribe_link_line,
     normalize_unsubscribe_footer,
     strip_cta_content_no_link,
     normalize_cta_link,
@@ -198,19 +197,6 @@ def is_internal_mail(sender_email: str, recipient_email: str) -> bool:
     return sender_domain != '' and sender_domain == _domain(recipient_email)
 
 
-def with_unsubscribe_line(body_content: str, unsubscribe_url: str, unsubscribe_mode: Optional[str],
-                          html_body: Optional[bool] = None) -> str:
-    """Append the unsubscribe sentence (an HTML link, or 'reply unsubscribe') unless a link is already there:
-    on its own line, or as a <p> block when the body is HTML (``html_body``; None: decided from the body)."""
-    if "/api/tracking/unsubscribe/" in body_content:
-        return body_content
-    html_body = is_html_body(body_content) if html_body is None else html_body
-    if (unsubscribe_mode or 'plain') == 'html':
-        return append_footer(body_content, unsubscribe_link_line(unsubscribe_url), html_body=html_body, gap="\n",
-                             markup=True)
-    return append_footer(body_content, UNSUBSCRIBE_REPLY_LINE, html_body=html_body, gap="\n")
-
-
 # -----------------------------
 # Rate Limiter (Concurrency-safe)
 # -----------------------------
@@ -325,52 +311,15 @@ class EmailSenderService:
         
         return re.sub(link_pattern, replace_link, html_body)
 
-    SIGN_OFF_PATTERN = r"(?i)(Best(\s+Regards)?|Regards|Thanks|Cheers|Sincerely)[,]?\s*\n\s*[A-Za-z0-9 ]+"
+    SIGN_OFF_PATTERN = SIGN_OFF_PATTERN
 
     def has_sign_off(self, body: str) -> bool:
-        """Whether the body already ends with a sign-off ("Regards,\n<name>"). No '$' anchor:
-        the postal address and unsubscribe footer are appended after the body. Bodies finalized
-        at launch are HTML (<p>/<br>), so the check runs on a plain-text view; matching the raw
-        HTML missed them and every campaign email got a second sign-off."""
-        return bool(re.search(self.SIGN_OFF_PATTERN, self._html_to_plain_text(body or "")))
+        """Whether the body already ends with a sign-off ("Regards,\n<name>"); app.services.email_render.has_sign_off."""
+        return _has_sign_off(body)
 
     def _html_to_plain_text(self, html: str) -> str:
-        """Convert HTML to plain text for multipart/alternative emails."""
-        if not html:
-            return ""
-
-        text = html
-        # Remove style and script blocks
-        text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL | re.IGNORECASE)
-
-        # Convert links: <a href="URL">TEXT</a> -> TEXT (URL)
-        text = re.sub(
-            r'<a\s+[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
-            r'\2 (\1)', text, flags=re.DOTALL | re.IGNORECASE
-        )
-
-        # Block-level elements -> newlines
-        text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
-        text = re.sub(r'</(?:p|div|tr|h[1-6]|li)>', '\n\n', text, flags=re.IGNORECASE)
-
-        # Bullet points
-        text = re.sub(r'<li[^>]*>', '    • ', text, flags=re.IGNORECASE)
-
-        # Strip remaining tags
-        text = re.sub(r'<[^>]+>', '', text)
-
-        # Decode common HTML entities
-        text = text.replace('&amp;', '&')
-        text = text.replace('&lt;', '<')
-        text = text.replace('&gt;', '>')
-        text = text.replace('&quot;', '"')
-        text = text.replace('&#39;', "'")
-        text = text.replace('&nbsp;', ' ')
-
-        # Collapse excessive blank lines
-        text = re.sub(r'\n{3,}', '\n\n', text)
-        return text.strip()
+        """Convert HTML to plain text for multipart/alternative emails (app.services.email_render.html_to_plain_text)."""
+        return html_to_plain_text(html)
 
     def _plain_text_to_html(self, text: str) -> str:
         """Convert a plain-text email body to minimal HTML.
@@ -734,38 +683,21 @@ class EmailSenderService:
     def _compliance_body(self, body_content: str, email_message: EmailMessage, prospect: Prospect, identity: Any,
                          is_internal: bool, unsubscribe_url: str, sender_name: Optional[str],
                          sender_title: Optional[str]) -> str:
-        """The postal address and unsubscribe line (external mail only), the unsubscribe link placeholder
-        and exactly one sign-off; each its own <p> block on an HTML body, its own lines on a plain-text one
-        (app.utils.email_utils.append_footer). email_render.finalize_for_send mirrors this for the preview."""
-        html_body = is_html_body(body_content)
-        if not is_internal:
-            body_content = self._with_postal_address(body_content, email_message, prospect, identity, html_body)
-            body_content = with_unsubscribe_line(body_content, unsubscribe_url,
-                                                 getattr(email_message.campaign, 'unsubscribe_mode', 'plain'),
-                                                 html_body)
-        # Replace explicit unsubscribe placeholder if template uses it
-        body_content = body_content.replace("{{unsubscribe_link}}", unsubscribe_url)
-        if not self.has_sign_off(body_content):
-            signature = build_signature_block(sender_name, sender_title, identity.company_name)
-            body_content = append_footer(body_content.rstrip(), f"Regards,\n{signature}", html_body=html_body)
-        return body_content
-
-    @staticmethod
-    def _with_postal_address(body_content: str, email_message: EmailMessage, prospect: Prospect,
-                             identity: Any, html_body: bool = False) -> str:
-        """CAN-SPAM §5(a)(5): the SENDER's physical postal address appears in every email: the tenant's own,
-        never a platform default. New launches are blocked without one; mail already in flight goes out
-        without the line rather than with another company's."""
-        footer_line = identity.footer_line
-        if not footer_line:
+        """The postal address and unsubscribe line (external mail only), the unsubscribe link placeholder and
+        exactly one sign-off: app.services.email_render.compliance_body, the same function the preview
+        (email_render.finalize_for_send) uses, so a preview shows what goes out."""
+        if not is_internal and not identity.footer_line:
+            # CAN-SPAM §5(a)(5): the SENDER's own postal address, never a platform default. New launches are
+            # blocked without one; mail already in flight goes out without the line rather than another company's.
             logger.warning(
                 f"[SES] Tenant {prospect.tenant_id} has no postal address set; footer address "
                 f"omitted for MessageId={email_message.message_id}. Set it in Settings."
             )
-            return body_content
-        if identity.postal_address not in body_content and footer_line not in body_content:
-            body_content = append_footer(body_content, footer_line, html_body=html_body)
-        return body_content
+        return compliance_body(body_content, FooterContext(
+            unsubscribe_url=unsubscribe_url,
+            unsubscribe_mode=getattr(email_message.campaign, 'unsubscribe_mode', 'plain'),
+            postal_address=identity.postal_address, footer_line=identity.footer_line, sender_name=sender_name,
+            sender_title=sender_title, company_name=identity.company_name), is_internal=is_internal)
 
     @staticmethod
     def _ses_request(from_email: str, recipient: str, mime_msg: MIMEMultipart,

@@ -19,3 +19,7 @@ UtcDateTime = DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql")
 
 # Server default / on-update value matching UtcDateTime's precision
 NOW6 = text("CURRENT_TIMESTAMP(6)")
+
+# updated_at that the server also refreshes on every UPDATE (raw-SQL fixes included). SQLAlchemy has no DDL for
+# MySQL's ON UPDATE clause, so it rides on the DEFAULT; pair it with server_onupdate=FetchedValue() (0035).
+NOW6_ON_UPDATE = text("CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)")

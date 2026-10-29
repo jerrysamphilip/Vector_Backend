@@ -943,7 +943,8 @@ def pytest_plan(suite, args, report_dir, where):
     if where == "host":
         junit = Path(report_dir) / "raw" / junit_name
         e = child_env(suite, None)
-        e.update({"ENVIRONMENT": "test", "ALLOW_SELF_SIGNUP": "true", "RUN_BACKGROUND_JOBS": "false"})
+        e.update({"ENVIRONMENT": "test", "ALLOW_SELF_SIGNUP": "true", "RUN_BACKGROUND_JOBS": "false",
+                  "OUTREACH_IGNORE_DOTENV": "1"})  # never the developer's .env keys (app.core.config)
         if functional:
             if not os.environ.get("TEST_ALLOW_DATABASE_URL"):
                 e.pop("DATABASE_URL", None)       # would win over MYSQL_* in app.core.config: never test
@@ -960,6 +961,7 @@ def pytest_plan(suite, args, report_dir, where):
     inside = WORK_DIR / junit_name
     WORK_DIR.mkdir(parents=True, exist_ok=True)
     denv = {"HOME": "/tmp", "PYTHONDONTWRITEBYTECODE": "1", "ENVIRONMENT": "test", "ALLOW_SELF_SIGNUP": "true",
+            "OUTREACH_IGNORE_DOTENV": "1",  # the repo (and its .env) is mounted at /src
             "RUN_BACKGROUND_JOBS": "false", "OPENAI_API_KEY": "", "AWS_EC2_METADATA_DISABLED": "true",
             "JWT_SECRET_KEY": "local-test-only-0123456789abcdef0123456789",
             "CREDENTIALS_ENCRYPTION_KEY": "local-test-only-credentials-key"}

@@ -47,15 +47,22 @@ def test_every_time_column_compiles_to_datetime6():
     assert wrong == []
 
 
+SERVER_DEFAULTS = ("CURRENT_TIMESTAMP(6)", "CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)")
+
+
 def test_server_defaults_and_on_update_use_current_timestamp6():
     wrong = []
     for c in _time_columns():
-        if c.server_default is not None and str(c.server_default.arg) != "CURRENT_TIMESTAMP(6)":
+        if c.server_default is not None and str(c.server_default.arg) not in SERVER_DEFAULTS:
             wrong.append(f"{c.table.name}.{c.name} default {c.server_default.arg}")
         if c.onupdate is not None and str(getattr(c.onupdate, "arg", "")) != "CURRENT_TIMESTAMP(6)":
             wrong.append(f"{c.table.name}.{c.name} onupdate {c.onupdate}")
     assert wrong == []
     assert sum(1 for c in _time_columns() if c.server_default is not None) >= 90
+    # 0035_schema_parity: these updated_at columns also refresh on the server (raw-SQL updates)
+    assert sorted(f"{c.table.name}.{c.name}" for c in _time_columns()
+                  if c.server_default is not None and "ON UPDATE" in str(c.server_default.arg)) == [
+        "imap_sync_state.updated_at", "import_mappings.updated_at", "webhook_endpoints.updated_at"]
 
 
 def test_create_table_ddl():

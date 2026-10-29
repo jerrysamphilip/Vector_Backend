@@ -20,7 +20,6 @@ from app.models.campaign import Campaign, CampaignProspect
 from app.models.email_sequence import EmailSequence
 from app.models.email_template import EmailTemplate
 from app.models.prospect import Prospect
-from app.models.metrics import CampaignMetricsRealtime
 from app.models.email_message import EmailMessage
 
 
@@ -147,32 +146,6 @@ This is email step {seq.step_number} of the "{campaign.campaign_name}" campaign.
                 logger.info("  Added %s test prospects", len(test_prospects))
             else:
                 logger.info("  Campaign already has %s prospects", existing_prospects)
-            
-            # 4. Update metrics
-            metrics = db.query(CampaignMetricsRealtime).filter(
-                CampaignMetricsRealtime.campaign_id == campaign.campaign_id
-            ).first()
-            
-            if not metrics:
-                metrics = CampaignMetricsRealtime(
-                    campaign_id=campaign.campaign_id,
-                    sent_count=0,
-                    opened_count=0,
-                    replied_count=0,
-                    bounced_count=0,
-                )
-                db.add(metrics)
-            
-            # Add some test metrics
-            prospect_count = db.query(CampaignProspect).filter(
-                CampaignProspect.campaign_id == campaign.campaign_id
-            ).count()
-            
-            metrics.sent_count = max(metrics.sent_count, prospect_count * 2)
-            metrics.opened_count = max(metrics.opened_count, int(prospect_count * 1.2))
-            metrics.replied_count = max(metrics.replied_count, int(prospect_count * 0.3))
-            
-            logger.info("  Updated metrics: %s sent, %s opened, %s replied", metrics.sent_count, metrics.opened_count, metrics.replied_count)
         
         db.commit()
         logger.info("\n✅ Test data seeded successfully!")

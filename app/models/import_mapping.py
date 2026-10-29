@@ -8,12 +8,12 @@ next file with the same layout. Names are unique per workspace.
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import JSON, ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, FetchedValue, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db_charset import MYSQL_CHARSET, MYSQL_COLLATION, MYSQL_ENGINE
 from app.models.base import Base
-from app.models.types import NOW6, UtcDateTime
+from app.models.types import NOW6, NOW6_ON_UPDATE, UtcDateTime
 from app.core.ids import new_id
 
 
@@ -28,8 +28,8 @@ class ImportMapping(Base):
     created_by: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.user_id", ondelete="SET NULL"),
                                                       nullable=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, nullable=True)
-    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6, onupdate=NOW6,
-                                                           nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(UtcDateTime, server_default=NOW6_ON_UPDATE, onupdate=NOW6,
+                                                           server_onupdate=FetchedValue(), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "name", name="uq_import_mappings_tenant_name"),

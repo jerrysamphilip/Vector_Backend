@@ -1,7 +1,10 @@
 """
 Campaign wizard drafts (chunk A2): save and resume an unfinished campaign creation. One draft per user is
-kept up to date by the wizard's auto-save; a user lists and clears only their own drafts. SQL in
-app/repositories/campaigns_wizard.py (CampaignDraftsRepository); each method is one unit of work.
+kept up to date by the wizard's auto-save; a user lists and clears only their own drafts. A draft looked up
+by id is owner-scoped like contacts (BR-SH-02, ``visibility_scope``): its creator, plus whoever sees the
+creator's records (admins, sales level 1, a manager over their team) may read or delete it; any other draft
+is a 404. SQL in app/repositories/campaigns_wizard.py (CampaignDraftsRepository); each method is one unit
+of work.
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from app.core.errors import NotFoundError
 from app.models.campaign_draft import CampaignDraft
 from app.repositories.campaigns import CampaignsUnitOfWork
+from app.services.contact_service import visibility_scope
 
 DRAFT_NOT_FOUND = "Draft not found"
 
@@ -48,7 +52,9 @@ class CampaignDraftService:
 
     def get(self, user: Any, draft_id: str) -> CampaignDraft:
         draft = self.uow.drafts.get(user.tenant_id, draft_id)
-        if not draft:
+        # Someone else's draft the user may not see is "not found", never "forbidden" (no id probing)
+        if not draft or (draft.user_id != user.user_id
+                         and not visibility_scope(self.uow.session, user).allows(draft.user_id)):
             raise NotFoundError(DRAFT_NOT_FOUND)
         return draft
 

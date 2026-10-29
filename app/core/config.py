@@ -8,6 +8,7 @@ import configparser
 import logging
 import os
 import re
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
@@ -21,7 +22,26 @@ logger = logging.getLogger(__name__)
 
 _BASE_DIR = Path(__file__).resolve().parents[2]
 _ENV_FILE = str(_BASE_DIR / ".env")
+# Test runs never read .env (it holds a developer's real OpenAI / AWS keys): the test harness sets this flag
+# (tests/conftest.py, tests/unit/conftest.py, scripts/test.py, CI) before app.core.config is imported, and any
+# in-process run under pytest is treated the same way. "0" opts a test run back in explicitly.
+IGNORE_DOTENV_VAR = "OUTREACH_IGNORE_DOTENV"
 LOCAL_ENVIRONMENTS = ("development", "dev", "local", "test")
+
+
+def dotenv_disabled() -> bool:
+    """True when .env must not be read: OUTREACH_IGNORE_DOTENV=1, or (flag unset) running under pytest."""
+    flag = os.getenv(IGNORE_DOTENV_VAR, "").strip().lower()
+    if flag in ("1", "true", "yes", "on"):
+        return True
+    if flag in ("0", "false", "no", "off"):
+        return False
+    return "pytest" in sys.modules
+
+
+def settings_env_file() -> Optional[str]:
+    """The .env file Settings reads, or None while testing (see dotenv_disabled)."""
+    return None if dotenv_disabled() else _ENV_FILE
 
 
 def _release_version() -> str:
@@ -325,7 +345,7 @@ class Settings(BaseSettings):
             raise ValueError(f"Could not construct DATABASE_URL: {e}")
     
     class Config:
-        env_file = _ENV_FILE
+        env_file = settings_env_file()  # fixed at import; get_settings() re-checks per call
         case_sensitive = True
 
 
@@ -377,9 +397,12 @@ def load_settings_from_ini() -> dict:
 
 
 def _dotenv_keys() -> Set[str]:
-    """Names (never values) set in the .env file, which outranks app-properties.ini."""
+    """Names (never values) set in the .env file, which outranks app-properties.ini (none while testing)."""
+    env_file = settings_env_file()
+    if env_file is None:
+        return set()
     try:
-        return {k for k in dotenv_values(_ENV_FILE) if k}
+        return {k for k in dotenv_values(env_file) if k}
     except OSError:
         return set()
 
@@ -423,7 +446,9 @@ def get_settings() -> Settings:
     if secret_keys:
         logger.warning("IGNORING secret keys in app-properties.ini (set them in the environment or .env "
                        "instead; values not read): %s", sorted(secret_keys))
-    return Settings(**final_settings)
+    # pydantic-settings' per-instance env file, decided per call (passed in the dict: the mypy plugin hides it)
+    init_kwargs: Dict[str, Any] = {**final_settings, "_env_file": settings_env_file()}
+    return Settings(**init_kwargs)
 
 
 settings = get_settings()
