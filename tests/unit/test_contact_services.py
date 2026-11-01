@@ -153,6 +153,14 @@ def test_q_u04_export_right():
     assert not query.can_export(user("AGENT", ["export_contacts", "export_data"]))  # BR-CM-31: never agents
 
 
+def test_q_u04b_meta_export_flag_follows_the_export_right():
+    # A manager without manage_prospects can still export (BR-CM-31), so the Contacts page must show Export.
+    mgr = SimpleNamespace(role="MANAGER", custom_permissions=None)
+    agent = SimpleNamespace(role="AGENT", custom_permissions=None)
+    assert query.contact_meta(mgr)["can_export"] is True
+    assert query.contact_meta(agent)["can_export"] is False
+
+
 def test_q_u05_tag_counts_case_insensitive():
     assert query.tag_counts([["VIP", "b"], ["vip"], None, ["a"]]) == [
         {"tag": "VIP", "count": 2}, {"tag": "a", "count": 1}, {"tag": "b", "count": 1}]

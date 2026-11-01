@@ -353,7 +353,7 @@ def contact_meta(user: User) -> dict:
         "legal_bases": [{"value": k, "label": v} for k, v in crm.LEGAL_BASES.items()],
         "columns": [{"key": k, "label": v} for k, v in COLUMNS.items()],
         "can_manage": can_manage_contacts(user),
-        "can_export": can_manage_contacts(user) and can_export(user),
+        "can_export": can_export(user),  # BR-CM-31: managers export without manage_prospects
         "can_override_lifecycle": crm.can_override_lifecycle(user),
         "restore_window_days": crm.RESTORE_WINDOW_DAYS,
     }
