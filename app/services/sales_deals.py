@@ -285,8 +285,19 @@ class DealService(SalesServiceBase):
             rules.repos.opportunities.flush()
             rules.collab.record_changes(user.tenant_id, "DEAL", opp.opportunity_id, {"created": None},
                                         {"created": "Opportunity created"}, user.user_id, "UI")
+            self._sync_new_deal_contact(rules, user, opp)
             self.commit()
             return masked_with(rules.repos.settings, user, rules.opp_dicts([opp])[0])
+
+    @staticmethod
+    def _sync_new_deal_contact(rules: SalesRules, user: Any, opp: Any) -> None:
+        """A deal opened on a contact moves the contact's lifecycle forward to Opportunity, as converting a
+        lead does (UAT2 E-02); one created already won makes it a Customer. Never moves it backward
+        (a Customer stays a Customer); a deal created lost leaves it unchanged."""
+        if not opp.prospect_id or opp.status == "LOST":
+            return
+        prospect = rules.repos.lookups.prospect(opp.prospect_id)
+        rules.sync_contact_lifecycle(prospect, "CUSTOMER" if opp.status == "WON" else "OPPORTUNITY", user.user_id)
 
     def detail(self, user: Any, opportunity_id: UUID | str) -> dict:
         opportunity_id = str(opportunity_id)
