@@ -188,6 +188,8 @@ class EngineState:
     seen_emails: Dict[str, int] = field(default_factory=dict)
     companies_touched: set = field(default_factory=set)
     list_members: List[str] = field(default_factory=list)
+    # dry run only: (domain, name) of the companies earlier rows of the file would create
+    planned_companies: List[Tuple[Optional[str], str]] = field(default_factory=list)
 
     def mark(self) -> Tuple[Tally, int, set, int, Dict[str, int]]:
         return (self.tally.copy(), len(self.errors), set(self.companies_touched), len(self.list_members),
@@ -575,20 +577,23 @@ class RowEngine:
         self._check_existing(p)
         cvals = self.values_for(row, "company")
         check_lengths(cvals, COMPANY_LIMITS, COMPANY_TARGETS)
-        company_domain(cvals, email)
+        company_domain(cvals, email)  # raises on an invalid Domain column
         for name, value in cvals.items():
             if value is not None:
                 self._company_field(name, value)
         tally = self.state.tally
         if self._skip_for_mode(p is not None):
             tally.skipped += 1
-        elif p is None:
+            return
+        if p is None:
             missing = self._missing_required(custom)
             if missing:
                 raise RowError(f"Missing required field: {', '.join(missing)}")
             tally.contacts_created += 1
         elif self.options.update_existing:
             tally.contacts_updated += 1
+        # the company the import links the contact to (company_for_row), counted the same way (UAT2 D-02)
+        self._preview_company(company_domain(cvals, email), cvals.get("name"))
 
     def _evaluate_company(self, row_no: int, row: Row) -> None:
         try:
@@ -600,17 +605,50 @@ class RowEngine:
             for name, value in cvals.items():
                 if value is not None:
                     self._company_field(name, value)
-            found = self._find_company(domain, cvals.get("name"))
+            company_name = cvals.get("name")
+            exists = (self._planned_company(domain, company_name)
+                      or self._find_company(domain, company_name) is not None)
+            if self._skip_for_mode(exists):
+                self.state.tally.skipped += 1
+                return
+            if not self._preview_company(domain, company_name):  # save_company_row refuses the same rows
+                raise RowError("Missing company name or domain")
         except RowError as exc:
             self.state.errors.append(error_entry(row_no, str(exc), row))
-            return
-        tally = self.state.tally
-        if self._skip_for_mode(found is not None):
-            tally.skipped += 1
-        elif found is None:
-            tally.companies_created += 1
-        else:
-            tally.companies_updated += 1
+
+    def _planned_company(self, domain: Optional[str], name: Optional[str]) -> bool:
+        """Whether an earlier row of this dry run would have created the company (the _find_company rules)."""
+        planned = self.state.planned_companies
+        if domain and any(d == domain for d, _ in planned):
+            return True
+        key = (name or "").strip().lower()
+        return bool(key) and any(n.lower() == key and not (domain and d and d != domain) for d, n in planned)
+
+    def _preview_company(self, domain: Optional[str], name: Optional[str]) -> bool:
+        """Count what company_for_row would do for a row, without writing: a new company, an update of an
+        existing one (once per import, only with update_existing) or a link. False = no company."""
+        if not domain and not name:
+            return False
+        if domain and self._planned_company(domain, None):
+            return True
+        account = self._find_company(domain, name)
+        if account is None:
+            return self._preview_new_company(domain, name)
+        if account.owner_id and not self.scope.allows(account.owner_id):
+            return True  # linked, never edited (BR-SH-02)
+        if self.options.update_existing and account.account_id not in self.state.companies_touched:
+            self.state.tally.companies_updated += 1
+        self.state.companies_touched.add(account.account_id)
+        return True
+
+    def _preview_new_company(self, domain: Optional[str], name: Optional[str]) -> bool:
+        if self._planned_company(domain, name):
+            return True
+        if domain and self.repo.deleted_account_holds_domain(self.tenant_id, domain):
+            return False  # in the recycle bin: _create_company neither links nor recreates it
+        self.state.planned_companies.append((domain, name or crm._name_from_domain(domain or "")))
+        self.state.tally.companies_created += 1
+        return True
 
 
 def _owners_by_name(users: Sequence[User]) -> Dict[str, List[str]]:

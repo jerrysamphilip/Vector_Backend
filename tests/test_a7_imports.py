@@ -212,6 +212,27 @@ def test_sync_modes(client, ws):
     assert _sync(client, h, csv, m, {"mode": "MERGE"}).status_code == 400
 
 
+def test_dry_run_counts_companies_like_the_import(client, ws):
+    """UAT2 D-02: the preview counts the companies contact rows create / update, the same as the import."""
+    h, uid = ws["headers"], _uid()
+    old_dom, new_dom = f"oldco{uid}{RUN}.example.com", f"newco{uid}{RUN}.example.com"
+    m = {"Email": "contact.email", "Company": "company.name"}
+    r = _sync(client, h, f"Email,Company\nfirst@{old_dom},OldCo {uid} {RUN}\n", m)
+    assert r.status_code == 201 and r.json()["companies_created"] == 1, r.text
+    csv = (f"Email,Company\na@{new_dom},NewCo {uid} {RUN}\nb@{new_dom},NewCo {uid} {RUN}\n"
+           f"c@{old_dom},OldCo {uid} {RUN}\nd@{old_dom},OldCo {uid} {RUN}\n")
+    import_id = _upload(client, h, csv.encode())["import"]["import_id"]
+    r = client.post(f"/imports/{import_id}/dry-run", headers=h, json={"mapping": m})
+    assert r.status_code == 200, r.text
+    dry = r.json()
+    assert (dry["create"], dry["companies_create"], dry["companies_update"]) == (4, 1, 1), dry
+    assert sql("SELECT COUNT(*) FROM accounts WHERE domain = :d", d=new_dom) == 0  # nothing written
+    r = _sync(client, h, csv, m)
+    assert r.status_code == 201, r.text
+    job = r.json()
+    assert (job["contacts_created"], job["companies_created"], job["companies_updated"]) == (4, 1, 1), job
+
+
 def test_sync_endpoint_queues_a_large_file(client, ws, monkeypatch):
     h = ws["headers"]
     monkeypatch.setattr(import_service, "limits_from_settings",
