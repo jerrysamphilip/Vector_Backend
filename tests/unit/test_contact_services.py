@@ -145,9 +145,12 @@ def test_q_u04_export_right():
     def user(role, custom=None):
         return SimpleNamespace(role=role, custom_permissions=custom)
     assert query.can_export(user("ADMIN"))
-    assert query.can_export(user("MANAGER", ["export_data"]))
+    assert query.can_export(user("MANAGER"))  # by default: export_contacts is in the manager's list (F-06c)
+    assert query.can_export(user("MANAGER", ["export_contacts"]))
+    assert query.can_export(user("MANAGER", ["export_data"]))  # customised before export_contacts existed
     assert not query.can_export(user("MANAGER", ["view_analytics"]))
     assert not query.can_export(user("AGENT"))
+    assert not query.can_export(user("AGENT", ["export_contacts", "export_data"]))  # BR-CM-31: never agents
 
 
 def test_q_u05_tag_counts_case_insensitive():

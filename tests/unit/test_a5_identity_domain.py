@@ -33,6 +33,25 @@ def test_roles_and_permission_sets():
     assert d.unknown_permissions(["manage_team", "fly", "fly"]) == {"fly"}
 
 
+def test_contact_export_permission_is_advertised_where_it_is_enforced():
+    # UAT2 F-06c: managers export contacts (BR-CM-31), so their permission list says so; report exports
+    # (export_data) stay admin-only
+    assert "export_contacts" in d.DEFAULT_PERMISSIONS["MANAGER"] and "export_data" not in d.DEFAULT_PERMISSIONS["MANAGER"]
+    assert d.CONTACT_EXPORT_ROLES == {"SUPER_ADMIN", "ADMIN", "MANAGER"}
+    assert all(d.may_export_contacts(role, None) == ("export_contacts" in d.default_permissions(role))
+               for role in d.ROLE_DEFAULT_PERMISSIONS)
+    assert d.may_export_contacts("MANAGER", ["export_contacts"]) and d.may_export_contacts("ADMIN", ["export_data"])
+    assert not d.may_export_contacts("MANAGER", []) and not d.may_export_contacts("AGENT", ["export_contacts"])
+    assert d.may_export_contacts(None, None) is False
+
+
+def test_export_contacts_is_granted_only_to_admins_and_managers():
+    d.check_permission_update(_m("MANAGER"), iter(["export_contacts", "view_analytics"]))
+    d.check_permission_update(_m("ADMIN"), ["export_contacts"])
+    err = _refused(d.check_permission_update, _m("AGENT"), ["export_contacts"])
+    assert err.status == 400 and "export_contacts" in err.message
+
+
 def test_role_is_checked_and_super_admin_granted_only_by_super_admin():
     assert _refused(d.check_role, "OWNER").message == "Invalid role. Must be one of: ADMIN, AGENT, MANAGER, SUPER_ADMIN"
     d.check_role("MANAGER")

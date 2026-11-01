@@ -15,9 +15,9 @@ API = os.environ.get("API_URL", "http://localhost:8191")
 # api image (AGENT has had manage_campaigns by default since c3ad117, 2026-10-14) and replaces this table.
 DEFAULT_PERMS = {
     "PLATFORM_ADMIN": {"manage_platform"},
-    "SUPER_ADMIN": {"manage_campaigns", "manage_templates", "manage_inboxes", "manage_prospects", "view_analytics", "export_data", "manage_team"},
-    "ADMIN": {"manage_campaigns", "manage_templates", "manage_inboxes", "manage_prospects", "view_analytics", "export_data", "manage_team"},
-    "MANAGER": {"manage_campaigns", "manage_templates", "view_analytics"},
+    "SUPER_ADMIN": {"manage_campaigns", "manage_templates", "manage_inboxes", "manage_prospects", "view_analytics", "export_data", "export_contacts", "manage_team"},
+    "ADMIN": {"manage_campaigns", "manage_templates", "manage_inboxes", "manage_prospects", "view_analytics", "export_data", "export_contacts", "manage_team"},
+    "MANAGER": {"manage_campaigns", "manage_templates", "view_analytics", "export_contacts"},
     "AGENT": {"manage_campaigns"},
 }
 IDENTITIES = ["PLATFORM_ADMIN", "SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT", "AGENT_NOPERM"]

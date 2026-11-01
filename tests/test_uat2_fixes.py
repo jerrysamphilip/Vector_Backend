@@ -4,6 +4,8 @@ UAT round 2 backend fixes, functional (MySQL):
   * B-01  POST /campaigns keeps unsubscribe_mode 'html' (the wizard's choice); anything but plain / html is a 422
   * C-08  Reports 'Follow-up reply rate' = replies to step > 1 emails / delivered step > 1 emails
   * E-02  a deal created on a contact moves its lifecycle forward to Opportunity, never backward
+  * F-06c managers hold export_contacts (BR-CM-31) in /auth/me and export contacts; report exports
+          (export_data) stay 403 for them; export_contacts cannot be granted to an agent
 
 The import preview company counts (D-02) are in tests/test_a7_imports.py.
 """
@@ -14,7 +16,9 @@ import pytest
 
 from app.models.email_message import EmailEvent
 from app.models.email_sequence import EmailSequence
-from tests.conftest import RUN, SessionLocal, register_tenant, sql
+from app.core.security import hash_password
+from app.models.user import User
+from tests.conftest import RUN, SessionLocal, auth, login, register_tenant, sql
 
 
 @pytest.fixture(scope="module")
@@ -134,3 +138,37 @@ def test_deal_on_a_contact_makes_it_an_opportunity_but_never_downgrades(client, 
     r = client.post("/opportunities", headers=h, json={"name": f"Deal on customer {RUN}", "prospect_id": customer})
     assert r.status_code == 201, r.text
     assert _lifecycle(customer) == "CUSTOMER" and _lifecycle_changes(customer) == 0
+
+
+# ── F-06c ──
+
+def _member(client, tenant_id, label, role):
+    email = f"{label}-{RUN}-{uuid.uuid4().hex[:4]}@uatb{RUN}.example.com"
+    password = f"{label}-pass-{RUN}"
+    with SessionLocal() as db:
+        user = User(tenant_id=tenant_id, first_name=label.capitalize(), last_name="Tester", email=email,
+                    password_hash=hash_password(password), role=role, status="ACTIVE", auth_provider="local",
+                    email_verified=True)
+        db.add(user)
+        db.commit()
+        user_id = user.user_id
+    return {"user_id": user_id, "headers": auth(login(client, email, password))}
+
+
+def test_manager_contact_export_is_advertised_and_report_exports_stay_refused(client, ws):
+    h = ws["headers"]
+    mgr = _member(client, ws["tenant_id"], "mgr", "MANAGER")
+    agent = _member(client, ws["tenant_id"], "agent", "AGENT")
+    me = client.get("/api/auth/me", headers=mgr["headers"]).json()
+    assert "export_contacts" in me["permissions"] and "export_data" not in me["permissions"]
+    assert client.get("/contacts/export", headers=mgr["headers"], params={"format": "csv"}).status_code == 200
+    assert client.get("/reports/export/campaign-comparison", headers=mgr["headers"]).status_code == 403
+    assert client.get("/contacts/export", headers=agent["headers"], params={"format": "csv"}).status_code == 403
+
+    # A customised manager without export_contacts loses contact export, as the list now shows
+    r = client.put(f"/api/users/{mgr['user_id']}/permissions", headers=h, json={"permissions": ["view_analytics"]})
+    assert r.status_code == 200, r.text
+    assert client.get("/contacts/export", headers=mgr["headers"], params={"format": "csv"}).status_code == 403
+    # BR-CM-31: never an agent
+    r = client.put(f"/api/users/{agent['user_id']}/permissions", headers=h, json={"permissions": ["export_contacts"]})
+    assert r.status_code == 400 and "export_contacts" in r.text, r.text

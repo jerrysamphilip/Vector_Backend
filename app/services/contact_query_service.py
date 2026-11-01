@@ -30,6 +30,7 @@ from app.domain.contacts import (
     parse_grades,
     search_terms,
 )
+from app.domain.identity import may_export_contacts
 from app.domain.inbox import is_system_notice
 from app.domain.paging import Paging, Sort
 from app.models.contact_activity import ContactActivity
@@ -85,7 +86,6 @@ COLUMNS = {
     "score": "Score",  # BR-CM-43: fit + engagement score with its grade
 }
 
-EXPORT_ROLES = ("SUPER_ADMIN", "ADMIN", "MANAGER")
 EXPORT_ROW_LIMIT = 100_000
 EXPORT_CHUNK = 1000
 
@@ -114,9 +114,9 @@ def user_name(u: Optional[User]) -> Optional[str]:
 
 
 def can_export(user: User) -> bool:
-    """Role right (BR-CM-31); a user with customised permissions also needs export_data."""
-    custom = user.custom_permissions
-    return user.role in EXPORT_ROLES and (custom is None or "export_data" in custom)
+    """BR-CM-31: the export_contacts permission of an admin or manager (app.domain.identity, the same table
+    /auth/me and the team permission list report)."""
+    return may_export_contacts(user.role, user.custom_permissions)
 
 
 # ── Visibility and criteria ────────────────────────────────────────
@@ -353,7 +353,7 @@ def contact_meta(user: User) -> dict:
         "legal_bases": [{"value": k, "label": v} for k, v in crm.LEGAL_BASES.items()],
         "columns": [{"key": k, "label": v} for k, v in COLUMNS.items()],
         "can_manage": can_manage_contacts(user),
-        "can_export": can_manage_contacts(user) and user.role in EXPORT_ROLES,
+        "can_export": can_manage_contacts(user) and can_export(user),
         "can_override_lifecycle": crm.can_override_lifecycle(user),
         "restore_window_days": crm.RESTORE_WINDOW_DAYS,
     }
