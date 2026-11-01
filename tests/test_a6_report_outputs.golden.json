@@ -674,7 +674,7 @@
    },
    "optimization": {
     "avg_leads_before_first_reply": 3.0,
-    "follow_up_reply_rate": 50.0,
+    "follow_up_reply_rate": 0.0,
     "median_time_to_first_reply_hours": 48.0
    },
    "providers": [
@@ -1055,7 +1055,7 @@
    },
    "optimization": {
     "avg_leads_before_first_reply": 3.0,
-    "follow_up_reply_rate": 50.0,
+    "follow_up_reply_rate": 0.0,
     "median_time_to_first_reply_hours": 48.0
    },
    "providers": [
@@ -4007,7 +4007,7 @@
    },
    "optimization": {
     "avg_leads_before_first_reply": 2.0,
-    "follow_up_reply_rate": 100.0,
+    "follow_up_reply_rate": 0.0,
     "median_time_to_first_reply_hours": 10.0
    },
    "providers": [
@@ -5773,7 +5773,7 @@
    },
    "optimization": {
     "avg_leads_before_first_reply": 2.8,
-    "follow_up_reply_rate": 33.33,
+    "follow_up_reply_rate": 0.0,
     "median_time_to_first_reply_hours": 30.0
    },
    "providers": [
@@ -6232,7 +6232,7 @@
    },
    "optimization": {
     "avg_leads_before_first_reply": 2.8,
-    "follow_up_reply_rate": 33.33,
+    "follow_up_reply_rate": 0.0,
     "median_time_to_first_reply_hours": 30.0
    },
    "providers": [

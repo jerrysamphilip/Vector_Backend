@@ -245,7 +245,7 @@ class ReportsService:
         """Avg prospects per campaign with a reply, follow-up reply rate, median time to first reply."""
         c = self.repo.optimization_counts(tenant_id, user_id)
         avg_leads = round(c.total_prospects / c.campaigns_with_replies, 1) if c.campaigns_with_replies > 0 else 0.0
-        follow_up_rate = rate(c.follow_up_replies, c.follow_up_sent)
+        follow_up_rate = rate(c.follow_up_replies, delivered(c.follow_up_sent, c.follow_up_bounced))
         try:
             median = median_hours(self.repo.first_reply_times(tenant_id, user_id))
         except Exception:  # optional metric: report 0 rather than failing the whole report

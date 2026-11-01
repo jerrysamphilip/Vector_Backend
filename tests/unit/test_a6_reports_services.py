@@ -10,7 +10,7 @@ import pytest
 
 from app.core.errors import BadRequestError, NotFoundError, PermissionDenied, ValidationFailed
 from app.models.sales import LEAD_STAGES
-from app.repositories.reports import ComparisonRow, GlobalCounts, MailboxCounts, ProviderCounts
+from app.repositories.reports import ComparisonRow, GlobalCounts, MailboxCounts, OptimizationCounts, ProviderCounts
 from app.repositories.reports_sales import OpportunityCounts
 from app.schemas.reports_custom_schema import Definition, ReportWrite
 from app.services import crm_kpis as kp
@@ -112,6 +112,32 @@ def test_global_kpis_apply_status_fallbacks_and_rates():
     # open / reply rates over delivered: 10 sent - 1 bounced = 9 (UAT 3-5; was 40.0 / 30.0 over sent)
     assert (k.total_opened, k.total_replied, k.overall_open_rate, k.overall_reply_rate) == (4, 3, 44.44, 33.33)
     assert k.overall_bounce_rate == 10.0
+
+
+class FakeOptimizationRepo(FakeCampaignRepo):
+    def __init__(self, counts):
+        super().__init__()
+        self.counts = counts
+
+    def optimization_counts(self, tenant_id, owners):
+        return self.counts
+
+    def first_reply_times(self, tenant_id, owners):
+        return []
+
+
+def test_follow_up_reply_rate_is_follow_up_replies_over_delivered_follow_ups():
+    # UAT2 C-08: replies to step > 1 emails / (sent - bounced) step > 1 emails
+    counts = OptimizationCounts(campaigns_with_replies=1, total_prospects=4, follow_up_sent=11,
+                                follow_up_replies=2, follow_up_bounced=1)
+    assert ReportsService(FakeOptimizationRepo(counts)).get_optimization_metrics("t1").follow_up_reply_rate == 20.0
+    # a reply to an initial email is not in follow_up_replies, so nobody answering a follow-up is 0 %
+    none = OptimizationCounts(campaigns_with_replies=1, total_prospects=4, follow_up_sent=51, follow_up_replies=0,
+                              follow_up_bounced=0)
+    assert ReportsService(FakeOptimizationRepo(none)).get_optimization_metrics("t1").follow_up_reply_rate == 0.0
+    nothing_delivered = OptimizationCounts(1, 4, 2, 0, 2)
+    assert ReportsService(FakeOptimizationRepo(nothing_delivered)).get_optimization_metrics(
+        "t1").follow_up_reply_rate == 0.0
 
 
 def test_comparison_fallback_rates_and_whitelisted_sort():
