@@ -26,6 +26,7 @@ from app.services.quote_approval import QuoteApproval
 from app.services.sales import SalesRules, SalesServiceBase, as_float, category_for, money, stage_dict, stage_status
 from app.services.sales_leads import check_amount_rights, history
 from app.services.sales_settings import amounts_allowed, masked_with
+from app.utils.email_utils import plain_text_snippet
 
 TaskFormatter = Callable[[Any, Dict[str, str]], dict]
 """Maps a CRM task to its API dict (tasks_router.task_dict bound to the request session)."""
@@ -147,7 +148,7 @@ def _activity_item(a: Any, opp_id: str, names: Dict[str, str], mentioned: Dict[s
 
 def _email_item(m: Any) -> dict:
     return {"kind": "EMAIL_RECEIVED" if m.direction == "INBOUND" else "EMAIL_SENT", "at": m.sent_at,
-            "email": {"message_id": m.message_id, "subject": m.subject, "snippet": (m.body_text or "")[:300],
+            "email": {"message_id": m.message_id, "subject": m.subject, "snippet": plain_text_snippet(m.body_text, 300),
                       "status": m.status, "final_status": m.final_status}}
 
 

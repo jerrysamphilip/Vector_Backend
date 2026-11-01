@@ -50,6 +50,7 @@ from app.services import contact_companies, crm, mentions
 from app.services import duplicate_scan as duplicate_scan  # noqa: PLC0414  (explicit submodule import for mypy)
 from app.services.contact_field_service import definitions_in_order, label_map
 from app.services.export_log import record_export
+from app.utils.email_utils import plain_text_snippet
 from app.services.contact_service import (
     MERGE_CHOOSABLE,
     can_access_contact,
@@ -583,7 +584,7 @@ def _email_items(repo: ContactRepository, prospect: Prospect, limit: int) -> Lis
             "at": m.sent_at or m.scheduled_at,
             "email": {
                 "message_id": m.message_id, "subject": m.subject, "subject_variant": m.subject_variant,
-                "snippet": (m.body_text or "")[:400], "status": m.status, "final_status": m.final_status,
+                "snippet": plain_text_snippet(m.body_text, 400), "status": m.status, "final_status": m.final_status,
                 "failure_reason": m.failure_reason,
                 "from_email": m.from_email, "to_email": m.to_email,
                 "campaign_id": m.campaign_id, "campaign_name": campaign_name,

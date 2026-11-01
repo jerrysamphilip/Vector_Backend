@@ -511,6 +511,12 @@ def html_to_text(body: str) -> str:
     return html.unescape(text).replace("\xa0", " ")
 
 
+def plain_text_snippet(body: Optional[str], limit: int) -> str:
+    """Readable plain-text excerpt of an (HTML or plain) email body for timelines: tags stripped,
+    entities decoded, whitespace collapsed to single spaces, cut to ``limit`` characters."""
+    return re.sub(r"\s+", " ", html_to_text(body or "")).strip()[:limit]
+
+
 def conversation_snippet(body: Optional[str], limit: int = 100) -> str:
     """One-line plain-text preview of a message for the unified inbox list."""
     text = extract_latest_message_text(html_to_text(body or ""))
