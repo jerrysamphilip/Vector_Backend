@@ -30,12 +30,16 @@ TENANT_ROLES = frozenset({SUPER_ADMIN, ADMIN, MANAGER, AGENT})
 ROLE_DEFAULT_PERMISSIONS: dict[str, tuple[str, ...]] = {
     PLATFORM_ADMIN: ("manage_platform",),          # platform-only
     SUPER_ADMIN:    ("manage_campaigns", "manage_templates", "manage_inboxes",
-                     "manage_prospects", "view_analytics", "export_data", "manage_team"),
+                     "manage_prospects", "view_analytics", "export_data", "export_contacts", "manage_team"),
     ADMIN:          ("manage_campaigns", "manage_templates", "manage_inboxes",
-                     "manage_prospects", "view_analytics", "export_data", "manage_team"),
-    MANAGER:        ("manage_campaigns", "manage_templates", "view_analytics"),
+                     "manage_prospects", "view_analytics", "export_data", "export_contacts", "manage_team"),
+    MANAGER:        ("manage_campaigns", "manage_templates", "view_analytics", "export_contacts"),
     AGENT:          ("manage_campaigns",),
 }
+
+# Roles that may export contact / company views (BR-CM-31: admin and manager only): the roles whose
+# defaults hold export_contacts. Granting export_contacts to any other role is refused.
+CONTACT_EXPORT_ROLES = frozenset(role for role, perms in ROLE_DEFAULT_PERMISSIONS.items() if "export_contacts" in perms)
 
 # Every feature permission a workspace member can be granted
 ALL_PERMISSIONS = frozenset({
@@ -44,7 +48,8 @@ ALL_PERMISSIONS = frozenset({
     "manage_inboxes",     # Connect and configure email inboxes
     "manage_prospects",   # Import and manage prospect lists
     "view_analytics",     # View reports and analytics dashboard
-    "export_data",        # Export campaigns, contacts and reports
+    "export_data",        # Export campaign reports and analytics (CSV / Word)
+    "export_contacts",    # Export contact and company views to CSV / XLSX (BR-CM-31)
     "manage_team",        # Invite and manage team members
 })
 
@@ -63,6 +68,14 @@ def effective_permissions(role: Optional[str], custom: Optional[Sequence[str]]) 
 
 def unknown_permissions(permissions: Iterable[str]) -> set[str]:
     return set(permissions) - ALL_PERMISSIONS
+
+
+def may_export_contacts(role: Optional[str], custom: Optional[Sequence[str]]) -> bool:
+    """BR-CM-31: a role allowed to export contacts, holding export_contacts (its default unless customised).
+    A customised set from before export_contacts existed still exports with export_data."""
+    if role not in CONTACT_EXPORT_ROLES:
+        return False
+    return custom is None or "export_contacts" in custom or "export_data" in custom
 
 
 # ── States ─────────────────────────────────────────────────────────
@@ -208,9 +221,12 @@ def check_permanent_delete(target: Member) -> None:
 def check_permission_update(target: Member, permissions: Iterable[str]) -> None:
     if target.role == SUPER_ADMIN:
         raise _refuse("Cannot restrict Super Admin permissions")
+    permissions = list(permissions)
     invalid = unknown_permissions(permissions)
     if invalid:
         raise _refuse(f"Unknown permission keys: {', '.join(invalid)}")
+    if "export_contacts" in permissions and target.role not in CONTACT_EXPORT_ROLES:
+        raise _refuse("Only admins and managers can export contacts (export_contacts)")
 
 
 # Records that keep a non-nullable reference to their creator: a user who has any of them cannot be

@@ -11,6 +11,19 @@ from app.domain.reports import delivered, rate
 from app.schemas.types import UtcDatetime
 
 
+UNSUBSCRIBE_MODES = ("plain", "html")
+
+
+def _check_unsubscribe_mode(v: Optional[str]) -> Optional[str]:
+    """'plain' (reply-based footer) or 'html' (clickable link); anything else is a 422, not a 500."""
+    if v is None:
+        return v
+    v = v.strip().lower()
+    if v not in UNSUBSCRIBE_MODES:
+        raise ValueError("unsubscribe_mode must be 'plain' or 'html'")
+    return v
+
+
 class CampaignStatus(str, Enum):
     """Campaign status enum."""
     DRAFT = "DRAFT"
@@ -37,6 +50,7 @@ class CampaignCreate(BaseModel):
     respect_timezone: bool = Field(True, description="Respect prospect's timezone")
     campaign_timezone: str = Field("UTC", description="Campaign timezone")
     wait_business_days: bool = Field(False, description="Wait days between steps count business days (F-04)")
+    unsubscribe_mode: str = Field("plain", description="'plain' or 'html' — controls unsubscribe footer style")
 
     # Sending Schedule
     sending_mode: str = Field("spread", description="spread | random | batch")
@@ -56,6 +70,11 @@ class CampaignCreate(BaseModel):
     @classmethod
     def validate_name(cls, v: str) -> str:
         return v.strip()
+
+    @field_validator("unsubscribe_mode")
+    @classmethod
+    def _valid_unsubscribe_mode(cls, v: str) -> str:
+        return _check_unsubscribe_mode(v) or "plain"
     
     class Config:
         json_schema_extra = {
@@ -103,6 +122,11 @@ class CampaignUpdate(BaseModel):
         if not v:
             raise ValueError("campaign_name must not be blank")
         return v
+
+    @field_validator("unsubscribe_mode")
+    @classmethod
+    def _valid_unsubscribe_mode(cls, v: Optional[str]) -> Optional[str]:
+        return _check_unsubscribe_mode(v)
 
     @model_validator(mode="after")
     def _dates_in_order(self) -> "CampaignUpdate":

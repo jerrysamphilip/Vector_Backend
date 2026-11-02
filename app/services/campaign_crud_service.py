@@ -139,6 +139,7 @@ class CampaignCRUDService(CampaignServiceBase):
             batch_gap_minutes=data.batch_gap_minutes, daily_batch_size=data.daily_batch_size,
             start_date=data.start_date, end_date=data.end_date,
             wait_business_days=bool(getattr(data, "wait_business_days", False)),
+            unsubscribe_mode=data.unsubscribe_mode or "plain",
         )
         repo = self.uow.campaigns
         repo.add(tenant_id, campaign)

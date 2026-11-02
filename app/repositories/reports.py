@@ -22,6 +22,7 @@ from app.domain.paging import Paging
 from app.domain.reports import ComparisonSort, DateWindow, OptionalWindow, Owners
 from app.models.campaign import Campaign, CampaignProspect
 from app.models.email_message import EmailEvent, EmailMessage
+from app.models.email_sequence import EmailSequence
 from app.models.prospect import Prospect
 from app.models.sending_inbox import SendingInbox
 from app.models.user import User
@@ -86,8 +87,9 @@ class MailboxCounts:
 class OptimizationCounts:
     campaigns_with_replies: int
     total_prospects: int
-    follow_up_sent: int
-    follow_up_replies: int
+    follow_up_sent: int        # sent step emails of the steps after the first (step_number > 1)
+    follow_up_replies: int     # of those, the emails with a reply (a reply belongs to the email it answers)
+    follow_up_bounced: int     # of those, the bounced emails
 
 
 @dataclass(frozen=True)
@@ -381,17 +383,23 @@ class SqlAlchemyCampaignReportRepository:
             .join(EmailEvent, EmailEvent.message_id == EmailMessage.message_id)
             .filter(in_campaigns, EmailEvent.event_type == EmailEvent.EVENT_REPLY))
         total_prospects = self._scalar(s.query(func.count(CampaignProspect.id)).filter(cp_in))
-        # Prospects past step 1 (follow-ups)
-        follow_up = (s.query(CampaignProspect.prospect_id, CampaignProspect.campaign_id)
-                     .filter(cp_in, CampaignProspect.current_step > 1).subquery())
-        in_follow_up = EmailMessage.prospect_id.in_(s.query(follow_up.c.prospect_id))
-        follow_up_sent = self._scalar(s.query(func.count(EmailMessage.message_id))
-                                      .filter(in_campaigns, in_follow_up, *sent_message_filters()))
-        follow_up_replies = self._scalar(
-            s.query(func.count(EmailEvent.event_id))
-            .join(EmailMessage, EmailMessage.message_id == EmailEvent.message_id)
-            .filter(in_campaigns, in_follow_up, EmailEvent.event_type == EmailEvent.EVENT_REPLY))
-        return OptimizationCounts(with_replies, total_prospects, follow_up_sent, follow_up_replies)
+        # Follow-up emails = sent step emails of steps after the first. A reply event belongs to the
+        # outbound message it answers (EmailEvent.message_id), so its step is that message's step.
+        follow_up = (s.query(EmailMessage.message_id)
+                     .join(EmailSequence, EmailSequence.sequence_id == EmailMessage.sequence_id)
+                     .filter(in_campaigns, EmailSequence.step_number > 1, *sent_message_filters()).subquery())
+        follow_up_sent = self._scalar(s.query(func.count(follow_up.c.message_id)))
+        event_row: Any = (
+            s.query(
+                func.count(func.distinct(case((EmailEvent.event_type == EmailEvent.EVENT_REPLY, EmailEvent.message_id)))
+                           ).label("replied"),
+                func.count(func.distinct(case((EmailEvent.event_type == EmailEvent.EVENT_BOUNCE, EmailEvent.message_id)))
+                           ).label("bounced"),
+            )
+            .filter(EmailEvent.message_id.in_(s.query(follow_up.c.message_id))).one()
+        )
+        return OptimizationCounts(with_replies, total_prospects, follow_up_sent, int(event_row.replied or 0),
+                                  int(event_row.bounced or 0))
 
     def first_reply_times(self, tenant_id: TenantId, owners: Owners) -> list[tuple[Any, Any]]:
         """Per replying prospect: (first reply event, first message sent)."""

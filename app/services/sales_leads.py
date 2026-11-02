@@ -20,6 +20,7 @@ from app.services import crm
 from app.services.contact_service import clean_str
 from app.services.sales import SalesRules, SalesServiceBase, settings, stage_dict
 from app.services.sales_settings import amounts_allowed, masked_with
+from app.utils.email_utils import plain_text_snippet
 
 SQL_QUEUE_LIMIT = 500
 REPLY_SUGGESTION_DAYS = 30
@@ -135,7 +136,7 @@ class LeadService(SalesServiceBase):
                 if reply:
                     items.append({"message_id": reply.message_id, "prospect_id": p.prospect_id,
                                   "contact_name": p.full_name, "company_name": p.company_name,
-                                  "subject": reply.subject, "snippet": (reply.body_text or "")[:200],
+                                  "subject": reply.subject, "snippet": plain_text_snippet(reply.body_text, 200),
                                   "received_at": reply.sent_at, "campaign_id": reply.campaign_id})
             return {"items": sorted(items, key=lambda i: i["received_at"] or datetime.min, reverse=True)}
 

@@ -145,9 +145,20 @@ def test_q_u04_export_right():
     def user(role, custom=None):
         return SimpleNamespace(role=role, custom_permissions=custom)
     assert query.can_export(user("ADMIN"))
-    assert query.can_export(user("MANAGER", ["export_data"]))
+    assert query.can_export(user("MANAGER"))  # by default: export_contacts is in the manager's list (F-06c)
+    assert query.can_export(user("MANAGER", ["export_contacts"]))
+    assert query.can_export(user("MANAGER", ["export_data"]))  # customised before export_contacts existed
     assert not query.can_export(user("MANAGER", ["view_analytics"]))
     assert not query.can_export(user("AGENT"))
+    assert not query.can_export(user("AGENT", ["export_contacts", "export_data"]))  # BR-CM-31: never agents
+
+
+def test_q_u04b_meta_export_flag_follows_the_export_right():
+    # A manager without manage_prospects can still export (BR-CM-31), so the Contacts page must show Export.
+    mgr = SimpleNamespace(role="MANAGER", custom_permissions=None)
+    agent = SimpleNamespace(role="AGENT", custom_permissions=None)
+    assert query.contact_meta(mgr)["can_export"] is True
+    assert query.contact_meta(agent)["can_export"] is False
 
 
 def test_q_u05_tag_counts_case_insensitive():

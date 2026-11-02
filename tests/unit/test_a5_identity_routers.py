@@ -117,7 +117,7 @@ def test_me_needs_a_user_and_reports_the_profile(make_client):
     assert make_client().get("/api/auth/me").status_code == 401
     r = make_client(user=_user("MANAGER")).get("/api/auth/me")
     assert r.status_code == 200 and r.json()["permissions"] == ["manage_campaigns", "manage_templates",
-                                                                 "view_analytics"]
+                                                                 "view_analytics", "export_contacts"]
 
 
 def test_change_password_issues_a_fresh_cookie_session_only_in_cookie_mode(make_client):

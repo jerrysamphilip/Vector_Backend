@@ -26,6 +26,7 @@ from app.services.quote_approval import QuoteApproval
 from app.services.sales import SalesRules, SalesServiceBase, as_float, category_for, money, stage_dict, stage_status
 from app.services.sales_leads import check_amount_rights, history
 from app.services.sales_settings import amounts_allowed, masked_with
+from app.utils.email_utils import plain_text_snippet
 
 TaskFormatter = Callable[[Any, Dict[str, str]], dict]
 """Maps a CRM task to its API dict (tasks_router.task_dict bound to the request session)."""
@@ -147,7 +148,7 @@ def _activity_item(a: Any, opp_id: str, names: Dict[str, str], mentioned: Dict[s
 
 def _email_item(m: Any) -> dict:
     return {"kind": "EMAIL_RECEIVED" if m.direction == "INBOUND" else "EMAIL_SENT", "at": m.sent_at,
-            "email": {"message_id": m.message_id, "subject": m.subject, "snippet": (m.body_text or "")[:300],
+            "email": {"message_id": m.message_id, "subject": m.subject, "snippet": plain_text_snippet(m.body_text, 300),
                       "status": m.status, "final_status": m.final_status}}
 
 
@@ -284,8 +285,19 @@ class DealService(SalesServiceBase):
             rules.repos.opportunities.flush()
             rules.collab.record_changes(user.tenant_id, "DEAL", opp.opportunity_id, {"created": None},
                                         {"created": "Opportunity created"}, user.user_id, "UI")
+            self._sync_new_deal_contact(rules, user, opp)
             self.commit()
             return masked_with(rules.repos.settings, user, rules.opp_dicts([opp])[0])
+
+    @staticmethod
+    def _sync_new_deal_contact(rules: SalesRules, user: Any, opp: Any) -> None:
+        """A deal opened on a contact moves the contact's lifecycle forward to Opportunity, as converting a
+        lead does (UAT2 E-02); one created already won makes it a Customer. Never moves it backward
+        (a Customer stays a Customer); a deal created lost leaves it unchanged."""
+        if not opp.prospect_id or opp.status == "LOST":
+            return
+        prospect = rules.repos.lookups.prospect(opp.prospect_id)
+        rules.sync_contact_lifecycle(prospect, "CUSTOMER" if opp.status == "WON" else "OPPORTUNITY", user.user_id)
 
     def detail(self, user: Any, opportunity_id: UUID | str) -> dict:
         opportunity_id = str(opportunity_id)

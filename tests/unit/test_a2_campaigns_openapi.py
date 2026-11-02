@@ -2,7 +2,8 @@
 A2 refactor guard: the OpenAPI of the campaign, wizard, draft and template paths that existed before the
 layering (tests/unit/snapshots/a2_campaigns_openapi.json, taken from the classic routers) is unchanged.
 Documented additions of F-04 (edit after launch): four new paths and their schemas, ``wait_business_days``
-on CampaignCreate / CampaignUpdate / CampaignResponse and ``pacing_warning`` on CampaignStateChange.
+on CampaignCreate / CampaignUpdate / CampaignResponse, ``pacing_warning`` on CampaignStateChange and
+``unsubscribe_mode`` on CampaignCreate (UAT2 B-01: the wizard's choice was dropped on create).
 """
 import copy
 import importlib
@@ -15,7 +16,7 @@ SNAPSHOT = Path(__file__).with_name("snapshots") / "a2_campaigns_openapi.json"
 ROUTERS = ("campaign_router", "campaign_wizard_router", "campaign_draft_router", "template_router")
 NEW_PATHS = {"/campaigns/{campaign_id}/edits", "/campaigns/{campaign_id}/edits/checks",
              "/campaigns/{campaign_id}/email-previews", "/campaigns/{campaign_id}/template-assignments"}
-ADDED_FIELDS = {"CampaignCreate": {"wait_business_days"}, "CampaignUpdate": {"wait_business_days"},
+ADDED_FIELDS = {"CampaignCreate": {"wait_business_days", "unsubscribe_mode"}, "CampaignUpdate": {"wait_business_days"},
                 "CampaignResponse": {"wait_business_days"}, "CampaignStateChange": {"pacing_warning"}}
 
 

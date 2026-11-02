@@ -142,6 +142,10 @@ class FakeLookups:
 
     tenant_prospect = live_prospect
 
+    def prospect_account_id(self, prospect_id):
+        p = self.prospects_.get(prospect_id)
+        return getattr(p, "account_id", None) if p else None
+
     def prospects(self, ids):
         return {i: self.prospects_[i] for i in ids if i in self.prospects_}
 

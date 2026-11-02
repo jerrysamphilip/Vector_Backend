@@ -44,6 +44,8 @@ class FakeRepo:
         self.saved = {}
         self.deleted = []
         self.defs = []
+        self.accounts = []          # live companies the dry run can match
+        self.deleted_domains = set()
 
     # reference data
     def field_definitions(self, tenant_id):
@@ -69,7 +71,12 @@ class FakeRepo:
         return {e.lower(): self.contacts[e.lower()] for e in emails if e.lower() in self.contacts}
 
     def live_account(self, tenant_id, domain=None, name=None):
-        return None
+        if domain:
+            return next((a for a in self.accounts if a.domain == domain), None)
+        return next((a for a in self.accounts if name and a.name.lower() == name.lower()), None)
+
+    def deleted_account_holds_domain(self, tenant_id, domain):
+        return domain in self.deleted_domains
 
     # writes
     def add(self, entity):
@@ -215,6 +222,41 @@ def test_dry_run_company_only_file(svc):
     job_id = _upload(svc, data)["import"]["import_id"]
     body = svc.dry_run(ADMIN, job_id, {"Company": "company.name", "Domain": "company.domain"}, {})
     assert body["companies_create"] == 1 and body["fail"] == 1
+
+
+def test_dry_run_counts_the_companies_contact_rows_create_or_update(svc):
+    # UAT2 D-02: the preview counted contacts only; the import also creates / updates their companies
+    data = ("Email,Company\n"
+            "a@newco.example,NewCo\nb@newco.example,NewCo\n"         # one new company (domain from the email)
+            "c@acme.example,Acme\nd@acme.example,Acme\n"             # an existing company, updated once
+            "e@gmail.com,\n"                                           # free mail, no company column: none
+            "f@gone.example,Gone\n").encode()                          # in the recycle bin: neither
+    svc.uow.imports.accounts = [SimpleNamespace(account_id="acc-acme", name="Acme", domain="acme.example",
+                                                owner_id="u1")]
+    svc.uow.imports.deleted_domains = {"gone.example"}
+    job_id = _upload(svc, data)["import"]["import_id"]
+    mapping = {"Email": "contact.email", "Company": "company.name"}
+    added_before = len(svc.uow.imports.added)
+    body = svc.dry_run(ADMIN, job_id, mapping, {})
+    assert (body["create"], body["update"], body["fail"]) == (6, 0, 0)
+    assert (body["companies_create"], body["companies_update"]) == (1, 1)
+    assert len(svc.uow.imports.added) == added_before
+    # without update_existing the import links to the existing company but does not count it as updated
+    body = svc.dry_run(ADMIN, job_id, mapping, {"update_existing": False})
+    assert (body["companies_create"], body["companies_update"]) == (1, 0)
+    # rows the mode skips touch no company
+    body = svc.dry_run(ADMIN, job_id, mapping, {"mode": "UPDATE_ONLY"})
+    assert (body["skip"], body["companies_create"], body["companies_update"]) == (6, 0, 0)
+
+
+def test_dry_run_company_file_counts_a_repeated_company_once(svc):
+    data = "Company,Domain\nAcme,acme.example\nAcme Inc,acme.example\nBeta,\nbeta,\n".encode()
+    job_id = _upload(svc, data)["import"]["import_id"]
+    mapping = {"Company": "company.name", "Domain": "company.domain"}
+    body = svc.dry_run(ADMIN, job_id, mapping, {})
+    assert (body["companies_create"], body["companies_update"], body["fail"]) == (2, 0, 0)
+    body = svc.dry_run(ADMIN, job_id, mapping, {"mode": "CREATE"})
+    assert (body["companies_create"], body["skip"]) == (2, 2)
 
 
 def test_start_queues_once_with_a_new_list(svc):

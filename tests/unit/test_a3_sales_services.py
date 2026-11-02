@@ -109,6 +109,38 @@ def test_winning_a_deal_closes_it_notifies_and_makes_a_customer():
     assert out["status"] == "WON" and uow.commits == 1
 
 
+@pytest.mark.parametrize("before, stage_id, after", [
+    ("LEAD", "open", "OPPORTUNITY"),        # UAT2 E-02: a deal on a contact makes it an Opportunity
+    ("SUBSCRIBER", "nego", "OPPORTUNITY"),
+    ("OPPORTUNITY", "open", "OPPORTUNITY"),
+    ("CUSTOMER", "open", "CUSTOMER"),       # never moved backward
+    ("LEAD", "won", "CUSTOMER"),            # created already won, as moving a deal to won does
+    ("LEAD", "lost", "LEAD"),               # a lost deal changes nothing
+])
+def test_deal_created_on_a_contact_moves_its_lifecycle_forward(before, stage_id, after):
+    p = prospect(lifecycle_stage=before)
+    repos = make_repos(stages=FakeStages(STAGES), opportunities=FakeOpps([]),
+                       lookups=FakeLookups(users=[user()], prospects=[p]))
+    collab = FakeCollaborators()
+    svc, uow = deal_service(repos, collab)
+    svc.create_opportunity(user(), {"name": "Pat deal", "prospect_id": "p1", "stage_id": stage_id,
+                                    "closed_reason": "Because"})
+    assert p.lifecycle_stage == after and uow.commits == 1
+    contact_changes = [c for c in collab.changes if c[0] == "CONTACT"]
+    if before == after:
+        assert contact_changes == []
+    else:  # recorded in the contact's history like a lead conversion (source SYSTEM)
+        assert [(c[2], c[3]) for c in contact_changes] == [({"lifecycle_stage": before}, {"lifecycle_stage": after})]
+
+
+def test_deal_without_a_contact_touches_no_lifecycle():
+    repos = make_repos(stages=FakeStages(STAGES), opportunities=FakeOpps([]), lookups=FakeLookups(users=[user()]))
+    collab = FakeCollaborators()
+    svc, _ = deal_service(repos, collab)
+    svc.create_opportunity(user(), {"name": "Loose deal"})
+    assert [c for c in collab.changes if c[0] == "CONTACT"] == []
+
+
 def test_manual_forecast_category_survives_open_moves_until_cleared():
     repos = make_repos(stages=FakeStages(STAGES), opportunities=FakeOpps([deal()]))
     repos.proposals = SimpleNamespace(for_opportunity=lambda oid: [], line_counts=lambda ids: {})
