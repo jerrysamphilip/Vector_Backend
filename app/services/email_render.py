@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Optional
 
 from app.utils.email_utils import (UNSUBSCRIBE_REPLY_LINE, append_footer, build_signature_block,
@@ -86,36 +87,79 @@ def _signature(template: str, ctx: RenderContext) -> str:
     return signature.replace("\n", "<br>") if is_html_body(template) else signature
 
 
+# {{tokens}} the sender fills in at send time: kept in the launch snapshot
+SEND_TIME_TOKENS = frozenset({"unsubscribe_link"})
+_TOKEN = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
+
+
+def placeholder_values(template: str, prospect: Any, ctx: RenderContext) -> dict[str, str]:
+    """The value of every merge field a campaign email may hold, by lower-case name. The template library's
+    fields (app.services.sales_admin.MERGE_FIELDS) are all here."""
+    cta_link = normalize_cta_link(ctx.cta_link)
+    company = prospect.company_name or "your company"
+    designation = prospect.designation or "Professional"
+    return {
+        "first_name": prospect.first_name or "there",
+        "last_name": prospect.last_name or "",
+        "full_name": f"{prospect.first_name or ''} {prospect.last_name or ''}".strip() or "there",
+        "company_name": company,
+        "company": company,
+        "designation": designation,
+        "title": designation,
+        "email": prospect.email or "",
+        "industry": prospect.industry or "",
+        "linkedin_url": prospect.linkedin_url or "",
+        "city": prospect.poc_city or "",
+        "state": prospect.poc_state or "",
+        "your_name": ctx.sender_name or ctx.default_sender_name,
+        "signature_block": _signature(template, ctx),
+        "our_company": ctx.our_company or "",
+        "calendar_link": cta_link,
+        "cta_link": cta_link,
+    }
+
+
+KNOWN_TOKENS = frozenset(placeholder_values("", SimpleNamespace(
+    first_name=None, last_name=None, company_name=None, designation=None, email=None, industry=None,
+    linkedin_url=None, poc_city=None, poc_state=None), RenderContext())) | SEND_TIME_TOKENS
+
+
+def unknown_placeholders(*texts: Optional[str]) -> list[str]:
+    """The {{tokens}} in ``texts`` that no campaign email can fill, in order of first use (lower case)."""
+    found: dict[str, None] = {}
+    for text in texts:
+        for match in _TOKEN.finditer(text or ""):
+            name = match.group(1).lower()
+            if name not in KNOWN_TOKENS:
+                found.setdefault(name)
+    return list(found)
+
+
 def substitute_placeholders(template: Optional[str], prospect: Any, ctx: RenderContext) -> str:
-    """Replace {{tokens}} with the contact's data and the campaign's sender values (any case)."""
+    """
+    Replace {{tokens}} with the contact's data and the campaign's sender values (any case, spaces inside the
+    braces allowed). A token no campaign email can fill is removed (and logged), so no email goes out with a
+    raw {{placeholder}}; the editors warn about such tokens before launch. Send-time tokens
+    ({{unsubscribe_link}}) are kept for the sender.
+    """
     if not template:
         return template or ""
-    cta_link = normalize_cta_link(ctx.cta_link)
-    substitutions = {
-        "{{first_name}}": prospect.first_name or "there",
-        "{{last_name}}": prospect.last_name or "",
-        "{{full_name}}": f"{prospect.first_name or ''} {prospect.last_name or ''}".strip() or "there",
-        "{{company_name}}": prospect.company_name or "your company",
-        "{{company}}": prospect.company_name or "your company",
-        "{{designation}}": prospect.designation or "Professional",
-        "{{title}}": prospect.designation or "Professional",
-        "{{email}}": prospect.email or "",
-        "{{industry}}": prospect.industry or "",
-        "{{linkedin_url}}": prospect.linkedin_url or "",
-        "{{city}}": prospect.poc_city or "",
-        "{{state}}": prospect.poc_state or "",
-        "{{your_name}}": ctx.sender_name or ctx.default_sender_name,
-        "{{signature_block}}": _signature(template, ctx),
-        "{{our_company}}": ctx.our_company or "",
-        "{{calendar_link}}": cta_link,
-        "{{cta_link}}": cta_link,
-    }
-    result = template
-    for placeholder, value in substitutions.items():
-        result = result.replace(placeholder, str(value))
-        result = result.replace(placeholder.lower(), str(value))
-        result = result.replace(placeholder.upper(), str(value))
-    return result
+    return fill_tokens(template, placeholder_values(template, prospect, ctx))
+
+
+def fill_tokens(template: str, values: dict[str, str]) -> str:
+    """``template`` with each {{token}} replaced by ``values[name]`` (lower-case names, any case and spaces in
+    the text); send-time tokens are kept, any other token is removed and logged."""
+    def fill(match: re.Match) -> str:
+        name = match.group(1).lower()
+        if name in values:
+            return str(values[name])
+        if name in SEND_TIME_TOKENS:
+            return match.group(0)
+        logger.warning("Removed the unknown merge field {{%s}} from an email", name)
+        return ""
+
+    return _TOKEN.sub(fill, template)
 
 
 def render_body(body_template: Optional[str], prospect: Any, ctx: RenderContext) -> str:

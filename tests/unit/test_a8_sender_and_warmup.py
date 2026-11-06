@@ -135,6 +135,16 @@ def test_a8_message_content_substitutes_the_template_without_a_snapshot(sender):
     assert body.startswith("Hello Bob in team") and message.body_text == body
 
 
+def test_a8_send_time_substitution_leaves_no_raw_placeholder(sender):
+    """Without a launch snapshot the sender fills merge fields in any case and drops unknown ones."""
+    service, _ = sender
+    message = _message(subject="", body_text=None)
+    template = SimpleNamespace(subject="{{ First_Name }}, {{nickname}} hi", body="Hello {{Full_Name}}, your number {{phone}} is noted.")
+    subject, body = service._message_content(message, template, _prospect(), "Ann", None, None)
+    assert "{{" not in subject and "{{" not in body
+    assert subject.startswith("Bob,") and "Hello Bob" in body
+
+
 # ── Pure content helpers ──
 
 def test_a8_placeholder_values_defaults():
