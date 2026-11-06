@@ -34,7 +34,7 @@ from app.services import crm, enrollment_rules
 from app.services.campaign_email_service import CampaignEmailService
 from app.services.contact_service import delete_contacts
 from app.services.contact_write_service import update_contact
-from app.utils.business_calendar import get_timezone_for_state
+from app.utils.contact_timezone import refresh_contact_timezone
 from app.utils.email_utils import PERSONAL_EMAIL_DOMAINS, parse_email
 
 __all__ = ["ProspectListService", "revalidate_prospect"]
@@ -66,15 +66,14 @@ def _check_email(prospect: Prospect, outcome: RevalidationOutcome) -> bool:
 
 
 def _check_state(prospect: Prospect, outcome: RevalidationOutcome) -> bool:
-    """POC State present; the timezone follows it. True when the row changed."""
+    """POC State present; the timezone follows country + state unless a user set it (CM-01). True when
+    the row changed."""
     if not prospect.poc_state or not str(prospect.poc_state).strip():
         outcome.warn("Missing POC State")
         return False
-    expected = get_timezone_for_state(prospect.poc_state)
-    if prospect.timezone != expected:
-        prospect.timezone = expected
-        return True
-    return False
+    before = prospect.timezone
+    refresh_contact_timezone(prospect, prospect.poc_country, prospect.poc_state)
+    return prospect.timezone != before
 
 
 def revalidate_prospect(prospect: Prospect, unsubscribed: dict[str, Optional[str]],

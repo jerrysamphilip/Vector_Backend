@@ -27,7 +27,9 @@ class SendCalendar(Protocol):
 
     def batch_day_start(self, base: datetime, day_offset: int) -> datetime: ...
 
-    def timezone_for_state(self, state: str, default: str) -> Optional[str]: ...
+    def timezone_for_contact(self, contact: Any) -> Optional[str]:
+        """The contact's own zone (set by a user, or from country + state), None when unknown."""
+        ...
 
     def place_in_window(self, base: datetime, timezone: str, settings: "ScheduleSettings", index: int,
                         total: int) -> datetime: ...
@@ -280,9 +282,10 @@ def start_of_local_day(moment: datetime, timezone: str) -> datetime:
     return datetime.combine(local.date(), time.min, tzinfo=zone(timezone)).astimezone(utc).replace(tzinfo=None)
 
 
-def contact_timezone(settings: ScheduleSettings, state: Optional[str]) -> str:
-    if settings.respect_timezone and state:
-        return settings.cal.timezone_for_state(state, settings.timezone) or settings.timezone
+def contact_timezone(settings: ScheduleSettings, contact: Any) -> str:
+    """With respect_timezone, the contact's own zone (CM-01), falling back to the campaign's."""
+    if settings.respect_timezone and contact is not None:
+        return settings.cal.timezone_for_contact(contact) or settings.timezone
     return settings.timezone
 
 

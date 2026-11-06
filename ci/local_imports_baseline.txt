@@ -64,7 +64,6 @@ app/services/contact_write_service.py:_bulk_enroll:app.schemas.campaign_schema
 app/services/contact_write_service.py:_bulk_enroll:app.services.campaign_service
 app/services/contact_write_service.py:_bulk_enroll:app.services.daily_limit
 app/services/contact_write_service.py:_bulk_enroll:app.services.enrollment_rules
-app/services/contact_write_service.py:apply_fields:app.utils.business_calendar
 app/services/contact_write_service.py:create_contact:app.services
 app/services/contact_write_service.py:email_meta:app.utils.email_utils
 app/services/contact_write_service.py:sync_subscription:app.services.suppression

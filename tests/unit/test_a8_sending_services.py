@@ -256,13 +256,20 @@ def test_a8_campaign_paused_mid_batch_and_outside_window_requeue(world, monkeypa
     assert calls[-1]["timezone_str"] == "UTC" and calls[-1]["send_window_start"] == time(0, 0)
 
 
-def test_a8_contact_timezone_follows_the_state_when_respected(monkeypatch):
-    monkeypatch.setattr(sched_mod.business_calendar, "get_timezone_for_state", lambda state, tz: f"tz-{state}")
+def _contact(state=None, country=None, timezone=None):
+    return SimpleNamespace(poc_state=state, poc_country=country, timezone=timezone)
+
+
+def test_a8_contact_timezone_follows_the_contact_when_respected():
+    """CM-01: the contact's own zone (stored, else from country + state) wins over the campaign's."""
     campaign = _campaign(respect_timezone=True, campaign_timezone="America/New_York")
-    assert EmailSchedulerService._contact_timezone(campaign, SimpleNamespace(poc_state="CA")) == "tz-CA"
-    assert EmailSchedulerService._contact_timezone(campaign, SimpleNamespace(poc_state=None)) == "America/New_York"
-    assert EmailSchedulerService._contact_timezone(_campaign(campaign_timezone=None),
-                                                   SimpleNamespace(poc_state="CA")) == "UTC"
+    assert EmailSchedulerService._contact_timezone(campaign, _contact("CA")) == "America/Los_Angeles"
+    assert EmailSchedulerService._contact_timezone(campaign, _contact("Maharashtra", "India")) == "Asia/Kolkata"
+    assert EmailSchedulerService._contact_timezone(campaign, _contact("CA", timezone="Europe/Paris")) == "Europe/Paris"
+    assert EmailSchedulerService._contact_timezone(campaign, _contact()) == "America/New_York"
+    assert EmailSchedulerService._contact_timezone(_campaign(respect_timezone=False, campaign_timezone="Europe/Rome"),
+                                                   _contact("CA")) == "Europe/Rome"
+    assert EmailSchedulerService._contact_timezone(_campaign(campaign_timezone=None), _contact()) == "UTC"
 
 
 def test_a8_missing_creator_is_an_unexpected_failure(world):

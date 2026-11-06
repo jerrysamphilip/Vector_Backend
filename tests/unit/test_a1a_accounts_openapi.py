@@ -2,7 +2,8 @@
 A1 refactor guard: the OpenAPI of the account paths that existed before the layering (snapshot taken from the
 classic router, tests/unit/snapshots/a1a_accounts_openapi.json) is unchanged, except for the documented
 additions of this round: GET /accounts gains the ``filters`` and ``status`` query parameters (C-16 company
-property filters, F-14 Active / Archived) and the request bodies gain ``custom_fields`` (C-16).
+property filters, F-14 Active / Archived), the request bodies gain ``custom_fields`` (C-16) and POST /accounts/bulk
+is added (CM-36 bulk owner change).
 """
 import copy
 import json
@@ -15,7 +16,8 @@ from app.routers.accounts_router import router
 SNAPSHOT = Path(__file__).with_name("snapshots") / "a1a_accounts_openapi.json"
 ADDED_LIST_PARAMS = {"filters", "status"}
 NEW_PATHS = {"/accounts/meta", "/accounts/export", "/accounts/fields", "/accounts/fields/{field_id}",
-             "/accounts/backfill/previews", "/accounts/backfill/runs", "/accounts/backfill/runs/{run_id}/undo"}
+             "/accounts/backfill/previews", "/accounts/backfill/runs", "/accounts/backfill/runs/{run_id}/undo",
+             "/accounts/bulk"}  # bulk owner change (CM-36)
 
 
 def _spec() -> dict:

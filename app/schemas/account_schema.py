@@ -1,6 +1,6 @@
 """Request bodies of the companies API (app/routers/accounts_router.py, BR-CM-03/04)."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -27,3 +27,11 @@ class AccountWrite(BaseModel):
 
 class AccountUpdate(AccountWrite):
     expected_version: Optional[int] = Field(None, ge=1)  # the row_version the client loaded (T-3)
+
+
+class AccountBulkAction(BaseModel):
+    """POST /accounts/bulk (CM-36, BR-CM-36): the selected companies and the change; only assign_owner so far."""
+
+    account_ids: List[str] = Field(..., min_length=1, max_length=5000)
+    action: str
+    owner_id: Optional[str] = Field(None, max_length=36)

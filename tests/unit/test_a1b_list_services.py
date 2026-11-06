@@ -236,7 +236,7 @@ def test_update_note_needs_membership(repo, uow):
 
 def p(**kw):
     base = dict(prospect_id="p", email="ann@acme.com", email_type=None, email_provider=None, poc_state=None,
-                timezone=None)
+                poc_country=None, timezone=None)
     base.update(kw)
     return SimpleNamespace(**base)
 
