@@ -575,6 +575,56 @@ def is_within_send_window(
     return send_window_start <= local_time_only <= send_window_end
 
 
+def _window_start_on(day: date, start: time, tz: ZoneInfo) -> datetime:
+    """The send window's start (local, aware) on the first business day on or after ``day``."""
+    candidate = datetime(day.year, day.month, day.day, start.hour, start.minute, 0, tzinfo=tz)
+    return get_next_business_day(candidate)[0]
+
+
+def _spread_offset(index: int, total: int, min_gap: int, window_minutes: Optional[int]) -> float:
+    if not window_minutes:
+        return index * max(min_gap, 2)
+    natural_slot = window_minutes / max(total, 1)
+    # Spreading strictly divides the remaining window by contact count, which stretches a small/medium
+    # list across the *entire* window even when nothing requires it (e.g. 250 contacts in a 14-hour
+    # window spaces them ~3.4 min apart just because the window is that long). Cap the gap at
+    # min_gap_minutes so a campaign only takes as long as the window forces it to; when the natural
+    # per-window slot is already tighter than min_gap_minutes, that denser pace is kept as-is.
+    return index * min(natural_slot, max(min_gap, 0))
+
+
+def _random_offset(seed: str, index: int, total: int, min_gap: int, window_minutes: Optional[int]) -> int:
+    if not window_minutes:
+        return random.randint(0, 60)
+    gap = max(min_gap, 1)
+    slots = max(window_minutes // gap, 1)
+    rng = random.Random(seed)
+    if total <= slots:
+        slot_map = rng.sample(range(int(slots)), k=max(int(total), 1))
+        return slot_map[min(max(index, 0), len(slot_map) - 1)] * gap
+    return rng.randint(0, int(slots) - 1) * gap
+
+
+def _batch_send_local(origin_local: datetime, batch_index: int, gap: int, window_minutes: Optional[int],
+                      window_start: time, window_end: Optional[time], tz: ZoneInfo) -> datetime:
+    """Batch mode (BR-DF-01): batch N fires N * gap minutes after the origin. Batches that fit today's
+    window keep that slot; the ones that overflow go to the next business days' windows (from the window
+    start, gap apart), instead of all piling up in the window's last minute."""
+    offset = batch_index * gap
+    if not window_minutes or offset <= window_minutes - 1:
+        return origin_local + timedelta(minutes=offset)
+    fit_today = (window_minutes - 1) // gap + 1
+    full_window = 0
+    if window_end is not None:
+        full_window = (window_end.hour * 60 + window_end.minute) - (window_start.hour * 60 + window_start.minute)
+    per_day = (full_window - 1) // gap + 1 if full_window > 0 else 1
+    days_ahead, slot = divmod(batch_index - fit_today, per_day)
+    start = origin_local
+    for _ in range(days_ahead + 1):
+        start = _window_start_on(start.date() + timedelta(days=1), window_start, tz)
+    return start + timedelta(minutes=slot * gap)
+
+
 def schedule_email_in_window(
     base_utc: datetime,
     timezone_str: str,
@@ -727,67 +777,27 @@ def schedule_email_in_window(
     else:
         window_minutes = None
 
-    if sending_mode == "spread":
-        if window_minutes:
-            natural_slot = window_minutes / max(total_prospects, 1)
-            # Spreading strictly divides the remaining window by contact count,
-            # which stretches a small/medium list across the *entire* window
-            # even when nothing requires it (e.g. 250 contacts in a 14-hour
-            # window spaces them ~3.4 min apart just because the window is
-            # that long). Cap the gap at min_gap_minutes so a campaign only
-            # takes as long as the window actually forces it to — if the list
-            # is big enough that the natural per-window slot is already
-            # tighter than min_gap_minutes, that denser pace is kept as-is
-            # (list still fits the window, nothing changes there).
-            slot = min(natural_slot, max(min_gap_minutes, 0))
-            offset_minutes = prospect_index * slot
-        else:
-            offset_minutes = prospect_index * max(min_gap_minutes, 2)
-
-    elif sending_mode == "batch":
+    if sending_mode == "batch":
         effective_batch = batch_size or max(total_prospects, 1)
-        batch_index = prospect_index // effective_batch
-        if window_minutes:
-            max_offset = max(window_minutes - 1, 0)
-            offset_minutes = min(batch_index * batch_gap_minutes, max_offset)
-        else:
-            offset_minutes = batch_index * batch_gap_minutes
-
-    else:  # random
-        if window_minutes:
-            gap = max(min_gap_minutes, 1)
-            slots = max(window_minutes // gap, 1)
+        send_local = _batch_send_local(origin_local, prospect_index // effective_batch, batch_gap_minutes,
+                                       window_minutes, send_window_start, send_window_end, tz)
+    else:
+        if sending_mode == "spread":
+            offset_minutes = _spread_offset(prospect_index, total_prospects, min_gap_minutes, window_minutes)
+        else:  # random
             seed = (
                 f"{base_date.isoformat()}|{timezone_str}|"
                 f"{origin_local.hour:02d}:{origin_local.minute:02d}|"
                 f"{(window_close_local.hour if window_close_local else 23):02d}:"
                 f"{(window_close_local.minute if window_close_local else 59):02d}|"
-                f"{total_prospects}|{gap}"
+                f"{total_prospects}|{max(min_gap_minutes, 1)}"
             )
-            rng = random.Random(seed)
-            if total_prospects <= slots:
-                slot_map = rng.sample(range(int(slots)), k=max(int(total_prospects), 1))
-                chosen_slot = slot_map[min(max(prospect_index, 0), len(slot_map) - 1)]
-            else:
-                chosen_slot = rng.randint(0, int(slots) - 1)
-            offset_minutes = chosen_slot * gap
-        else:
-            offset_minutes = random.randint(0, 60)
-
-    # Keep strict minute-based gap guarantees for random mode.
-    # (Random slot selection already provides distribution variance.)
-    jitter_seconds = 0
-    send_local = origin_local + timedelta(minutes=offset_minutes, seconds=jitter_seconds)
-
-    if window_close_local and send_local > window_close_local:
-        next_day = base_date + timedelta(days=1)
-        next_candidate = datetime(
-            next_day.year, next_day.month, next_day.day,
-            send_window_start.hour, send_window_start.minute, 0,
-            tzinfo=tz,
-        )
-        next_candidate, _ = get_next_business_day(next_candidate)
-        send_local = next_candidate
+            offset_minutes = _random_offset(seed, prospect_index, total_prospects, min_gap_minutes, window_minutes)
+        # Keep strict minute-based gap guarantees for random mode.
+        # (Random slot selection already provides distribution variance.)
+        send_local = origin_local + timedelta(minutes=offset_minutes)
+        if window_close_local and send_local > window_close_local:
+            send_local = _window_start_on(base_date + timedelta(days=1), send_window_start, tz)
 
     if send_local <= local_now:
         send_local = _align_origin(window_start_local, local_now, 1)

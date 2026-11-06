@@ -245,10 +245,36 @@ def test_schedule_batch_mode_groups_by_batch_size():
     assert bc.schedule_email_in_window(base, NY, time(9), time(17), prospect_index=7, **kw) == datetime(2026, 10, 13, 13, 30)
 
 
-def test_schedule_batch_offset_is_capped_inside_the_window():
-    got = bc.schedule_email_in_window(datetime(2026, 10, 13, 11, 0), NY, time(9), time(10), "batch",
-                                      prospect_index=5, total_prospects=10, batch_size=1, batch_gap_minutes=30)
-    assert got == datetime(2026, 10, 13, 13, 59)
+def _batch_at(base, index, start=time(9), end=time(10)):
+    return bc.schedule_email_in_window(base, NY, start, end, "batch", prospect_index=index, total_prospects=10,
+                                       batch_size=1, batch_gap_minutes=30)
+
+
+def test_schedule_batches_that_fit_keep_their_slot():
+    base = datetime(2026, 10, 13, 11, 0)  # Tue, 07:00 New York: before the 09:00-10:00 window
+    assert [_batch_at(base, i) for i in range(2)] == [datetime(2026, 10, 13, 13, 0), datetime(2026, 10, 13, 13, 30)]
+
+
+def test_schedule_batch_overflow_moves_to_the_next_business_days_window():
+    """BR-DF-01: batches beyond the window go to the next business day's window instead of all landing
+    in the window's last minute; two batches fit a 60-minute window at a 30-minute gap."""
+    base = datetime(2026, 10, 13, 11, 0)
+    assert [_batch_at(base, i) for i in range(2, 6)] == [
+        datetime(2026, 10, 14, 13, 0), datetime(2026, 10, 14, 13, 30),
+        datetime(2026, 10, 15, 13, 0), datetime(2026, 10, 15, 13, 30),
+    ]
+
+
+def test_schedule_batch_overflow_skips_the_weekend(weekdays_only):
+    base = datetime(2026, 10, 16, 11, 0)  # Fri
+    assert _batch_at(base, 2) == datetime(2026, 10, 19, 13, 0)  # Mon
+
+
+def test_schedule_batch_overflow_after_a_mid_window_launch():
+    base = datetime(2026, 10, 13, 13, 40)  # 09:40 New York: 20 minutes left today, one batch fits
+    assert _batch_at(base, 0) == datetime(2026, 10, 13, 13, 40)
+    assert _batch_at(base, 1) == datetime(2026, 10, 14, 13, 0)
+    assert _batch_at(base, 2) == datetime(2026, 10, 14, 13, 30)
 
 
 def test_schedule_random_mode_is_deterministic_distinct_and_on_the_gap_grid():
