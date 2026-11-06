@@ -21,6 +21,7 @@ from app.utils.sql_like import ilike
 
 class SalesSettingsRepository(Protocol):
     def stored(self, tenant_id: TenantId) -> Optional[dict[str, Any]]: ...
+    def stored_for_update(self, tenant_id: TenantId) -> Optional[dict[str, Any]]: ...
     def save(self, tenant_id: TenantId, settings: dict[str, Any]) -> None: ...
 
 
@@ -31,6 +32,13 @@ class SqlAlchemySalesSettingsRepository(SessionRepository):
     def stored(self, tenant_id: TenantId) -> Optional[dict[str, Any]]:
         """The stored settings document (None when the workspace never saved one)."""
         row = self._row(tenant_id)
+        return row.settings if row else None
+
+    def stored_for_update(self, tenant_id: TenantId) -> Optional[dict[str, Any]]:
+        """The stored document, read fresh with its row locked until the transaction ends (SELECT ... FOR UPDATE),
+        so read-modify-write counters such as the round-robin index are serialised."""
+        row = self._session.query(SalesSetting).filter(SalesSetting.tenant_id == tenant_id) \
+            .populate_existing().with_for_update().first()
         return row.settings if row else None
 
     def save(self, tenant_id: TenantId, settings: dict[str, Any]) -> None:

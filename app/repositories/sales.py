@@ -17,7 +17,7 @@ from collections.abc import Iterable, Sequence
 from datetime import date, datetime
 from typing import Any, Optional, Protocol
 
-from sqlalchemy import false, func, or_, select
+from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Query, Session
 
 from app.domain.paging import Page
@@ -420,7 +420,7 @@ class SalesLookupRepository(Protocol):
     def latest_reply(self, prospect_id: str) -> Optional[EmailMessage]: ...
     def deal_activities(self, opportunity_id: str, prospect_id: Optional[str], since: datetime,
                         limit: int) -> list[ContactActivity]: ...
-    def deal_tasks(self, opportunity_id: str, limit: int) -> list[CrmTask]: ...
+    def deal_tasks(self, opportunity_id: str, prospect_id: Optional[str], limit: int) -> list[CrmTask]: ...
     def contact_emails(self, prospect_id: str, since: datetime, limit: int) -> list[EmailMessage]: ...
     def add(self, entity: Any) -> Any: ...
     def flush(self) -> None: ...
@@ -535,8 +535,11 @@ class SqlAlchemySalesLookupRepository(_SessionRepository):
             or_(ContactActivity.opportunity_id == opportunity_id, on_contact),
             ContactActivity.occurred_at >= since).order_by(ContactActivity.occurred_at.desc()).limit(limit).all()
 
-    def deal_tasks(self, opportunity_id: str, limit: int) -> list[CrmTask]:
-        return self._session.query(CrmTask).filter(CrmTask.opportunity_id == opportunity_id) \
+    def deal_tasks(self, opportunity_id: str, prospect_id: Optional[str], limit: int) -> list[CrmTask]:
+        """The deal's tasks plus its contact's tasks that are not linked to a deal (like deal_activities)."""
+        on_contact = and_(CrmTask.prospect_id == prospect_id, CrmTask.opportunity_id.is_(None)) \
+            if prospect_id else false()
+        return self._session.query(CrmTask).filter(or_(CrmTask.opportunity_id == opportunity_id, on_contact)) \
             .order_by(CrmTask.created_at.desc()).limit(limit).all()
 
     def contact_emails(self, prospect_id: str, since: datetime, limit: int) -> list[EmailMessage]:

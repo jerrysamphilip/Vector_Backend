@@ -20,7 +20,7 @@ always answered with; services turn it into the matching ``app.core.errors`` dom
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
@@ -151,6 +151,23 @@ def quarter_bounds(fy_start: date, fy_end: date, quarter: Optional[int]) -> tupl
         return fy_start, fy_end
     start = add_months(fy_start, 3 * (quarter - 1))
     return start, add_months(start, 3)
+
+
+def period_quarter_shares(first: date, last: date, fy_of: Callable[[date], int],
+                          fy_bounds: Callable[[int], tuple[date, date]]) -> list[tuple[int, int, float]]:
+    """(fiscal year, quarter, share) for every fiscal quarter the inclusive period ``first..last`` touches;
+    share is the fraction of that quarter's days inside the period (a whole quarter = 1.0)."""
+    out: list[tuple[int, int, float]] = []
+    day = first
+    while day <= last:
+        fy = fy_of(day)
+        fy_start, fy_end = fy_bounds(fy)
+        quarter = next(q for q in (1, 2, 3, 4) if quarter_bounds(fy_start, fy_end, q)[1] > day)
+        q_start, q_end = quarter_bounds(fy_start, fy_end, quarter)
+        inside = (min(q_end, last + timedelta(days=1)) - day).days
+        out.append((fy, quarter, inside / (q_end - q_start).days))
+        day = q_end
+    return out
 
 
 # ── Percentages ───────────────────────────────────────────────

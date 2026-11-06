@@ -14,7 +14,8 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from app.core.errors import BadRequestError, NotFoundError, PermissionDenied
-from app.domain.reports import ReportInputError, ReportViewer, SalesPeriod, add_months, pct, quarter_bounds
+from app.domain.reports import (ReportInputError, ReportViewer, SalesPeriod, add_months, pct, period_quarter_shares,
+                                quarter_bounds)
 from app.models.sales import LEAD_STAGES
 from app.repositories.base import SqlAlchemyUnitOfWork, UnitOfWork
 from app.repositories.reports_sales import (
@@ -250,6 +251,11 @@ def _roi_summary(rows: List[dict], show_amounts: bool) -> dict:
     return {"rows": rows, "totals": totals}
 
 
+def _attainment_rank(row: dict) -> float:
+    """Sort key: highest % of target first; reps without a target after everyone with one."""
+    return -row["attainment"] if row["attainment"] is not None else 1.0
+
+
 def _sql_outcome(deals: List[Any]) -> str:
     if not deals:
         return "no_deal"
@@ -379,16 +385,21 @@ class SalesReports:
                                 for o, n, q, c, d in r.by_owner], key=lambda x: -x["leads"]),
         }
 
-    def pipeline(self, user: ReportViewer, client_type: Optional[str], member: Optional[str]) -> dict:
-        """Open pipeline by owner and by expected close month; won / lost to date (BR-DR-02)."""
+    def pipeline(self, user: ReportViewer, client_type: Optional[str], member: Optional[str],
+                 date_from: Optional[date] = None, date_to: Optional[date] = None) -> dict:
+        """Open pipeline (as of now) by owner and by expected close month; won / lost closed in the period
+        when one is given, else to date (BR-DR-02)."""
         owners = self.owners(user, member)
         stage_prob = self.access.stage_probabilities(user.tenant_id)
-        rows = self.repo.pipeline_rows(user.tenant_id, owners, client_type)
+        p = self.period(date_from, date_to) if (date_from or date_to) else None
+        rows = self.repo.pipeline_rows(user.tenant_id, owners, client_type, p.start if p else None,
+                                       p.end if p else None)
         names = self.access.user_names([r[0] for r in rows])
         by_owner, by_month = _pipeline_groups(rows, names, stage_prob)
         # Ordering by a hidden amount would reveal it (BR-SF-12)
         key = "open_amount" if self.access.can_see_amounts(user) else "open_count"
         return self.access.masked(user, {
+            "period": p.as_dict() if p else None,
             "by_owner": sorted(by_owner.values(), key=lambda r: -r[key]),
             "by_close_month": sorted(by_month.values(), key=lambda r: r["month"] or "9999")})
 
@@ -481,16 +492,36 @@ class SalesReports:
                                          "totals": totals})
 
     def leaderboard(self, user: ReportViewer, date_from: Optional[date], date_to: Optional[date],
-                    member: Optional[str]) -> dict:
-        """Reps ranked by revenue won in the period, with deals, SQLs and activity (BR-SF-09)."""
+                    member: Optional[str], sort: str = "revenue") -> dict:
+        """Reps ranked by revenue won in the period, or by attainment (% of target pro-rated to the period),
+        with deals, SQLs and activity (BR-SF-09)."""
         perf = self.team_performance(user, date_from, date_to, member)
-        # perf is already masked for viewers who can't see amounts, so won_amount is None there
-        rows = sorted(perf["reps"], key=lambda r: (-(r["won_amount"] or 0), -r["won_count"], -r["sqls"],
-                                                   -r["activities"]))
+        p = self.period(date_from, date_to)
+        targets = self._period_targets(user.tenant_id, [r["user_id"] for r in perf["reps"]], p)
+        reps = [dict(r, target=targets.get(r["user_id"])) for r in perf["reps"]]
+        for r in reps:
+            r["attainment"] = pct(r["won_amount"] or 0, r["target"]) if r["target"] else None
+        # perf is already masked for viewers who can't see amounts, so won_amount is None there and ordering
+        # by attainment would reveal revenue (BR-SF-12): those viewers get the revenue order (by deals won)
+        by_attainment = sort == "attainment" and self.access.can_see_amounts(user)
+        rows = sorted(reps, key=lambda r: (_attainment_rank(r) if by_attainment else 0, -(r["won_amount"] or 0),
+                                           -r["won_count"], -r["sqls"], -r["activities"]))
         out = [{"rank": i, "user_id": r["user_id"], "name": r["name"], "level_label": r["level_label"],
                 "won_amount": r["won_amount"], "won_count": r["won_count"], "sqls": r["sqls"],
-                "activities": r["activities"], "win_rate": r["win_rate"]} for i, r in enumerate(rows, 1)]
-        return self.access.masked(user, {"period": perf["period"], "rows": out})
+                "activities": r["activities"], "win_rate": r["win_rate"], "target": r["target"],
+                "attainment": r["attainment"]} for i, r in enumerate(rows, 1)]
+        return self.access.masked(user, {"period": perf["period"], "sort": "attainment" if by_attainment
+                                         else "revenue", "rows": out})
+
+    def _period_targets(self, tenant_id: str, ids: List[str], p: SalesPeriod) -> Dict[str, float]:
+        """Each rep's quarterly targets pro-rated to the days of the period that fall in each fiscal quarter."""
+        out: Dict[str, float] = {}
+        if not ids:
+            return out
+        for fy, quarter, share in period_quarter_shares(p.first, p.last, svc.fiscal_year_of, svc.fiscal_year_bounds):
+            for uid, amount in self.repo.targets_by_user(tenant_id, fy, [quarter], ids).items():
+                out[uid] = out.get(uid, 0.0) + svc.as_float(amount) * share
+        return {uid: round(v, 2) for uid, v in out.items() if v}
 
     def campaign_roi(self, user: ReportViewer, date_from: Optional[date], date_to: Optional[date],
                      member: Optional[str]) -> dict:

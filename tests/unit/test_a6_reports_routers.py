@@ -115,7 +115,11 @@ def test_custom_meta_needs_no_service(make_client):
 @pytest.mark.parametrize("path,method,expected", [
     ("/sales-reports/dashboard?member=u2&date_from=2025-05-01", "dashboard", (ME, date(2025, 5, 1), None, "u2")),
     ("/sales-reports/funnel", "funnel", (ME, None, None, None)),
-    ("/sales-reports/pipeline?client_type=NEW", "pipeline", (ME, "NEW", None)),
+    ("/sales-reports/pipeline?client_type=NEW", "pipeline", (ME, "NEW", None, None, None)),
+    ("/sales-reports/pipeline?date_from=2026-04-01&date_to=2026-06-30", "pipeline",
+     (ME, None, None, date(2026, 4, 1), date(2026, 6, 30))),
+    ("/sales-reports/leaderboard", "leaderboard", (ME, None, None, None, "revenue")),
+    ("/sales-reports/leaderboard?sort=attainment", "leaderboard", (ME, None, None, None, "attainment")),
     ("/sales-reports/forecast?fy=2025", "forecast", (ME, 2025, None, None)),
     ("/sales-reports/targets?quarter=2", "targets", (ME, None, 2, None)),
     ("/sales-reports/daily-limit", "daily_limit", (ME,)),
@@ -133,6 +137,7 @@ def test_sales_routes_call_one_service_method(make_client, path, method, expecte
 def test_sales_query_validation(make_client):
     client = make_client(Recorder())
     assert client.get("/sales-reports/forecast", params={"fy": 1900}).status_code == 422
+    assert client.get("/sales-reports/leaderboard", params={"sort": "amount"}).status_code == 422
     assert client.get("/sales-reports/forecast-accuracy", params={"period_type": "YEAR"}).status_code == 422
     assert client.post("/sales-reports/forecast-snapshots", json={"period_type": "DAY"}).status_code == 422
 

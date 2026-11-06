@@ -13,6 +13,10 @@ class FakeSettingsRepo:
     def stored(self, tenant_id):
         return self.doc
 
+    def stored_for_update(self, tenant_id):
+        self.locked = True
+        return self.doc
+
     def save(self, tenant_id, settings):
         self.doc = settings
 

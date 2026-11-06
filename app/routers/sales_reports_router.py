@@ -50,9 +50,11 @@ def leads_report(date_from: Optional[date] = None, date_to: Optional[date] = Non
 
 @router.get("/pipeline")
 def pipeline_report(client_type: Optional[str] = None, member: Optional[str] = None,
+                    date_from: Optional[date] = None, date_to: Optional[date] = None,
                     service: SalesReports = Depends(sales_reports), current_user: ReportViewer = Depends(tenant_user)):
-    """Open pipeline by owner and by expected close month; won / lost to date (BR-DR-02)."""
-    return service.pipeline(current_user, client_type, member)
+    """Open pipeline (as of now) by owner and by expected close month; won / lost closed in the period
+    (date_from / date_to on closed date), or to date without one (BR-DR-02)."""
+    return service.pipeline(current_user, client_type, member, date_from, date_to)
 
 
 @router.get("/forecast")
@@ -90,9 +92,11 @@ def targets_vs_actual(fy: Optional[int] = None, quarter: Optional[int] = Query(N
 
 @router.get("/leaderboard")
 def leaderboard(date_from: Optional[date] = None, date_to: Optional[date] = None, member: Optional[str] = None,
+                sort: str = Query("revenue", pattern="^(revenue|attainment)$"),
                 service: SalesReports = Depends(sales_reports), current_user: ReportViewer = Depends(tenant_user)):
-    """Reps ranked by revenue won in the period, with deals, SQLs and activity (BR-SF-09)."""
-    return service.leaderboard(current_user, date_from, date_to, member)
+    """Reps ranked by revenue won in the period, or by attainment (% of target pro-rated to the period),
+    with deals, SQLs and activity (BR-SF-09)."""
+    return service.leaderboard(current_user, date_from, date_to, member, sort)
 
 
 @router.get("/campaign-roi")
