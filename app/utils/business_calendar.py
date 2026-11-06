@@ -12,6 +12,8 @@ from typing import Optional, Tuple
 import logging
 import random
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 # Default settings (US-based)
@@ -221,7 +223,6 @@ def is_business_day(dt: datetime) -> bool:
 def sends_on_any_day() -> bool:
     """SEND_ON_ANY_DAY (test/staging aid): the scheduler also sends on weekends and US holidays. Never in
     production."""
-    from app.core.config import settings
     return bool(settings.SEND_ON_ANY_DAY and not settings.is_production)
 
 
