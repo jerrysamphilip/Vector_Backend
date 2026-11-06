@@ -12,6 +12,17 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 `docs/REQUIREMENTS.md`; test traceability: `docs/TRACEABILITY.md`.
 
 ### Added
+- UAT findings (testers' review, Nov 2026), every item checked against the code first:
+  - UAT seed command `python -m app.db.seed_uat_users` (users per role, random passwords shown once; refuses
+    in production).
+  - Shared MySQL counters for sign-in lockout, auth rate limits, MFA single use and the daily new-contact
+    limit across API replicas (DEC-09; migration 0037 `rate_limit_counters`). Access tokens end at the
+    session's idle / absolute deadline (ADR 0007).
+  - `POST /accounts/bulk` (owner change for companies), `GET /contacts/{id}/data-export` (admin-only,
+    audited personal-data export incl. leads and deals), `GET /opportunities?no_close_date=true`,
+    `sort=attainment` on the leaderboard, a period on the pipeline report, region matching by ISO codes and
+    names, reassignment notices for leads and deals, contact time zone from country + state (editable,
+    importable), Company owner import column, the unsubscribe block's end date on the contact API.
 - Round 4 (database and team-review leftovers):
   - `tenant_id` on 14 child tables, filled from the parent by one flush listener (`app/models/tenant_fill.py`),
     with tenant-first indexes and database-enforced tenant integrity (composite keys, one primary company per
@@ -131,6 +142,13 @@ Release candidate for BRD v2.0 Phase 1 (R1.0) and Phase 2 (R2.1). Requirements a
 - API sweep results are redacted before they are recorded; cached test tokens and raw captures are untracked.
 
 ### Fixed
+- UAT findings (Nov 2026): Send now honours the platform pause and claims a send key; contact-level campaign
+  views follow hierarchy visibility; campaign launch retry; the schedule counts cancelled / failed follow-ups
+  apart from queued ones; per-contact send times use the contact's zone; overflow and paced batches follow
+  the sending-day rule; convert into a won/lost stage is refused; custom reports refuse reversed dates; merge
+  fields fill in any case and unknown ones are never sent raw; with no booking link the sentence around
+  `{{calendar_link}}` is removed; round robin is atomic and resets with the pool; background jobs default
+  to off and real SES is refused on a developer machine.
 - Handover pass:
   - Campaign wizard drafts are owner-scoped: a draft id outside the caller's visibility scope returns 404 on read
     and delete (creator, admins, and managers over their team keep access; lists show only your own drafts).

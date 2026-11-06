@@ -7,7 +7,7 @@ than rewriting history. Overview: [../ARCHITECTURE.md](../ARCHITECTURE.md).
 | ADR | Decision | Status |
 |---|---|---|
 | [0001](0001-layering-and-domain-errors.md) | Layering (thin routers, services own logic and DB) and domain errors | Accepted |
-| [0002](0002-single-process-api-in-memory-rate-limiter.md) | Single API replica with an in-memory rate limiter; Redis when scaling out | Accepted |
+| [0002](0002-single-process-api-in-memory-rate-limiter.md) | Single API replica with an in-memory rate limiter; counters shared in MySQL since DEC-09 (amended) | Accepted |
 | [0003](0003-contact-search-strategy.md) | Contact search: LIKE on a generated `search_text` column; FULLTEXT ngram at 100k+ | Accepted |
 | [0004](0004-background-jobs-named-locks.md) | Background loops coordinated by MySQL named locks | Accepted |
 | [0005](0005-webhook-outbox.md) | Outbound webhooks through a transactional outbox | Accepted |

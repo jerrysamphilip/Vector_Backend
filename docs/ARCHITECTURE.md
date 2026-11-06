@@ -130,8 +130,11 @@ All OpenAI calls go through the client wrapper in `app/services/sender_identity.
 
 ## 7. Cross-cutting
 
-- **Rate limiting**: `app/core/rate_limit.py`, an in-process sliding window (per IP, per e-mail for
-  reset/MFA; wrong passwords lock the (e-mail, IP) pair after 10, with a 50-per-e-mail backstop across IPs). Correct for one API replica; see [ADR 0002](adr/0002-single-process-api-in-memory-rate-limiter.md).
+- **Rate limiting**: `app/core/rate_limit.py` (per IP, per e-mail for reset/MFA; wrong passwords lock the
+  (e-mail, IP) pair after 10, with a 50-per-e-mail backstop across IPs). Since DEC-09 the counters are shared
+  across API replicas in MySQL (`rate_limit_counters`, migration 0037; keys stored as SHA-256), with an
+  in-process fallback if the database fails; the global per-IP ceiling stays per process. See
+  [ADR 0002](adr/0002-single-process-api-in-memory-rate-limiter.md) and its DEC-09 amendment.
 - **Observability**: `app/core/observability.py` adds `X-Request-ID` to every request and log line,
   Prometheus metrics at `/metrics` (API) and on the worker, and optional Sentry (`SENTRY_DSN`) with
   request bodies and secrets scrubbed.

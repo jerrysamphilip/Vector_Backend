@@ -120,7 +120,7 @@ shrink complexity / local-import / import-linter baselines (C-1, C-4, C-5).
 |---|---|---|
 | G1 | DEC-06 | D-11: HMAC audit seals with external key + write-once anchors + verify command |
 | G2 | DEC-13 | D-13: erasure ledger outside the DB + re-apply command |
-| G3 | DEC-09 | Shared rate limits / daily counters (Redis) |
+| G3 | DEC-09 | Shared rate limits / daily counters: done with MySQL counters (migration 0037), no Redis needed |
 | G4 | DEC-03 | Attachments on S3/EFS (worker currently sends without them) |
 | G5 | DEC-04 | `OCC_REQUIRE_VERSION=true` + update the ~95 test calls that send no version |
 | G6 | DEC-10 | API-sweep AGENT campaign checks |
