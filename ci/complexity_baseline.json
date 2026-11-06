@@ -16,7 +16,7 @@
     "app/services/scoring_engine.py::validate_rule": 21,
     "app/services/sequence_generator.py::generate_sequence_from_blueprint": 21,
     "app/services/sequence_generator.py::generate_sequence_with_llm": 40,
-    "app/utils/business_calendar.py::schedule_email_in_window": 40,
+    "app/utils/business_calendar.py::schedule_email_in_window": 36,
     "app/utils/webhooks.py::parse_url": 27,
     "scripts/ci/check_complexity.py::main": 29,
     "scripts/test.py::cmd_list": 27,

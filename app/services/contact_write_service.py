@@ -166,12 +166,12 @@ def _apply_picklists(user: User, prospect: Prospect, data: dict) -> None:
 def _apply_timezone(prospect: Prospect, data: dict, old_location: tuple, creating: bool) -> None:
     """CM-01: a user-set IANA zone is stored as is (400 when not a valid name); a blank one, a new contact
     or a location change derives the zone from country + state, keeping a zone a user set before."""
-    if data.get("timezone"):
+    if data.get("timezone") and data["timezone"].strip() != prospect.timezone:  # the same zone back: no choice made
         zone = valid_timezone(data["timezone"])
         if zone is None:
             raise BadRequestError(f"Unknown time zone '{data['timezone']}': use an IANA name such as Asia/Kolkata")
         prospect.timezone = zone
-    elif "timezone" in data or creating:
+    elif ("timezone" in data and not data["timezone"]) or creating:
         prospect.timezone = derive_timezone(prospect.poc_country, prospect.poc_state)
     elif (prospect.poc_country, prospect.poc_state) != old_location:
         refresh_contact_timezone(prospect, *old_location)

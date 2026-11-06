@@ -24,7 +24,7 @@ from app.core.concurrency import if_match_version
 from app.core.database import get_db
 from app.domain.accounts import AccountFilter, account_sort
 from app.domain.paging import Paging
-from app.schemas.account_schema import AccountUpdate, AccountWrite
+from app.schemas.account_schema import AccountBulkAction, AccountUpdate, AccountWrite
 from app.schemas.contact_schema import FieldWrite
 from app.services.account_backfill_service import AccountBackfillService
 from app.services.account_service import AccountService
@@ -173,6 +173,13 @@ def undo_backfill_run(run_id: str, service: AccountBackfillService = Backfill,
                       current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
     """Remove the links and companies the run created and restore the contact fields it filled."""
     return service.undo(current_user, run_id)
+
+
+@router.post("/bulk", response_model=None)
+def bulk_update_accounts(payload: AccountBulkAction, service: AccountService = Accounts,
+                         current_user: Any = Depends(tenant_user)) -> Dict[str, Any]:
+    """Bulk change of the owner of the selected companies (CM-36, BR-CM-36)."""
+    return service.bulk(current_user, payload)
 
 
 @router.get("/deleted", response_model=None)

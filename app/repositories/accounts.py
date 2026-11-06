@@ -90,6 +90,8 @@ class AccountRepository(Protocol):
 
     # companies
     def live(self, tenant_id: TenantId, account_id: str) -> Optional[Account]: ...
+    def live_by_ids(self, tenant_id: TenantId, ids: Collection[str]) -> list[Account]: ...
+    def bump_version(self, account: Account) -> None: ...
     def deleted(self, tenant_id: TenantId, account_id: str) -> Optional[Account]: ...
     def search(self, criteria: AccountCriteria, sort: Sort, paging: Paging) -> Page[tuple[Account, int]]: ...
     def count(self, criteria: AccountCriteria) -> int: ...
@@ -149,6 +151,16 @@ class SqlAlchemyAccountRepository(SqlAlchemyRepository[Account, str]):
     def live(self, tenant_id: TenantId, account_id: str) -> Optional[Account]:
         return self._session.query(Account).filter(
             Account.account_id == account_id, Account.tenant_id == tenant_id, Account.deleted_at.is_(None)).first()
+
+    def live_by_ids(self, tenant_id: TenantId, ids: Collection[str]) -> list[Account]:
+        if not ids:
+            return []
+        return self._session.query(Account).filter(
+            Account.tenant_id == tenant_id, Account.account_id.in_(list(ids)), Account.deleted_at.is_(None)).all()
+
+    def bump_version(self, account: Account) -> None:
+        """Increment row_version in SQL (set-based edits take no expected version, T-3)."""
+        account.row_version = Account.row_version + 1
 
     def deleted(self, tenant_id: TenantId, account_id: str) -> Optional[Account]:
         return self._session.query(Account).filter(
