@@ -69,7 +69,7 @@ New code that reads tenant data must use these helpers rather than hand-written 
 
 - Each iteration first takes a **MySQL named lock** `GET_LOCK('vector:job:<name>:<database>', 0)` on its
   own connection (NullPool engine). If another process holds it, the iteration is skipped. The API
-  (`RUN_BACKGROUND_JOBS=true`, the local default) and any number of worker replicas can therefore run
+  (with `RUN_BACKGROUND_JOBS=true`; off by default) and any number of worker replicas can therefore run
   the loops without double work. Deployments set `RUN_BACKGROUND_JOBS=false` on the API.
 - The e-mail scheduler additionally claims each message with a unique `send_key` before sending, a
   second guard against double sends.

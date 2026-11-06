@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
+from app.adapters.ses import require_real_ses_allowed
 from app.core.clock import iso_utc, utcnow
 from app.core.config import settings
 from app.core.errors import BadRequestError, ConflictError, NotFoundError
@@ -38,6 +39,7 @@ def _iso(value: Any) -> Optional[str]:
 
 
 def _get_ses_client() -> Any:
+    require_real_ses_allowed()  # no real SES from a developer machine (app/adapters/ses.py)
     client_kwargs = {"region_name": settings.AWS_REGION}
     if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
         client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID

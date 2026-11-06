@@ -22,7 +22,7 @@ from urllib3.exceptions import HTTPError as Urllib3HTTPError
 
 from app.adapters import providers
 from app.adapters.ses import SES_CLIENT_CONFIG as SES_CLIENT_CONFIG  # re-exported for callers
-from app.adapters.ses import EmailTransport
+from app.adapters.ses import EmailTransport, RealSesRefused
 from app.core.config import settings
 from app.models import EmailMessage, EmailTemplate, Prospect
 from app.repositories.sending import session_or_none
@@ -728,6 +728,10 @@ class EmailSenderService:
         try:
             transport = self.transport
             return await asyncio.to_thread(transport.send_raw, **send_kwargs)
+        except RealSesRefused as exc:
+            # A developer machine without an SES stand-in: keep the mail queued, never really send it
+            logger.error(f"[SES] {exc}")
+            raise PlatformEmailFailure(str(exc), code="REAL_SES_REFUSED") from exc
         except ClientError as exc:
             error_code = exc.response["Error"]["Code"]
             error_message = exc.response["Error"]["Message"]

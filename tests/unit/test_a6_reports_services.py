@@ -102,7 +102,10 @@ class FakeCampaignRepo:
     def prospect_export(self, campaign_id):
         return SimpleNamespace(rows=[SimpleNamespace(email="@evil", first_name=None, last_name="L", company_name=None,
                                                      designation=None, status=None, current_step=None,
-                                                     prospect_id="p1")],
+                                                     prospect_id="p1", owner_id="rep"),
+                                     SimpleNamespace(email="other@x.example.com", first_name=None, last_name="O",
+                                                     company_name=None, designation=None, status=None,
+                                                     current_step=None, prospect_id="p2", owner_id="zed")],
                                engagement={"p1": {"sent": 2}}, events={"p1": {2: 3, 3: 1}})
 
 
@@ -189,7 +192,8 @@ def test_scope_and_prospect_export_visibility():
     assert svc.scope(MANAGER, None) == ["mgr", "rep"]
     with pytest.raises(PermissionDenied, match="outside your team"):
         svc.scope(MANAGER, "zed")
-    assert svc.export_prospects_csv_for(MANAGER, "c1")
+    exported = svc.export_prospects_csv_for(MANAGER, "c1").getvalue()
+    assert "@evil" in exported and "other@x.example.com" not in exported  # only the team's contacts (BR-SH-02)
     with pytest.raises(NotFoundError):
         svc.export_prospects_csv_for(MANAGER, "other-tenant")
     hidden = ReportsService(FakeCampaignRepo(), FakeAccess(visible={"mgr"}))

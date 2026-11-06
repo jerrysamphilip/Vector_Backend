@@ -249,10 +249,15 @@ class Settings(BaseSettings):
     WARMUP_RANDOMIZE_VARIANCE: int = 15
 
     # Schema & background jobs. Migrations run via `python -m app.db.migrate`; AUTO_MIGRATE runs
-    # them at API start-up (local convenience). Deployments run the loops in `python -m app.worker`
-    # and set RUN_BACKGROUND_JOBS=false on the API.
+    # them at API start-up (local convenience). The loops (sending, IMAP sync, warmup, ...) run in
+    # `python -m app.worker`; RUN_BACKGROUND_JOBS=true also runs them in the API process. Off by
+    # default so a developer's `uvicorn` never sends or syncs against a shared database by accident.
     AUTO_MIGRATE: bool = False
-    RUN_BACKGROUND_JOBS: bool = True
+    RUN_BACKGROUND_JOBS: bool = False
+    # On a developer machine or in a test run (is_local_environment) no real Amazon SES client is built
+    # unless AWS_ENDPOINT_URL / AWS_ENDPOINT_URL_SES points at a stand-in or this is true. Deployed
+    # environments are unaffected.
+    ALLOW_REAL_SES: bool = False
 
     # Test/staging aid: let the scheduler send on weekends and holidays (the send window HOURS still apply).
     # Ignored when ENVIRONMENT=production.

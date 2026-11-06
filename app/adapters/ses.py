@@ -72,12 +72,36 @@ _lock = threading.Lock()
 
 
 def _client_key() -> ClientKey:
-    endpoint = os.environ.get("AWS_ENDPOINT_URL_SES") or os.environ.get("AWS_ENDPOINT_URL") or None
+    endpoint = _ses_endpoint()
     return settings.AWS_REGION, settings.AWS_ACCESS_KEY_ID or None, endpoint
 
 
+class RealSesRefused(RuntimeError):
+    """A real Amazon SES client was asked for on a developer machine or in a test run (see real_ses_allowed)."""
+
+
+def _ses_endpoint() -> Optional[str]:
+    return os.environ.get("AWS_ENDPOINT_URL_SES") or os.environ.get("AWS_ENDPOINT_URL") or None
+
+
+def real_ses_allowed() -> bool:
+    """Deployed environments always; locally (settings.is_local_environment) only with a stand-in endpoint
+    (AWS_ENDPOINT_URL / AWS_ENDPOINT_URL_SES) or ALLOW_REAL_SES=true, so a laptop never mails real people."""
+    return not settings.is_local_environment or bool(_ses_endpoint()) or bool(settings.ALLOW_REAL_SES)
+
+
+def require_real_ses_allowed() -> None:
+    if not real_ses_allowed():
+        raise RealSesRefused(
+            f"Refusing to send through real Amazon SES with ENVIRONMENT={settings.ENVIRONMENT}: set "
+            "AWS_ENDPOINT_URL (or AWS_ENDPOINT_URL_SES) to an SES stand-in, or ALLOW_REAL_SES=true to "
+            "really send from this machine.")
+
+
 def build_ses_client() -> Any:
-    """A new boto3 SES client for the current settings (IAM role, or explicit keys in local dev)."""
+    """A new boto3 SES client for the current settings (IAM role, or explicit keys in local dev).
+    Raises RealSesRefused locally without a stand-in endpoint or ALLOW_REAL_SES (real_ses_allowed)."""
+    require_real_ses_allowed()
     kwargs: Dict[str, Any] = {"region_name": settings.AWS_REGION}
     if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
         kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID

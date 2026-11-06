@@ -158,7 +158,7 @@ mysql
   `docker compose run --rm migrate`.
 - `AUTO_MIGRATE=true` (default false) also runs the migrations when the API starts, handy for
   `uvicorn app.main:app` outside Docker.
-- `RUN_BACKGROUND_JOBS` (default true, for a plain `uvicorn` run) starts the background loops inside the API.
+- `RUN_BACKGROUND_JOBS` (default false; set it to true for a plain `uvicorn` run that should send) starts the background loops inside the API.
   Compose and Kubernetes set it to false on the API and run the worker instead. Each loop iteration takes a MySQL
   named lock (`vector:job:<name>:<db>`), so an API with jobs on, a second worker or an overlapping rollout
   never runs the same iteration twice; the others log "lock held by another process" and skip.
