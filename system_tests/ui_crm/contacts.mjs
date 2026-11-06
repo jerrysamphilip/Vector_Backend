@@ -428,6 +428,7 @@ export async function run(rec, browser) {
     const id = p.url().split('/').pop();
     const cf = sql(`SELECT custom_fields FROM prospects WHERE prospect_id='${id}'`);
     ok(/125000/.test(cf) && /Gold/.test(cf), 'custom_fields in DB: ' + cf);
+    await p.getByText('125,000').first().waitFor({ timeout: 8000 }).catch(() => {});  // the URL changes before the record renders
     ok(await p.getByText('Gold').first().isVisible() && await p.getByText('125,000').first().isVisible(), 'detail shows values');
     // filter in list by custom Tier
     await go(A, 'contacts'); await openFilters(p);
