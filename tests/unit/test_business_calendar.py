@@ -270,6 +270,20 @@ def test_schedule_batch_overflow_skips_the_weekend(weekdays_only):
     assert _batch_at(base, 2) == datetime(2026, 10, 19, 13, 0)  # Mon
 
 
+def test_schedule_batch_overflow_uses_weekends_and_holidays_under_send_on_any_day(monkeypatch):
+    """The overflow follows the scheduler's day rule (is_within_send_window): with SEND_ON_ANY_DAY the
+    next window is the next calendar day, but never in production."""
+    monkeypatch.setattr(settings, "SEND_ON_ANY_DAY", True)
+    monkeypatch.setattr(settings, "ENVIRONMENT", "test")
+    fri = datetime(2026, 10, 16, 11, 0)
+    assert [_batch_at(fri, i) for i in (2, 4)] == [datetime(2026, 10, 17, 13, 0), datetime(2026, 10, 18, 13, 0)]
+    assert bc.is_within_send_window(_batch_at(fri, 2), NY, time(9), time(10))
+    christmas_eve = datetime(2026, 12, 24, 13, 0)  # 08:00 New York (UTC-5)
+    assert _batch_at(christmas_eve, 2) == datetime(2026, 12, 25, 14, 0)
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    assert _batch_at(fri, 2) == datetime(2026, 10, 19, 13, 0)
+
+
 def test_schedule_batch_overflow_after_a_mid_window_launch():
     base = datetime(2026, 10, 13, 13, 40)  # 09:40 New York: 20 minutes left today, one batch fits
     assert _batch_at(base, 0) == datetime(2026, 10, 13, 13, 40)
