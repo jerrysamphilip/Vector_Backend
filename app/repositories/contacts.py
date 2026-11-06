@@ -48,8 +48,8 @@ from app.models.email_message import EmailEvent, EmailMessage
 from app.models.prospect import GlobalUnsubscribe, Prospect
 from app.models.prospect_list import ProspectList, ProspectListMember
 from app.models.prospect_persona import ProspectPersona
-from app.models.sales import Lead, Opportunity
-from app.models.sales_extra import Notification
+from app.models.sales import Lead, Opportunity, Proposal, SalesStage
+from app.models.sales_extra import Notification, ProposalLine
 from app.models.user import User
 from app.models.webhook import WebhookDelivery
 from app.repositories.base import SqlAlchemyRepository, SqlAlchemyUnitOfWork, TenantId
@@ -337,6 +337,13 @@ class ContactRepository(Protocol):
     def resolve_contact_by_email(self, tenant_id: TenantId, email: str) -> Optional[Prospect]: ...
     def email_taken(self, tenant_id: TenantId, email: str, except_id: str) -> bool: ...
     def is_unsubscribed(self, tenant_id: TenantId, email: str) -> bool: ...
+    def suppression_entry(self, tenant_id: TenantId, email: str) -> Optional[GlobalUnsubscribe]: ...
+    def leads_of(self, tenant_id: TenantId, prospect_id: str) -> list[Lead]: ...
+    def deals_of(self, tenant_id: TenantId, prospect_id: str,
+                 lead_ids: Collection[str]) -> list[tuple[Opportunity, Optional[str]]]: ...
+    def proposals_of(self, tenant_id: TenantId, opportunity_ids: Collection[str]) -> list[Proposal]: ...
+    def proposal_lines_of(self, tenant_id: TenantId, proposal_ids: Collection[str]) -> list[ProposalLine]: ...
+    def deal_activities(self, tenant_id: TenantId, opportunity_ids: Collection[str]) -> list[ContactActivity]: ...
     def retarget_unsent(self, prospect_id: str, email: str, statuses: Collection[str]) -> int: ...
     def list_in_tenant(self, tenant_id: TenantId, list_id: Optional[str]) -> Optional[ProspectList]: ...
     def list_member_ids(self, list_id: str, ids: Collection[str]) -> set[str]: ...
@@ -747,6 +754,48 @@ class SqlAlchemyContactRepository(SqlAlchemyRepository[Prospect, str]):
         return self._session.query(GlobalUnsubscribe).filter(
             GlobalUnsubscribe.tenant_id == tenant_id, func.lower(GlobalUnsubscribe.email) == email.lower()
         ).first() is not None
+
+    def suppression_entry(self, tenant_id: TenantId, email: str) -> Optional[GlobalUnsubscribe]:
+        """The address's suppression row, active or expired (DEC-14)."""
+        return self._session.query(GlobalUnsubscribe).filter(
+            GlobalUnsubscribe.tenant_id == tenant_id, func.lower(GlobalUnsubscribe.email) == email.strip().lower()
+        ).first()
+
+    # data-access export: the person's leads and deals ---------------------------
+    def leads_of(self, tenant_id: TenantId, prospect_id: str) -> list[Lead]:
+        return list(self._session.query(Lead).filter(Lead.tenant_id == tenant_id, Lead.prospect_id == prospect_id)
+                    .order_by(Lead.created_at))
+
+    def deals_of(self, tenant_id: TenantId, prospect_id: str,
+                 lead_ids: Collection[str]) -> list[tuple[Opportunity, Optional[str]]]:
+        """Deals with the contact, or converted from one of its leads, with the stage name."""
+        mine = Opportunity.prospect_id == prospect_id
+        if lead_ids:
+            mine = or_(mine, Opportunity.lead_id.in_(list(lead_ids)))
+        return [(o, name) for o, name in self._session.query(Opportunity, SalesStage.name).outerjoin(
+            SalesStage, SalesStage.stage_id == Opportunity.stage_id
+        ).filter(Opportunity.tenant_id == tenant_id, mine).order_by(Opportunity.created_at)]
+
+    def proposals_of(self, tenant_id: TenantId, opportunity_ids: Collection[str]) -> list[Proposal]:
+        if not opportunity_ids:
+            return []
+        return list(self._session.query(Proposal).filter(
+            Proposal.tenant_id == tenant_id, Proposal.opportunity_id.in_(list(opportunity_ids))
+        ).order_by(Proposal.created_at))
+
+    def proposal_lines_of(self, tenant_id: TenantId, proposal_ids: Collection[str]) -> list[ProposalLine]:
+        if not proposal_ids:
+            return []
+        return list(self._session.query(ProposalLine).filter(
+            ProposalLine.tenant_id == tenant_id, ProposalLine.proposal_id.in_(list(proposal_ids))
+        ).order_by(ProposalLine.sort_order))
+
+    def deal_activities(self, tenant_id: TenantId, opportunity_ids: Collection[str]) -> list[ContactActivity]:
+        if not opportunity_ids:
+            return []
+        return list(self._session.query(ContactActivity).filter(
+            ContactActivity.tenant_id == tenant_id, ContactActivity.opportunity_id.in_(list(opportunity_ids))
+        ).order_by(ContactActivity.occurred_at))
 
     def retarget_unsent(self, prospect_id: str, email: str, statuses: Collection[str]) -> int:
         return self._session.query(EmailMessage).filter(

@@ -307,6 +307,17 @@ def _contact_stats(repo: ContactRepository, p: Prospect) -> dict:
     }
 
 
+def suppression_of(repo: ContactRepository, p: Prospect) -> Optional[dict]:
+    """The address's suppression (BR-DF-08, DEC-14): since when, until when (None = permanent) and whether
+    it still blocks enrolment. An expired one does not restart email while consent stays UNSUBSCRIBED."""
+    entry = repo.suppression_entry(p.tenant_id, p.email) if p.email else None
+    if entry is None:
+        return None
+    expires = entry.suppression_expires_at
+    return {"reason": entry.reason, "since": entry.unsubscribed_at, "expires_at": expires,
+            "active": expires is None or expires > utcnow()}
+
+
 def detail_of(ctx: ContactsAccess, user: User, p: Prospect) -> dict:
     """The record page: summary plus company, lists, campaigns, persona and engagement stats."""
     repo = ctx.contacts
@@ -328,6 +339,8 @@ def detail_of(ctx: ContactsAccess, user: User, p: Prospect) -> dict:
     persona = repo.persona(p.prospect_id)
     detail["persona"] = {"persona_type": persona.persona_type, "confidence_score": persona.confidence_score} if persona else None
     detail["stats"] = _contact_stats(repo, p)
+    detail["suppression"] = suppression_of(repo, p)
+    detail["suppression_expires_at"] = detail["suppression"]["expires_at"] if detail["suppression"] else None
     detail["can_edit_owner"] = can_manage_contacts(user)
     detail["can_delete"] = can_manage_contacts(user) and user.role != "AGENT"
     detail["can_override_lifecycle"] = crm.can_override_lifecycle(user)

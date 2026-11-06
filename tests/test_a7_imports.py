@@ -316,3 +316,51 @@ def test_retired_address_resolves_to_its_contact(client, ws):
     assert (r.json()["contacts_created"], r.json()["contacts_updated"]) == (0, 1)
     assert sql("SELECT first_name FROM prospects WHERE prospect_id = :p", p=pid) == "After"
     assert sql("SELECT COUNT(*) FROM prospects WHERE email = :e", e=old.lower()) == 0
+
+
+def _member(ws, label):
+    from app.core.security import hash_password
+    from app.models.user import User
+    email = f"{label}-{_uid()}-{RUN}@aimp{RUN}.example.com"
+    with SessionLocal() as db:
+        u = User(tenant_id=ws["tenant_id"], first_name=label.title(), last_name="Member", email=email,
+                 password_hash=hash_password(uuid.uuid4().hex), role="AGENT", status="ACTIVE", auth_provider="local",
+                 email_verified=True)
+        db.add(u)
+        db.commit()
+        return u.user_id, email
+
+
+def test_new_companies_are_owned_like_new_contacts(client, ws):
+    """G1: a new company takes the row's Company owner, else the contact Owner, else the chosen owner, else
+    the importer (never left without an owner); the Company owner column is a mapping target."""
+    h, uid = ws["headers"], _uid()
+    me = sql("SELECT user_id FROM users WHERE email = :e", e=ws["email"])
+    bob_id, bob = _member(ws, "bob")
+    cy_id, cy = _member(ws, "cy")
+    dom = [f"own{i}{uid}{RUN}.example.com" for i in range(4)]
+    csv = ("Email,Owner,Company,Company owner\n"
+           f"a@{dom[0]},,Own0 {uid},{bob}\n"
+           f"b@{dom[1]},{cy},Own1 {uid},\n"
+           f"c@{dom[2]},,Own2 {uid},\n")
+    m = {"Email": "contact.email", "Owner": "contact.owner_email", "Company": "company.name",
+         "Company owner": "company.owner_email"}
+    up = _upload(client, h, csv.encode())
+    assert any(t["value"] == "company.owner_email" for t in up["targets"]["company"])
+    assert up["suggested_mapping"]["Company owner"] == "company.owner_email"
+    r = _sync(client, h, csv, m)
+    assert r.status_code == 201 and r.json()["companies_created"] == 3, r.text
+    owner = "SELECT owner_id FROM accounts WHERE domain = :d"
+    assert [sql(owner, d=d) for d in dom[:3]] == [bob_id, cy_id, me]
+    # contact owners are unchanged by the company column
+    assert sql("SELECT owner_id FROM prospects WHERE email = :e", e=f"a@{dom[0]}") == me
+    # company-only file, owner chosen for the import
+    r = _sync(client, h, f"Company,Domain\nOwn3 {uid},{dom[3]}\n", {"Company": "company.name", "Domain": "company.domain"},
+              {"owner_id": bob_id})
+    assert r.status_code == 201 and r.json()["companies_created"] == 1, r.text
+    assert sql(owner, d=dom[3]) == bob_id
+    # an unknown company owner is that row's error, in the preview as in the import
+    r = _sync(client, h, f"Company,Domain,Company owner\nBad {uid},bad{uid}{RUN}.example.com,nobody@nowhere.example\n",
+              {"Company": "company.name", "Domain": "company.domain", "Company owner": "company.owner_email"})
+    assert r.status_code == 201 and r.json()["error_count"] == 1, r.text
+    assert "is not a user" in r.json()["errors"][0]["reason"]

@@ -41,6 +41,7 @@ from app.schemas.contact_schema import (
     RestoreRequest,
 )
 from app.services.contact_activity_service import ContactActivityService
+from app.services.contact_data_export import ContactDataExportService
 from app.services.contact_field_service import ContactFieldService
 from app.services.contact_query_service import ContactQueryService
 from app.services.contact_write_service import ContactWriteService
@@ -67,6 +68,10 @@ def field_service(db=Depends(get_db)) -> ContactFieldService:
 
 def activity_service(db=Depends(get_db)) -> ContactActivityService:
     return ContactActivityService.for_session(db)
+
+
+def data_export_service(db=Depends(get_db)) -> ContactDataExportService:
+    return ContactDataExportService.for_session(db)
 
 
 Reads = Depends(query_service)
@@ -385,6 +390,16 @@ def contact_timeline(
 ) -> Dict[str, Any]:
     """Everything that happened with this contact, newest first (BR-CM-14)."""
     return service.timeline(current_user, prospect_id, types, user_id, limit, task_serializer=task_dict)
+
+
+@router.get("/{prospect_id}/data-export")
+def contact_data_export(prospect_id: str, service: ContactDataExportService = Depends(data_export_service),
+                        current_user: Any = Depends(tenant_user)) -> StreamingResponse:
+    """Everything held about this person, as one JSON file (data-access request). Admins who may export
+    contacts (BR-CM-31), for a contact they can see; logged in the export log (C-07)."""
+    export = service.export(current_user, prospect_id, task_serializer=task_dict)
+    return StreamingResponse(iter([export.content]), media_type=export.media_type,
+                             headers={"Content-Disposition": content_disposition(export.filename)})
 
 
 @router.post("/{prospect_id}/activities", status_code=201, response_model=None)

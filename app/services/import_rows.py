@@ -51,6 +51,8 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 CONTACT_LIMITS = import_limits.column_limits(Prospect)
 COMPANY_LIMITS = import_limits.column_limits(Account)
 ALL_LABELS = {**COMPANY_TARGETS, **CONTACT_TARGETS}
+# Company attributes the import writes (history is recorded for these); the Owner column is stored as owner_id
+COMPANY_FIELDS = tuple(k for k in COMPANY_TARGETS if k != "owner_email") + ("owner_id",)
 
 Row = Dict[str, Any]
 Chunk = Sequence[Tuple[int, Row]]
@@ -325,14 +327,22 @@ class RowEngine:
                 account = None
         return account
 
-    def _create_company(self, domain: Optional[str], name: Optional[str]) -> Tuple[Optional[Account], bool]:
+    def company_owner(self, cvals: Dict[str, Any]) -> None:
+        """The Company owner column (a user's e-mail or name, as for contacts) becomes cvals["owner_id"]."""
+        owner = cvals.pop("owner_email", None)
+        if owner:
+            cvals["owner_id"] = self.owner_id_for(owner)
+
+    def _create_company(self, domain: Optional[str], name: Optional[str],
+                        owner_id: Optional[str] = None) -> Tuple[Optional[Account], bool]:
         if domain and self.repo.deleted_account_holds_domain(self.tenant_id, domain):
             return None, False  # the company is in the recycle bin: don't link to it or recreate it
         new_name = name or crm._name_from_domain(domain or "")
         if self.repo.account_name_taken(self.tenant_id, new_name):
             new_name = f"{new_name} ({domain})" if domain else f"{new_name} ({uuid.uuid4().hex[:4]})"
         account = Account(tenant_id=self.tenant_id, name=new_name[:255], domain=domain, lifecycle_stage="LEAD",
-                          website=f"https://{domain}" if domain else None, owner_id=self.options.owner_id)
+                          website=f"https://{domain}" if domain else None,
+                          owner_id=owner_id or self.options.owner_id or self.user.user_id)
         try:
             return self.repo.insert(account), True
         except DuplicateRow:  # another import created it a moment ago (locking read sees it)
@@ -351,7 +361,7 @@ class RowEngine:
 
     def _apply_company(self, account: Account, cvals: Dict[str, Any], domain: Optional[str], created: bool) -> None:
         overwrite = created or self.options.update_existing
-        before = crm.snapshot(account, COMPANY_TARGETS)
+        before = crm.snapshot(account, COMPANY_FIELDS)
         if domain and not account.domain:
             account.domain = domain
         for name, value in cvals.items():
@@ -370,11 +380,15 @@ class RowEngine:
         if self.options.update_existing and account.account_id not in self.state.companies_touched:
             tally.companies_updated += 1
         crm.record_changes(self.uow.session, self.tenant_id, "COMPANY", account.account_id, before,
-                           crm.snapshot(account, COMPANY_TARGETS), self.user.user_id, "IMPORT")
+                           crm.snapshot(account, COMPANY_FIELDS), self.user.user_id, "IMPORT")
 
-    def company_for_row(self, row: Row, contact_email: Optional[str]) -> Optional[Account]:
+    def company_for_row(self, row: Row, contact_email: Optional[str],
+                        contact_owner_id: Optional[str] = None) -> Optional[Account]:
+        """A new company is owned like a new contact: the row's Company owner, else its contact Owner, else
+        the owner chosen for the import, else the importer."""
         cvals = self.values_for(row, "company")
         check_lengths(cvals, COMPANY_LIMITS, COMPANY_TARGETS)
+        self.company_owner(cvals)
         domain = company_domain(cvals, contact_email)
         name = cvals.get("name")
         if not domain and not name:
@@ -382,7 +396,7 @@ class RowEngine:
         account = self._find_company(domain, name)
         created = False
         if not account:
-            account, created = self._create_company(domain, name)
+            account, created = self._create_company(domain, name, cvals.get("owner_id") or contact_owner_id)
             if account is None:
                 return None
         if not created and account.owner_id and not self.scope.allows(account.owner_id):
@@ -490,7 +504,8 @@ class RowEngine:
             self.state.tally.skipped += 1
             return
         with self.repo.row():
-            account = self.company_for_row(row, email)  # from columns, else the email domain (BR-CM-04)
+            # from columns, else the email domain (BR-CM-04)
+            account = self.company_for_row(row, email, vals.get("owner_id"))
             if p is None:
                 p = self.create_contact(email, vals, custom, account)
             else:
@@ -584,6 +599,7 @@ class RowEngine:
         self._check_existing(p)
         cvals = self.values_for(row, "company")
         check_lengths(cvals, COMPANY_LIMITS, COMPANY_TARGETS)
+        self.company_owner(cvals)
         company_domain(cvals, email)  # raises on an invalid Domain column
         for name, value in cvals.items():
             if value is not None:
@@ -606,6 +622,7 @@ class RowEngine:
         try:
             cvals = self.values_for(row, "company")
             check_lengths(cvals, COMPANY_LIMITS, COMPANY_TARGETS)
+            self.company_owner(cvals)
             domain = company_domain(cvals, None)
             if not domain and not cvals.get("name"):
                 raise RowError("Missing company name or domain")
