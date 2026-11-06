@@ -334,7 +334,9 @@ def check_date_field(obj: ReportObject, date_field: str) -> None:
 
 
 def date_bounds(date_from: Optional[date], date_to: Optional[date]) -> tuple[Optional[datetime], Optional[datetime]]:
-    """``>= from`` (midnight) and ``< day after to`` (midnight)."""
+    """``>= from`` (midnight) and ``< day after to`` (midnight); a 400 when from is after to, as in sales reports."""
+    if date_from and date_to and date_from > date_to:
+        raise ReportInputError("date_from is after date_to")
     lower = datetime.combine(date_from, time.min) if date_from else None
     upper = datetime.combine(date_to + timedelta(days=1), time.min) if date_to else None
     return lower, upper

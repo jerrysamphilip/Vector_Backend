@@ -178,12 +178,13 @@ def update_stage(stage_id: str, payload: StageWrite, service: DealService = Depe
 def list_opps(owner: Optional[str] = None, status: Optional[str] = None, stage_id: Optional[str] = None,
               client_type: Optional[str] = None, close_from: Optional[date] = None, close_to: Optional[date] = None,
               q: Optional[str] = None, account_id: Optional[str] = None, prospect_id: Optional[str] = None,
-              stale: bool = False, sort_by: str = Query("close_date", pattern="^(close_date|amount|created_at|updated_at|name)$"),
+              stale: bool = False, no_close_date: bool = False,
+              sort_by: str = Query("close_date", pattern="^(close_date|amount|created_at|updated_at|name)$"),
               sort_order: str = Query("asc", pattern="^(asc|desc)$"),
               page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=500),
               service: DealService = Depends(deal_service), current_user: Any = Depends(tenant_user)):
     flt = OpportunityFilter.from_params(current_user.user_id, owner, status, stage_id, client_type, close_from,
-                                        close_to, q, account_id, prospect_id)
+                                        close_to, q, account_id, prospect_id, no_close_date=no_close_date)
     return service.list_opportunities(current_user, flt, stale,
                                       ListQuery.build(sort_by, sort_order, page, page_size, OPPORTUNITY_SORT_FIELDS))
 
