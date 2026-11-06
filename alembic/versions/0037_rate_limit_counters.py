@@ -26,7 +26,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.execute(
         "CREATE TABLE IF NOT EXISTS rate_limit_counters ("
-        " bucket CHAR(64) CHARACTER SET ascii NOT NULL,"
+        " bucket CHAR(64) NOT NULL,"
         " slot_start BIGINT NOT NULL,"
         " hits INT NOT NULL DEFAULT 0,"
         " expires_at BIGINT NOT NULL,"
