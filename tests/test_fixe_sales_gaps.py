@@ -172,6 +172,7 @@ def test_round_robin_settings_read_locks_the_row(ws, client):
             SqlAlchemySalesSettingsRepository(second).stored_for_update(ws["tenant_id"])
     finally:
         second.rollback()
+        second.execute(text("SET SESSION innodb_lock_wait_timeout = DEFAULT"))  # pooled: don't leak 1 s
         first.rollback()
         second.close()
         first.close()

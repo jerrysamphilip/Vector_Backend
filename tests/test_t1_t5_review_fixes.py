@@ -155,6 +155,7 @@ def test_stuck_sweep_with_nothing_to_date_leaves_no_locks_for_the_lane_claims(cl
             claimed = lane.execute(text("UPDATE email_messages SET status = 'SENDING', claimed_at = UTC_TIMESTAMP() "
                                         "WHERE message_id = :m AND status = 'QUEUED'"), {"m": mid}).rowcount
             lane.commit()
+            lane.execute(text("SET SESSION innodb_lock_wait_timeout = DEFAULT"))  # pooled: don't leak 2 s
     assert claimed == 1
 
 
