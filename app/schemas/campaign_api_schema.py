@@ -61,7 +61,7 @@ class CampaignTemplatesResponse(BaseModel):
 
 class ScheduleItem(BaseModel):
     date: str
-    status: str
+    status: str  # SENT | QUEUED | PAUSED_BY_CAMPAIGN | CANCELLED | FAILED
     prospect_count: int
     step_number: int
     prospects: List[dict] = []
@@ -69,8 +69,10 @@ class ScheduleItem(BaseModel):
 class CampaignScheduleResponse(BaseModel):
     campaign_id: str
     schedule: List[ScheduleItem]
-    total_scheduled: int
+    total_scheduled: int  # still to send (queued or paused)
     total_sent: int
+    total_cancelled: int = 0  # stopped by a reply, unsubscribe, bounce or removal
+    total_failed: int = 0
 
 class RegenerateResponse(BaseModel):
     template_id: str

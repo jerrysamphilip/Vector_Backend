@@ -14,11 +14,13 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from app.core.clock import iso_utc, utcnow
 from app.core.errors import NotFoundError
+from app.domain.contacts import VisibilityScope
 from app.domain.reports import delivered
 from app.models.campaign import Campaign
 from app.models.email_message import EmailEvent
 from app.models.email_sequence import EmailSequence
 from app.repositories.campaigns import CampaignsUnitOfWork
+from app.services.contact_service import visibility_scope
 
 CAMPAIGN_NOT_FOUND = "Campaign not found"
 SEQUENCE_STEP_NOT_FOUND = "Sequence step not found"
@@ -43,6 +45,20 @@ _DAILY_FIELD_BY_EVENT = {
     EmailEvent.EVENT_REPLY_OOO: "ooo",
 }
 SCHEDULE_PROSPECTS_PER_BUCKET = 5
+# Schedule bucket for each email_messages.status (app.domain.status.EMAIL_MESSAGE_STATUSES). A sent email keeps
+# counting as SENT whatever the provider said afterwards; an unknown status is shown as QUEUED.
+_SCHEDULE_BUCKET_BY_STATUS = {
+    "SENT": "SENT", "DELIVERED": "SENT", "BOUNCED": "SENT", "COMPLAINED": "SENT",
+    "QUEUED": "QUEUED", "SCHEDULED": "QUEUED", "SENDING": "QUEUED",
+    "PAUSED_BY_CAMPAIGN": "PAUSED_BY_CAMPAIGN",
+    "CANCELLED": "CANCELLED",  # stopped by a reply, unsubscribe, bounce or removal
+    "FAILED": "FAILED", "REJECTED": "FAILED",
+}
+# Response total for each bucket; paused emails are still pending, so they count with the queued ones
+_SCHEDULE_TOTAL_BY_BUCKET = {
+    "SENT": "total_sent", "QUEUED": "total_scheduled", "PAUSED_BY_CAMPAIGN": "total_scheduled",
+    "CANCELLED": "total_cancelled", "FAILED": "total_failed",
+}
 STEP_REPLIES_LIMIT = 15
 
 
@@ -71,15 +87,18 @@ def build_lead_stats(total_prospects: int, status_map: Dict[str, int]) -> Dict[s
     return {"total": total_prospects, "data": data}
 
 
-def build_schedule(messages: Iterable[Any], step_by_sequence: Dict[str, int]) -> Dict[str, Any]:
+def build_schedule(messages: Iterable[Any], step_by_sequence: Dict[str, int],
+                   scope: VisibilityScope = VisibilityScope()) -> Dict[str, Any]:
     """
-    Group message rows into (day, step, SENT|QUEUED) buckets, counting each prospect once per
+    Group message rows into (day, step, state) buckets, counting each prospect once per
     bucket and listing the first few. Rows need: message_id, scheduled_at, sent_at, status,
-    sequence_id, prospect_id, subject_variant, first_name, last_name, email.
+    sequence_id, prospect_id, subject_variant, first_name, last_name, email, owner_id. The state is
+    the message's real status (``_SCHEDULE_BUCKET_BY_STATUS``): SENT, QUEUED, PAUSED_BY_CAMPAIGN,
+    CANCELLED or FAILED, so a cancelled follow-up is never reported as pending. The counts are the
+    campaign's; only contacts whose owner is in ``scope`` are listed (BR-SH-02).
     """
     buckets: Dict[str, Dict[str, Any]] = {}
-    total_sent = 0
-    total_scheduled = 0
+    totals = dict.fromkeys(("total_scheduled", "total_sent", "total_cancelled", "total_failed"), 0)
 
     for msg in messages:
         date_val = msg.sent_at or msg.scheduled_at
@@ -87,7 +106,7 @@ def build_schedule(messages: Iterable[Any], step_by_sequence: Dict[str, int]) ->
             continue
 
         date_str = date_val.date().isoformat()
-        status = "SENT" if msg.status == "SENT" else "QUEUED"
+        status = _SCHEDULE_BUCKET_BY_STATUS.get(msg.status or "QUEUED", "QUEUED")
         step = step_by_sequence.get(msg.sequence_id, 1)
         key = f"{date_str}_{step}_{status}"
 
@@ -106,7 +125,7 @@ def build_schedule(messages: Iterable[Any], step_by_sequence: Dict[str, int]) ->
         bucket["seen_prospect_ids"].add(msg.prospect_id)
         bucket["prospect_count"] += 1
 
-        if len(bucket["prospects"]) < SCHEDULE_PROSPECTS_PER_BUCKET:
+        if len(bucket["prospects"]) < SCHEDULE_PROSPECTS_PER_BUCKET and (scope.everyone or scope.allows(msg.owner_id)):
             bucket["prospects"].append({
                 "name": f"{msg.first_name or ''} {msg.last_name or ''}".strip(),
                 "email": msg.email,
@@ -119,17 +138,14 @@ def build_schedule(messages: Iterable[Any], step_by_sequence: Dict[str, int]) ->
                 "subject_variant": msg.subject_variant,  # A/B subject test (BR-SF-18)
             })
 
-        if status == "SENT":
-            total_sent += 1
-        else:
-            total_scheduled += 1
+        totals[_SCHEDULE_TOTAL_BY_BUCKET[status]] += 1
 
     schedule = [
         {k: v[k] for k in ("date", "status", "prospect_count", "step_number", "prospects")}
         for v in buckets.values()
     ]
     schedule.sort(key=lambda x: (x["date"], x["step_number"]))
-    return {"schedule": schedule, "total_scheduled": total_scheduled, "total_sent": total_sent}
+    return {"schedule": schedule, **totals}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -175,11 +191,11 @@ class CampaignQueryService:
 
     def step_emails_for(self, user: Any, campaign_id: str, step: int) -> Dict[str, Any]:
         self.get_campaign_for_tenant(campaign_id, user.tenant_id)
-        return self.get_step_emails(campaign_id, step)
+        return self.get_step_emails(campaign_id, step, visibility_scope(self.uow.session, user))
 
     def schedule_for(self, user: Any, campaign_id: str) -> Dict[str, Any]:
         self.get_campaign_for_tenant(campaign_id, user.tenant_id)
-        return self.get_schedule(campaign_id)
+        return self.get_schedule(campaign_id, visibility_scope(self.uow.session, user))
 
     # ── Small counts ─────────────────────────────────────────────────────────
 
@@ -330,14 +346,16 @@ class CampaignQueryService:
         templates.sort(key=lambda x: (x["step_number"] or 0, x["designation"] or ""))
         return templates
 
-    def get_step_emails(self, campaign_id: str, step: int) -> Dict[str, Any]:
-        """A step's template plus the latest inbound replies to messages sent from that step."""
+    def get_step_emails(self, campaign_id: str, step: int,
+                        scope: VisibilityScope = VisibilityScope()) -> Dict[str, Any]:
+        """A step's template plus the latest inbound replies to messages sent from that step (from the
+        contacts ``scope`` lets the caller see)."""
         seq = self.uow.content.step(campaign_id, step)
         if not seq:
             raise NotFoundError("Sequence not found")
         template = next((t for t in self.uow.content.templates(campaign_id) if t.sequence_id == seq.sequence_id),
                         None)
-        replies = self.uow.reads.recent_step_replies(campaign_id, seq.sequence_id, STEP_REPLIES_LIMIT)
+        replies = self.uow.reads.recent_step_replies(campaign_id, seq.sequence_id, STEP_REPLIES_LIMIT, scope)
         return {
             "step": step,
             "template": {
@@ -352,6 +370,6 @@ class CampaignQueryService:
             } for r in replies],
         }
 
-    def get_schedule(self, campaign_id: str) -> Dict[str, Any]:
-        """Schedule timeline: messages bucketed by day, step and sent/queued."""
-        return build_schedule(self.uow.reads.schedule_rows(campaign_id), self._step_numbers(campaign_id))
+    def get_schedule(self, campaign_id: str, scope: VisibilityScope = VisibilityScope()) -> Dict[str, Any]:
+        """Schedule timeline: messages bucketed by day, step and state (sent, queued, paused, cancelled, failed)."""
+        return build_schedule(self.uow.reads.schedule_rows(campaign_id), self._step_numbers(campaign_id), scope)

@@ -166,7 +166,8 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # Session limits (ADR 0007, app/services/session_limits.py), enforced when the refresh token is
-    # exchanged, so they take effect within one access-token lifetime (ACCESS_TOKEN_EXPIRE_MINUTES).
+    # exchanged; every access token also expires no later than its session's idle / absolute deadline,
+    # so they take effect on the next API call at the limit, not one access-token lifetime later.
     # SESSION_ABSOLUTE_HOURS: a sign-in lasts at most this long, however active the user is.
     # SESSION_IDLE_MINUTES: refresh is refused when the user has not interacted for this long
     #   (activity is reported by the SPA in the X-User-Activity header; background polling is not activity).
@@ -249,10 +250,15 @@ class Settings(BaseSettings):
     WARMUP_RANDOMIZE_VARIANCE: int = 15
 
     # Schema & background jobs. Migrations run via `python -m app.db.migrate`; AUTO_MIGRATE runs
-    # them at API start-up (local convenience). Deployments run the loops in `python -m app.worker`
-    # and set RUN_BACKGROUND_JOBS=false on the API.
+    # them at API start-up (local convenience). The loops (sending, IMAP sync, warmup, ...) run in
+    # `python -m app.worker`; RUN_BACKGROUND_JOBS=true also runs them in the API process. Off by
+    # default so a developer's `uvicorn` never sends or syncs against a shared database by accident.
     AUTO_MIGRATE: bool = False
-    RUN_BACKGROUND_JOBS: bool = True
+    RUN_BACKGROUND_JOBS: bool = False
+    # On a developer machine or in a test run (is_local_environment) no real Amazon SES client is built
+    # unless AWS_ENDPOINT_URL / AWS_ENDPOINT_URL_SES points at a stand-in or this is true. Deployed
+    # environments are unaffected.
+    ALLOW_REAL_SES: bool = False
 
     # Test/staging aid: let the scheduler send on weekends and holidays (the send window HOURS still apply).
     # Ignored when ENVIRONMENT=production.

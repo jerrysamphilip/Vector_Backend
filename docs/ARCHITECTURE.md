@@ -69,7 +69,7 @@ New code that reads tenant data must use these helpers rather than hand-written 
 
 - Each iteration first takes a **MySQL named lock** `GET_LOCK('vector:job:<name>:<database>', 0)` on its
   own connection (NullPool engine). If another process holds it, the iteration is skipped. The API
-  (`RUN_BACKGROUND_JOBS=true`, the local default) and any number of worker replicas can therefore run
+  (with `RUN_BACKGROUND_JOBS=true`; off by default) and any number of worker replicas can therefore run
   the loops without double work. Deployments set `RUN_BACKGROUND_JOBS=false` on the API.
 - The e-mail scheduler additionally claims each message with a unique `send_key` before sending, a
   second guard against double sends.
@@ -130,8 +130,11 @@ All OpenAI calls go through the client wrapper in `app/services/sender_identity.
 
 ## 7. Cross-cutting
 
-- **Rate limiting**: `app/core/rate_limit.py`, an in-process sliding window (per IP, per e-mail for
-  reset/MFA; wrong passwords lock the (e-mail, IP) pair after 10, with a 50-per-e-mail backstop across IPs). Correct for one API replica; see [ADR 0002](adr/0002-single-process-api-in-memory-rate-limiter.md).
+- **Rate limiting**: `app/core/rate_limit.py` (per IP, per e-mail for reset/MFA; wrong passwords lock the
+  (e-mail, IP) pair after 10, with a 50-per-e-mail backstop across IPs). Since DEC-09 the counters are shared
+  across API replicas in MySQL (`rate_limit_counters`, migration 0037; keys stored as SHA-256), with an
+  in-process fallback if the database fails; the global per-IP ceiling stays per process. See
+  [ADR 0002](adr/0002-single-process-api-in-memory-rate-limiter.md) and its DEC-09 amendment.
 - **Observability**: `app/core/observability.py` adds `X-Request-ID` to every request and log line,
   Prometheus metrics at `/metrics` (API) and on the worker, and optional Sentry (`SENTRY_DSN`) with
   request bodies and secrets scrubbed.

@@ -82,6 +82,20 @@ def load_settings(repo: SalesSettingsRepository, tenant_id: str) -> dict:
     return merge_settings(repo.stored(tenant_id))
 
 
+def load_settings_for_update(repo: SalesSettingsRepository, tenant_id: str) -> dict:
+    """load_settings with the settings row locked until commit (round-robin pick, BR-SF-03)."""
+    return merge_settings(repo.stored_for_update(tenant_id))
+
+
+def assignment_changes(current: dict, changes: dict) -> dict:
+    """A lead_assignment change as stored: the round-robin index is the server's (a client value is ignored)
+    and starts again from the top when the user pool changes."""
+    change = {k: v for k, v in changes.items() if k != "next_index"}
+    if "users" in change and list(change["users"] or []) != list(current.get("users") or []):
+        change["next_index"] = 0
+    return change
+
+
 def store_settings(repo: SalesSettingsRepository, tenant_id: str, changes: dict) -> dict:
     """Merge ``changes`` into the stored document and stage it (caller commits)."""
     current = apply_changes(load_settings(repo, tenant_id), changes)

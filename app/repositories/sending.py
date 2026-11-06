@@ -192,13 +192,10 @@ class SqlAlchemySendingQueueRepository:
             raise SendKeyConflict(str(exc.orig)) from exc
         return rows
 
-    def claim_for_send_now(self, message_id: str, now: datetime) -> int:
-        """"Send now"'s claim: QUEUED/SCHEDULED -> SENDING, dated so the stuck sweep only reaps it once stale."""
-        rows: int = self._s.query(EmailMessage).filter(
-            EmailMessage.message_id == message_id,
-            EmailMessage.status.in_(list(DUE_STATUSES)),
-        ).update({"status": "SENDING", "claimed_at": now}, synchronize_session=False)
-        return rows
+    def claim_for_send_now(self, message_id: str, key: Optional[str], now: datetime) -> int:
+        """"Send now"'s claim: like claim() (the send_key included), dated so the stuck sweep only reaps it
+        once stale."""
+        return self.claim(message_id, key, now)
 
     def cancel_duplicate(self, message_id: str, reason: str) -> int:
         rows: int = self._s.query(EmailMessage).filter(

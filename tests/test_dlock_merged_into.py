@@ -291,4 +291,5 @@ def test_open_merge_and_erase_do_not_block_another_tenants_inserts(client, ws_a,
                     _insert_prospect(other, ws_b["tenant_id"])  # 1205 here = blocked by tenant A
                 other.execute(text("UPDATE prospects SET first_name = 'Bee2' WHERE tenant_id = :t"),
                               {"t": ws_b["tenant_id"]})
+            other.execute(text("SET SESSION innodb_lock_wait_timeout = DEFAULT"))  # pooled: don't leak 3 s
         db.rollback()

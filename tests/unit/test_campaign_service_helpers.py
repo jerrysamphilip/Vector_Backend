@@ -56,17 +56,31 @@ def test_schedule_buckets_by_day_step_and_state_counting_each_prospect_once():
         _row("p2", "QUEUED", scheduled=day),
         _row("p3", "SCHEDULED", scheduled=day, seq="s2"),
         _row("p4", "QUEUED"),                                  # no date -> skipped
-        _row("p5", "FAILED", scheduled=datetime(2031, 3, 3, 9)),  # anything not SENT is QUEUED
+        _row("p5", "FAILED", scheduled=datetime(2031, 3, 3, 9)),
     ]
     out = build_schedule(rows, {"s1": 1, "s2": 2})
-    assert out["total_sent"] == 1 and out["total_scheduled"] == 3
+    assert (out["total_sent"], out["total_scheduled"], out["total_cancelled"], out["total_failed"]) == (1, 2, 0, 1)
     keys = [(b["date"], b["step_number"], b["status"], b["prospect_count"]) for b in out["schedule"]]
-    assert keys == [("2031-03-03", 1, "QUEUED", 1), ("2031-03-04", 1, "SENT", 1),
+    assert keys == [("2031-03-03", 1, "FAILED", 1), ("2031-03-04", 1, "SENT", 1),
                     ("2031-03-04", 1, "QUEUED", 1), ("2031-03-04", 2, "QUEUED", 1)]
     sent_bucket = out["schedule"][1]
     assert set(sent_bucket) == {"date", "status", "prospect_count", "step_number", "prospects"}
     assert sent_bucket["prospects"][0]["sent_at"] == day.isoformat() + "Z"  # UTC, named (app.core.clock.iso_utc)
     assert sent_bucket["prospects"][0]["name"] == "Ann"
+
+
+def test_schedule_counts_cancelled_follow_ups_apart_from_the_queued_ones():
+    """A finished campaign whose contacts all replied has nothing pending (UAT: 'Pending / Queued 4')."""
+    day = datetime(2031, 3, 4, 10, 0)
+    rows = [_row(f"p{i}", "SENT", sent=day) for i in range(4)]
+    rows += [_row(f"p{i}", "CANCELLED", scheduled=day.replace(day=7), seq="s2") for i in range(4)]
+    rows += [_row("p9", "DELIVERED", sent=day), _row("p8", "PAUSED_BY_CAMPAIGN", scheduled=day),
+             _row("p7", "REJECTED", scheduled=day)]
+    out = build_schedule(rows, {"s1": 1, "s2": 2})
+    assert (out["total_sent"], out["total_scheduled"], out["total_cancelled"], out["total_failed"]) == (5, 1, 4, 1)
+    by_state = {(b["date"], b["status"]): b["prospect_count"] for b in out["schedule"]}
+    assert by_state == {("2031-03-04", "SENT"): 5, ("2031-03-07", "CANCELLED"): 4,
+                        ("2031-03-04", "PAUSED_BY_CAMPAIGN"): 1, ("2031-03-04", "FAILED"): 1}
 
 
 def test_schedule_lists_at_most_five_prospects_per_bucket():
@@ -75,6 +89,16 @@ def test_schedule_lists_at_most_five_prospects_per_bucket():
     bucket = out["schedule"][0]
     assert bucket["step_number"] == 1  # unknown sequence -> step 1
     assert bucket["prospect_count"] == 8 and len(bucket["prospects"]) == 5
+
+
+def test_schedule_lists_only_contacts_the_caller_may_see_but_keeps_the_counts():
+    from app.domain.contacts import VisibilityScope
+    day = datetime(2031, 3, 4, 10, 0)
+    rows = [_row("p1", "QUEUED", scheduled=day), _row("p2", "QUEUED", scheduled=day)]
+    rows[0].owner_id, rows[1].owner_id = "mine", "theirs"
+    out = build_schedule(rows, {}, VisibilityScope(frozenset({"mine"})))
+    bucket = out["schedule"][0]
+    assert bucket["prospect_count"] == 2 and [p["message_id"] for p in bucket["prospects"]] == [rows[0].message_id]
 
 
 # ── campaign_send_now_service ────────────────────────────────

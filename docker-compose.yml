@@ -53,6 +53,9 @@ x-api-env: &api-env
   AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
   AWS_REGION: ${AWS_REGION:-us-east-1}
   AWS_SES_CONFIGURATION_SET: ${AWS_SES_CONFIGURATION_SET:-}
+  # ENVIRONMENT=development builds no real SES client unless AWS_ENDPOINT_URL points at a stand-in (the e2e
+  # overlay's ses-mock) or this is true (docs/OPERATIONS.md section 2)
+  ALLOW_REAL_SES: ${ALLOW_REAL_SES:-false}
   # Microsoft 365 mailboxes (OAuth). Register the redirect URI below in the Azure app.
   MS365_CLIENT_ID: ${MS365_CLIENT_ID:-}
   MS365_CLIENT_SECRET: ${MS365_CLIENT_SECRET:-}

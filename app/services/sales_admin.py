@@ -22,7 +22,8 @@ from app.services.contact_service import SALES_LEVELS, clean_str
 from app.services.notifications import as_dict as notification_dict
 from app.services.quote_approval import parse_threshold
 from app.services.sales import SalesRules, SalesServiceBase, as_float, fiscal_label, fiscal_year_of, money, settings
-from app.services.sales_settings import DEFAULTS, amounts_allowed, load_settings, store_settings
+from app.services.sales_settings import (DEFAULTS, amounts_allowed, assignment_changes, load_settings,
+                                         load_settings_for_update, store_settings)
 
 MERGE_FIELDS = [
     ("{{first_name}}", "First name"), ("{{last_name}}", "Last name"), ("{{full_name}}", "Full name"),
@@ -200,6 +201,9 @@ class SalesAdminService(SalesServiceBase):
                 raise BadRequestError(error)
             if "discount_approval_threshold" in changes:  # BR-SF-17
                 changes["discount_approval_threshold"] = parse_threshold(changes["discount_approval_threshold"])
+            if isinstance(changes.get("lead_assignment"), dict):
+                current = load_settings_for_update(rules.repos.settings, user.tenant_id)["lead_assignment"]
+                changes["lead_assignment"] = assignment_changes(current, changes["lead_assignment"])
             result = store_settings(rules.repos.settings, user.tenant_id, changes)
             self.commit()
             return result

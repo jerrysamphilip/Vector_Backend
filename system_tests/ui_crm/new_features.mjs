@@ -178,7 +178,7 @@ export async function run(rec, browser) {
     await cardEl.getByRole('heading', { name: 'SQL to win' }).waitFor();
     const txt = async label => (await tile(cardEl, label).innerText()).replace(/\s+/g, ' ');
     const pctS = v => (v == null ? '—' : `${v}%`);
-    ok((await txt('SQL → won')).includes(pctS(k.sql_to_win_rate)) && (await txt('SQL → won')).includes(`${k.won} of ${k.sqls} SQLs`), 'SQL→won tile: ' + await txt('SQL → won'));
+    ok((await txt('SQL → won')).includes(pctS(k.sql_to_win_rate)) && (await txt('SQL → won')).includes(`${k.won} of ${k.sqls} leads that became SQL in the period`), 'SQL→won tile: ' + await txt('SQL → won'));
     ok((await txt('SQL → deal')).includes(pctS(k.sql_to_deal_rate)) && (await txt('SQL → deal')).includes(`${k.with_deal} with a deal`), 'SQL→deal tile: ' + await txt('SQL → deal'));
     ok((await txt('Win rate \\(closed\\)')).includes(pctS(k.closed_win_rate)) && (await txt('Win rate \\(closed\\)')).includes(`${k.won} won · ${k.lost} lost · ${k.open} open`), 'win-rate tile');
     ok((await txt('Revenue won')).includes(`${k.no_deal} SQLs without a deal`) && /\$12\.3K/.test(await txt('Revenue won')), 'revenue tile: ' + await txt('Revenue won'));

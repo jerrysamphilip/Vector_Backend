@@ -36,12 +36,17 @@ unattended browser signed in forever. Replaying an already-rotated refresh token
 
 ## Consequences
 
-- **Granularity**: the limits are checked only when the access token is renewed, i.e. at most every
-  `ACCESS_TOKEN_EXPIRE_MINUTES`. An idle browser keeps its current access token until it expires, so
-  an idle session ends between `SESSION_IDLE_MINUTES` and `SESSION_IDLE_MINUTES +
-  ACCESS_TOKEN_EXPIRE_MINUTES` (30-60 min by default) after the last interaction; the absolute cap
-  likewise allows up to one access-token lifetime past `SESSION_ABSOLUTE_HOURS`. Shortening the
-  access-token lifetime tightens both at the cost of more refreshes.
+- **Granularity** (amended 2026-11): every access token is issued to expire at the earliest of
+  `ACCESS_TOKEN_EXPIRE_MINUTES`, the absolute cap (`session_started_at + SESSION_ABSOLUTE_HOURS`) and the
+  idle deadline as known at issue (`last_activity_at + SESSION_IDLE_MINUTES`)
+  (`session_limits.access_expiry`, applied in `auth_session.issue_session`). So an idle or capped session
+  gets 401 on its next API call at the limit itself, not up to one access-token lifetime later (before:
+  30-60 min idle, cap + 30 min). An active user is not affected: the SPA already refreshes on any 401 and
+  reports its activity then, which moves the deadline and issues a new token. Cost: no per-request work
+  (the check is the token's `exp`); one extra refresh when an active user's token reaches the idle
+  deadline before its normal lifetime, which with the defaults (30 / 30) happens only for refreshes made
+  by background polling. Tests: `tests/test_session_limits.py::test_idle_session_gets_401_on_the_next_api_call_not_only_at_refresh`,
+  `tests/unit/test_session_limits.py` (`access_expiry`).
 - Activity is self-reported by the client. That is the point (it separates a person from polling),
   but a modified client can keep its own session alive up to the absolute cap, which is the hard bound.
 - Reuse detection revokes refresh tokens, not the access token currently in use by the attacker or

@@ -43,7 +43,7 @@ from app.models.crm import PropertyChange
 from app.models.prospect import Prospect
 from app.models.user import User
 from app.repositories.accounts import AccountRepository, AccountsAccess, AccountsUnitOfWork, Session, accounts_uow
-from app.schemas.account_schema import AccountUpdate, AccountWrite
+from app.schemas.account_schema import AccountBulkAction, AccountUpdate, AccountWrite
 from app.services import contact_companies, crm
 from app.services.contact_field_service import (
     COMPANY,
@@ -441,6 +441,36 @@ class AccountService:
             propagate_to_contacts(uow.accounts, account, before, after, user.user_id)
             uow.commit()
             return self._record(uow, user, account_id)
+
+    def bulk(self, user: User, payload: AccountBulkAction) -> dict:
+        """Bulk owner change (CM-36, BR-CM-36) with the checks of a single edit: the actor manages records,
+        the new owner is a workspace user the actor can see (403 outside their team), and each company is
+        one the actor can edit (others are skipped). Property history (source BULK) per company."""
+        require_manager(user)
+        if payload.action != "assign_owner":
+            raise BadRequestError(f"Unknown action '{payload.action}'")
+        if not payload.owner_id:
+            raise BadRequestError("Choose the new owner")
+        with self.uow as uow:
+            _check_owner(uow, user, payload.owner_id)
+            accounts = [a for a in uow.accounts.live_by_ids(user.tenant_id, dict.fromkeys(payload.account_ids))
+                        if can_see_account(uow.session, user, a)]
+            if not accounts:
+                raise NotFoundError("No matching companies")
+            skipped: List[dict] = []
+            for account in accounts:
+                if not can_edit_account(uow.session, user, account):
+                    skipped.append({"account_id": account.account_id, "name": account.name,
+                                    "reason": "You can only edit companies you own"})
+                    continue
+                before = crm.snapshot(account, ("owner_id",))
+                account.owner_id = payload.owner_id
+                uow.accounts.bump_version(account)
+                crm.record_changes(uow.session, user.tenant_id, "COMPANY", account.account_id, before,
+                                   {"owner_id": payload.owner_id}, user.user_id, "BULK")
+            uow.commit()
+            return {"status": "ok", "action": payload.action, "updated": len(accounts) - len(skipped),
+                    "skipped": skipped}
 
     @staticmethod
     def _new_name(repo: AccountRepository, user: User, account: Account, raw: Any) -> str:

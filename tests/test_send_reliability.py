@@ -360,3 +360,41 @@ def test_send_inbox_delay_is_bounded(client, tenant_sd):
     r = client.post("/inboxes", headers=h, json={"email_address": f"slow@slow{RUN}.example.com",
                                                  "delay_between_emails": 3601})
     assert r.status_code == 422, r.text
+
+
+# ── "Send now" honours the platform-wide pause and claims with the send_key ──
+
+def test_send_now_refused_while_platform_paused_and_sends_after_resume(client, tenant_sd, monkeypatch):
+    from app.models.email_template import EmailTemplate
+    from app.services import platform_flags
+
+    h = tenant_sd["headers"]
+    inbox = _inbox(client, h, "pausedplatform")
+    cid = _campaign(client, h, "Send now paused", [inbox])
+    with SessionLocal() as db:
+        t = EmailTemplate(campaign_id=cid, subject="Hi", body="Hello")
+        db.add(t)
+        db.commit()
+        template_id = t.template_id
+    seq = _step(cid)
+    mid = _message(cid, _contact(client, h, "pausedplat"), seq, inbox_id=inbox, template_id=template_id)
+    seen = {}
+
+    def note_key(message):  # the claim is committed before the provider is called
+        seen["send_key"] = sql("SELECT send_key FROM email_messages WHERE message_id = :m", m=message.message_id)
+
+    calls = _fake_sender(monkeypatch, on_send=note_key)
+
+    platform_flags.set_flag(platform_flags.SCHEDULER_PAUSED, "test")
+    try:
+        r = client.post(f"/campaigns/{cid}/send-now", headers=h)
+        assert r.status_code == 409, r.text
+        assert "paused" in str(r.json()["detail"]).lower()
+        assert calls == [] and _row(mid).status == "QUEUED"
+    finally:
+        platform_flags.set_flag(platform_flags.SCHEDULER_PAUSED, None)
+
+    r = client.post(f"/campaigns/{cid}/send-now", headers=h)
+    assert r.status_code == 200 and r.json()["sent"] == 1, r.text
+    assert calls == [mid]
+    assert seen["send_key"] == f"{cid}:{seq}:{_row(mid).to_email.lower()}"

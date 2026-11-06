@@ -396,7 +396,7 @@ class CampaignEmailService(CampaignServiceBase):
             base = batch_day_start(base, index // plan.settings.daily_batch_size)
         skip = {s.sequence_id for s in plan.steps} - {s.sequence_id for s in missing}
         times = launch_times([(s.sequence_id, s.wait_days or 0) for s in plan.steps], skip, base,
-                             contact_timezone(plan.settings, prospect.poc_state), plan.settings, index, total)
+                             contact_timezone(plan.settings, prospect), plan.settings, index, total)
         persona = plan.personas.get(prospect.prospect_id) or classify_prospect(
             prospect.designation or "", prospect.company_name)[0]
         out = []

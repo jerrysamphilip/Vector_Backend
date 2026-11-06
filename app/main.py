@@ -30,9 +30,13 @@ from app.core.json_encoding import install_utc_datetime_encoder
 import app.models  # noqa: F401
 from app.core import auth as core_auth  # noqa: E402
 from app.services.auth_store import SqlAlchemyAuthStore  # noqa: E402
+from app.core import rate_limit as core_rate_limit  # noqa: E402
+from app.services.rate_limit_store import DatabaseRateLimitStore  # noqa: E402
 
 # Authentication reads users / revocations / tenant flags through this store (app.core is below models)
 core_auth.configure(SqlAlchemyAuthStore())
+# Sign-in lockout and auth rate limits are counted in MySQL, shared by every API replica (DEC-09)
+core_rate_limit.configure(DatabaseRateLimitStore())
 # Trigger reload
  
 from app.routers import campaign_router, template_router
@@ -54,9 +58,16 @@ from app.routers.user_router import router as user_router
 # =============================
 # Schema changes run via `python -m app.db.migrate` (compose `migrate` service, Kubernetes
 # initContainer); AUTO_MIGRATE=true also runs them here for local convenience. The background
-# loops live in app/jobs.py and normally run in the worker (`python -m app.worker`); with
-# RUN_BACKGROUND_JOBS=true (the default) they also run here. Each iteration takes a MySQL named
+# loops live in app/jobs.py and run in the worker (`python -m app.worker`); only with
+# RUN_BACKGROUND_JOBS=true (off by default) do they also run here. Each iteration takes a MySQL named
 # lock, so the API and the worker never run the same iteration twice.
+def warn_background_jobs_in_deployed_api() -> None:
+    """Deployed (Kubernetes) APIs leave the loops to the backend-worker Deployment."""
+    if os.getenv("KUBERNETES_SERVICE_HOST"):
+        logger.warning("RUN_BACKGROUND_JOBS=true in a deployed API: the background loops (sending, IMAP sync, "
+                       "warmup, ...) belong in the worker; set RUN_BACKGROUND_JOBS=false on the API.")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.AUTO_MIGRATE:
@@ -68,6 +79,7 @@ async def lifespan(app: FastAPI):
         from app import jobs
         tasks = jobs.start_jobs()
         logger.info("Started %d background loops in the API process (RUN_BACKGROUND_JOBS=true)", len(tasks))
+        warn_background_jobs_in_deployed_api()
     try:
         yield
     except (asyncio.CancelledError, KeyboardInterrupt):

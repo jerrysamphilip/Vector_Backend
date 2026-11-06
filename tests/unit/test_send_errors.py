@@ -11,6 +11,7 @@ from urllib3.exceptions import ProtocolError
 
 from app.adapters import providers
 from app.adapters import ses as ses_adapter
+from app.core.config import settings
 from app.services import email_sender_service as sender_mod
 from app.services.email_sender_service import (
     AmbiguousEmailFailure, PermanentEmailFailure, PlatformEmailFailure, SenderEmailFailure,
@@ -64,7 +65,8 @@ def test_send_connection_errors_before_vs_after_the_request(exc, expected):
     assert isinstance(classify_botocore_error(exc), expected)
 
 
-def test_send_ses_client_never_retries_itself():
+def test_send_ses_client_never_retries_itself(monkeypatch):
+    monkeypatch.setattr(settings, "ALLOW_REAL_SES", True)  # builds the client only; nothing is sent
     retries = ses_adapter.build_ses_client().meta.config.retries
     assert retries.get("total_max_attempts") == 1
     assert sender_mod.SES_CLIENT_CONFIG.retries["total_max_attempts"] == 1

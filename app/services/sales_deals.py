@@ -285,6 +285,8 @@ class DealService(SalesServiceBase):
             rules.repos.opportunities.flush()
             rules.collab.record_changes(user.tenant_id, "DEAL", opp.opportunity_id, {"created": None},
                                         {"created": "Opportunity created"}, user.user_id, "UI")
+            rules.notify_reassigned(user.tenant_id, None, opp.owner_id, user, f"New deal: {opp.name}",
+                                    f"/app/deals/{opp.opportunity_id}")
             self._sync_new_deal_contact(rules, user, opp)
             self.commit()
             return masked_with(rules.repos.settings, user, rules.opp_dicts([opp])[0])
@@ -350,7 +352,9 @@ class DealService(SalesServiceBase):
             if not data["owner_id"]:
                 raise BadRequestError("An opportunity always has an owner")
             rules.check_assignable(user, data["owner_id"])
-            opp.owner_id = data["owner_id"]
+            previous, opp.owner_id = opp.owner_id, data["owner_id"]
+            rules.notify_reassigned(user.tenant_id, previous, opp.owner_id, user,
+                                    f"Deal reassigned: {opp.name}", f"/app/deals/{opp.opportunity_id}")
         if "name" in data:
             opp.name = clean_str(data["name"]) or opp.name
         if "amount" in data:
@@ -436,7 +440,7 @@ class DealService(SalesServiceBase):
             names.update(rules.user_names([a.created_by for a in acts]))
             mentioned = rules.collab.mentions_for([a.activity_id for a in acts if a.activity_type == "NOTE"])
             items = [_activity_item(a, opp.opportunity_id, names, mentioned) for a in acts]
-            for t in lookups.deal_tasks(opp.opportunity_id, 100):
+            for t in lookups.deal_tasks(opp.opportunity_id, opp.prospect_id, 100):
                 items.append({"kind": "TASK", "at": t.completed_at or t.created_at, "task": task_dict(t, names)})
             if opp.prospect_id:
                 items.extend(_email_item(m) for m in lookups.contact_emails(opp.prospect_id, since, 100)

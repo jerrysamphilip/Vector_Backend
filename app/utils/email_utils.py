@@ -289,8 +289,7 @@ def _is_short_cta(text: str) -> bool:
 def _strip_cta_lines(text: str) -> str:
     """Plain text: the lines with a CTA placeholder or a raw URL, and short CTA lines, removed."""
     # Remove lines containing CTA placeholders.
-    text = re.sub(r"(?im)^.*\{\{(?:calendar_link|cta_link)\}\}.*$", "", text)
-    text = re.sub(r"(?im)^.*\{(?:calendar_link|cta_link)\}.*$", "", text)
+    text = re.sub(r"(?im)^.*\{\{?\s*(?:calendar_link|cta_link)\s*\}?\}.*$", "", text)  # any case, spaces inside
     cleaned_lines = []
     for line in text.split("\n"):
         stripped = line.strip()
@@ -313,6 +312,10 @@ def _strip_cta_block(block: str) -> Optional[str]:
     block = map_html_text(block, lambda text: _HTML_URL.sub("", text))
     text = block_text(block)
     link_label_only = block != original and len(text.split()) <= 3
+    # A block that introduced the booking link ("Grab a time here: {{calendar_link}}") has nothing to say
+    # without it: short text, or text ending with the colon that led to the link.
+    if _CTA_PLACEHOLDER_TOKEN.search(original) and (len(text.split()) <= 8 or text.rstrip().endswith(":")):
+        link_label_only = True
     if not re.search(r"\w", text) or link_label_only or _is_short_cta(text):
         return None
     return block

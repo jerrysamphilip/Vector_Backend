@@ -109,10 +109,9 @@ def auth(token: str) -> dict:
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limits():
-    """The in-memory sign-in/register limiter would otherwise throttle a long test run."""
-    from app.core.rate_limit import limiter
-    with limiter._lock:
-        limiter._hits.clear()
+    """The sign-in/register limiter (shared MySQL counters) would otherwise throttle a long test run."""
+    from app.core.rate_limit import clear_all
+    clear_all()
     yield
 
 
@@ -130,9 +129,8 @@ def login(client, email: str, password: str) -> str:
 
 def register_tenant(client, label: str) -> dict:
     """Self sign-up: a new tenant with a SUPER_ADMIN owner."""
-    from app.core.rate_limit import limiter
-    with limiter._lock:
-        limiter._hits.clear()
+    from app.core.rate_limit import clear_all
+    clear_all()
     email = f"owner-{label}-{RUN}@{label}{RUN}.example.com"
     password = f"{label}-pass-{RUN}"
     r = client.post("/api/auth/register", json={

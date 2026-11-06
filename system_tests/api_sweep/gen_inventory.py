@@ -59,6 +59,8 @@ INLINE_PERMS = {
 INLINE_ROLES = {"GET /contacts/export": ["ADMIN", "MANAGER", "SUPER_ADMIN"],
                 "GET /accounts/export": ["ADMIN", "MANAGER", "SUPER_ADMIN"],   # "Only admins and managers can export companies"
                 "GET /exports/logs": ["ADMIN", "SUPER_ADMIN"],                 # app/services/export_log.py EXPORT_LOG_ROLES
+                # personal-data export (DSAR): admins who may export contacts (app/services/contact_data_export.py)
+                "GET /contacts/{prospect_id}/data-export": ["ADMIN", "SUPER_ADMIN"],
                 "DELETE /contacts/{prospect_id}": ["ADMIN", "MANAGER", "SUPER_ADMIN"],   # "Agents cannot delete contacts"
                 "DELETE /accounts/{account_id}": ["ADMIN", "MANAGER", "SUPER_ADMIN"]}  # "Agents cannot delete companies"  # "Only admins and managers can export contacts"
 

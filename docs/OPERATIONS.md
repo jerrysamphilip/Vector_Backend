@@ -75,12 +75,14 @@ Guards proven by `tests/unit/test_production_guards.py` and `tests/unit/test_sec
 | `ALLOW_SELF_SIGNUP` | unset: **off** in production, on elsewhere | Public registration creates a tenant and a SUPER_ADMIN (`settings.self_signup_enabled`). See DEC-11. |
 | `ENABLE_DOCS` | false | `/docs`, `/redoc` and `/openapi.json` are off in production unless set to true. |
 | `OCC_REQUIRE_VERSION` | unset (off) | When on, a guarded update that sends no `expected_version` / `If-Match` gets 428 `VERSION_REQUIRED`. When off, the update is accepted and logged as `Deprecated: ... updated without expected_version` (`app/core/concurrency.py`). The OCC tables are contacts, accounts, leads, opportunities, proposals, campaigns and sequence steps. When to switch it on is DEC-04. |
-| `SESSION_IDLE_MINUTES` / `SESSION_ABSOLUTE_HOURS` / `REFRESH_REUSE_GRACE_SECONDS` | 30 / 12 / 30 | Checked when the refresh token is exchanged (ADR 0007). The effective idle sign-out comes 30-60 min after the last interaction, set by `ACCESS_TOKEN_EXPIRE_MINUTES` (30). |
+| `SESSION_IDLE_MINUTES` / `SESSION_ABSOLUTE_HOURS` / `REFRESH_REUSE_GRACE_SECONDS` | 30 / 12 / 30 | Checked when the refresh token is exchanged, and every access token expires no later than the session's idle / absolute deadline (ADR 0007), so an idle session gets 401 on its next API call 30 min after the last interaction. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` / `REFRESH_TOKEN_EXPIRE_DAYS` | 30 / 7 | JWT access token (HS256) and opaque refresh token (stored as a SHA-256 hash). |
 | `OPENAI_API_KEY` | empty | Without it, AI features fall back to built-in templates. |
 | `OPENAI_MAX_USD_PER_DAY` | **0.20** (decided, DEC-12) | Worst-case cost is reserved in `platform_flags` (`llm_usd_micro:<UTC day>`) before each call. `0` blocks every call. |
 | `OPENAI_MAX_CALLS_PER_DAY` / `OPENAI_MAX_OUTPUT_TOKENS` | 100 / 1500 | Call ceiling across all processes (`llm_calls:<day>`), and clamp on output tokens. |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` | - / - / us-east-1 | SES sending and SNS. |
+| `ALLOW_REAL_SES` | false | Only on a developer machine or in a test run (`settings.is_local_environment`: `ENVIRONMENT` development/dev/local/test outside Kubernetes): no real SES client is built unless `AWS_ENDPOINT_URL` / `AWS_ENDPOINT_URL_SES` points at a stand-in (e.g. the e2e `ses-mock`) or this is `true`. A refused campaign send stays queued as a platform failure (`REAL_SES_REFUSED`). Deployed environments are unaffected (`app/adapters/ses.py`). |
+| `RUN_BACKGROUND_JOBS` | false | `true` also runs the background loops (sending, IMAP sync, warmup, ...) in the API process; the worker (`python -m app.worker`) always runs them. Off by default so a local `uvicorn` never works on shared data. The API logs a WARNING when it is on under Kubernetes. |
 | `AWS_SES_CONFIGURATION_SET`, `AWS_SNS_TOPIC_ARN`, `AWS_SNS_ENABLED` | empty / empty / false | SES event publishing. In production the SES webhook refuses calls when `AWS_SNS_TOPIC_ARN` is empty. |
 | `SNS_ALLOWED_TOPIC_ARNS` | empty (any topic) | Optional comma-separated allow-list of SNS topics, on top of `AWS_SNS_TOPIC_ARN`. Signed messages older than 24 h (or 15 min in the future) are refused; when the signing certificate cannot be fetched the webhook answers 503 so SNS retries. |
 | `MYSQL_SSL_MODE` / `MYSQL_SSL_CA` | `disabled` / empty | Database TLS for the API, worker and migrations (D8, off until DEC-01): `disabled`, `required` (encrypted, not verified), `verify_ca`, `verify_identity`. For RDS put `https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem` in the image or a mounted secret (e.g. `/etc/ssl/rds/global-bundle.pem`), set `verify_identity` and that path, and set the RDS parameter `require_secure_transport=ON`. Production logs a warning at start-up while it is `disabled`. |
@@ -152,28 +154,32 @@ Metrics live in the process that records them. Scrape every API pod and the work
 ## 6. Limits per process and per replica (P-4)
 
 The manifests run **2 API replicas and 1 worker**. A counter held in process memory is counted separately by
-each replica, so with N API replicas the **effective limit is the limit × N**. Shared counters (Redis) are
-DEC-09. No load test has been run yet (DEC-18).
+each replica, so with N API replicas its **effective limit is the limit × N**. Since DEC-09 the sign-in, reset,
+register and MFA limits and the daily new-contact limit are kept in **MySQL** and shared by every process
+(exact whatever the number of replicas); only the global per-IP ceiling and the caches below stay per process.
+If MySQL cannot be reached, the shared rate limits fall back to per-process memory (the "× N" values) and log
+`Rate-limit store unavailable` / `Daily new-contact limit: shared counter unavailable` at ERROR: alert on it.
+No load test has been run yet (DEC-18).
 
 | Limit | Kept in | Configured limit | Effective, 2 API replicas (manifest) | Effective, N replicas |
 |---|---|---|---|---|
-| Global requests per client IP | API memory (`rate_limit.GLOBAL_PER_IP`) | 1200 / 60 s | 2400 / 60 s | 1200·N |
-| Sign-in attempts per IP | API memory | 60 / 5 min | 120 / 5 min | 60·N |
-| Wrong passwords per e-mail from one IP (lockout) | API memory (`LOGIN_FAILURES_PER_EMAIL_IP`) | 10 / 15 min | 20 / 15 min | 10·N |
-| Wrong passwords per e-mail, all IPs (backstop) | API memory (`LOGIN_FAILURES_PER_EMAIL`) | 50 / 15 min | 100 / 15 min | 50·N |
-| Reset / magic-link e-mails per address | API memory | 5 / 15 min | 10 / 15 min | 5·N |
-| Reset / magic-link requests per IP | API memory | 30 / 15 min | 60 / 15 min | 30·N |
-| Self sign-ups per IP | API memory | 10 / 1 h | 20 / 1 h | 10·N |
-| MFA attempts per IP | API memory | 30 / 5 min | 60 / 5 min | 30·N |
-| MFA failures per pending token / per user | API memory | 5 / 10 min; 10 / 15 min | 10; 20 | 5·N; 10·N |
-| Daily new contacts per user (BR-OV-01) | `DailyLimiter` in memory, one per sending process: the worker scheduler, plus each API replica for "send now" (`campaign_send_now_service` uses the scheduler singleton of its own process). Each process seeds its counter from the DB count of today's first-step sends on its first reservation of the day, then counts locally | 500 / UTC day | up to 500 × 3 in the worst case (1 worker + 2 API replicas each seeded before the others sent) | up to 500 × (workers + API replicas) |
+| Global requests per client IP | API memory (`rate_limit.GLOBAL_PER_IP`, `ceiling_limiter`), per process on purpose: a coarse flood guard, no DB write per request (ADR 0002 amendment) | 1200 / 60 s | 2400 / 60 s | 1200·N |
+| Sign-in attempts per IP | **MySQL** `rate_limit_counters` | 60 / 5 min | 60 / 5 min (shared) | shared, exact |
+| Wrong passwords per e-mail from one IP (lockout) | **MySQL** `rate_limit_counters` (`LOGIN_FAILURES_PER_EMAIL_IP`) | 10 / 15 min | 10 / 15 min (shared) | shared, exact |
+| Wrong passwords per e-mail, all IPs (backstop) | **MySQL** `rate_limit_counters` (`LOGIN_FAILURES_PER_EMAIL`) | 50 / 15 min | 50 / 15 min (shared) | shared, exact |
+| Reset / magic-link e-mails per address | **MySQL** `rate_limit_counters` | 5 / 15 min | 5 / 15 min (shared) | shared, exact |
+| Reset / magic-link requests per IP | **MySQL** `rate_limit_counters` | 30 / 15 min | 30 / 15 min (shared) | shared, exact |
+| Self sign-ups per IP | **MySQL** `rate_limit_counters` | 10 / 1 h | 10 / 1 h (shared) | shared, exact |
+| MFA attempts per IP | **MySQL** `rate_limit_counters` | 30 / 5 min | 30 / 5 min (shared) | shared, exact |
+| MFA failures per pending token / per user; MFA token single use | **MySQL** `rate_limit_counters` | 5 / 10 min; 10 / 15 min | 5; 10 (shared) | shared, exact |
+| Daily new contacts per user (BR-OV-01) | **MySQL** `platform_flags` counter `dnc:<day>:<user>` (`DailyLimiter`, atomic conditional UPDATE), shared by the worker scheduler and "send now" in each API replica; seeded on first use of the day from today's first-step sends | 500 / UTC day | 500 / UTC day (shared) | shared, exact |
 | OpenAI USD and calls per day | **MySQL** `platform_flags` (atomic UPDATE) | $0.20, 100 calls | $0.20, 100 calls (shared) | shared, exact |
 | SES send rate | per sending process (`SES_MAX_SEND_RATE`) | 12 / s | 12 / s (only the worker sends on schedule) | 12 / s per sending process |
 | Duplicate-KPI cache (`crm_kpis._DUP_CACHE`) | API memory, TTL 600 s | - | each replica caches separately; figures may differ for up to 10 min | - |
 | Daily activity cache (`user_activity._recorded`) | API memory, 50,000 entries | one insert per user per day per process | one INSERT IGNORE per user per day **per replica** (harmless) | N inserts |
 | Visible-team cache (`user._visible_user_ids`) | on the request's `User` object | - | lives for one request only; role and hierarchy changes apply on the next request | - |
 
-Counters held in memory reset when a pod restarts. A restart therefore also clears a lockout early. There is no admin or e-mail unlock yet (review item R-10, open); the values above are those in `app/core/rate_limit.py`.
+The shared counters survive a pod restart (a restart no longer clears a lockout early). Rows of `rate_limit_counters` delete themselves once expired (each API process purges at most every 5 minutes); daily `dnc:` counters older than yesterday are deleted on the first reservation of each day. To clear a lockout by hand: `DELETE FROM rate_limit_counters` (all limits; buckets are hashed, so per user is not practical). There is no admin or e-mail unlock yet (review item R-10, open); the values above are those in `app/core/rate_limit.py`.
 
 ## 7. Backup and restore
 
@@ -182,7 +188,7 @@ The repository has **no backup configuration**. RDS is managed outside it. What 
 | Step | Action |
 |---|---|
 | Configure | Turn on RDS automated backups (retention as decided in DEC-14), point-in-time recovery (PITR) and deletion protection, and take a manual snapshot before each release ([RELEASE.md](RELEASE.md)). The snapshot carries the encrypted mailbox credentials: keep `CREDENTIALS_ENCRYPTION_KEY` safe with it, because the snapshot cannot decrypt them without it (§9.2). |
-| Not backed up | Template attachment files (per-pod emptyDir, DEC-03). In-memory rate-limit counters. Prometheus metrics. |
+| Not backed up | Template attachment files (per-pod emptyDir, DEC-03). In-memory rate-limit counters (the global ceiling; `rate_limit_counters` is in the DB but needs no restore). Prometheus metrics. |
 | Restore (PITR) | 1. **Stop sending first.** `POST /scheduler/stop` (or `UPDATE platform_flags SET value='restore' WHERE name='scheduler_paused'`), then `kubectl scale deploy/backend-worker --replicas=0`. 2. Before restoring, if the old database is still readable, **export the erasure and unsubscribe records** made after the restore point (§8). 3. `aws rds restore-db-instance-to-point-in-time` into a new instance. 4. Point `MYSQL_HOST` in `sales360-secret` at the new instance and restart `backend` (the initContainer runs any pending migrations). 5. Re-apply erasures and unsubscribes (§8, **mandatory**). 6. Review messages in `QUEUED`/`SCHEDULED`/`SENDING` whose send time falls between the restore point and the incident: they may already have gone out through SES, so the restored rows do not know it. Cancel them or confirm them against SES before resuming. 7. Scale the worker back to 1 and `POST /scheduler/start`. |
 | Restore drill | **Not run yet.** It is a go-live blocker (DEC-18). |
 

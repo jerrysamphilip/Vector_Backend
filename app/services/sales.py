@@ -20,6 +20,7 @@ from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.errors import BadRequestError, NotFoundError, PermissionDenied
 from app.domain import sales as rules
+from app.domain.regions import region_matches
 from app.domain.sales import (DEFAULT_SALES_STAGES, FORECAST_CATEGORIES, LEAD_FIELDS, LEAD_STAGES, OPEN_LEAD_STAGES,
                               OPP_FIELDS, category_for, missing_criteria, stage_change_message,
                               stage_change_recipients, stage_status)
@@ -28,7 +29,7 @@ from app.repositories.sales import SalesRepositories, SqlAlchemySalesUnitOfWork,
 from app.services import crm
 from app.services.contact_service import clean_str
 from app.services.sales_collaborators import SalesCollaborators, ServiceCollaborators
-from app.services.sales_settings import load_settings, store_settings
+from app.services.sales_settings import load_settings, load_settings_for_update, store_settings
 
 __all__ = ["FORECAST_CATEGORIES", "LEAD_FIELDS", "OPP_FIELDS", "SalesRules", "as_float", "category_for",
            "criteria_met", "money", "settings", "stage_change_message", "stage_change_recipients", "stage_status"]
@@ -189,6 +190,15 @@ class SalesRules:
         if not self.collab.can_see_owner(user, owner_id):
             raise PermissionDenied("You can only assign records to yourself or your team")
 
+    def notify_reassigned(self, tenant_id: str, previous_owner: Optional[str], new_owner: Optional[str],
+                          actor: Any, title: str, link: str) -> int:
+        """The new owner hears about a record handed to them by someone else (workflow rules run separately)."""
+        if not new_owner or new_owner == previous_owner or new_owner == actor.user_id:
+            return 0
+        actor_name = getattr(actor, "full_name", None) or actor.email
+        return self.collab.notify(tenant_id, [new_owner], "ASSIGNED", title, f"Assigned to you by {actor_name}.",
+                                  link)
+
     # ── leads ───────────────────────────────────────────────
     def get_lead(self, user: Any, lead_id: str) -> Any:
         lead = self.repos.leads.get_visible(user.tenant_id, self.collab.owner_scope(user), lead_id)
@@ -239,10 +249,14 @@ class SalesRules:
         active = self.repos.lookups.active_user_ids(tenant_id)
         if mode == "region" and prospect is not None:
             for r in rule.get("regions") or []:
-                field = "poc_country" if r.get("field") == "country" else "poc_state"
-                value = (getattr(prospect, field, None) or "").strip().lower()
-                if value and value == (r.get("value") or "").strip().lower() and r.get("user_id") in active:
+                field = "country" if r.get("field") == "country" else "state"
+                if region_matches(field, r.get("value"), getattr(prospect, f"poc_{field}", None)) \
+                        and r.get("user_id") in active:
                     return r["user_id"]
+        if not [u for u in (rule.get("users") or []) if u in active]:
+            return None
+        # Re-read under a row lock so two leads assigned at once take consecutive turns
+        rule = load_settings_for_update(self.repos.settings, tenant_id)["lead_assignment"]
         pool = [u for u in (rule.get("users") or []) if u in active]
         if not pool:
             return None
@@ -346,7 +360,9 @@ class SalesRules:
             next_step=clean_str(data.get("next_step")) or lead.next_step, created_by=user.user_id,
             campaign_id=lead.campaign_id or self.source_campaign(lead.prospect_id, lead.created_at),
         )
-        self.apply_stage(opp, stage_id)
+        if stage_status(self.apply_stage(opp, stage_id)) != "OPEN":
+            # A won/lost deal needs its close reason (BR-SF-05): convert into an open stage, then close the deal.
+            raise BadRequestError("A lead converts into an open stage; close the deal afterwards to record why")
         self.repos.opportunities.add(opp)
         self.repos.opportunities.flush()
         lead.stage, lead.opportunity_id = "CONVERTED", opp.opportunity_id
@@ -357,6 +373,8 @@ class SalesRules:
                                    user.user_id, "UI")
         self.collab.record_changes(user.tenant_id, "DEAL", opp.opportunity_id, {"created": None},
                                    {"created": "Converted from lead"}, user.user_id, "UI")
+        self.notify_reassigned(user.tenant_id, lead.owner_id, opp.owner_id, user, f"New deal: {opp.name}",
+                               f"/app/deals/{opp.opportunity_id}")
         return opp
 
     def _convert_account(self, lead: Any, prospect: Any) -> Optional[str]:

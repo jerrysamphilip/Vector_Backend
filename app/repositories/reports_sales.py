@@ -97,7 +97,8 @@ class SalesReportRepository(Protocol):
     def leads_due(self, tenant_id: TenantId, owner_id: str, before: datetime, limit: int) -> list[Any]: ...
     def deals_closing(self, tenant_id: TenantId, owner_id: str, by: date, limit: int) -> list[Any]: ...
     def lead_report(self, tenant_id: TenantId, owners: OwnerSet, start: datetime, end: datetime) -> LeadReportRows: ...
-    def pipeline_rows(self, tenant_id: TenantId, owners: OwnerSet, client_type: Optional[str]) -> list[tuple]: ...
+    def pipeline_rows(self, tenant_id: TenantId, owners: OwnerSet, client_type: Optional[str],
+                      closed_start: Optional[datetime] = None, closed_end: Optional[datetime] = None) -> list[tuple]: ...
     def forecast_rows(self, tenant_id: TenantId, owners: OwnerSet, client_type: Optional[str], start: date,
                       end: date) -> list[tuple]: ...
     def target_total(self, tenant_id: TenantId, fy: int, quarters: Sequence[int], owners: OwnerSet) -> Any: ...
@@ -224,10 +225,16 @@ class SqlAlchemySalesReportRepository:
                                                     in_owners(Opportunity.owner_id, owners))
         return q.filter(Opportunity.client_type == client_type) if client_type else q
 
-    def pipeline_rows(self, tenant_id: TenantId, owners: OwnerSet, client_type: Optional[str]) -> list[tuple]:
-        """(owner, status, stage, close month, deals, amount) groups."""
+    def pipeline_rows(self, tenant_id: TenantId, owners: OwnerSet, client_type: Optional[str],
+                      closed_start: Optional[datetime] = None, closed_end: Optional[datetime] = None) -> list[tuple]:
+        """(owner, status, stage, close month, deals, amount) groups. Open deals always count (as of now);
+        with a period, won / lost deals only when they closed in ``[closed_start, closed_end)``."""
         month = func.date_format(Opportunity.close_date, "%Y-%m")
-        return _tuples(self._deals(tenant_id, owners, client_type).with_entities(
+        q = self._deals(tenant_id, owners, client_type)
+        if closed_start is not None and closed_end is not None:
+            q = q.filter(or_(Opportunity.status == "OPEN",
+                             and_(Opportunity.closed_at >= closed_start, Opportunity.closed_at < closed_end)))
+        return _tuples(q.with_entities(
             Opportunity.owner_id, Opportunity.status, Opportunity.stage_id, month,
             func.count(Opportunity.opportunity_id), func.coalesce(func.sum(Opportunity.amount), 0)
         ).group_by(Opportunity.owner_id, Opportunity.status, Opportunity.stage_id, month).all())

@@ -10,6 +10,7 @@ def test_ses_client_is_built_once_per_configuration(monkeypatch):
     monkeypatch.setattr(ses_adapter.boto3, "client", lambda service, **kw: built.append((service, kw)) or object())
     monkeypatch.delenv("AWS_ENDPOINT_URL_SES", raising=False)
     monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
+    monkeypatch.setattr(settings, "ALLOW_REAL_SES", True)  # boto3.client is faked: nothing real is built
     ses_client.reset_ses_clients()
     try:
         monkeypatch.setattr(settings, "AWS_REGION", "eu-west-1")

@@ -94,3 +94,28 @@ def test_new_lineage_starts_a_family():
     a, b = sl.new_lineage(NOW), sl.new_lineage(NOW)
     assert a.session_id != b.session_id
     assert a.session_started_at == a.last_activity_at == NOW
+
+
+# ── Access tokens end with the session (F3): the idle / absolute deadline also binds the access path ──
+
+def _access(started, last):
+    return sl.access_expiry(now=NOW, session_started_at=started, last_activity_at=last,
+                            access_ttl=timedelta(minutes=30), absolute=ABS, idle=IDLE)
+
+
+def test_access_token_gets_the_full_lifetime_on_a_fresh_session():
+    assert _access(NOW, NOW) == NOW + timedelta(minutes=30)
+
+
+def test_access_token_ends_at_the_idle_deadline():
+    # Last interaction 25 minutes ago: the token lives 5 minutes, then the next call is a 401 and the
+    # refresh (with the SPA's activity report) decides whether the session goes on
+    assert _access(NOW - timedelta(hours=1), NOW - timedelta(minutes=25)) == NOW + timedelta(minutes=5)
+
+
+def test_access_token_ends_at_the_absolute_cap():
+    assert _access(NOW - timedelta(hours=11, minutes=50), NOW) == NOW + timedelta(minutes=10)
+
+
+def test_access_token_expiry_is_never_in_the_past():
+    assert _access(NOW - timedelta(hours=13), NOW - timedelta(hours=1)) == NOW

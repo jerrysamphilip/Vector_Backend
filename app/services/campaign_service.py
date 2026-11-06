@@ -41,6 +41,7 @@ from app.services.campaign_crud_service import CampaignCRUDService
 from app.services.campaign_duplicate_service import CampaignDuplicateService
 from app.services.campaign_email_service import CampaignEmailService
 from app.services.campaign_send_now_service import CampaignSendNowService
+from app.services.contact_service import visibility_scope
 from app.services.daily_limit import enrollment_notice
 from app.services.enrollment_rules import MAX_REJECTIONS_RETURNED, summarize
 from app.services.send_guards import active_inboxes
@@ -175,7 +176,9 @@ class CampaignService(CampaignCRUDService):
 
     def enrolled_for(self, user: Any, campaign_id: str, include_removed: bool) -> List[Any]:
         self.campaign_for(user, campaign_id)
-        return self.get_enrolled_prospects(campaign_id, include_removed=include_removed)
+        # Only the contacts the caller may see (BR-SH-02): a scoped user's team, not the whole campaign
+        return self.get_enrolled_prospects(campaign_id, include_removed=include_removed,
+                                           scope=visibility_scope(self.uow.session, user))
 
     def enroll(self, user: Any, campaign_id: str, request: CampaignEnrollmentRequest) -> Dict[str, Any]:
         with self.uow as uow:

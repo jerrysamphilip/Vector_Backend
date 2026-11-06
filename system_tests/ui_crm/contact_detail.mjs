@@ -190,6 +190,7 @@ export async function run(rec, browser) {
     await p.waitForURL(/\/app\/leads\/[0-9a-f-]{36}/, { timeout: 10000 });
     eq(sql(`SELECT CONCAT_WS('|',stage,source,owner_id) FROM leads WHERE prospect_id='${id}'`), `NEW|Referral|${row('owner_id')}`);
     await go(A, `contacts/${id}`);
+    await p.getByText(/Lead ·/).first().waitFor({ timeout: 8000 }).catch(() => {});  // the sales card loads after the page
     ok(await p.getByText(/Lead ·/).first().isVisible(), 'sales card shows the lead');
     eq(await p.getByRole('button', { name: '+ Create lead' }).count(), 0, 'no second create while open lead exists');
   }, { u: A });
@@ -208,7 +209,9 @@ export async function run(rec, browser) {
     ok(await p.getByRole('link', { name: 'Assoc Campaign' }).first().isVisible(), 'campaign link');
     await p.locator('a[href*="/app/accounts/"]').first().click();
     await p.waitForURL(/\/app\/accounts\//, { timeout: 8000 });
-    ok(await p.getByRole('heading', { name: new RegExp('^' + row('company_name')) }).first().isVisible(), 'company page');
+    const companyHeading = p.getByRole('heading', { name: new RegExp('^' + row('company_name')) }).first();
+    await companyHeading.waitFor({ timeout: 8000 }).catch(() => {});  // the URL changes before the account route renders
+    ok(await companyHeading.isVisible(), 'company page');
   }, { u: A });
 
   await tc(rec, 'UIC-CD-19', 'Unknown contact id shows "Contact not found" with back link', async () => {

@@ -244,7 +244,11 @@ class LeadService(SalesServiceBase):
             if not data["owner_id"]:
                 raise BadRequestError("A lead always has an owner")
             rules.check_assignable(user, data["owner_id"])
-            lead.owner_id = data["owner_id"]
+            previous, lead.owner_id = lead.owner_id, data["owner_id"]
+            prospect = rules.repos.lookups.prospect(lead.prospect_id)
+            who = (prospect.full_name or prospect.email) if prospect else "a contact"
+            rules.notify_reassigned(user.tenant_id, previous, lead.owner_id, user, f"Lead reassigned: {who}",
+                                    f"/app/leads/{lead.lead_id}")
         for field in ("source", "next_step", "disqualified_reason"):
             if field in data:
                 setattr(lead, field, clean_str(data[field]))

@@ -11,7 +11,7 @@ import pytest
 
 from app.core.clock import utcnow
 from app.core.config import settings
-from app.core.errors import BadRequestError
+from app.core.errors import BadRequestError, ConflictError
 from app.domain import sending as rules
 from app.services import campaign_send_now_service as send_now_mod
 from app.services import email_scheduler_service as sched_mod
@@ -256,13 +256,20 @@ def test_a8_campaign_paused_mid_batch_and_outside_window_requeue(world, monkeypa
     assert calls[-1]["timezone_str"] == "UTC" and calls[-1]["send_window_start"] == time(0, 0)
 
 
-def test_a8_contact_timezone_follows_the_state_when_respected(monkeypatch):
-    monkeypatch.setattr(sched_mod.business_calendar, "get_timezone_for_state", lambda state, tz: f"tz-{state}")
+def _contact(state=None, country=None, timezone=None):
+    return SimpleNamespace(poc_state=state, poc_country=country, timezone=timezone)
+
+
+def test_a8_contact_timezone_follows_the_contact_when_respected():
+    """CM-01: the contact's own zone (stored, else from country + state) wins over the campaign's."""
     campaign = _campaign(respect_timezone=True, campaign_timezone="America/New_York")
-    assert EmailSchedulerService._contact_timezone(campaign, SimpleNamespace(poc_state="CA")) == "tz-CA"
-    assert EmailSchedulerService._contact_timezone(campaign, SimpleNamespace(poc_state=None)) == "America/New_York"
-    assert EmailSchedulerService._contact_timezone(_campaign(campaign_timezone=None),
-                                                   SimpleNamespace(poc_state="CA")) == "UTC"
+    assert EmailSchedulerService._contact_timezone(campaign, _contact("CA")) == "America/Los_Angeles"
+    assert EmailSchedulerService._contact_timezone(campaign, _contact("Maharashtra", "India")) == "Asia/Kolkata"
+    assert EmailSchedulerService._contact_timezone(campaign, _contact("CA", timezone="Europe/Paris")) == "Europe/Paris"
+    assert EmailSchedulerService._contact_timezone(campaign, _contact()) == "America/New_York"
+    assert EmailSchedulerService._contact_timezone(_campaign(respect_timezone=False, campaign_timezone="Europe/Rome"),
+                                                   _contact("CA")) == "Europe/Rome"
+    assert EmailSchedulerService._contact_timezone(_campaign(campaign_timezone=None), _contact()) == "UTC"
 
 
 def test_a8_missing_creator_is_an_unexpected_failure(world):
@@ -523,8 +530,11 @@ def _send_now(monkeypatch, ctx=None, claim_rows=1):
     svc = CampaignSendNowService(db)
     svc.ctx = ctx or FakeCtx(campaign=_campaign(), prospect=PROSPECT, inbox=_inbox(),
                              template=SimpleNamespace(subject="Hi", body="Hello", attachments=[]))
-    svc.queue = SimpleNamespace(claim_for_send_now=lambda mid, now: claim_rows,
-                                record_sent_event=lambda *a, **k: None)
+    queue = FakeQueue(claim_rows=claim_rows)
+    queue.claim_for_send_now = queue.claim
+    queue.record_sent_event = lambda *a, **k: None
+    svc.queue = queue
+    monkeypatch.setattr(send_now_mod.platform_flags, "scheduler_paused", lambda: False)
     monkeypatch.setattr(send_now_mod.suppression, "blocked_reason", lambda db, prospect: None)
     monkeypatch.setattr(send_now_mod.daily_limit, "is_first_step", lambda db, msg: False)
     monkeypatch.setattr(send_now_mod.email_scheduler, "stopped_by_enrollment", lambda msg, db: None)
@@ -534,11 +544,49 @@ def _send_now(monkeypatch, ctx=None, claim_rows=1):
 
 
 def test_a8_send_now_requires_an_active_sendable_campaign(monkeypatch):
+    monkeypatch.setattr(send_now_mod.platform_flags, "scheduler_paused", lambda: False)
     with pytest.raises(BadRequestError):
         CampaignSendNowService._require_sendable(_campaign(status="PAUSED"))
     with pytest.raises(BadRequestError):
         CampaignSendNowService._require_sendable(_campaign(inboxes=[]))
     CampaignSendNowService._require_sendable(_campaign())
+
+
+def test_a8_send_now_refused_while_sending_is_paused_platform_wide(monkeypatch):
+    paused = [True]
+    monkeypatch.setattr(send_now_mod.platform_flags, "scheduler_paused", lambda: paused[0])
+    with pytest.raises(ConflictError) as exc:
+        CampaignSendNowService._require_sendable(_campaign())
+    assert exc.value.code == "SENDING_PAUSED"
+    paused[0] = False
+    CampaignSendNowService._require_sendable(_campaign())
+
+
+def test_a8_send_now_claims_with_the_send_key(monkeypatch):
+    svc, db = _send_now(monkeypatch)
+    msg = _msg()
+    assert svc._claim(msg) is True
+    assert svc.queue.claims == [("m1", "c1:s1:bob@client.example.com")] and db.refreshed == [msg]
+
+
+def test_a8_send_now_cancels_a_duplicate_of_the_same_step(monkeypatch):
+    svc, db = _send_now(monkeypatch)
+    svc.queue.duplicate = "m0"
+    assert svc._claim(_msg()) is False and svc.queue.claims == []
+    assert svc.queue.cancelled_duplicates == [("m1", rules.duplicate_reason("m0"))]
+    svc.queue.duplicate, svc.queue.conflict = None, True
+    assert svc._claim(_msg()) is False and db.rollbacks == 1
+    assert svc.queue.cancelled_duplicates[-1] == ("m1", rules.duplicate_reason(None))
+
+
+def test_a8_send_now_frees_the_key_of_a_message_left_queued(monkeypatch):
+    svc, db = _send_now(monkeypatch)
+    msg = _msg(status="QUEUED", send_key="c1:s1:bob@client.example.com", sent_at=None)
+    svc._free_unsent_key(msg)
+    assert msg.send_key is None and db.commits == 1
+    sent = _msg(status="SENT", send_key="k", sent_at=utcnow())
+    svc._free_unsent_key(sent)
+    assert sent.send_key == "k"
 
 
 def test_a8_send_now_skips_a_message_the_scheduler_holds(monkeypatch):

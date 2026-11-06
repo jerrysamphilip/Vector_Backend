@@ -26,7 +26,7 @@ from typing import Any, Mapping, Optional
 CONTACT_TARGETS = {
     "email": "Email", "first_name": "First name", "last_name": "Last name", "full_name": "Full name",
     "phone": "Phone", "mobile_phone": "Mobile", "designation": "Job title", "linkedin_url": "LinkedIn URL",
-    "poc_city": "City", "poc_state": "State", "poc_country": "Country", "industry": "Industry",
+    "poc_city": "City", "poc_state": "State", "poc_country": "Country", "timezone": "Time zone", "industry": "Industry",
     "emp_band": "Employees", "lifecycle_stage": "Lifecycle stage", "lead_status": "Lead status",
     "lead_source": "Lead source", "legal_basis": "Legal basis", "tags": "Tags", "owner_email": "Owner email",
 }
@@ -34,7 +34,7 @@ COMPANY_TARGETS = {
     "name": "Company name", "domain": "Company domain", "website": "Company website", "phone": "Company phone",
     "industry": "Company industry", "emp_band": "Company employees", "annual_revenue": "Annual revenue",
     "street": "Company street", "city": "Company city", "state": "Company state", "postal_code": "Company postal code",
-    "country": "Company country",
+    "country": "Company country", "owner_email": "Company owner",
 }
 # Header aliases used to suggest a mapping
 ALIASES = {
@@ -48,6 +48,7 @@ ALIASES = {
     "contact.linkedin_url": ["linkedin", "linkedin url", "poc linkedin", "linkedin profile"],
     "contact.poc_city": ["city", "poc city"], "contact.poc_state": ["state", "poc state", "region", "province"],
     "contact.poc_country": ["country", "poc country"], "contact.industry": ["industry"],
+    "contact.timezone": ["time zone", "timezone", "tz"],
     "contact.emp_band": ["emp band", "employees", "company size", "employee count"],
     "contact.lifecycle_stage": ["lifecycle stage", "lifecycle", "stage"],
     "contact.lead_status": ["lead status", "status"], "contact.lead_source": ["lead source", "source"],
@@ -58,6 +59,7 @@ ALIASES = {
     "company.annual_revenue": ["annual revenue", "revenue"],
     "company.phone": ["company phone"], "company.street": ["address", "street", "street address"],
     "company.postal_code": ["postal code", "zip", "zip code", "postcode"],
+    "company.owner_email": ["company owner", "account owner", "company owner email"],
 }
 # Contact property -> company field of the same meaning, used when a file has no Email column
 CONTACT_TO_COMPANY = {

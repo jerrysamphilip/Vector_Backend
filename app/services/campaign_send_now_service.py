@@ -14,9 +14,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.clock import iso_utc, utcnow
-from app.core.errors import BadRequestError, ExternalServiceUnavailable
+from app.core.errors import BadRequestError, ConflictError, ExternalServiceUnavailable
 from app.domain.campaigns_edit import IN_SEQUENCE_STATUSES
-from app.domain.sending import SendAttempt, fail
+from app.domain.sending import SendAttempt, SendKeyConflict, duplicate_reason, fail
 from app.models.campaign import Campaign
 from app.models.email_message import EmailMessage
 from app.models.prospect import Prospect
@@ -24,7 +24,7 @@ from app.models.sending_inbox import SendingInbox
 from app.repositories.lock_retry import is_lock_conflict
 from app.repositories.sending import Session, SqlAlchemySendingQueueRepository
 from app.repositories.sending_context import SqlAlchemySendingContextRepository
-from app.services import daily_limit, send_breaker, suppression
+from app.services import daily_limit, platform_flags, send_breaker, suppression
 from app.services.email_scheduler_service import email_scheduler, record_deferred_failure
 from app.services.email_sender_service import (
     DeferredEmailFailure, PermanentEmailFailure, TransientEmailFailure, email_sender,
@@ -127,9 +127,13 @@ class CampaignSendNowService:
 
     @staticmethod
     def _require_sendable(campaign: Campaign) -> None:
-        """ACTIVE, with an active inbox (item 12), and SES not tripped (item 14)."""
+        """ACTIVE, with an active inbox (item 12), sending not paused platform-wide, and SES not tripped
+        (item 14)."""
         if campaign.status != "ACTIVE":
             raise BadRequestError("Campaign must be ACTIVE to send emails")
+        if platform_flags.scheduler_paused():
+            raise ConflictError("Sending is paused for the whole platform; try again once it is resumed.",
+                                code="SENDING_PAUSED")
         require_active_inbox(campaign, "send emails for")
         if send_breaker.platform_breaker.is_open():
             raise ExternalServiceUnavailable(
@@ -152,7 +156,6 @@ class CampaignSendNowService:
         for attempt in (1, 2):
             try:
                 await self._send_one(campaign, email_msg, sender_name, tally)
-                return
             except Exception as e:
                 self.db.rollback()  # the session is unusable until the failed transaction is rolled back
                 if attempt == 1 and is_lock_conflict(e) and self._still_queued(email_msg):
@@ -163,6 +166,20 @@ class CampaignSendNowService:
                 tally.failed += 1
                 tally.errors.append(str(e)[:100])
                 return
+            else:
+                self._free_unsent_key(email_msg)
+                return
+
+    def _free_unsent_key(self, email_msg: EmailMessage) -> None:
+        """Not sent (left queued or cancelled): free the step's send_key for a later attempt, as the
+        scheduler does."""
+        if getattr(email_msg, "send_key", None) and email_msg.status in ("QUEUED", "SCHEDULED", "CANCELLED") \
+                and not email_msg.sent_at:
+            try:
+                email_msg.send_key = None
+                self.db.commit()
+            except Exception:  # the stuck sweep frees it later; never fail a message over this
+                self.db.rollback()
 
     def _still_queued(self, email_msg: EmailMessage) -> bool:
         self.db.refresh(email_msg)
@@ -218,13 +235,31 @@ class CampaignSendNowService:
         return inbox if sent_today >= email_sender.get_inbox_daily_limit(inbox) else None
 
     def _claim(self, email_msg: EmailMessage) -> bool:
-        """Atomic check-and-set to SENDING so the background scheduler cannot pick it too (committed now)."""
-        rows = self.queue.claim_for_send_now(email_msg.message_id, utcnow())
-        self.db.commit()
-        if rows == 0:
+        """Atomic check-and-set to SENDING with the step's send_key (BR-DF-06), so the background scheduler
+        cannot pick it too and a second message for the same step and address cannot go out (committed now)."""
+        key = email_scheduler.send_key_for(email_msg)
+        original = self.queue.duplicate_of(email_msg) if key else None
+        if original:
+            self._cancel_duplicate(email_msg, original)
+            return False
+        try:
+            rows = self.queue.claim_for_send_now(email_msg.message_id, key, utcnow())
+            self.db.commit()
+        except SendKeyConflict:  # a concurrent sender claimed the same step for this address
+            self.db.rollback()
+            self._cancel_duplicate(email_msg, None)
+            return False
+        if rows:
+            self.db.refresh(email_msg)
+        else:
             logger.info(f"[SendNow] Skipping email {email_msg.message_id}, not in QUEUED state "
                         f"(likely picked by scheduler).")
         return rows > 0
+
+    def _cancel_duplicate(self, email_msg: EmailMessage, original_id: Optional[str]) -> None:
+        self.queue.cancel_duplicate(email_msg.message_id, duplicate_reason(original_id))
+        self.db.commit()
+        logger.warning(f"[SendNow] Cancelled duplicate send {email_msg.message_id}")
 
     def _gate(self, campaign: Campaign, email_msg: EmailMessage, prospect: Prospect,
               tally: "_Tally") -> Tuple[bool, Optional[str], Optional[str]]:

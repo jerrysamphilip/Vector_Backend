@@ -170,14 +170,16 @@ def test_a8_claim_is_atomic_and_the_send_key_is_unique(client, ws):
     assert _status(dup) == "CANCELLED"
 
 
-def test_a8_send_now_claim_dates_the_claim(client, ws):
+def test_a8_send_now_claim_dates_the_claim_and_sets_the_send_key(client, ws):
     h = ws["headers"]
     mid = _message(_campaign(client, h, "Send now claim"), _contact(client, h, "snclaim"), status="SCHEDULED")
+    key = f"send-now-claim:{mid}"
     with SessionLocal() as db:
-        assert SqlAlchemySendingQueueRepository(db).claim_for_send_now(mid, utcnow()) == 1
+        assert SqlAlchemySendingQueueRepository(db).claim_for_send_now(mid, key, utcnow()) == 1
         db.commit()
     assert _status(mid) == "SENDING"
-    assert sql("SELECT send_key FROM email_messages WHERE message_id = :m", m=mid) is None
+    assert sql("SELECT send_key FROM email_messages WHERE message_id = :m", m=mid) == key
+    assert sql("SELECT claimed_at IS NOT NULL FROM email_messages WHERE message_id = :m", m=mid)
 
 
 # ── Stuck sweep and the conditional SENT ──
