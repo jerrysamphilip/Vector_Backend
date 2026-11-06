@@ -34,7 +34,7 @@ COMPANY_TARGETS = {
     "name": "Company name", "domain": "Company domain", "website": "Company website", "phone": "Company phone",
     "industry": "Company industry", "emp_band": "Company employees", "annual_revenue": "Annual revenue",
     "street": "Company street", "city": "Company city", "state": "Company state", "postal_code": "Company postal code",
-    "country": "Company country",
+    "country": "Company country", "owner_email": "Company owner",
 }
 # Header aliases used to suggest a mapping
 ALIASES = {
@@ -59,6 +59,7 @@ ALIASES = {
     "company.annual_revenue": ["annual revenue", "revenue"],
     "company.phone": ["company phone"], "company.street": ["address", "street", "street address"],
     "company.postal_code": ["postal code", "zip", "zip code", "postcode"],
+    "company.owner_email": ["company owner", "account owner", "company owner email"],
 }
 # Contact property -> company field of the same meaning, used when a file has no Email column
 CONTACT_TO_COMPANY = {
