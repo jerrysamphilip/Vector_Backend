@@ -23,8 +23,8 @@ class FakeCalendar:
     def batch_day_start(self, base, day_offset):
         return self.add_business_days(base, day_offset) if day_offset else base
 
-    def timezone_for_state(self, state, default):
-        return "America/New_York" if state == "NY" else default
+    def timezone_for_contact(self, contact):
+        return "America/New_York" if getattr(contact, "poc_state", None) == "NY" else None
 
     def place_in_window(self, base, timezone, settings, index, total):
         day = base if base.hour < 17 else base + timedelta(days=1)

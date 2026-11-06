@@ -17,8 +17,8 @@ from app.models import (
 )
 from app.services.contact_service import get_or_create_account
 from app.services.import_limits import column_limits, oversized_fields
+from app.utils.contact_timezone import derive_timezone, refresh_contact_timezone
 from app.utils.email_utils import parse_email
-from app.utils.business_calendar import get_timezone_for_state
 
 # Row fields as the upload screen names them (spreadsheet headers)
 FIELD_LABELS = {
@@ -153,7 +153,7 @@ def dry_run_validate(
         company_name = _sanitize_value(row.get("Company Name"))
 
         # Auto-derive timezone from POC State
-        timezone = get_timezone_for_state(state=poc_state) if poc_state else None
+        timezone = derive_timezone(poc_country, poc_state)
 
         # Validation checks
         if not email:
@@ -361,7 +361,7 @@ def revalidate_prospect_records(
         errors.extend(field_problems({**r, "email": raw_email}))
 
         # Auto-derive timezone
-        timezone = get_timezone_for_state(poc_state) if poc_state else None
+        timezone = derive_timezone(poc_country, poc_state)
 
         # Determine status
         if errors:
@@ -485,6 +485,7 @@ class _Saver:
         return self._pending_accounts[key]
 
     def _update(self, existing: Prospect, record: dict) -> Tuple[str, bool]:
+        old_location = (existing.poc_country, existing.poc_state)
         for field in _UPDATABLE_FIELDS:
             setattr(existing, field, record.get(field) or getattr(existing, field))
         existing.phone = existing.phone or record.get("phone")
@@ -493,9 +494,9 @@ class _Saver:
             existing.account_id = self._account_id_for(existing.company_name, record)
         if not existing.owner_id:
             existing.owner_id = self.uploaded_by
-        # Re-derive timezone from potentially updated poc_state
-        if record.get("poc_state"):
-            existing.timezone = get_timezone_for_state(record.get("poc_state"))
+        # Re-derive timezone from potentially updated country/state (a zone a user set is kept)
+        if record.get("poc_state") or record.get("poc_country"):
+            refresh_contact_timezone(existing, *old_location)
         return existing.prospect_id, False
 
     def _insert(self, record: dict) -> Tuple[str, bool]:
@@ -518,7 +519,7 @@ class _Saver:
             poc_state=poc_state,
             poc_city=record.get("poc_city"),
             poc_country=record.get("poc_country"),
-            timezone=get_timezone_for_state(poc_state) if poc_state else None,
+            timezone=derive_timezone(record.get("poc_country"), poc_state),
             consent_status="OPT_IN",
             is_valid_email=True,
             phone=record.get("phone"),

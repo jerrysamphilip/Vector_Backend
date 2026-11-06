@@ -42,8 +42,8 @@ from app.services.import_parsing import (
     parse_number,
     split_name,
 )
-from app.utils.business_calendar import get_timezone_for_state
 from app.utils.company_domain import is_valid_domain
+from app.utils.contact_timezone import refresh_contact_timezone, valid_timezone
 
 NOT_VISIBLE = "Contact already exists, owned by someone outside your visibility"
 MULTI_VALUE_TYPES = ("SELECT", "RADIO", "MULTI_CHECKBOX")
@@ -279,6 +279,11 @@ class RowEngine:
             owner = vals.pop("owner_email")
             if owner:
                 vals["owner_id"] = self.owner_id_for(owner)
+        if vals.get("timezone"):
+            zone = valid_timezone(vals["timezone"])
+            if zone is None:
+                raise RowError(f"Time zone '{vals['timezone']}' is not an IANA time zone (e.g. Asia/Kolkata)")
+            vals["timezone"] = zone
         for k in ("phone", "mobile_phone"):
             if vals.get(k):
                 vals[k] = (clean_phone(vals[k]) or "")[:50] or None
@@ -411,10 +416,12 @@ class RowEngine:
         overwrite = created or self.options.update_existing
         fields = tuple(f for f in crm.CONTACT_FIELDS if hasattr(Prospect, f)) + ("tags", "custom_fields")
         before = crm.snapshot(p, fields)
+        old_location = (p.poc_country, p.poc_state)
         self._apply_fields(p, vals, created, overwrite)
         self._apply_custom(p, custom, overwrite)
-        if vals.get("poc_state") and overwrite:
-            p.timezone = get_timezone_for_state(p.poc_state)
+        # CM-01: derive the zone from country + state unless the row gives one; a user-set zone is kept
+        if not vals.get("timezone") and (created or not p.timezone or (p.poc_country, p.poc_state) != old_location):
+            refresh_contact_timezone(p, *old_location)
         if account and (overwrite or not p.account_id):
             p.account_id = account.account_id
             p.company_name = p.company_name if (p.company_name and not overwrite) else account.name

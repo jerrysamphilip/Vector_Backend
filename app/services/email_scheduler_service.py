@@ -59,6 +59,7 @@ from app.services.sequence_stop import stop_pending_steps as stop_pending_steps 
 from app.services.sequence_stop import stop_reason, stops_sequence
 from app.utils import business_calendar
 from app.utils.campaign_prospect_status import set_prospect_status
+from app.utils.contact_timezone import contact_timezone_of
 from app.utils.conversation_lock import conversation_creation_lock
 
 logger = logging.getLogger(__name__)
@@ -586,10 +587,9 @@ class EmailSchedulerService:
 
     @staticmethod
     def _contact_timezone(campaign: Campaign, prospect: Any) -> str:
-        """The contact's time zone (from their state) when the campaign respects it, else the campaign's."""
-        prospect_tz = None
-        if campaign.respect_timezone and prospect.poc_state:
-            prospect_tz = business_calendar.get_timezone_for_state(prospect.poc_state, campaign.campaign_timezone)
+        """The contact's own time zone (CM-01: set by a user, or from country + state) when the campaign
+        respects it, else the campaign's."""
+        prospect_tz = contact_timezone_of(prospect) if campaign.respect_timezone else None
         return prospect_tz or campaign.campaign_timezone or "UTC"
 
     def _step_sender(self, job: _SendJob) -> Optional[str]:

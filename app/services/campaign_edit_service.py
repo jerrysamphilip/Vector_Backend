@@ -401,7 +401,7 @@ class CampaignEditService(CampaignServiceBase):
             mails = by_contact[pid]
             fresh = starts_fresh(steps, mails)
             plan = ContactPlan(steps=steps, mails=mails, index=index, total=len(movable),
-                               timezone=contact_timezone(settings, getattr(contacts.get(pid), "poc_state", None)),
+                               timezone=contact_timezone(settings, contacts.get(pid)),
                                fresh_base=fresh_start(base, settings, fresh_index) if fresh else base)
             fresh_index += 1 if fresh else 0
             for message_id, when in plan_contact(plan, settings, now, only).items():

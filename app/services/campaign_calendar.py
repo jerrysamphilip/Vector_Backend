@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 from app.domain.campaigns_edit import ScheduleSettings
 from app.utils import business_calendar
+from app.utils.contact_timezone import contact_timezone_of
 
 
 class BusinessCalendar:
@@ -20,8 +21,8 @@ class BusinessCalendar:
     def batch_day_start(self, base: datetime, day_offset: int) -> datetime:
         return business_calendar.batch_day_start(base, day_offset)
 
-    def timezone_for_state(self, state: str, default: str) -> Optional[str]:
-        return business_calendar.get_timezone_for_state(state, default)
+    def timezone_for_contact(self, contact: Any) -> Optional[str]:
+        return contact_timezone_of(contact)
 
     def place_in_window(self, base: datetime, timezone: str, settings: ScheduleSettings, index: int,
                         total: int) -> datetime:

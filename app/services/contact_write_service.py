@@ -40,6 +40,7 @@ from app.services.contact_service import (
     visibility_scope,
 )
 from app.services.suppression import active_suppression
+from app.utils.contact_timezone import derive_timezone, refresh_contact_timezone, valid_timezone
 
 __all__ = ["NO_MANAGE_PERMISSION", "ContactWriteService", "require_manager", "update_contact"]
 
@@ -162,6 +163,20 @@ def _apply_picklists(user: User, prospect: Prospect, data: dict) -> None:
         prospect.legal_basis = data["legal_basis"]
 
 
+def _apply_timezone(prospect: Prospect, data: dict, old_location: tuple, creating: bool) -> None:
+    """CM-01: a user-set IANA zone is stored as is (400 when not a valid name); a blank one, a new contact
+    or a location change derives the zone from country + state, keeping a zone a user set before."""
+    if data.get("timezone"):
+        zone = valid_timezone(data["timezone"])
+        if zone is None:
+            raise BadRequestError(f"Unknown time zone '{data['timezone']}': use an IANA name such as Asia/Kolkata")
+        prospect.timezone = zone
+    elif "timezone" in data or creating:
+        prospect.timezone = derive_timezone(prospect.poc_country, prospect.poc_state)
+    elif (prospect.poc_country, prospect.poc_state) != old_location:
+        refresh_contact_timezone(prospect, *old_location)
+
+
 def apply_fields(ctx: ContactsAccess, user: User, prospect: Prospect, data: dict, creating: bool = False) -> None:
     """Apply create/update fields, keeping company name, company link and subscription in step."""
     if "owner_id" in data:
@@ -170,14 +185,14 @@ def apply_fields(ctx: ContactsAccess, user: User, prospect: Prospect, data: dict
         check_owner(ctx, user, data["owner_id"])
         prospect.owner_id = data["owner_id"]
 
+    old_location = (prospect.poc_country, prospect.poc_state)
     for field in TEXT_FIELDS:
         if field in data:
             setattr(prospect, field, clean_str(data[field]))
 
     if "poc_state" in data:
         prospect.poc_state = clean_str(data["poc_state"])
-        from app.utils.business_calendar import get_timezone_for_state
-        prospect.timezone = get_timezone_for_state(prospect.poc_state) if prospect.poc_state else None
+    _apply_timezone(prospect, data, old_location, creating)
 
     _apply_picklists(user, prospect, data)
 

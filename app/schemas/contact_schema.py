@@ -24,6 +24,8 @@ class ContactWrite(BaseModel):
     poc_city: Optional[str] = None
     poc_state: Optional[str] = None
     poc_country: Optional[str] = None
+    # An IANA time zone a user sets (CM-01); kept over the one derived from country/state. "" clears it.
+    timezone: Optional[str] = Field(None, max_length=50)
     lifecycle_stage: Optional[str] = None
     lead_status: Optional[str] = None
     lead_source: Optional[str] = Field(None, max_length=100)

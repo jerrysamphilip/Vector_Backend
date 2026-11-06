@@ -30,8 +30,8 @@ class Calendar:
         self.batch_calls.append(day_offset)
         return self.add_business_days(base, day_offset)
 
-    def timezone_for_state(self, state, default):
-        return {"NY": "America/New_York", "XX": None}.get(state, default)
+    def timezone_for_contact(self, contact):
+        return {"NY": "America/New_York"}.get(getattr(contact, "poc_state", None))
 
     def place_in_window(self, base, timezone, settings, index, total):
         return self.place(base, timezone, settings, index, total)
@@ -107,13 +107,14 @@ def test_fresh_start_moves_every_daily_batch_to_the_next_business_day():
     assert fresh_start(friday, ScheduleSettings(), 99) == friday
 
 
-def test_contact_timezone_uses_the_state_only_when_respected():
+def test_contact_timezone_uses_the_contacts_zone_only_when_respected():
     s = ScheduleSettings(timezone="Europe/Paris", calendar=Calendar())
-    assert contact_timezone(s, "NY") == "America/New_York"
-    assert contact_timezone(s, "XX") == "Europe/Paris"
+    ny, unknown = SimpleNamespace(poc_state="NY"), SimpleNamespace(poc_state="XX")
+    assert contact_timezone(s, ny) == "America/New_York"
+    assert contact_timezone(s, unknown) == "Europe/Paris"  # no zone of its own: the campaign's
     assert contact_timezone(s, None) == "Europe/Paris"
     off = ScheduleSettings(timezone="Europe/Paris", respect_timezone=False)
-    assert contact_timezone(off, "NY") == "Europe/Paris"
+    assert contact_timezone(off, ny) == "Europe/Paris"
 
 
 def _plan(steps, mails, fresh_base=NOW):
