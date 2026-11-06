@@ -234,6 +234,8 @@ class SqlAlchemyOpportunityRepository(_SessionRepository):
     def _narrow(query: Query[Opportunity], flt: OpportunityFilter) -> Query[Opportunity]:
         if flt.opportunity_id:
             query = query.filter(Opportunity.opportunity_id == flt.opportunity_id)
+        if flt.no_close_date:
+            query = query.filter(Opportunity.close_date.is_(None))
         if flt.stage_ids is not None:
             query = query.filter(Opportunity.stage_id.in_(flt.stage_ids))
         if flt.stale_before is not None:

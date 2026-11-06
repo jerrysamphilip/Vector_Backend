@@ -130,6 +130,10 @@ def test_date_field_and_bounds():
         d.check_date_field(obj, "occurred_at")
     assert d.date_bounds(date(2025, 5, 1), date(2025, 5, 31)) == (datetime(2025, 5, 1), datetime(2025, 6, 1))
     assert d.date_bounds(None, None) == (None, None)
+    assert d.date_bounds(date(2025, 5, 1), date(2025, 5, 1)) == (datetime(2025, 5, 1), datetime(2025, 5, 2))
+    with pytest.raises(d.ReportInputError, match="date_from is after date_to") as exc:
+        d.date_bounds(date(2025, 5, 31), date(2025, 5, 1))
+    assert exc.value.status == 400
 
 
 FIELDS = {"name": "Name", "seats": "Seats", "day": "Day", "kind": "Kind", "owner": "Owner"}

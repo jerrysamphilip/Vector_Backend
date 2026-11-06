@@ -346,7 +346,9 @@ class SalesRules:
             next_step=clean_str(data.get("next_step")) or lead.next_step, created_by=user.user_id,
             campaign_id=lead.campaign_id or self.source_campaign(lead.prospect_id, lead.created_at),
         )
-        self.apply_stage(opp, stage_id)
+        if stage_status(self.apply_stage(opp, stage_id)) != "OPEN":
+            # A won/lost deal needs its close reason (BR-SF-05): convert into an open stage, then close the deal.
+            raise BadRequestError("A lead converts into an open stage; close the deal afterwards to record why")
         self.repos.opportunities.add(opp)
         self.repos.opportunities.flush()
         lead.stage, lead.opportunity_id = "CONVERTED", opp.opportunity_id

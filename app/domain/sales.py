@@ -308,6 +308,7 @@ class OpportunityFilter:
     client_type: Optional[str] = None
     close_from: Optional[date] = None
     close_to: Optional[date] = None
+    no_close_date: bool = False     # only deals without a close date (the forecast's undated tile)
     search: Optional[str] = None
     account_id: Optional[str] = None
     prospect_id: Optional[str] = None
@@ -321,9 +322,10 @@ class OpportunityFilter:
                     stage_id: Optional[str] = None, client_type: Optional[str] = None,
                     close_from: Optional[date] = None, close_to: Optional[date] = None, q: Optional[str] = None,
                     account_id: Optional[str] = None, prospect_id: Optional[str] = None,
-                    opportunity_id: Optional[str] = None) -> OpportunityFilter:
+                    opportunity_id: Optional[str] = None, no_close_date: bool = False) -> OpportunityFilter:
         return cls(owner_id=resolve_owner(owner, user_id), statuses=split_csv(status), stage_id=stage_id or None,
                    client_type=client_type or None, close_from=close_from, close_to=close_to,
+                   no_close_date=no_close_date,
                    search=search_term(q), account_id=account_id or None, prospect_id=prospect_id or None,
                    opportunity_id=opportunity_id or None)
 
