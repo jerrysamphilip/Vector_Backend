@@ -30,6 +30,42 @@
     ],
     "title": "AcceptInviteRequest"
    },
+   "AccountBulkAction": {
+    "properties": {
+     "account_ids": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "maxItems": 5000,
+      "minItems": 1,
+      "title": "Account Ids"
+     },
+     "action": {
+      "type": "string",
+      "title": "Action"
+     },
+     "owner_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 36
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Owner Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "account_ids",
+     "action"
+    ],
+    "title": "AccountBulkAction",
+    "description": "POST /accounts/bulk (CM-36, BR-CM-36): the selected companies and the change; only assign_owner so far."
+   },
    "AccountUpdate": {
     "properties": {
      "name": {
@@ -1659,6 +1695,12 @@
       "description": "Wait days between steps count business days (F-04)",
       "default": false
      },
+     "unsubscribe_mode": {
+      "type": "string",
+      "title": "Unsubscribe Mode",
+      "description": "'plain' or 'html' \u2014 controls unsubscribe footer style",
+      "default": "plain"
+     },
      "sending_mode": {
       "type": "string",
       "title": "Sending Mode",
@@ -2886,6 +2928,16 @@
      "total_sent": {
       "type": "integer",
       "title": "Total Sent"
+     },
+     "total_cancelled": {
+      "type": "integer",
+      "title": "Total Cancelled",
+      "default": 0
+     },
+     "total_failed": {
+      "type": "integer",
+      "title": "Total Failed",
+      "default": 0
      }
     },
     "type": "object",
@@ -3920,6 +3972,18 @@
       ],
       "title": "Poc Country"
      },
+     "timezone": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 50
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Timezone"
+     },
      "lifecycle_stage": {
       "anyOf": [
        {
@@ -4182,6 +4246,18 @@
        }
       ],
       "title": "Poc Country"
+     },
+     "timezone": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 50
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Timezone"
      },
      "lifecycle_stage": {
       "anyOf": [
@@ -14356,6 +14432,51 @@
    }
   },
   {
+   "id": "POST /accounts/bulk",
+   "method": "POST",
+   "path": "/accounts/bulk",
+   "operationId": "bulk_update_accounts_accounts_bulk_post",
+   "tags": [
+    "Companies"
+   ],
+   "summary": "Bulk Update Accounts",
+   "params": [],
+   "body_required": true,
+   "body_content_type": "application/json",
+   "body_schema": {
+    "$ref": "#/components/schemas/AccountBulkAction"
+   },
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.accounts_router.bulk_update_accounts",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
    "id": "GET /accounts/deleted",
    "method": "GET",
    "path": "/accounts/deleted",
@@ -24085,6 +24206,59 @@
    }
   },
   {
+   "id": "GET /contacts/{prospect_id}/data-export",
+   "method": "GET",
+   "path": "/contacts/{prospect_id}/data-export",
+   "operationId": "contact_data_export_contacts__prospect_id__data_export_get",
+   "tags": [
+    "Contacts"
+   ],
+   "summary": "Contact Data Export",
+   "params": [
+    {
+     "name": "prospect_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "title": "Prospect Id"
+     }
+    }
+   ],
+   "body_required": false,
+   "body_content_type": null,
+   "body_schema": null,
+   "responses": {
+    "200": {},
+    "422": {
+     "$ref": "#/components/schemas/HTTPValidationError"
+    }
+   },
+   "roles": [
+    "ADMIN",
+    "AGENT",
+    "MANAGER",
+    "SUPER_ADMIN"
+   ],
+   "perms": [],
+   "auth_required": true,
+   "public": false,
+   "dangerous": false,
+   "platform_only": false,
+   "other_deps": [],
+   "handler": "app.routers.contacts_router.contact_data_export",
+   "in_introspection": true,
+   "guard": "roles=ADMIN,AGENT,MANAGER,SUPER_ADMIN",
+   "expect": {
+    "PLATFORM_ADMIN": false,
+    "SUPER_ADMIN": true,
+    "ADMIN": true,
+    "MANAGER": true,
+    "AGENT": true,
+    "AGENT_NOPERM": true
+   }
+  },
+  {
    "id": "GET /contacts/{prospect_id}/emails",
    "method": "GET",
    "path": "/contacts/{prospect_id}/emails",
@@ -29696,6 +29870,16 @@
      }
     },
     {
+     "name": "no_close_date",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "boolean",
+      "default": false,
+      "title": "No Close Date"
+     }
+    },
+    {
      "name": "sort_by",
      "in": "query",
      "required": false,
@@ -34041,6 +34225,17 @@
       ],
       "title": "Member"
      }
+    },
+    {
+     "name": "sort",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "string",
+      "pattern": "^(revenue|attainment)$",
+      "default": "revenue",
+      "title": "Sort"
+     }
     }
    ],
    "body_required": false,
@@ -34210,6 +34405,40 @@
        }
       ],
       "title": "Member"
+     }
+    },
+    {
+     "name": "date_from",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date From"
+     }
+    },
+    {
+     "name": "date_to",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date To"
      }
     }
    ],

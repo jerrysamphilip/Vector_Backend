@@ -346,6 +346,7 @@ export async function run(rec, browser) {
     const row = sql(`SELECT CONCAT_WS('|',first_name,last_name,designation,company_name,poc_city,lead_source,JSON_UNQUOTE(JSON_EXTRACT(tags,'$[0]')),IF(account_id IS NULL,'noacct','acct'),owner_id) FROM prospects WHERE prospect_id='${newId}'`);
     eq(row, `Brand|New|Head of Ops|Newco Industries|Austin|Trade show|vip|acct|${t.owner.userId}`, 'DB row');
     eq(dbn(`SELECT COUNT(*) FROM accounts WHERE tenant_id='${t.tenantId}' AND name='Newco Industries' AND deleted_at IS NULL`), 1, 'account created');
+    await p.getByRole('heading', { name: 'Brand New' }).waitFor({ timeout: 8000 }).catch(() => {});  // URL changes before the record renders
     ok(await p.getByRole('heading', { name: 'Brand New' }).isVisible(), 'detail page heading');
   }, { u: A });
 
