@@ -90,7 +90,7 @@ def test_add_business_days():
     assert bc.add_business_days(datetime(2026, 11, 23, 9, 0), 5) == datetime(2026, 12, 1, 9, 0)
 
 
-def test_batch_day_start_counts_from_the_first_business_day():
+def test_batch_day_start_counts_from_the_first_business_day(weekdays_only):
     # Start on Saturday 2026-11-07: batches Mon 9, Tue 10, [Wed 11 Veterans Day] Thu 12, Fri 13, Mon 16 (OUT-031)
     sat = datetime(2026, 11, 7, 0, 0)
     days = [bc.batch_day_start(sat, n) for n in range(1, 5)]
@@ -282,6 +282,41 @@ def test_schedule_batch_overflow_uses_weekends_and_holidays_under_send_on_any_da
     assert _batch_at(christmas_eve, 2) == datetime(2026, 12, 25, 14, 0)
     monkeypatch.setattr(settings, "ENVIRONMENT", "production")
     assert _batch_at(fri, 2) == datetime(2026, 10, 19, 13, 0)
+
+
+@pytest.fixture
+def any_day(monkeypatch):
+    monkeypatch.setattr(settings, "SEND_ON_ANY_DAY", True)
+    monkeypatch.setattr(settings, "ENVIRONMENT", "test")
+
+
+def test_first_batch_day_follows_send_on_any_day(any_day, monkeypatch):
+    """The planner's first day uses the same rule as the overflow and the send-window check."""
+    sat = datetime(2026, 10, 17, 11, 0)  # 07:00 New York, Saturday
+    first = bc.schedule_email_in_window(sat, NY, time(9), time(17), "spread", prospect_index=0, total_prospects=1)
+    assert first == datetime(2026, 10, 17, 13, 0)
+    assert bc.is_within_send_window(first, NY, time(9), time(17))
+    late_fri = datetime(2026, 10, 16, 22, 0)  # 18:00 New York, after the window: next day is Saturday
+    assert bc.schedule_email_in_window(late_fri, NY, time(9), time(17)) == datetime(2026, 10, 17, 13, 0)
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    assert bc.schedule_email_in_window(sat, NY, time(9), time(17)) == datetime(2026, 10, 19, 13, 0)  # Mon
+    assert bc.schedule_email_in_window(late_fri, NY, time(9), time(17)) == datetime(2026, 10, 19, 13, 0)
+
+
+def test_first_batch_day_skips_weekends_and_holidays_by_default(weekdays_only):
+    sat = datetime(2026, 10, 17, 11, 0)
+    assert bc.schedule_email_in_window(sat, NY, time(9), time(17)) == datetime(2026, 10, 19, 13, 0)
+    christmas = datetime(2026, 12, 25, 12, 0)
+    assert bc.schedule_email_in_window(christmas, NY, time(9), time(17)) == datetime(2026, 12, 28, 14, 0)
+
+
+def test_batch_day_start_uses_every_day_under_send_on_any_day(any_day, monkeypatch):
+    sat = datetime(2026, 11, 7, 0, 0)  # Veterans Day Wed 11 is a sending day too
+    assert [bc.batch_day_start(sat, n) for n in range(5)] == [
+        sat, datetime(2026, 11, 8), datetime(2026, 11, 9), datetime(2026, 11, 10), datetime(2026, 11, 11)]
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    assert [bc.batch_day_start(sat, n) for n in range(1, 5)] == [
+        datetime(2026, 11, 10), datetime(2026, 11, 12), datetime(2026, 11, 13), datetime(2026, 11, 16)]
 
 
 def test_schedule_batch_overflow_after_a_mid_window_launch():

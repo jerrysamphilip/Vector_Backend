@@ -231,6 +231,13 @@ def is_sending_day(dt: datetime) -> bool:
     return sends_on_any_day() or is_business_day(dt)
 
 
+def next_sending_day(dt: datetime) -> datetime:
+    """``dt`` moved to the first sending day on or after it (time of day kept): the next business day, or
+    ``dt`` itself under SEND_ON_ANY_DAY. The send-window planner, the batch overflow and the daily paced
+    batches all use this, the same rule is_within_send_window applies."""
+    return dt if sends_on_any_day() else get_next_business_day(dt)[0]
+
+
 def get_next_business_day(dt: datetime, max_iterations: int = 30) -> Tuple[datetime, Optional[str]]:
     """
     Get the next US business day (skipping weekends and US holidays).
@@ -289,12 +296,16 @@ def add_business_days(dt: datetime, n: int) -> datetime:
 def batch_day_start(base: datetime, day_offset: int) -> datetime:
     """Base time of the daily batch number ``day_offset`` (0 = first) of a paced launch.
 
-    Batches are counted from the first business day on or after ``base``. Counting from ``base`` itself
-    put batches 0 and 1 on the same day when the start date is a weekend or holiday (batch 0 is pushed to
-    the next business day by the send-window planner, batch 1 lands there too)."""
+    Batches are counted from the first sending day on or after ``base`` and land on consecutive sending
+    days (business days; every day under SEND_ON_ANY_DAY). Counting from ``base`` itself put batches 0 and
+    1 on the same day when the start date is a weekend or holiday (batch 0 is pushed to the next business
+    day by the send-window planner, batch 1 lands there too)."""
     if day_offset <= 0:
         return base
-    return add_business_days(add_business_days(base, 0), day_offset)
+    current = next_sending_day(base)
+    for _ in range(day_offset):
+        current = next_sending_day(current + timedelta(days=1))
+    return current
 
 
 def calculate_send_time(
@@ -591,7 +602,7 @@ def _window_start_on(day: date, start: time, tz: ZoneInfo) -> datetime:
     """The send window's start (local, aware) on the first sending day on or after ``day``: the next business
     day, or ``day`` itself under SEND_ON_ANY_DAY (the rule is_within_send_window applies)."""
     candidate = datetime(day.year, day.month, day.day, start.hour, start.minute, 0, tzinfo=tz)
-    return candidate if sends_on_any_day() else get_next_business_day(candidate)[0]
+    return next_sending_day(candidate)
 
 
 def _spread_offset(index: int, total: int, min_gap: int, window_minutes: Optional[int]) -> float:
@@ -724,7 +735,7 @@ def schedule_email_in_window(
         send_window_start.hour, send_window_start.minute,
         tzinfo=tz,
     )
-    candidate, _ = get_next_business_day(candidate)
+    candidate = next_sending_day(candidate)
     base_date = candidate.date()
 
     window_start_local = datetime(
@@ -750,7 +761,7 @@ def schedule_email_in_window(
                 send_window_start.hour, send_window_start.minute, 0,
                 tzinfo=tz,
             )
-            next_candidate, _ = get_next_business_day(next_candidate)
+            next_candidate = next_sending_day(next_candidate)
             base_date = next_candidate.date()
             origin_local = next_candidate
             if send_window_end:
@@ -776,7 +787,7 @@ def schedule_email_in_window(
                     send_window_start.hour, send_window_start.minute, 0,
                     tzinfo=tz,
                 )
-                next_candidate, _ = get_next_business_day(next_candidate)
+                next_candidate = next_sending_day(next_candidate)
                 base_date = next_candidate.date()
                 origin_local = next_candidate
                 window_close_local = datetime(
@@ -821,7 +832,7 @@ def schedule_email_in_window(
                 send_window_start.hour, send_window_start.minute, 0,
                 tzinfo=tz,
             )
-            next_candidate, _ = get_next_business_day(next_candidate)
+            next_candidate = next_sending_day(next_candidate)
             send_local = next_candidate
 
     utc_time = send_local.astimezone(ZoneInfo("UTC"))
