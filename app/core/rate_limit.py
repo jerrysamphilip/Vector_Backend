@@ -1,7 +1,7 @@
 # app/core/rate_limit.py
 """
-In-memory rate limiting (BR-DF-09). slowapi isn't available on every package index this
-project builds from, so this is a small sliding-window limiter with no dependencies.
+Rate limiting (BR-DF-09): a small sliding-window limiter with no dependencies (slowapi isn't available on
+every package index this project builds from).
 
 - Sign-in: failed passwords are counted per (email, client IP) pair, which locks only that pair,
   plus a higher per-email backstop across all IPs; all attempts are also counted per client IP.
@@ -14,14 +14,29 @@ project builds from, so this is a small sliding-window limiter with no dependenc
   against the real limits in a separate bucket, so the rate-limit tests still see them. The setting is
   refused at start-up in production (app/core/config.py) and ignored there as well.
 
-Counters live in the API process, which is enough for the single-replica deployment. With
-several replicas, move them to Redis so limits are shared.
+Where the counters live (DEC-09, ADR 0002): the API runs several replicas, so every limit above is kept in
+MySQL (``rate_limit_counters``; app/services/rate_limit_store.py, installed by app.main with ``configure``)
+and is shared by all processes: the 10-wrong-password lockout is 10 in total, not 10 per replica. The table
+holds one row per bucket and time slot (a window is cut into about 15 slots, see ``slot_seconds``), so a
+hit is one ``INSERT ... ON DUPLICATE KEY UPDATE`` and a short read of the bucket's live slots. A hit is
+counted while its slot overlaps the window, i.e. up to one slot (1/15 of the window) longer than an exact
+sliding window: never shorter. When the database cannot be reached, the limiter falls back to the
+in-memory counters of this process (the pre-DEC-09 behaviour: limits per process) and logs an ERROR at
+most once a minute; it never lets requests through unlimited.
+
+Not shared on purpose: the global per-IP ceiling (RateLimitMiddleware) stays in process memory. It is a
+coarse flood guard on every request; a database write per request would turn a flood into database load.
+Its effective value is GLOBAL_PER_IP x API replicas (docs/OPERATIONS.md section 6).
+
+Processes that never call ``configure`` (unit tests, scripts) use the in-memory limiter.
 """
 
-from typing import Deque, Dict, NoReturn
+import logging
+import math
 import threading
 import time
 from collections import defaultdict, deque
+from typing import Deque, Dict, NoReturn, Optional, Protocol, Sequence, Tuple
 
 from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -29,8 +44,25 @@ from starlette.responses import JSONResponse, Response
 
 from app.core.config import settings
 
+logger = logging.getLogger("app.rate_limit")
+
+
+class RateLimitStore(Protocol):
+    """Counters behind the limits. ``hit`` records one hit unless the key is at its limit and returns the
+    seconds to wait (0 = allowed); ``blocked`` only reads; ``reset`` forgets the key; ``clear`` forgets all."""
+
+    def hit(self, key: str, limit: int, window: int) -> int: ...
+
+    def blocked(self, key: str, limit: int, window: int) -> int: ...
+
+    def reset(self, key: str) -> None: ...
+
+    def clear(self) -> None: ...
+
 
 class SlidingWindowLimiter:
+    """In-memory store (per process): exact sliding window over monotonic timestamps."""
+
     def __init__(self) -> None:
         self._hits: Dict[str, Deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
@@ -65,8 +97,109 @@ class SlidingWindowLimiter:
         with self._lock:
             self._hits.pop(key, None)
 
+    def clear(self) -> None:
+        with self._lock:
+            self._hits.clear()
 
-limiter = SlidingWindowLimiter()
+
+# ── Slot math of the shared (database) store: pure, unit tested in tests/unit/test_rate_limit.py ──
+
+SLOTS_PER_WINDOW = 15
+
+
+def slot_seconds(window: int) -> int:
+    """Length of one counter slot for a window (at least one second)."""
+    return max(1, int(window) // SLOTS_PER_WINDOW)
+
+
+def slot_start(now: float, window: int) -> int:
+    """Start (epoch seconds) of the slot ``now`` falls in."""
+    size = slot_seconds(window)
+    return int(now // size) * size
+
+
+def live_after(now: float, window: int) -> float:
+    """A slot still counts while it starts after this: part of it is inside the window."""
+    return now - window - slot_seconds(window)
+
+
+def slot_expiry(start: int, window: int) -> int:
+    """When a slot stops counting (and its row may be deleted)."""
+    return start + slot_seconds(window) + int(window)
+
+
+def retry_after(slots: Sequence[Tuple[int, int]], limit: int, window: int, now: float) -> int:
+    """Seconds until fewer than ``limit`` hits are live, given (slot start, hits) pairs; 0 when already
+    below the limit. Slots leave oldest first, each at ``slot_expiry``."""
+    live = sorted((start, hits) for start, hits in slots if slot_expiry(start, window) > now and hits > 0)
+    excess = sum(hits for _, hits in live) - limit + 1
+    if excess <= 0:
+        return 0
+    for start, hits in live:
+        excess -= hits
+        if excess <= 0:
+            return max(1, math.ceil(slot_expiry(start, window) - now))
+    return max(1, math.ceil(slot_expiry(live[-1][0], window) - now)) if live else 1  # limit < 1
+
+
+class FallbackLimiter:
+    """The shared store, with this process's in-memory counters when the store fails (logged, never silent)."""
+
+    LOG_EVERY_SECONDS = 60.0
+
+    def __init__(self, primary: RateLimitStore, fallback: Optional[SlidingWindowLimiter] = None) -> None:
+        self.primary = primary
+        self.fallback = fallback or SlidingWindowLimiter()
+        self._last_log = -math.inf
+
+    def _degraded(self, exc: Exception) -> SlidingWindowLimiter:
+        now = time.monotonic()
+        if now - self._last_log >= self.LOG_EVERY_SECONDS:
+            self._last_log = now
+            logger.error("Rate-limit store unavailable (%s): using this process's in-memory counters "
+                         "(limits per process until the database is back)", type(exc).__name__)
+        return self.fallback
+
+    def hit(self, key: str, limit: int, window: int) -> int:
+        try:
+            return self.primary.hit(key, limit, window)
+        except Exception as exc:  # noqa: BLE001 - any store failure degrades to per-process limits
+            return self._degraded(exc).hit(key, limit, window)
+
+    def blocked(self, key: str, limit: int, window: int) -> int:
+        try:
+            return self.primary.blocked(key, limit, window)
+        except Exception as exc:  # noqa: BLE001
+            return self._degraded(exc).blocked(key, limit, window)
+
+    def reset(self, key: str) -> None:
+        self.fallback.reset(key)
+        try:
+            self.primary.reset(key)
+        except Exception as exc:  # noqa: BLE001
+            self._degraded(exc)
+
+    def clear(self) -> None:
+        self.fallback.clear()
+        self.primary.clear()
+
+
+limiter: RateLimitStore = SlidingWindowLimiter()
+# The global per-IP ceiling: per process on purpose (see the module docstring)
+ceiling_limiter = SlidingWindowLimiter()
+
+
+def configure(store: RateLimitStore) -> None:
+    """Install the shared store (app.main: the MySQL counters) behind the sign-in, reset, register and
+    two-factor limits, with the in-memory counters as the fallback."""
+    global limiter
+    limiter = FallbackLimiter(store)
+
+
+def clear_all() -> None:
+    """Forget every counter (functional tests and the system-test runner between suites)."""
+    limiter.clear()
+    ceiling_limiter.clear()
 
 LOGIN_FAILURES_PER_EMAIL_IP = (10, 15 * 60)   # 10 wrong passwords per 15 min for one email from one IP
 LOGIN_FAILURES_PER_EMAIL = (50, 15 * 60)      # backstop: 50 per 15 min for one email across all IPs
@@ -190,7 +323,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if not request.url.path.startswith(self.EXEMPT):
             key, limit = _ip_bucket(request, f"global:{client_ip(request)}", GLOBAL_PER_IP)
-            wait = limiter.hit(key, *limit)
+            wait = ceiling_limiter.hit(key, *limit)
             if wait:
                 return JSONResponse({"detail": "Too many requests. Please slow down."},
                                     status_code=429, headers={"Retry-After": str(wait)})

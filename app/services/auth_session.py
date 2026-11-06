@@ -9,6 +9,7 @@ of work and commits it when the session is issued.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any, Optional
 
 from app.core.clock import utcnow
@@ -59,7 +60,14 @@ def issue_session(uow: IdentityUnitOfWork, user: Any, device_info: Optional[str]
     lineage: the session a rotated token belongs to (refresh); None starts a new session (sign-in)."""
     now = utcnow()
     lineage = lineage or session_limits.new_lineage(now)
-    access_token = create_access_token(user.user_id, user.tenant_id, user.role)
+    # The access token ends no later than the session's idle / absolute deadline (ADR 0007)
+    access_until = session_limits.access_expiry(
+        now=now, session_started_at=lineage.session_started_at, last_activity_at=lineage.last_activity_at,
+        access_ttl=session_limits.access_ttl(), absolute=session_limits.absolute_limit(),
+        idle=session_limits.idle_limit())
+    # (at least 1 s: create_access_token reads a zero delta as "the default lifetime")
+    access_token = create_access_token(user.user_id, user.tenant_id, user.role,
+                                       expires_delta=max(access_until - now, timedelta(seconds=1)))
     raw_refresh = generate_refresh_token()
     uow.tokens.add_refresh(
         user_id=user.user_id,

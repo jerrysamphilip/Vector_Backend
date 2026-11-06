@@ -1,13 +1,14 @@
 """Session limits at POST /api/auth/refresh (ADR 0007): idle timeout, absolute cap, reuse detection."""
 
+import time
 from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
 from app.core.clock import utcnow
-from app.core.security import hash_token
+from app.core.security import decode_access_token, hash_token
 from app.main import app
-from tests.conftest import register_tenant, sql
+from tests.conftest import auth, register_tenant, sql
 
 COOKIE_MODE = {"X-Auth-Mode": "cookie"}
 ACTIVITY = "X-User-Activity"
@@ -191,3 +192,47 @@ def test_logout_marks_the_reason_and_replay_is_refused(client):
     assert row(token, "revoked_reason") == "logout"
     r = refresh(client, token)
     assert r.status_code == 401 and r.json()["detail"]["code"] == "REFRESH_TOKEN_REUSED"
+
+
+# ── The access path honours the limits too (F3): an access token never outlives its session ──
+
+def _lifetime(access_token: str) -> float:
+    return decode_access_token(access_token)["exp"] - time.time()
+
+
+def test_idle_session_gets_401_on_the_next_api_call_not_only_at_refresh(client):
+    t = register_tenant(client, "sl9")
+    tokens = body_login(client, t)
+    assert 29 * 60 <= _lifetime(tokens["access_token"]) <= 30 * 60 + 1     # fresh sign-in: full lifetime
+
+    # Last interaction 29 min 55 s ago; background polling refreshes (no activity report)
+    shift(tokens["refresh_token"], "last_activity_at", 30 - 5 / 60)
+    r = refresh(client, tokens["refresh_token"])
+    assert r.status_code == 200, r.text
+    access, refresh_token = r.json()["access_token"], r.json()["refresh_token"]
+    lifetime = _lifetime(access)
+    assert 0 < lifetime <= 6                    # ends at the idle deadline, not 30 minutes later
+    assert client.get("/api/auth/me", headers=auth(access)).status_code == 200
+    time.sleep(lifetime + 1.1)
+    r = client.get("/api/auth/me", headers=auth(access))
+    assert r.status_code == 401                 # the idle session is over on the access path
+    r = refresh(client, refresh_token)
+    assert r.status_code == 401 and r.json()["detail"]["code"] == "SESSION_IDLE_TIMEOUT"
+
+
+def test_reported_activity_gives_the_access_token_its_full_lifetime(client):
+    t = register_tenant(client, "sl10")
+    tokens = body_login(client, t)
+    shift(tokens["refresh_token"], "last_activity_at", 29)
+    r = refresh(client, tokens["refresh_token"], {ACTIVITY: "0"})          # the user is active
+    assert r.status_code == 200, r.text
+    assert 29 * 60 <= _lifetime(r.json()["access_token"]) <= 30 * 60 + 1
+
+
+def test_access_token_never_outlives_the_absolute_cap(client):
+    t = register_tenant(client, "sl11")
+    tokens = body_login(client, t)
+    shift(tokens["refresh_token"], "session_started_at", 12 * 60 - 2)      # 2 minutes of session left
+    r = refresh(client, tokens["refresh_token"], {ACTIVITY: "0"})
+    assert r.status_code == 200, r.text
+    assert 60 <= _lifetime(r.json()["access_token"]) <= 2 * 60 + 1

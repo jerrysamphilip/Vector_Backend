@@ -7,15 +7,26 @@ contact counts against its owner, or the campaign's creator when unowned.
 Follow-up steps never count and keep sending after the limit is reached. Over
 the limit, the first-step email is held and re-queued for the next day; the
 user sees how many were held (status_for / GET /sales-reports/daily-limit).
+
+The senders (the worker's scheduler and send-now in every API replica) reserve a slot before each
+first-step send through DailyLimiter, whose per-user, per-day counter is shared by every process
+(DEC-09): a ``dnc:<day>:<user>`` counter in platform_flags, seeded on first use of the day with the
+first steps already sent that day (email_messages), then raised by one atomic conditional UPDATE per
+reservation, so N processes together never pass the limit. A send that does not go out releases its slot.
 """
+import logging
 from datetime import date, datetime, time, timedelta
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 from app.core.clock import utcnow
 from app.core.config import settings
+from app.core.database import SessionLocal
 from app.models.email_message import EmailMessage
 from app.models.user import User
 from app.repositories.daily_limit import Session, daily_limit_repo
+from app.repositories.platform_flags import PlatformFlagRepository
+
+logger = logging.getLogger(__name__)
 
 HELD_CODE = "DAILY_NEW_CONTACT_LIMIT"
 
@@ -51,27 +62,71 @@ def next_day_start() -> datetime:
     return datetime.combine(utcnow().date() + timedelta(days=1), time.min)
 
 
-class DailyLimiter:
-    """Per-process reservation counter used by the scheduler. Reserving does no awaits,
-    so parallel inbox queues on the one event loop can never overshoot the limit."""
+COUNTER_PREFIX = "dnc:"
 
-    def __init__(self) -> None:
-        self._counts: Dict[Tuple[str, date], int] = {}
+
+def counter_name(user_id: str, day: date) -> str:
+    """The shared counter of one user's day (sorts by day, so old days can be range-deleted)."""
+    return f"{COUNTER_PREFIX}{day.isoformat()}:{user_id}"
+
+
+class DailyLimiter:
+    """Reservations against the daily new-contact limit, shared by every process (module docstring).
+
+    If the shared counter cannot be used (database error), it falls back to counting in this process
+    (seeded from the sends of the day, as before DEC-09) and logs an ERROR: degraded to a per-process
+    limit, never unlimited."""
+
+    def __init__(self, session_factory: Callable[[], Session] = SessionLocal) -> None:
+        self._session_factory = session_factory
+        self._counts: Dict[Tuple[str, date], int] = {}  # fallback only
+        self._purged_day: Optional[date] = None
 
     def reserve(self, db: Session, user_id: str) -> bool:
-        key = (user_id, utcnow().date())
+        day = utcnow().date()
+        try:
+            return self._reserve_shared(db, user_id, day)
+        except Exception as exc:  # noqa: BLE001 - degrade to the per-process counter, loudly
+            logger.error("Daily new-contact limit: shared counter unavailable (%s); counting in this "
+                         "process only", type(exc).__name__)
+            return self._reserve_local(db, user_id, day)
+
+    def _reserve_shared(self, db: Session, user_id: str, day: date) -> bool:
+        name = counter_name(user_id, day)
+        with self._session_factory() as s:
+            flags = PlatformFlagRepository(s)
+            if flags.get(name) is None:
+                flags.ensure_counter(name, sent_today(db, user_id, day))
+            ok = flags.increment_below(name, settings.DAILY_NEW_CONTACT_LIMIT)
+            if self._purged_day != day:  # first reservation of the day here: drop counters before yesterday
+                flags.remove_range(COUNTER_PREFIX, counter_name("", day - timedelta(days=1)))
+            s.commit()
+        self._purged_day = day
+        return ok
+
+    def _reserve_local(self, db: Session, user_id: str, day: date) -> bool:
+        key = (user_id, day)
         if key not in self._counts:
-            self._counts = {k: v for k, v in self._counts.items() if k[1] == key[1]}  # drop old days
-            self._counts[key] = sent_today(db, user_id, key[1])
+            self._counts = {k: v for k, v in self._counts.items() if k[1] == day}  # drop old days
+            self._counts[key] = sent_today(db, user_id, day)
         if self._counts[key] >= settings.DAILY_NEW_CONTACT_LIMIT:
             return False
         self._counts[key] += 1
         return True
 
     def release(self, user_id: str) -> None:
-        key = (user_id, utcnow().date())
-        if self._counts.get(key):
+        day = utcnow().date()
+        key = (user_id, day)
+        if self._counts.get(key):  # reserved through the fallback
             self._counts[key] -= 1
+            return
+        try:
+            with self._session_factory() as s:
+                PlatformFlagRepository(s).adjust(counter_name(user_id, day), -1)
+                s.commit()
+        except Exception as exc:  # noqa: BLE001 - the slot stays used: fewer sends today, never more
+            logger.error("Daily new-contact limit: could not release a slot for %s (%s)", user_id,
+                         type(exc).__name__)
 
 
 def is_first_step(db: Session, email_msg: EmailMessage) -> bool:

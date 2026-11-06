@@ -30,9 +30,13 @@ from app.core.json_encoding import install_utc_datetime_encoder
 import app.models  # noqa: F401
 from app.core import auth as core_auth  # noqa: E402
 from app.services.auth_store import SqlAlchemyAuthStore  # noqa: E402
+from app.core import rate_limit as core_rate_limit  # noqa: E402
+from app.services.rate_limit_store import DatabaseRateLimitStore  # noqa: E402
 
 # Authentication reads users / revocations / tenant flags through this store (app.core is below models)
 core_auth.configure(SqlAlchemyAuthStore())
+# Sign-in lockout and auth rate limits are counted in MySQL, shared by every API replica (DEC-09)
+core_rate_limit.configure(DatabaseRateLimitStore())
 # Trigger reload
  
 from app.routers import campaign_router, template_router

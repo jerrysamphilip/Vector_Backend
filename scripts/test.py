@@ -589,7 +589,7 @@ def chk_rate_limits():
     if started:
         msgs.append(f"{CFG['API_CONTAINER']} up for {fmt_secs(time.time() - started)}")
     return Check("rate_limits", level, "; ".join(msgs),
-                 f"docker restart {CFG['API_CONTAINER']} clears the in-memory limiter (or use run --restart-api-between)"
+                 "run --restart-api-between restarts the API and clears the rate_limit_counters table"
                  if level == "warn" else "")
 
 
@@ -812,11 +812,16 @@ def wait_api(seconds):
 
 
 def restart_api():
-    say(c(f"   restarting {CFG['API_CONTAINER']} to clear the in-memory rate limiter ...", "dim"))
+    say(c(f"   restarting {CFG['API_CONTAINER']} to clear the rate limiter ...", "dim"))
     rc, out = sh(["docker", "restart", CFG["API_CONTAINER"]], timeout=180)
     if rc != 0:
         say(c("   warning: ", "yellow") + f"restart failed: {out.strip()[:200]}")
         return False
+    # The sign-in / sign-up counters live in MySQL since DEC-09 (the global ceiling is still in memory)
+    app_db = CFG["APP_DB"] if re.fullmatch(r"[A-Za-z0-9_]{1,64}", CFG["APP_DB"]) else ""
+    rc, out = db_exec(f"DELETE FROM `{app_db}`.rate_limit_counters") if app_db else (1, "invalid MYSQL_DATABASE")
+    if rc != 0 and "doesn't exist" not in out:
+        say(c("   warning: ", "yellow") + f"could not clear rate_limit_counters: {out.strip()[:200]}")
     ok = wait_api(180)
     _CONTAINER_ENV.pop(CFG["API_CONTAINER"], None)
     say(c("   API healthy again." if ok else "   warning: API not healthy 180 s after the restart", "dim" if ok else "yellow"))
@@ -2398,7 +2403,7 @@ def main(argv=None):
     p.add_argument("--keep-going", action="store_true", help="continue after a suite fails or errors")
     p.add_argument("--dry-run", action="store_true", help="print the plan, commands and prerequisite status only")
     p.add_argument("--restart-api-between", action="store_true",
-                   help="docker restart the API between live-stack suites (clears the in-memory rate limiter)")
+                   help="docker restart the API between live-stack suites (clears the rate limiter: in-memory ceiling and rate_limit_counters)")
     p.add_argument("--pause", type=int, default=0, help="seconds to wait between live-stack suites")
     p.add_argument("--where", choices=["auto", "host", "docker"], default="auto", help="where pytest layers run")
     p.add_argument("--keep-db", action="store_true", help="functional: do not recreate the throwaway database first")

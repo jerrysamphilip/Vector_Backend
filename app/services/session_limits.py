@@ -14,8 +14,11 @@ and carries ``session_started_at`` and ``last_activity_at`` forward through rota
   REFRESH_REUSE_GRACE_SECONDS ago is a benign race (two tabs refreshing at once): refused, nothing
   revoked, the browser's cookies (already holding the winner's tokens) are left alone.
 
-The limits are checked when the access token is renewed, so they bite within one access-token
-lifetime (ACCESS_TOKEN_EXPIRE_MINUTES): an idle browser keeps its current access token until it expires.
+The limits are checked when the access token is renewed, and every access token is issued to expire no
+later than its session's limits allow (``access_expiry``: the earliest of ACCESS_TOKEN_EXPIRE_MINUTES, the
+absolute cap and ``last_activity_at + SESSION_IDLE_MINUTES``). So an idle or capped session gets 401 on its
+next API call at the limit itself, not up to one access-token lifetime later; an active user's SPA simply
+refreshes on that 401, reporting the activity, and carries on.
 
 The decision functions are pure (unit tested in tests/unit/test_session_limits.py); ``begin_refresh``
 applies them through the identity unit of work (SQL in app/repositories/identity_tokens.py).
@@ -129,6 +132,12 @@ def refresh_expiry(*, now: datetime, session_started_at: datetime, refresh_ttl: 
     return min(now + refresh_ttl, session_started_at + absolute)
 
 
+def access_expiry(*, now: datetime, session_started_at: datetime, last_activity_at: datetime,
+                  access_ttl: timedelta, absolute: timedelta, idle: timedelta) -> datetime:
+    """An access token never outlives its session's absolute cap or idle deadline (as known at issue)."""
+    return max(now, min(now + access_ttl, session_started_at + absolute, last_activity_at + idle))
+
+
 def idle_message(idle: timedelta) -> str:
     minutes = int(idle.total_seconds() // 60)
     return f"Signed out after {minutes} minute{'s' if minutes != 1 else ''} of inactivity"
@@ -142,6 +151,10 @@ def absolute_limit() -> timedelta:
 
 def idle_limit() -> timedelta:
     return timedelta(minutes=settings.SESSION_IDLE_MINUTES)
+
+
+def access_ttl() -> timedelta:
+    return timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
 
 def reuse_grace() -> timedelta:
