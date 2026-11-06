@@ -226,3 +226,94 @@ def test_global_ceiling_is_relaxed_too(monkeypatch, clock):
     req = _request(host="2.2.2.2")
     key, limit = rl._ip_bucket(req, "global:2.2.2.2", rl.GLOBAL_PER_IP)
     assert (key, limit) == ("global:2.2.2.2", (rl.GLOBAL_PER_IP[0] * 2, rl.GLOBAL_PER_IP[1]))
+
+
+# ── Shared (database) store: slot math and the in-memory fallback (DEC-09) ──
+
+@pytest.mark.parametrize("window,size", [(60, 4), (300, 20), (900, 60), (3600, 240), (10, 1), (1, 1)])
+def test_slot_length_is_a_fifteenth_of_the_window(window, size):
+    assert rl.slot_seconds(window) == size
+
+
+def test_slot_start_and_expiry():
+    assert rl.slot_start(1_000_059.9, 900) == 1_000_020          # 60 s slots
+    assert rl.slot_expiry(1_000_020, 900) == 1_000_020 + 60 + 900
+    assert rl.live_after(1_000_059.9, 900) == pytest.approx(1_000_059.9 - 960)
+
+
+def test_retry_after_below_the_limit_is_zero():
+    assert rl.retry_after([], 10, 900, 1000.0) == 0
+    assert rl.retry_after([(960, 9)], 10, 900, 1000.0) == 0
+
+
+def test_retry_after_waits_for_the_oldest_slot_to_leave():
+    # 10 hits in the slot starting at 960 (60 s slots): it counts until 960 + 60 + 900 = 1920
+    assert rl.retry_after([(960, 10)], 10, 900, 1000.0) == 920
+    # Two slots: dropping the older one (4 hits, leaves at 1860) already gets below the limit
+    assert rl.retry_after([(960, 6), (900, 4)], 10, 900, 1000.0) == 860
+    # 12 live hits: the older slot (2) is not enough, the newer one has to go too
+    assert rl.retry_after([(900, 2), (960, 10)], 10, 900, 1000.0) == 920
+
+
+def test_retry_after_ignores_expired_and_empty_slots():
+    assert rl.retry_after([(0, 50), (960, 0), (960, 3)], 3, 900, 1000.0) == 920
+    assert rl.retry_after([(0, 50)], 3, 900, 1000.0) == 0
+
+
+def test_a_hit_counts_at_most_one_slot_longer_than_the_window():
+    hit_at = 960.0                                               # first second of its slot
+    start = rl.slot_start(hit_at, 900)
+    assert rl.retry_after([(start, 1)], 1, 900, hit_at) == 960   # window 900 + one 60 s slot
+    late = 1019.9                                                # last moment of the same slot
+    assert rl.retry_after([(start, 1)], 1, 900, late) == 901     # an exact window would say 900
+
+
+class _BrokenStore:
+    def __init__(self):
+        self.calls = 0
+
+    def _fail(self, *a):
+        self.calls += 1
+        raise ConnectionError("database down")
+
+    hit = blocked = reset = clear = _fail
+
+
+def test_fallback_limiter_degrades_to_in_memory_counters_and_logs(clock, caplog):
+    broken = _BrokenStore()
+    lim = rl.FallbackLimiter(broken)
+    with caplog.at_level("ERROR", logger="app.rate_limit"):
+        assert [lim.hit("k", 2, 60) for _ in range(2)] == [0, 0]
+        assert lim.hit("k", 2, 60) == 61                         # still limited: never fails open
+        assert lim.blocked("k", 2, 60) == 61
+        lim.reset("k")
+        assert lim.blocked("k", 2, 60) == 0
+    assert broken.calls == 6
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1 and "in-memory" in errors[0].getMessage()   # once a minute, not per call
+
+
+def test_fallback_limiter_uses_the_shared_store_when_it_works(clock):
+    shared = rl.SlidingWindowLimiter()                           # stands in for the database store
+    a, b = rl.FallbackLimiter(shared), rl.FallbackLimiter(shared)  # two replicas
+    assert a.hit("k", 2, 60) == 0 and b.hit("k", 2, 60) == 0
+    assert a.hit("k", 2, 60) > 0 and b.blocked("k", 2, 60) > 0
+
+
+def test_configure_installs_the_store_behind_the_sign_in_lockout(monkeypatch, clock):
+    shared = rl.SlidingWindowLimiter()
+    monkeypatch.setattr(rl, "limiter", rl.limiter)
+    rl.configure(shared)
+    assert isinstance(rl.limiter, rl.FallbackLimiter) and rl.limiter.primary is shared
+    _fail(10, "6.6.6.6")
+    with pytest.raises(HTTPException):
+        rl.check_login_allowed(_request(host="6.6.6.6"), "victim@x.example")
+
+
+def test_global_ceiling_is_kept_per_process(monkeypatch, clock):
+    """The flood guard is not routed through the shared store (one DB write per request)."""
+    monkeypatch.setattr(rl, "limiter", rl.FallbackLimiter(_BrokenStore()))
+    monkeypatch.setattr(rl, "ceiling_limiter", rl.SlidingWindowLimiter())
+    rl.ceiling_limiter.hit("global:1.1.1.1", 1, 60)
+    assert rl.ceiling_limiter.blocked("global:1.1.1.1", 1, 60) > 0
+    assert rl.limiter.fallback.blocked("global:1.1.1.1", 1, 60) == 0

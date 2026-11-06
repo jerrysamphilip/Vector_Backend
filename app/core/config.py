@@ -166,7 +166,8 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # Session limits (ADR 0007, app/services/session_limits.py), enforced when the refresh token is
-    # exchanged, so they take effect within one access-token lifetime (ACCESS_TOKEN_EXPIRE_MINUTES).
+    # exchanged; every access token also expires no later than its session's idle / absolute deadline,
+    # so they take effect on the next API call at the limit, not one access-token lifetime later.
     # SESSION_ABSOLUTE_HOURS: a sign-in lasts at most this long, however active the user is.
     # SESSION_IDLE_MINUTES: refresh is refused when the user has not interacted for this long
     #   (activity is reported by the SPA in the X-User-Activity header; background polling is not activity).

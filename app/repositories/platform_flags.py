@@ -40,8 +40,10 @@ class PlatformFlagRepository:
         self._session.execute(text("DELETE FROM platform_flags WHERE name = :n"), {"n": name})
 
     # counters (value holds an unsigned integer) --------------------------------------
-    def ensure_counter(self, name: str) -> None:
-        self._session.execute(text("INSERT IGNORE INTO platform_flags (name, value) VALUES (:n, '0')"), {"n": name})
+    def ensure_counter(self, name: str, initial: int = 0) -> None:
+        """Create the counter at ``initial`` unless it exists (then it is left as it is)."""
+        self._session.execute(text("INSERT IGNORE INTO platform_flags (name, value) VALUES (:n, :v)"),
+                              {"n": name, "v": str(max(int(initial), 0))})
 
     def add_within(self, name: str, amount: int, limit: int) -> bool:
         """Add ``amount`` when the result stays <= ``limit``; False (nothing changed) otherwise."""
@@ -56,6 +58,12 @@ class PlatformFlagRepository:
             text("UPDATE platform_flags SET value = CAST(value AS UNSIGNED) + 1 "
                  "WHERE name = :n AND CAST(value AS UNSIGNED) < :l"),
             {"n": name, "l": limit})) > 0
+
+    def remove_range(self, prefix: str, below: str) -> int:
+        """Delete the flags named ``prefix...`` that sort before ``below`` (old per-day counters)."""
+        result = self._session.execute(text("DELETE FROM platform_flags WHERE name LIKE :p AND name < :b"),
+                                       {"p": prefix.replace("%", r"\%").replace("_", r"\_") + "%", "b": below})
+        return _rowcount(result)
 
     def adjust(self, name: str, delta: int) -> None:
         """Add ``delta`` (may be negative), never below zero."""
