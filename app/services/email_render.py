@@ -169,7 +169,13 @@ def render_body(body_template: Optional[str], prospect: Any, ctx: RenderContext)
     kept (and a warning logged): an email is never emptied by its own cleanup rules.
     """
     body = substitute_placeholders(body_template or "", prospect, ctx)
-    rendered = finalize_email_body(body if has_effective_cta_link(ctx.cta_link) else strip_cta_content_no_link(body))
+    if has_effective_cta_link(ctx.cta_link):
+        rendered = finalize_email_body(body)
+    else:
+        # Strip CTA content from the template, while {{calendar_link}} / {{cta_link}} are still visible: once
+        # filled with an empty link the sentence around them ("Grab a time here:") can't be found any more.
+        stripped = strip_cta_content_no_link(body_template or "")
+        rendered = finalize_email_body(strip_cta_content_no_link(substitute_placeholders(stripped, prospect, ctx)))
     if has_visible_text(rendered) or not has_visible_text(body):
         return rendered
     logger.warning("Rendered email body has no visible text after the CTA / footer cleanup; keeping the "

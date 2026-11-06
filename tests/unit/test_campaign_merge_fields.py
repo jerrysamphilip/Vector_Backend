@@ -51,3 +51,23 @@ def test_missing_values_fall_back_without_leaving_placeholders():
     nobody = SimpleNamespace(**{k: None for k in vars(PAT)})
     out = substitute_placeholders("{{full_name}} {{your_name}} {{calendar_link}}", nobody, RenderContext(default_sender_name="Team"))
     assert out == "there Team "
+
+
+NO_LINK = RenderContext(sender_name="Ann Seller", cta_link="", default_sender_name="Team")
+
+
+@pytest.mark.parametrize("body", [
+    "Hi {{first_name}},\nThanks for sharing Acme's rollout plans for next quarter and the budget.\n"
+    "Grab a time here: {{calendar_link}}\nBest, {{your_name}}",
+    "<p>Hi {{first_name}},</p><p>Thanks for sharing Acme's rollout plans for next quarter and the budget.</p>"
+    "<p>Grab a time here: {{ Calendar_Link }}</p><p>Best, {{your_name}}</p>",
+])
+def test_with_no_booking_link_the_sentence_around_calendar_link_goes_too(body):
+    _, out = render_step_email("Hello", body, PAT, NO_LINK)
+    assert "Grab a time" not in out and not RAW.search(out)
+    assert "Hi Pat" in out and "rollout plans" in out and "Ann Seller" in out  # the rest of the email stays
+
+
+def test_with_a_booking_link_the_sentence_and_link_stay():
+    _, out = render_step_email("Hello", "<p>Grab a time here: {{calendar_link}}</p>", PAT, CTX)
+    assert "Grab a time here: https://cal.example.com/ann" in out
