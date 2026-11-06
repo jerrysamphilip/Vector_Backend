@@ -100,7 +100,8 @@ const newToken = () => crypto.randomBytes(24).toString('base64url');
     await page.waitForURL(/\/app\/dashboard/);
     const names = (await page.context().cookies()).map(c => c.name);
     if (!names.includes('access_token') || !names.includes('refresh_token')) return 'missing cookies: ' + names;
-    const user = await page.evaluate(() => JSON.parse(localStorage.getItem('user') || 'null'));
+    // The web client namespaces its storage keys (outreach360:<base path>:<name>, src/lib/storageKey.js)
+    const user = await page.evaluate(() => { const k = Object.keys(localStorage).find(n => /^outreach360:.*:user$/.test(n)); return JSON.parse((k && localStorage.getItem(k)) || 'null'); });
     if (!user || user.email !== u.email || user.role !== 'AGENT') return 'stored user wrong ' + JSON.stringify(user);
     if (await page.evaluate(() => !!(localStorage.getItem('access_token') || localStorage.getItem('refresh_token')))) return 'token in localStorage';
     const p = await clean(page, w, [/auth\/login/]); if (p) return p;
