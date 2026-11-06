@@ -189,3 +189,61 @@ def test_data_export_of_another_workspace_contact_is_404(client, ws):
     pid, _ = _contact(client, other)
     assert client.get(f"/contacts/{pid}/data-export", headers=ws["headers"]).status_code == 404
     assert client.get(f"/contacts/{uuid.uuid4()}/data-export", headers=ws["headers"]).status_code == 404
+
+
+def _seed_sales(ws, pid):
+    """A disqualified lead and a converted one whose deal has a quote with a line and a deal note."""
+    from decimal import Decimal
+
+    from app.models.contact_activity import ContactActivity
+    from app.models.sales import Lead, Opportunity, Proposal, SalesStage
+    from app.models.sales_extra import ProposalLine
+    with SessionLocal() as db:
+        stage = SalesStage(tenant_id=ws["tenant_id"], name=f"Proposal {_uid()}", probability=50, sort_order=99)
+        lost = Lead(tenant_id=ws["tenant_id"], prospect_id=pid, owner_id=ws["user_id"], source="Webinar",
+                    stage="DISQUALIFIED", disqualified_reason="No budget", qualification={"notes": "Call in Q3"})
+        won = Lead(tenant_id=ws["tenant_id"], prospect_id=pid, owner_id=ws["user_id"], stage="CONVERTED")
+        db.add_all([stage, lost, won])
+        db.flush()
+        # converted from the lead, no contact on the deal itself: still the person's record
+        deal = Opportunity(tenant_id=ws["tenant_id"], name="Dora renewal", lead_id=won.lead_id,
+                           owner_id=ws["user_id"], stage_id=stage.stage_id, amount=Decimal("1200.50"),
+                           status="LOST", closed_reason="Went with a competitor")
+        db.add(deal)
+        db.flush()
+        quote = Proposal(tenant_id=ws["tenant_id"], opportunity_id=deal.opportunity_id, title="Renewal quote",
+                         amount=Decimal("1200.50"), status="SENT")
+        db.add(quote)
+        db.flush()
+        db.add_all([
+            ProposalLine(tenant_id=ws["tenant_id"], proposal_id=quote.proposal_id, description="Seats",
+                         quantity=Decimal("2"), unit_price=Decimal("600.25")),
+            ContactActivity(tenant_id=ws["tenant_id"], opportunity_id=deal.opportunity_id, activity_type="NOTE",
+                            body="Deal note about Dora", created_by=ws["user_id"], occurred_at=utcnow()),
+        ])
+        db.commit()
+        return stage.name, deal.opportunity_id
+
+
+def test_data_export_includes_leads_and_deals(client, ws):
+    pid, _ = _contact(client, ws)
+    stage_name, deal_id = _seed_sales(ws, pid)
+    other, _ = _contact(client, ws)
+    _seed_sales(ws, other)  # someone else's sales records stay out
+    r = client.get(f"/contacts/{pid}/data-export", headers=ws["headers"])
+    assert r.status_code == 200, r.text
+    data = json.loads(r.content)
+    leads = {lead["stage"]: lead for lead in data["leads"]}
+    assert set(leads) == {"DISQUALIFIED", "CONVERTED"}
+    lost = leads["DISQUALIFIED"]
+    assert (lost["source"], lost["disqualified_reason"], lost["qualification"]) == (
+        "Webinar", "No budget", {"notes": "Call in Q3"})
+    assert lost["created_at"].endswith("Z")
+    [deal] = data["deals"]
+    assert (deal["opportunity_id"], deal["name"], deal["stage_name"], deal["amount"]) == (
+        deal_id, "Dora renewal", stage_name, 1200.5)
+    assert deal["closed_reason"] == "Went with a competitor" and deal["created_at"].endswith("Z")
+    [quote] = deal["proposals"]
+    assert (quote["title"], quote["status"], quote["amount"]) == ("Renewal quote", "SENT", 1200.5)
+    assert [(ln["description"], ln["quantity"], ln["unit_price"]) for ln in quote["lines"]] == [("Seats", 2.0, 600.25)]
+    assert [a["body"] for a in deal["activities"]] == ["Deal note about Dora"]

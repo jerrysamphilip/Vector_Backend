@@ -2,7 +2,8 @@
 Data-access request (DSAR) export of one contact: GET /contacts/{id}/data-export.
 
 Everything the workspace holds about one person, as one JSON file: the contact record and its custom
-properties, company links, lists and campaigns (``detail_of``), activities and notes, tasks, every
+properties, company links, lists and campaigns (``detail_of``), activities and notes, tasks, leads,
+deals with their proposals / quote lines and deal notes, every
 email sent to or received from them (subject, body, dates, statuses) and its tracking events, consent
 and suppression (DEC-14), and the property history (lifecycle stage included). Erasure is the other
 half of the request (POST /contacts/purge, D-12).
@@ -91,6 +92,37 @@ def _email_events(repo: ContactRepository, p: Prospect) -> List[dict]:
             for e, subject in repo.email_events_of(p.prospect_id, list(EVENT_LABELS), ALL)]
 
 
+def _columns(obj: Any, skip: tuple = ("row_version",)) -> Dict[str, Any]:
+    return {a.key: getattr(obj, a.key) for a in type(obj).__mapper__.column_attrs if a.key not in skip}
+
+
+def _leads(repo: ContactRepository, p: Prospect) -> List[dict]:
+    """Every lead on the person: stage, source, dates, disqualify reason, qualification notes."""
+    return [_columns(lead) for lead in repo.leads_of(p.tenant_id, p.prospect_id)]
+
+
+def _deals(ctx: ContactsAccess, p: Prospect, lead_ids: List[str], exported: set) -> List[dict]:
+    """Deals with the person (or from their leads) with stage name, proposals / quote lines and notes.
+    ``exported``: activity ids already in the export (not repeated under the deal)."""
+    repo = ctx.contacts
+    deals = repo.deals_of(p.tenant_id, p.prospect_id, lead_ids)
+    ids = [o.opportunity_id for o, _ in deals]
+    proposals = repo.proposals_of(p.tenant_id, ids)
+    lines: Dict[str, List[dict]] = {}
+    for line in repo.proposal_lines_of(p.tenant_id, [x.proposal_id for x in proposals]):
+        lines.setdefault(line.proposal_id, []).append(_columns(line, ()))
+    by_deal: Dict[str, List[dict]] = {}
+    for x in proposals:
+        by_deal.setdefault(x.opportunity_id, []).append({**_columns(x), "lines": lines.get(x.proposal_id, [])})
+    activities = [a for a in repo.deal_activities(p.tenant_id, ids) if a.activity_id not in exported]
+    authors = repo.users_by_ids({a.created_by for a in activities if a.created_by})
+    notes: Dict[str, List[dict]] = {}
+    for a in activities:
+        notes.setdefault(a.opportunity_id or "", []).append(activity_dict(a, authors))
+    return [{**_columns(o), "stage_name": stage, "proposals": by_deal.get(o.opportunity_id, []),
+             "activities": notes.get(o.opportunity_id, [])} for o, stage in deals]
+
+
 def _consent(p: Prospect, detail: dict) -> dict:
     return {"consent_status": p.consent_status, "consent_source": p.consent_source,
             "consent_timestamp": p.consent_timestamp, "legal_basis": p.legal_basis,
@@ -103,6 +135,8 @@ def personal_data(ctx: ContactsAccess, user: User, p: Prospect, task_serializer:
     detail = detail_of(ctx, user, p)
     history = history_rows(repo, user, repo.changes(p.prospect_id, None, None, ALL))
     activities = _activities(ctx, p)
+    leads = _leads(repo, p)
+    deals = _deals(ctx, p, [lead["lead_id"] for lead in leads], {a["activity_id"] for a in activities})
     return {
         "export": {"format_version": FORMAT_VERSION, "generated_at": utcnow(), "generated_by": user.user_id,
                    "tenant_id": user.tenant_id, "prospect_id": p.prospect_id},
@@ -116,6 +150,8 @@ def personal_data(ctx: ContactsAccess, user: User, p: Prospect, task_serializer:
         "tasks": [task_serializer(ctx.session, t) for t in repo.tasks_of(p.prospect_id, None, ALL)],
         "emails": _emails(repo, p),
         "email_events": _email_events(repo, p),
+        "leads": leads,
+        "deals": deals,
         "consent": _consent(p, detail),
         "lifecycle_history": [h for h in history if h["field"] == "lifecycle_stage"],
         "property_history": history,
