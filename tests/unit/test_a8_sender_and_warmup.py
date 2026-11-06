@@ -250,3 +250,14 @@ def test_a8_warmup_reputation_reads_a_week_and_the_domain(monkeypatch):
 def test_a8_warmup_overview_uses_the_tenants_inboxes(monkeypatch):
     monkeypatch.setattr(warmup_mod, "SqlAlchemyWarmupRepository", lambda db: FakeWarmupRepo())
     assert warmup_mod.warmup_service.get_overview(None, "t1")["total_accounts"] == 0
+
+
+def test_a8_missing_postal_address_points_to_where_it_is_set(monkeypatch):
+    """The launch gate names the page and card that hold the address (Email accounts, Sender identity card)."""
+    from app.services import sender_identity
+    monkeypatch.setattr(sender_identity, "get_sender_identity",
+                        lambda tenant_id, db=None, fresh=False: sender_identity.SenderIdentity("Acme", None))
+    with pytest.raises(sender_identity.SenderIdentityMissing) as raised:
+        sender_identity.require_postal_address(None, "t1")
+    assert str(raised.value) == "Set your company postal address in Email accounts → Sender identity before launching"
+    assert "Settings" not in str(raised.value)
