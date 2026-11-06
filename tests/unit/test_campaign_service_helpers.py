@@ -77,6 +77,16 @@ def test_schedule_lists_at_most_five_prospects_per_bucket():
     assert bucket["prospect_count"] == 8 and len(bucket["prospects"]) == 5
 
 
+def test_schedule_lists_only_contacts_the_caller_may_see_but_keeps_the_counts():
+    from app.domain.contacts import VisibilityScope
+    day = datetime(2031, 3, 4, 10, 0)
+    rows = [_row("p1", "QUEUED", scheduled=day), _row("p2", "QUEUED", scheduled=day)]
+    rows[0].owner_id, rows[1].owner_id = "mine", "theirs"
+    out = build_schedule(rows, {}, VisibilityScope(frozenset({"mine"})))
+    bucket = out["schedule"][0]
+    assert bucket["prospect_count"] == 2 and [p["message_id"] for p in bucket["prospects"]] == [rows[0].message_id]
+
+
 # ── campaign_send_now_service ────────────────────────────────
 
 def test_send_now_cursor_round_trip():

@@ -103,7 +103,7 @@ class UserCounts:
 
 @dataclass(frozen=True)
 class ProspectExport:
-    rows: list[Any]                        # email, names, company, designation, status, step, prospect_id
+    rows: list[Any]                        # email, names, company, designation, status, step, prospect_id, owner_id
     engagement: dict[str, dict[str, Any]]  # prospect_id -> {"sent", "delivered"}
     events: dict[str, dict[int, int]]      # prospect_id -> {event_type: count}
 
@@ -455,7 +455,7 @@ class SqlAlchemyCampaignReportRepository:
         rows = (
             s.query(Prospect.email, Prospect.first_name, Prospect.last_name, Prospect.company_name,
                     Prospect.designation, CampaignProspect.status, CampaignProspect.current_step,
-                    CampaignProspect.prospect_id)
+                    CampaignProspect.prospect_id, Prospect.owner_id)
             .join(CampaignProspect, CampaignProspect.prospect_id == Prospect.prospect_id)
             .filter(CampaignProspect.campaign_id == campaign_id).all()
         )

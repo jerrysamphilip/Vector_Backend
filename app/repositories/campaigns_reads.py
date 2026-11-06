@@ -15,9 +15,11 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.domain.contacts import VisibilityScope
 from app.models.campaign import CampaignProspect
 from app.models.email_message import EmailEvent, EmailMessage
 from app.models.prospect import Prospect
+from app.repositories.contacts import owner_condition
 from app.repositories.reports_campaign_metrics import sent_message_filters, unique_prospects_expr
 from app.repositories.system_notices import reply_message
 
@@ -115,22 +117,27 @@ class CampaignReadsRepository:
 
     # ── step replies / schedule ────────────────────────────────────────────────────────────────
 
-    def recent_step_replies(self, campaign_id: str, sequence_id: str, limit: int) -> list[EmailMessage]:
-        """Inbound messages in the same conversation as an outbound email of the step, newest first."""
+    def recent_step_replies(self, campaign_id: str, sequence_id: str, limit: int,
+                            scope: VisibilityScope = VisibilityScope()) -> list[EmailMessage]:
+        """Inbound messages in the same conversation as an outbound email of the step, newest first; only
+        from contacts whose owner is in ``scope`` (BR-SH-02)."""
         conversations = select(EmailMessage.conversation_id).where(
             EmailMessage.sequence_id == sequence_id, EmailMessage.direction == "OUTBOUND",
             EmailMessage.conversation_id.isnot(None))
-        return list(self._s.execute(select(EmailMessage).where(
+        query = select(EmailMessage).where(
             EmailMessage.campaign_id == campaign_id, reply_message(),
-            EmailMessage.conversation_id.in_(conversations)
-        ).order_by(EmailMessage.sent_at.desc()).limit(limit)).scalars())
+            EmailMessage.conversation_id.in_(conversations))
+        owners = owner_condition(Prospect.owner_id, scope)
+        if owners is not None:
+            query = query.join(Prospect, Prospect.prospect_id == EmailMessage.prospect_id).where(owners)
+        return list(self._s.execute(query.order_by(EmailMessage.sent_at.desc()).limit(limit)).scalars())
 
     def schedule_rows(self, campaign_id: str) -> list[Any]:
         """The campaign's outbound step emails (replies and bounce notes are not part of the schedule)."""
         return list(self._s.execute(select(
             EmailMessage.message_id, EmailMessage.scheduled_at, EmailMessage.sent_at, EmailMessage.status,
             EmailMessage.sequence_id, EmailMessage.prospect_id, EmailMessage.subject_variant,
-            Prospect.first_name, Prospect.last_name, Prospect.email,
+            Prospect.first_name, Prospect.last_name, Prospect.email, Prospect.owner_id,
         ).join(Prospect, Prospect.prospect_id == EmailMessage.prospect_id).where(
             EmailMessage.campaign_id == campaign_id,
             func.coalesce(EmailMessage.direction, "OUTBOUND") != "INBOUND")).all())

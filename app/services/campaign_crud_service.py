@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from app.core.clock import iso_utc, utcnow
 from app.domain.campaigns import CampaignListFilter, StepMessage, is_removed, lead_timing, total_pages
+from app.domain.contacts import VisibilityScope
 from app.domain.paging import Paging
 from app.models.campaign import Campaign
 from app.models.email_sequence import EmailSequence
@@ -303,15 +304,16 @@ class CampaignCRUDService(CampaignServiceBase):
     # PROSPECTS
     # =============================
 
-    def get_enrolled_prospects(self, campaign_id: str, include_removed: bool = False) -> List:
+    def get_enrolled_prospects(self, campaign_id: str, include_removed: bool = False,
+                               scope: VisibilityScope = VisibilityScope()) -> List:
         """
         Enrolled prospects of a campaign with their details and lead-list timing columns (F-12):
         ``prospect.timing`` (app/domain/campaigns.LeadTiming) and ``prospect.removed``. Contacts the user
-        removed are left out unless ``include_removed`` (S-21).
+        removed are left out unless ``include_removed`` (S-21); only contacts whose owner is in ``scope``.
         """
         repo = self.uow.campaigns
         enrolled = [(cp, p) for cp, p in repo.enrolments_with_contacts(campaign_id)
-                    if include_removed or not is_removed(cp.status, cp.stopped_reason)]
+                    if (include_removed or not is_removed(cp.status, cp.stopped_reason)) and scope.allows(p.owner_id)]
         prospect_ids = [p.prospect_id for _, p in enrolled]
         # Sticky sender: the mailbox (else snapshot From) a sent email of theirs went from
         inbox_map = repo.sent_from(campaign_id, prospect_ids)

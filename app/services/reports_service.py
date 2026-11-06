@@ -336,18 +336,23 @@ class ReportsService:
         return _csv(rows)
 
     def export_prospects_csv_for(self, viewer: ReportViewer, campaign_id: str) -> io.StringIO:
-        """The campaign's prospects, if the campaign is the viewer's tenant's and its creator is visible."""
+        """The campaign's prospects, if the campaign is the viewer's tenant's and its creator is visible; only the
+        contacts the viewer may see (BR-SH-02)."""
+        access = self._access()
         exists, owner = self.repo.campaign_owner(viewer.tenant_id, campaign_id)
-        if not exists or not sees_owner(self._access().visible_user_ids(viewer), owner):
+        if not exists or not sees_owner(access.visible_user_ids(viewer), owner):
             raise NotFoundError("Campaign not found")
-        return self.export_prospects_csv(campaign_id)
+        return self.export_prospects_csv(campaign_id, lambda owner_id: access.can_see_owner(viewer, owner_id))
 
-    def export_prospects_csv(self, campaign_id: str) -> io.StringIO:
-        """CSV of prospects enrolled in a campaign with engagement data."""
+    def export_prospects_csv(self, campaign_id: str,
+                             visible: Optional[Callable[[Optional[str]], bool]] = None) -> io.StringIO:
+        """CSV of prospects enrolled in a campaign with engagement data (those whose owner is ``visible``)."""
         data = self.repo.prospect_export(campaign_id)
         rows: List[list] = [_Fixed(["Email", "First Name", "Last Name", "Company", "Designation", "Status",
                                     "Current Step", "Emails Sent", "Opens", "Clicks", "Replies", "Bounces"])]
         for r in data.rows:
+            if visible is not None and not visible(r.owner_id):
+                continue
             events = data.events.get(r.prospect_id, {})
             rows.append([
                 r.email, r.first_name or "", r.last_name or "", r.company_name or "", r.designation or "",
