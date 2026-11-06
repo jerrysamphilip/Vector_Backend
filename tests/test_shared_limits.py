@@ -67,7 +67,8 @@ def test_http_lockout_is_visible_to_another_replica(client, replicas):
     pair_key = f"login-fail:{t['email'].lower()}:ip:testclient"
     assert replicas[1].blocked(pair_key, *rl.LOGIN_FAILURES_PER_EMAIL_IP) > 0
     # Rows hold a hash of the key, never the address
-    assert sql("SELECT COUNT(*) FROM rate_limit_counters WHERE bucket = :b", b=bucket_id(pair_key)) == 1
+    # (the 10 failures can straddle a slot boundary, so they may sit in one or two slot rows)
+    assert sql("SELECT COALESCE(SUM(hits), 0) FROM rate_limit_counters WHERE bucket = :b", b=bucket_id(pair_key)) == 10
     assert sql("SELECT COUNT(*) FROM rate_limit_counters WHERE bucket LIKE :e", e=f"%{t['email']}%") == 0
 
 
