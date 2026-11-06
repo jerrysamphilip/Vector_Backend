@@ -26,7 +26,7 @@ from app.repositories.company_profiles import Session, company_profiles_repo
 
 logger = logging.getLogger(__name__)
 
-MISSING_ADDRESS_MESSAGE = "Set your company postal address in Settings before launching"
+MISSING_ADDRESS_MESSAGE = "Set your company postal address in Email accounts → Sender identity before launching"
 SENDER_COMPANY_TOKEN = "<<SENDER_COMPANY>>"
 GENERIC_COMPANY = "our company"
 _CACHE_SECONDS = 60
